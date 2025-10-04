@@ -4,7 +4,7 @@
 #include "FeatureDetector.h"
 #include "../particles/ParticleSystem.h"
 #include "../particles/ParticleRenderer.h"
-#include "../lighting/RTLightingSystem.h"
+#include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 
@@ -89,13 +89,13 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow) {
 
     // Initialize RT lighting if supported
     if (m_features->CanUseDXR() && m_config.enableRT) {
-        m_rtLighting = std::make_unique<RTLightingSystem>();
+        m_rtLighting = std::make_unique<RTLightingSystem_RayQuery>();
         if (!m_rtLighting->Initialize(m_device.get(), m_resources.get(), m_config.particleCount)) {
             LOG_ERROR("Failed to initialize RT lighting system");
             // Continue without RT
             m_rtLighting.reset();
         } else {
-            LOG_INFO("RT Lighting initialized - looking for GREEN particles!");
+            LOG_INFO("RT Lighting (RayQuery) initialized - looking for GREEN particles!");
         }
     }
 
@@ -199,23 +199,17 @@ void Application::Render() {
     // RT Lighting Pass (if enabled)
     ID3D12Resource* rtLightingBuffer = nullptr;
     if (m_rtLighting && m_particleSystem) {
-        // Build acceleration structures
-        m_rtLighting->BuildTLAS(cmdList, m_particleSystem->GetParticleBuffer(), m_config.particleCount);
+        // Full DXR 1.1 RayQuery pipeline: AABB → BLAS → TLAS → RT Lighting
+        m_rtLighting->ComputeLighting(cmdList,
+                                     m_particleSystem->GetParticleBuffer(),
+                                     m_config.particleCount);
 
-        // Compute RT lighting (GREEN TEST PATTERN)
-        RTLightingSystem::RTConstants rtConstants = {};
-        // Simple orthographic projection for testing
-        DirectX::XMStoreFloat4x4(&rtConstants.viewProj, DirectX::XMMatrixIdentity());
-        rtConstants.cameraPos = DirectX::XMFLOAT3(0, 100, 200);
-        rtConstants.lightDir = DirectX::XMFLOAT3(0, -1, 0);
-        rtConstants.lightIntensity = 1.0f;
-        rtConstants.particleCount = m_config.particleCount;
-        rtConstants.frameIndex = m_frameCount;
-        rtConstants.enableShadows = 1;
-        rtConstants.time = m_totalTime;
-
-        m_rtLighting->ComputeLighting(cmdList, rtConstants);
         rtLightingBuffer = m_rtLighting->GetLightingBuffer();
+
+        // Log every 60 frames
+        if ((m_frameCount % 60) == 0) {
+            LOG_INFO("RT Lighting computed (frame {})", m_frameCount);
+        }
     }
 
     // Render particles
@@ -338,10 +332,11 @@ void Application::OnKeyPress(UINT8 key) {
 
     case 'S':
         if (m_rtLighting) {
-            static bool shadowsEnabled = true;
-            shadowsEnabled = !shadowsEnabled;
-            m_rtLighting->SetEnableShadows(shadowsEnabled);
-            LOG_INFO("Shadows: {}", shadowsEnabled ? "ON" : "OFF");
+            static uint32_t raysPerParticle = 4;
+            raysPerParticle = (raysPerParticle == 2) ? 4 : (raysPerParticle == 4) ? 8 : 2;
+            m_rtLighting->SetRaysPerParticle(raysPerParticle);
+            LOG_INFO("Rays per particle: {} (quality: {})", raysPerParticle,
+                    raysPerParticle == 8 ? "HIGH" : raysPerParticle == 4 ? "MEDIUM" : "LOW");
         }
         break;
 

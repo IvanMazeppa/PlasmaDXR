@@ -25,8 +25,7 @@ StructuredBuffer<Particle> g_particles : register(t0);
 RaytracingAccelerationStructure g_particleBVH : register(t1);
 
 // Output: Lighting contribution per particle (RGBA, alpha unused)
-// MUST be RWBuffer<float4> to match typed UAV format DXGI_FORMAT_R32G32B32A32_FLOAT
-RWBuffer<float4> g_particleLighting : register(u0);
+RWStructuredBuffer<float4> g_particleLighting : register(u0);
 
 // Helper: Fibonacci hemisphere sampling for even ray distribution
 float3 FibonacciHemisphere(uint sampleIndex, uint numSamples, float3 normal)
