@@ -1,8 +1,8 @@
 #include "FeatureDetector.h"
 #include "../utils/Logger.h"
+#include "../utils/d3dx12/d3dx12.h"
 #include <d3d12.h>
 #include <dxgi1_6.h>
-#include <d3dx12.h>
 
 bool FeatureDetector::Initialize(ID3D12Device* device) {
     if (!device) {
