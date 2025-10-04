@@ -7,36 +7,35 @@ std::mutex Logger::s_mutex;
 bool Logger::s_initialized = false;
 
 void Logger::Initialize(const std::string& appName) {
-    std::lock_guard<std::mutex> lock(s_mutex);
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
 
-    if (s_initialized) return;
+        if (s_initialized) return;
 
-    // Create logs directory
-    CreateDirectoryA("logs", nullptr);
+        // Create logs directory
+        CreateDirectoryA("logs", nullptr);
 
-    // Generate filename with timestamp
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    struct tm timeinfo;
-    localtime_s(&timeinfo, &time_t);
+        // Generate filename with timestamp
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        struct tm timeinfo;
+        localtime_s(&timeinfo, &time_t);
 
-    std::stringstream filename;
-    filename << "logs/" << appName << "_"
-             << std::put_time(&timeinfo, "%Y%m%d_%H%M%S")
-             << ".log";
+        std::stringstream filename;
+        filename << "logs/" << appName << "_"
+                 << std::put_time(&timeinfo, "%Y%m%d_%H%M%S")
+                 << ".log";
 
-    s_file.open(filename.str());
-    s_initialized = true;
+        s_file.open(filename.str());
+        if (!s_file.is_open()) {
+            // Can't log if file won't open, but don't abort
+            s_initialized = false;
+            return;
+        }
+        s_initialized = true;
+    } // Release lock before calling Log()
 
-    // Also enable console output for debug builds
-#ifdef _DEBUG
-    AllocConsole();
-    FILE* pCout;
-    freopen_s(&pCout, "CONOUT$", "w", stdout);
-    freopen_s(&pCout, "CONOUT$", "w", stderr);
-#endif
-
-    Log(INFO, "=== " + appName + " Log Session Started ===");
+    Log(Level::Info, "=== " + appName + " Log Session Started ===");
 }
 
 void Logger::Shutdown() {
@@ -91,11 +90,11 @@ std::string Logger::GetTimestamp() {
 
 std::string Logger::GetLevelString(Level level) {
     switch (level) {
-        case DEBUG: return "DEBUG";
-        case INFO: return "INFO";
-        case WARNING: return "WARN";
-        case ERROR: return "ERROR";
-        case CRITICAL: return "CRIT";
+        case Level::Debug: return "DEBUG";
+        case Level::Info: return "INFO";
+        case Level::Warning: return "WARN";
+        case Level::Error: return "ERROR";
+        case Level::Critical: return "CRIT";
         default: return "????";
     }
 }

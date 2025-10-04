@@ -13,10 +13,10 @@ extern "C" {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
-    // Initialize logging
-    Logger::Initialize("PlasmaDX-Clean");
-
     try {
+        // Initialize logging
+        Logger::Initialize("PlasmaDX-Clean");
+
         LOG_INFO("=== PlasmaDX-Clean Starting ===");
         LOG_INFO("Clean architecture, modern design");
         LOG_INFO("Target: 100K particles with RT lighting");
@@ -26,6 +26,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
         if (!app.Initialize(hInstance, nCmdShow)) {
             LOG_ERROR("Failed to initialize application");
+            MessageBoxA(nullptr, "Failed to initialize application. Check logs folder.", "Init Error", MB_OK | MB_ICONERROR);
             return -1;
         }
 
@@ -49,10 +50,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     }
 }
 
-// Enable console for debug builds
-#ifdef _DEBUG
-#pragma comment(linker, "/SUBSYSTEM:CONSOLE")
-int main() {
-    return WinMain(GetModuleHandle(nullptr), nullptr, GetCommandLineA(), SW_SHOWDEFAULT);
-}
-#endif
