@@ -10,7 +10,7 @@ class SwapChain;
 class FeatureDetector;
 class ParticleSystem;
 class ParticleRenderer;
-class RTLightingSystem;
+class RTLightingSystem_RayQuery;
 class ResourceManager;
 
 class Application {
@@ -55,7 +55,7 @@ private:
     // Subsystems
     std::unique_ptr<ParticleSystem> m_particleSystem;
     std::unique_ptr<ParticleRenderer> m_particleRenderer;
-    std::unique_ptr<RTLightingSystem> m_rtLighting;
+    std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
 
     // Timing
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;

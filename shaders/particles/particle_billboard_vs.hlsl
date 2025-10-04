@@ -1,0 +1,116 @@
+// Particle Billboard Vertex Shader
+// Reads particle data and generates camera-facing billboard quads
+// Applies RT lighting from lighting buffer
+
+cbuffer CameraConstants : register(b0)
+{
+    float4x4 viewProj;
+    float3 cameraPos;
+    float padding0;
+    float3 cameraRight;
+    float padding1;
+    float3 cameraUp;
+    float padding2;
+};
+
+cbuffer ParticleConstants : register(b1)
+{
+    float particleRadius;
+    float3 padding3;
+};
+
+// Input: Particle data
+struct Particle
+{
+    float3 position;
+    float temperature;
+    float3 velocity;
+    float density;
+};
+
+StructuredBuffer<Particle> g_particles : register(t0);
+
+// Input: RT lighting data (from RayQuery compute shader)
+Buffer<float4> g_rtLighting : register(t1);
+
+// Output to pixel shader
+struct PixelInput
+{
+    float4 position : SV_Position;
+    float2 texCoord : TEXCOORD0;
+    float4 color : COLOR0;        // Particle base color
+    float4 lighting : COLOR1;     // RT lighting contribution
+    float alpha : COLOR2;
+};
+
+// Vertex shader entry point
+// Uses SV_VertexID to generate billboard vertices (4 vertices per particle)
+PixelInput main(uint vertexID : SV_VertexID)
+{
+    // Decode particle index and corner index from vertex ID
+    uint particleIdx = vertexID / 4;  // 4 vertices per particle
+    uint cornerIdx = vertexID % 4;     // 0=BL, 1=BR, 2=TL, 3=TR
+
+    // Read particle data
+    Particle p = g_particles[particleIdx];
+
+    // Read RT lighting for this particle
+    float4 rtLight = g_rtLighting[particleIdx];
+
+    // Convert temperature to base color (same as RayQuery shader)
+    float t = saturate((p.temperature - 800.0) / 25200.0);
+    float3 baseColor;
+    if (t < 0.25) {
+        float blend = t / 0.25;
+        baseColor = lerp(float3(0.5, 0.1, 0.05), float3(1.0, 0.3, 0.1), blend);
+    } else if (t < 0.5) {
+        float blend = (t - 0.25) / 0.25;
+        baseColor = lerp(float3(1.0, 0.3, 0.1), float3(1.0, 0.6, 0.2), blend);
+    } else if (t < 0.75) {
+        float blend = (t - 0.5) / 0.25;
+        baseColor = lerp(float3(1.0, 0.6, 0.2), float3(1.0, 0.95, 0.7), blend);
+    } else {
+        float blend = (t - 0.75) / 0.25;
+        baseColor = lerp(float3(1.0, 0.95, 0.7), float3(1.0, 1.0, 1.0), blend);
+    }
+
+    // Generate billboard corner position in world space
+    float2 cornerOffset;
+    float2 texCoord;
+
+    if (cornerIdx == 0) {  // Bottom-left
+        cornerOffset = float2(-1, -1);
+        texCoord = float2(0, 1);
+    } else if (cornerIdx == 1) {  // Bottom-right
+        cornerOffset = float2(1, -1);
+        texCoord = float2(1, 1);
+    } else if (cornerIdx == 2) {  // Top-left
+        cornerOffset = float2(-1, 1);
+        texCoord = float2(0, 0);
+    } else {  // Top-right (cornerIdx == 3)
+        cornerOffset = float2(1, 1);
+        texCoord = float2(1, 0);
+    }
+
+    // Scale by particle radius
+    cornerOffset *= particleRadius;
+
+    // Billboard world position (camera-facing)
+    float3 worldPos = p.position + cornerOffset.x * cameraRight + cornerOffset.y * cameraUp;
+
+    // Transform to clip space
+    float4 clipPos = mul(viewProj, float4(worldPos, 1.0));
+
+    // Calculate alpha based on density (for volumetric look)
+    float alpha = saturate(p.density * 0.5);
+
+    // Output
+    PixelInput output;
+    output.position = clipPos;
+    output.texCoord = texCoord;
+    output.color = float4(baseColor, 1.0);
+    output.lighting = rtLight;  // Pass RT lighting to pixel shader
+    output.alpha = alpha;
+
+    return output;
+}
