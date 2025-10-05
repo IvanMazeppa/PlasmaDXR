@@ -86,6 +86,13 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
 
         // Density: higher near black hole, exponential falloff
         particleData[i].density = expf(-radiusFactor * 2.0f) * 2.0f;
+
+        // Debug: Log first 5 particle positions
+        if (i < 5) {
+            LOG_INFO("Particle {}: pos=({}, {}, {}) radius={} temp={}",
+                     i, particleData[i].position.x, particleData[i].position.y, particleData[i].position.z,
+                     radius, particleData[i].temperature);
+        }
     }
 
     m_particleUploadBuffer.Get()->Unmap(0, nullptr);
@@ -213,7 +220,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     // Setup physics constants
     struct ParticleConstants {
         float deltaTime;
-        float totalTime;
+        float totalTime;  // FIX: Start > 0.01 to prevent GPU re-initialization over CPU data
         float blackHoleMass;
         float gravityStrength;
         DirectX::XMFLOAT3 blackHolePosition;
@@ -232,7 +239,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     } constants = {};
 
     constants.deltaTime = deltaTime;
-    constants.totalTime = totalTime;
+    constants.totalTime = (std::max)(0.02f, totalTime);  // Prevent GPU re-init (shader checks < 0.01)
     constants.blackHoleMass = BLACK_HOLE_MASS;
     constants.gravityStrength = m_gravityStrength;
     constants.blackHolePosition = m_blackHolePosition;
@@ -262,11 +269,8 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     barrier.UAV.pResource = m_particleBuffer.Get();
     cmdList->ResourceBarrier(1, &barrier);
 
-    // Execute physics compute work immediately
-    cmdList->Close();
-    m_device->ExecuteCommandList();
-    m_device->WaitForGPU();  // Wait for physics to complete before rendering
-    // Note: Render() will reset the command list
+    // DON'T close/execute here - let the main render loop handle it!
+    // The physics compute will execute as part of the frame's command list
 }
 
 void ParticleSystem::Shutdown() {

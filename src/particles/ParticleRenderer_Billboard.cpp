@@ -174,7 +174,8 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
     }
 
     static int frameCount = 0;
-    if (frameCount == 0) {
+    bool isFirstFrame = (frameCount == 0);
+    if (isFirstFrame) {
         LOG_INFO("=== First Billboard Render ===");
         LOG_INFO("  Particle count: {}", m_particleCount);
         LOG_INFO("  Particle buffer: {}", particleBuffer ? "Valid" : "NULL");
@@ -195,7 +196,10 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
     DirectX::XMVECTOR up = DirectX::XMLoadFloat3(&constants.cameraUp);
 
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(cameraPos, lookAt, up);
-    DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, 1920.0f/1080.0f, 0.1f, 10000.0f);
+
+    // Use actual window dimensions for correct aspect ratio
+    float aspectRatio = static_cast<float>(constants.screenWidth) / static_cast<float>(constants.screenHeight);
+    DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, aspectRatio, 0.1f, 10000.0f);
     DirectX::XMMATRIX viewProj = view * proj;
 
     // Extract camera right and up vectors from view matrix
@@ -223,6 +227,14 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
     DirectX::XMStoreFloat3(&cameraConsts.cameraPos, cameraPos);
     DirectX::XMStoreFloat3(&cameraConsts.cameraRight, cameraRight);
     DirectX::XMStoreFloat3(&cameraConsts.cameraUp, cameraUpVec);
+
+    // Log matrix on first frame
+    if (isFirstFrame) {
+        LOG_INFO("  ViewProj row 0: ({}, {}, {}, {})", cameraConsts.viewProj._11, cameraConsts.viewProj._12, cameraConsts.viewProj._13, cameraConsts.viewProj._14);
+        LOG_INFO("  ViewProj row 1: ({}, {}, {}, {})", cameraConsts.viewProj._21, cameraConsts.viewProj._22, cameraConsts.viewProj._23, cameraConsts.viewProj._24);
+        LOG_INFO("  ViewProj row 2: ({}, {}, {}, {})", cameraConsts.viewProj._31, cameraConsts.viewProj._32, cameraConsts.viewProj._33, cameraConsts.viewProj._34);
+        LOG_INFO("  ViewProj row 3: ({}, {}, {}, {})", cameraConsts.viewProj._41, cameraConsts.viewProj._42, cameraConsts.viewProj._43, cameraConsts.viewProj._44);
+    }
 
     cmdList->SetGraphicsRoot32BitConstants(0, 28, &cameraConsts, 0);
 

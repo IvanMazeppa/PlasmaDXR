@@ -27,6 +27,8 @@ public:
         float time;
         DirectX::XMFLOAT3 cameraUp;
         float particleSize;
+        uint32_t screenWidth;
+        uint32_t screenHeight;
     };
 
 public:
