@@ -66,22 +66,11 @@ PixelInput main(uint vertexID : SV_VertexID)
     // Read RT lighting for this particle
     float4 rtLight = g_rtLighting[particleIdx];
 
-    // Convert temperature to base color (same as RayQuery shader)
-    float t = saturate((p.temperature - 800.0) / 25200.0);
-    float3 baseColor;
-    if (t < 0.25) {
-        float blend = t / 0.25;
-        baseColor = lerp(float3(0.5, 0.1, 0.05), float3(1.0, 0.3, 0.1), blend);
-    } else if (t < 0.5) {
-        float blend = (t - 0.25) / 0.25;
-        baseColor = lerp(float3(1.0, 0.3, 0.1), float3(1.0, 0.6, 0.2), blend);
-    } else if (t < 0.75) {
-        float blend = (t - 0.5) / 0.25;
-        baseColor = lerp(float3(1.0, 0.6, 0.2), float3(1.0, 0.95, 0.7), blend);
-    } else {
-        float blend = (t - 0.75) / 0.25;
-        baseColor = lerp(float3(1.0, 0.95, 0.7), float3(1.0, 1.0, 1.0), blend);
-    }
+    // DEBUG: Output temperature as color to diagnose
+    // Temperature: ~10000 / radius, ranges from ~33 (outer r=300) to ~1000 (inner r=10)
+    // Map temperature 33-1000 to red->yellow gradient
+    float tempNorm = saturate((p.temperature - 33.0) / 967.0);
+    float3 baseColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), tempNorm);  // Red to Yellow
 
     // Generate billboard corner position in world space
     float2 cornerOffset;

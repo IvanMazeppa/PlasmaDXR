@@ -73,4 +73,11 @@ private:
         bool preferMeshShaders = true;
         bool enableDebugLayer = false;
     } m_config;
+
+    // Runtime camera controls - TOP-DOWN VIEW of accretion disk
+    float m_cameraDistance = 800.0f;   // Distance from center (horizontal)
+    float m_cameraHeight = 1200.0f;    // HIGH above disk to see ring structure from above
+    float m_cameraAngle = 0.0f;         // Orbit angle
+    float m_particleSize = 100.0f;      // Large size for visibility
+    bool m_physicsEnabled = false;
 };

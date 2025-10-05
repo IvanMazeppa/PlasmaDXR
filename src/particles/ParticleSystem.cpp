@@ -2,9 +2,14 @@
 #include "../core/Device.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#include "../utils/d3dx12/d3dx12.h"
 #include <random>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <d3dcompiler.h>
+
+#pragma comment(lib, "d3dcompiler.lib")
 
 ParticleSystem::~ParticleSystem() {
     Shutdown();
@@ -76,17 +81,11 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
         particleData[i].velocity.y = 0.0f;
         particleData[i].velocity.z = v * cosf(theta);
 
-        particleData[i].mass = 1.0f;
-
         // Temperature: hotter near black hole (blackbody radiation)
         particleData[i].temperature = 10000.0f / (radius * 0.1f);
 
-        // Color based on temperature (simplified blackbody)
-        float t = (std::min)(particleData[i].temperature / 20000.0f, 1.0f);
-        particleData[i].color.x = 1.0f;                    // Red
-        particleData[i].color.y = 0.7f * t + 0.3f;        // Green increases with temp
-        particleData[i].color.z = 0.3f * t;                // Blue at highest temps
-        particleData[i].color.w = 0.8f;                    // Alpha
+        // Density: higher near black hole, exponential falloff
+        particleData[i].density = expf(-radiusFactor * 2.0f) * 2.0f;
     }
 
     m_particleUploadBuffer.Get()->Unmap(0, nullptr);
@@ -123,6 +122,12 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
     LOG_INFO("  Outer radius: {}", OUTER_DISK_RADIUS);
     LOG_INFO("  Disk thickness: {}", DISK_THICKNESS);
 
+    // Create physics compute pipeline
+    if (!CreateComputePipeline()) {
+        LOG_ERROR("Failed to create particle physics pipeline");
+        return false;
+    }
+
     return true;
 }
 
@@ -132,17 +137,136 @@ void ParticleSystem::InitializeAccretionDisk() {
     LOG_INFO("Generating NASA-quality accretion disk distribution...");
 }
 
+bool ParticleSystem::CreateComputePipeline() {
+    HRESULT hr;
+
+    // Load physics compute shader
+    std::ifstream shaderFile("shaders/particles/particle_physics.dxil", std::ios::binary);
+    if (!shaderFile) {
+        LOG_ERROR("Failed to open particle_physics.dxil");
+        return false;
+    }
+
+    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
+    Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
+    hr = D3DCreateBlob(shaderData.size(), &computeShader);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create blob for physics shader");
+        return false;
+    }
+    memcpy(computeShader->GetBufferPointer(), shaderData.data(), shaderData.size());
+
+    // Create root signature
+    // b0: ParticleConstants
+    // u0: RWStructuredBuffer<Particle> particles
+    CD3DX12_ROOT_PARAMETER1 rootParams[2];
+    rootParams[0].InitAsConstants(32, 0);  // b0: ParticleConstants (multiple of 4 DWORDs)
+    rootParams[1].InitAsUnorderedAccessView(0);  // u0: particles UAV
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+    rootSigDesc.Init_1_1(2, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
+    hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Physics root signature serialization failed: {}", (char*)error->GetBufferPointer());
+        }
+        return false;
+    }
+
+    hr = m_device->GetDevice()->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                                     IID_PPV_ARGS(&m_computeRootSignature));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create physics root signature");
+        return false;
+    }
+
+    // Create compute PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_computeRootSignature.Get();
+    psoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+
+    hr = m_device->GetDevice()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_computePSO));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create physics compute PSO");
+        return false;
+    }
+
+    LOG_INFO("Particle physics pipeline created successfully");
+    return true;
+}
+
 void ParticleSystem::Update(float deltaTime, float totalTime) {
+    if (!m_computePSO || !m_computeRootSignature) {
+        return;  // Physics not initialized
+    }
+
     m_totalTime = totalTime;
 
-    // Physics update would go here
-    // For now, particles remain in their initial orbital configuration
-    // Future: Implement full N-body dynamics with:
-    // - Gravitational forces
-    // - Orbital mechanics
-    // - Viscosity and angular momentum transfer
-    // - Turbulence
-    // - Magnetic fields (if applicable)
+    auto cmdList = m_device->GetCommandList();
+
+    // Set compute pipeline
+    cmdList->SetPipelineState(m_computePSO.Get());
+    cmdList->SetComputeRootSignature(m_computeRootSignature.Get());
+
+    // Setup physics constants
+    struct ParticleConstants {
+        float deltaTime;
+        float totalTime;
+        float blackHoleMass;
+        float gravityStrength;
+        DirectX::XMFLOAT3 blackHolePosition;
+        float turbulenceStrength;
+        DirectX::XMFLOAT3 diskAxis;
+        float dampingFactor;
+        float innerRadius;
+        float outerRadius;
+        float diskThickness;
+        float viscosity;
+        float angularMomentumBoost;
+        uint32_t constraintShape;
+        float constraintRadius;
+        float constraintThickness;
+        float particleCount;
+    } constants = {};
+
+    constants.deltaTime = deltaTime;
+    constants.totalTime = totalTime;
+    constants.blackHoleMass = BLACK_HOLE_MASS;
+    constants.gravityStrength = m_gravityStrength;
+    constants.blackHolePosition = m_blackHolePosition;
+    constants.turbulenceStrength = m_turbulenceStrength;
+    constants.diskAxis = m_diskAxis;
+    constants.dampingFactor = m_dampingFactor;
+    constants.innerRadius = INNER_STABLE_ORBIT;
+    constants.outerRadius = OUTER_DISK_RADIUS;
+    constants.diskThickness = DISK_THICKNESS;
+    constants.viscosity = m_viscosity;
+    constants.angularMomentumBoost = m_angularMomentumBoost;
+    constants.constraintShape = m_constraintShape;
+    constants.constraintRadius = 50.0f;
+    constants.constraintThickness = 5.0f;
+    constants.particleCount = static_cast<float>(m_particleCount);
+
+    cmdList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
+    cmdList->SetComputeRootUnorderedAccessView(1, m_particleBuffer->GetGPUVirtualAddress());
+
+    // Dispatch compute shader
+    uint32_t threadGroupCount = (m_particleCount + 63) / 64;
+    cmdList->Dispatch(threadGroupCount, 1, 1);
+
+    // Barrier: UAV -> SRV for rendering
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barrier.UAV.pResource = m_particleBuffer.Get();
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Execute physics compute work immediately
+    cmdList->Close();
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();  // Wait for physics to complete before rendering
+    // Note: Render() will reset the command list
 }
 
 void ParticleSystem::Shutdown() {

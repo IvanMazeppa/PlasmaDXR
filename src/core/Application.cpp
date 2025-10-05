@@ -160,8 +160,8 @@ int Application::Run() {
 void Application::Update(float deltaTime) {
     m_totalTime += deltaTime;
 
-    // Update particle physics
-    if (m_particleSystem) {
+    // Update particle physics if enabled
+    if (m_physicsEnabled && m_particleSystem) {
         m_particleSystem->Update(deltaTime, m_totalTime);
     }
 }
@@ -216,10 +216,27 @@ void Application::Render() {
     if (m_particleRenderer && m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
         DirectX::XMStoreFloat4x4(&renderConstants.viewProj, DirectX::XMMatrixIdentity());
-        renderConstants.cameraPos = DirectX::XMFLOAT3(0, 100, 200);
+
+        // Use runtime camera controls
+        float camX = m_cameraDistance * sinf(m_cameraAngle);
+        float camZ = m_cameraDistance * cosf(m_cameraAngle);
+        renderConstants.cameraPos = DirectX::XMFLOAT3(camX, m_cameraHeight, camZ);
         renderConstants.cameraUp = DirectX::XMFLOAT3(0, 1, 0);
         renderConstants.time = m_totalTime;
-        renderConstants.particleSize = 50.0f;  // Much larger particles for visibility at distance
+        renderConstants.particleSize = m_particleSize;
+
+        // Log camera view on first frame
+        static bool loggedCamera = false;
+        if (!loggedCamera) {
+            LOG_INFO("=== Camera Configuration ===");
+            LOG_INFO("  Position: ({:.1f}, {:.1f}, {:.1f})", camX, m_cameraHeight, camZ);
+            LOG_INFO("  Looking at: (0, 0, 0)");
+            LOG_INFO("  Disk: inner r={}, outer r={}", 10.0f, 300.0f);
+            LOG_INFO("  View: TOP-DOWN (above disk)");
+            LOG_INFO("  Particle size: {}", m_particleSize);
+            LOG_INFO("============================");
+            loggedCamera = true;
+        }
 
         m_particleRenderer->Render(cmdList,
                                   m_particleSystem->GetParticleBuffer(),
@@ -343,6 +360,36 @@ void Application::OnKeyPress(UINT8 key) {
     case VK_SPACE:
         LOG_INFO("Frame: {}, FPS: {:.1f}, Render Path: {}",
                 m_frameCount, m_fps, m_particleRenderer->GetActivePathName());
+        break;
+
+    // Camera controls
+    case VK_UP: m_cameraHeight += 50.0f; break;
+    case VK_DOWN: m_cameraHeight -= 50.0f; break;
+    case VK_LEFT: m_cameraAngle -= 0.1f; break;
+    case VK_RIGHT: m_cameraAngle += 0.1f; break;
+    case 'W': m_cameraDistance -= 50.0f; break;
+    case 'A': m_cameraDistance += 50.0f; break;
+
+    // Particle size
+    case VK_OEM_PLUS: case VK_ADD:
+        m_particleSize += 2.0f;
+        LOG_INFO("Particle size: {}", m_particleSize);
+        break;
+    case VK_OEM_MINUS: case VK_SUBTRACT:
+        m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
+        LOG_INFO("Particle size: {}", m_particleSize);
+        break;
+
+    // Toggle physics
+    case 'P':
+        m_physicsEnabled = !m_physicsEnabled;
+        LOG_INFO("Physics: {}", m_physicsEnabled ? "ENABLED" : "DISABLED");
+        break;
+
+    // Log camera state
+    case 'C':
+        LOG_INFO("Camera - Distance: {}, Height: {}, Angle: {}, ParticleSize: {}",
+                 m_cameraDistance, m_cameraHeight, m_cameraAngle, m_particleSize);
         break;
     }
 }

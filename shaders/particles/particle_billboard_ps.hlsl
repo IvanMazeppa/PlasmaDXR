@@ -21,8 +21,8 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // DEBUG: Render solid white particles for testing
-    output.color = float4(1.0, 1.0, 1.0, 1.0);
+    // Output the vertex shader's color to see temperature gradient
+    output.color = float4(input.color.rgb, 1.0);
 
     return output;
 }
