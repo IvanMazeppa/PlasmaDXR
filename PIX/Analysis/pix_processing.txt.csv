@@ -1,0 +1,8 @@
+﻿c:\pix\pix>"C:\Program Files\Microsoft PIX\2507.11\pixtool.exe" open-capture "c:\pix\pix\captures\mode_0.wpix" save-event-list "c:\pix\pix\reports\test.csv" --counters=*
+  0.0: Launching GpuPlayback engine
+  0.0: Opening c:\pix\pix\captures\mode_0.wpix
+  0.1: Starting analysis on localhost
+  2.8: Getting event list for 204 columns
+  9.8: Writing c:\pix\pix\reports\test.csv
+
+c:\pix\pix>

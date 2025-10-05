@@ -215,24 +215,36 @@ void Application::Render() {
     // Render particles
     if (m_particleRenderer && m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
-        DirectX::XMStoreFloat4x4(&renderConstants.viewProj, DirectX::XMMatrixIdentity());
+
+        // Build proper view-projection matrix with mouse look support
+        float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
+        float camY = m_cameraDistance * sinf(m_cameraPitch);
+        float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
+        DirectX::XMVECTOR cameraPos = DirectX::XMVectorSet(camX, camY + m_cameraHeight, camZ, 1.0f);
+        DirectX::XMVECTOR lookAt = DirectX::XMVectorSet(0, 0, 0, 1.0f);
+        DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
+        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(cameraPos, lookAt, up);
+        DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4,
+                                                                    static_cast<float>(m_width) / static_cast<float>(m_height),
+                                                                    0.1f, 10000.0f);
+        DirectX::XMStoreFloat4x4(&renderConstants.viewProj, DirectX::XMMatrixTranspose(view * proj));
 
         // Use runtime camera controls
-        float camX = m_cameraDistance * sinf(m_cameraAngle);
-        float camZ = m_cameraDistance * cosf(m_cameraAngle);
-        renderConstants.cameraPos = DirectX::XMFLOAT3(camX, m_cameraHeight, camZ);
+        renderConstants.cameraPos = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
         renderConstants.cameraUp = DirectX::XMFLOAT3(0, 1, 0);
         renderConstants.time = m_totalTime;
         renderConstants.particleSize = m_particleSize;
+        renderConstants.screenWidth = m_width;
+        renderConstants.screenHeight = m_height;
 
         // Log camera view on first frame
         static bool loggedCamera = false;
         if (!loggedCamera) {
             LOG_INFO("=== Camera Configuration ===");
-            LOG_INFO("  Position: ({:.1f}, {:.1f}, {:.1f})", camX, m_cameraHeight, camZ);
+            LOG_INFO("  Position: ({}, {}, {})", camX, camY + m_cameraHeight, camZ);
             LOG_INFO("  Looking at: (0, 0, 0)");
             LOG_INFO("  Disk: inner r={}, outer r={}", 10.0f, 300.0f);
-            LOG_INFO("  View: TOP-DOWN (above disk)");
+            LOG_INFO("  Mouse Look: CTRL+LMB drag");
             LOG_INFO("  Particle size: {}", m_particleSize);
             LOG_INFO("============================");
             loggedCamera = true;
@@ -322,14 +334,34 @@ LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
         }
         return 0;
 
+    case WM_LBUTTONDOWN:
+        if (app && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            app->m_mouseLookActive = true;
+            app->m_lastMouseX = LOWORD(lParam);
+            app->m_lastMouseY = HIWORD(lParam);
+            SetCapture(hwnd);
+        }
+        return 0;
+
+    case WM_LBUTTONUP:
+        if (app && app->m_mouseLookActive) {
+            app->m_mouseLookActive = false;
+            ReleaseCapture();
+        }
+        return 0;
+
     case WM_MOUSEMOVE:
         if (app) {
             int x = LOWORD(lParam);
             int y = HIWORD(lParam);
-            static int lastX = x, lastY = y;
-            app->OnMouseMove(x - lastX, y - lastY);
-            lastX = x;
-            lastY = y;
+
+            if (app->m_mouseLookActive) {
+                int dx = x - app->m_lastMouseX;
+                int dy = y - app->m_lastMouseY;
+                app->OnMouseMove(dx, dy);
+                app->m_lastMouseX = x;
+                app->m_lastMouseY = y;
+            }
         }
         return 0;
     }
@@ -395,7 +427,13 @@ void Application::OnKeyPress(UINT8 key) {
 }
 
 void Application::OnMouseMove(int dx, int dy) {
-    // Camera control could go here
+    // CTRL+LMB drag = mouse look
+    const float sensitivity = 0.005f;
+    m_cameraAngle += dx * sensitivity;
+    m_cameraPitch += dy * sensitivity;
+
+    // Clamp pitch to avoid gimbal lock
+    m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
 }
 
 void Application::UpdateFrameStats() {

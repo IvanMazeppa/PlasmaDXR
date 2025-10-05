@@ -44,12 +44,27 @@ struct PixelInput
 };
 
 // Vertex shader entry point
-// Uses SV_VertexID to generate billboard vertices (6 vertices per particle = 2 triangles)
-PixelInput main(uint vertexID : SV_VertexID)
+// Uses SV_InstanceID for particle index and SV_VertexID for vertex within billboard
+PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
 {
-    // Decode particle index and vertex index from vertex ID
-    uint particleIdx = vertexID / 6;  // 6 vertices per particle (2 triangles)
-    uint vertIdx = vertexID % 6;       // 0-5: vertex in quad
+    // DEBUG: First instance renders a test triangle to verify rendering works
+    if (instanceID == 0 && vertexID < 3) {
+        PixelInput output;
+        if (vertexID == 0) output.position = float4(-0.5, -0.5, 0.5, 1.0);
+        else if (vertexID == 1) output.position = float4(0.5, -0.5, 0.5, 1.0);
+        else output.position = float4(0.0, 0.5, 0.5, 1.0);
+        output.texCoord = float2(0, 0);
+        output.color = float4(1.0, 0.0, 1.0, 1.0);  // MAGENTA test triangle
+        output.lighting = float4(1, 1, 1, 1);
+        output.alpha = 1.0;
+        return output;
+    }
+
+    // Particle index comes from instance ID (one instance per particle)
+    uint particleIdx = instanceID;
+
+    // Vertex index is just the vertexID (0-5 for the 6 vertices of a quad)
+    uint vertIdx = vertexID;
 
     // Map to corner: 0,1,2, 2,1,3 -> BL,BR,TL, TL,BR,TR
     uint cornerIdx;
@@ -96,11 +111,20 @@ PixelInput main(uint vertexID : SV_VertexID)
     // Billboard world position (camera-facing)
     float3 worldPos = p.position + cornerOffset.x * cameraRight + cornerOffset.y * cameraUp;
 
-    // Transform to clip space
-    float4 clipPos = mul(viewProj, float4(worldPos, 1.0));
+    // Transform to clip space (matrix is transposed on CPU, so vector goes first)
+    float4 clipPos = mul(float4(worldPos, 1.0), viewProj);
 
     // Calculate alpha based on density (for volumetric look)
     float alpha = saturate(p.density * 0.5);
+
+    // DEBUG: Force instance 0 (all 6 vertices) to render as visible quad
+    if (instanceID == 0) {
+        // Render a small quad at screen center (slightly offset from magenta triangle)
+        float2 quadOffset = cornerOffset * 0.3;  // Smaller than test triangle
+        clipPos = float4(quadOffset.x + 0.3, quadOffset.y, 0.5, 1.0);  // Offset right
+        baseColor = float3(0, 1, 0);  // Bright green
+        alpha = 1.0;  // Full opacity
+    }
 
     // Output
     PixelInput output;

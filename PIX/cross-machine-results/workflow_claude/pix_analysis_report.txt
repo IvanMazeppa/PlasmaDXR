@@ -1,0 +1,72 @@
+PIX Capture Analysis Report 
+Generated: 21/09/2025  5:36:16.98 
+======================================== 
+ 
+ 
+======================================== 
+Capture: off.wpix 
+======================================== 
+ 
+GPU Timing Summary: 
+ 
+Event Summary: 
+ 
+Resource Bindings: 
+ 
+Shader Information: 
+ 
+Warnings and Errors: 
+ 
+======================================== 
+Capture: RayDir.wpix 
+======================================== 
+ 
+GPU Timing Summary: 
+ 
+Event Summary: 
+ 
+Resource Bindings: 
+ 
+Shader Information: 
+ 
+Warnings and Errors: 
+ 
+======================================== 
+Capture: Bounds.wpix 
+======================================== 
+ 
+GPU Timing Summary: 
+ 
+Event Summary: 
+ 
+Resource Bindings: 
+ 
+Shader Information: 
+ 
+Warnings and Errors: 
+ 
+======================================== 
+Capture: DensityProbe.wpix 
+======================================== 
+ 
+GPU Timing Summary: 
+ 
+Event Summary: 
+ 
+Resource Bindings: 
+ 
+Shader Information: 
+ 
+Warnings and Errors: 
+ 
+======================================== 
+Detailed Dispatch Analysis 
+======================================== 
+ 
+off.wpix Dispatches: 
+ 
+RayDir.wpix Dispatches: 
+ 
+Bounds.wpix Dispatches: 
+ 
+DensityProbe.wpix Dispatches: 

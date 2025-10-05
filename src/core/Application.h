@@ -78,6 +78,12 @@ private:
     float m_cameraDistance = 800.0f;   // Distance from center (horizontal)
     float m_cameraHeight = 1200.0f;    // HIGH above disk to see ring structure from above
     float m_cameraAngle = 0.0f;         // Orbit angle
-    float m_particleSize = 100.0f;      // Large size for visibility
-    bool m_physicsEnabled = false;
+    float m_cameraPitch = 0.0f;         // Vertical rotation
+    float m_particleSize = 50.0f;       // Larger for initial visibility
+    bool m_physicsEnabled = true;       // ENABLED by default to show motion
+
+    // Mouse look state
+    bool m_mouseLookActive = false;
+    int m_lastMouseX = 0;
+    int m_lastMouseY = 0;
 };

@@ -1,0 +1,61 @@
+Global ID	Name	Queue ID	EOP to EOP Duration (ns)
+1	 Signal(pFence:obj#3, Value:3638)	0	
+2	 Wait(pFence:obj#4, Value:3636)	1	
+3	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	8	
+4	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	9	
+5-6	 <deprecated - use pix3.h instead> RayMarcher::March	10	
+7	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#9}})	24	
+8	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#9, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	25	
+9	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	26	
+10	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	35	
+11	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	36	
+12	 Signal(pFence:obj#23, Value:3638)	41	
+13	 Present(pResource:obj#22, Subresource:0, window:<unknown>)	42	
+14	 Signal(pFence:obj#3, Value:3639)	43	
+15	 Wait(pFence:obj#4, Value:3637)	44	
+16	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	51	
+17	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	52	
+18-19	 <deprecated - use pix3.h instead> RayMarcher::March	53	
+20	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#9}})	67	
+21	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#9, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	68	
+22	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	69	
+23	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	78	
+24	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	79	
+25	 Signal(pFence:obj#23, Value:3639)	84	
+26	 Present(pResource:obj#7, Subresource:0, window:<unknown>)	85	
+27	 Signal(pFence:obj#3, Value:3640)	86	
+28	 Wait(pFence:obj#4, Value:3638)	87	
+29	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	94	
+30	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	95	
+31-32	 <deprecated - use pix3.h instead> RayMarcher::March	96	
+33	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#9}})	110	
+34	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#9, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	111	
+35	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	112	
+36	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	121	
+37	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	122	
+38	 Signal(pFence:obj#23, Value:3640)	127	
+39	 Present(pResource:obj#22, Subresource:0, window:<unknown>)	128	
+40	 Signal(pFence:obj#3, Value:3641)	129	
+41	 Wait(pFence:obj#4, Value:3639)	130	
+42	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	137	
+43	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	138	
+44-45	 <deprecated - use pix3.h instead> RayMarcher::March	139	
+46	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#9}})	153	
+47	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#9, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	154	
+48	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	155	
+49	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	164	
+50	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	165	
+51	 Signal(pFence:obj#23, Value:3641)	170	
+52	 Present(pResource:obj#7, Subresource:0, window:<unknown>)	171	
+53	 Signal(pFence:obj#3, Value:3642)	172	
+54	 Wait(pFence:obj#4, Value:3640)	173	
+55	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	180	
+56	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	181	
+57-58	 <deprecated - use pix3.h instead> RayMarcher::March	182	
+59	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#9}})	196	
+60	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#9, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	197	
+61	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	198	
+62	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	207	
+63	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	208	
+64	 Signal(pFence:obj#23, Value:3642)	213	
+65	 Present(pResource:obj#22, Subresource:0, window:<unknown>)	214	

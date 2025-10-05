@@ -21,8 +21,8 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // Output the vertex shader's color to see temperature gradient
-    output.color = float4(input.color.rgb, 1.0);
+    // DEBUG: Output color with proper alpha from vertex shader
+    output.color = float4(input.color.rgb, input.alpha);
 
     return output;
 }

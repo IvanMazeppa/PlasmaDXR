@@ -1,0 +1,216 @@
+Global ID	Name	Queue ID	EOP to EOP Duration (ns)
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	0	
+	 Close()	1	
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	3	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	4	
+	 SetComputeRootSignature(pRootSignature:obj#14)	5	
+	 SetPipelineState(pPipelineState:obj#13)	6	
+	 SetComputeRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:3})	7	
+	 SetComputeRoot32BitConstants(RootParameterIndex:1, Num32BitValuesToSet:4, pSrcData:<blob>, DestOffsetIn32BitValues:0)	8	
+	 SetPipelineState(pPipelineState:obj#9)	12	
+	 SetComputeRootSignature(pRootSignature:obj#10)	13	
+	 SetComputeRootConstantBufferView(RootParameterIndex:0, BufferLocation:{Offset:0, ResourceOrHeap:obj#17})	14	
+	 SetComputeRootConstantBufferView(RootParameterIndex:1, BufferLocation:{Offset:0, ResourceOrHeap:obj#18})	15	
+	 SetComputeRootDescriptorTable(RootParameterIndex:2, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:2})	16	
+	 SetComputeRootDescriptorTable(RootParameterIndex:3, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:1})	17	
+	 SetDescriptorHeaps(NumDescriptorHeaps:2, ppDescriptorHeaps:{Element:obj#15, Element:obj#16})	18	
+	 SetComputeRootDescriptorTable(RootParameterIndex:4, BaseDescriptor:{HeapHandle:obj#16, HeapIndex:0})	19	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	24	
+	 RSSetViewports(NumViewports:1, pViewports:{TopLeftX:0, TopLeftY:0, Width:1920, Height:1080, MinDepth:0, MaxDepth:1})	28	
+	 RSSetScissorRects(NumRects:1, pRects:{left:0, top:0, right:1920, bottom:1080})	29	
+	 SetPipelineState(pPipelineState:obj#11)	30	
+	 SetGraphicsRootSignature(pRootSignature:obj#12)	31	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	32	
+	 SetGraphicsRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:0})	33	
+	 OMSetRenderTargets(NumRenderTargetDescriptors:1, pRenderTargetDescriptors:res#1, RTsSingleHandleToDescriptorRange:0, pDepthStencilDescriptor:nullptr)	34	
+	 IASetPrimitiveTopology(PrimitiveTopology:D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)	35	
+	 Close()	38	
+	 Reset(pAllocator:obj#20, pInitialState:nullptr)	39	
+	 PrepareForPresent()	40	
+	 Close()	41	
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	45	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	46	
+	 SetComputeRootSignature(pRootSignature:obj#14)	47	
+	 SetPipelineState(pPipelineState:obj#13)	48	
+	 SetComputeRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:3})	49	
+	 SetComputeRoot32BitConstants(RootParameterIndex:1, Num32BitValuesToSet:4, pSrcData:<blob>, DestOffsetIn32BitValues:0)	50	
+	 SetPipelineState(pPipelineState:obj#9)	54	
+	 SetComputeRootSignature(pRootSignature:obj#10)	55	
+	 SetComputeRootConstantBufferView(RootParameterIndex:0, BufferLocation:{Offset:0, ResourceOrHeap:obj#17})	56	
+	 SetComputeRootConstantBufferView(RootParameterIndex:1, BufferLocation:{Offset:0, ResourceOrHeap:obj#18})	57	
+	 SetComputeRootDescriptorTable(RootParameterIndex:2, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:2})	58	
+	 SetComputeRootDescriptorTable(RootParameterIndex:3, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:1})	59	
+	 SetDescriptorHeaps(NumDescriptorHeaps:2, ppDescriptorHeaps:{Element:obj#15, Element:obj#16})	60	
+	 SetComputeRootDescriptorTable(RootParameterIndex:4, BaseDescriptor:{HeapHandle:obj#16, HeapIndex:0})	61	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	66	
+	 RSSetViewports(NumViewports:1, pViewports:{TopLeftX:0, TopLeftY:0, Width:1920, Height:1080, MinDepth:0, MaxDepth:1})	70	
+	 RSSetScissorRects(NumRects:1, pRects:{left:0, top:0, right:1920, bottom:1080})	71	
+	 SetPipelineState(pPipelineState:obj#11)	72	
+	 SetGraphicsRootSignature(pRootSignature:obj#12)	73	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	74	
+	 SetGraphicsRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:0})	75	
+	 OMSetRenderTargets(NumRenderTargetDescriptors:1, pRenderTargetDescriptors:res#2, RTsSingleHandleToDescriptorRange:0, pDepthStencilDescriptor:nullptr)	76	
+	 IASetPrimitiveTopology(PrimitiveTopology:D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)	77	
+	 Close()	80	
+	 Reset(pAllocator:obj#23, pInitialState:nullptr)	81	
+	 PrepareForPresent()	82	
+	 Close()	83	
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	88	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	89	
+	 SetComputeRootSignature(pRootSignature:obj#14)	90	
+	 SetPipelineState(pPipelineState:obj#13)	91	
+	 SetComputeRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:3})	92	
+	 SetComputeRoot32BitConstants(RootParameterIndex:1, Num32BitValuesToSet:4, pSrcData:<blob>, DestOffsetIn32BitValues:0)	93	
+	 SetPipelineState(pPipelineState:obj#9)	97	
+	 SetComputeRootSignature(pRootSignature:obj#10)	98	
+	 SetComputeRootConstantBufferView(RootParameterIndex:0, BufferLocation:{Offset:0, ResourceOrHeap:obj#17})	99	
+	 SetComputeRootConstantBufferView(RootParameterIndex:1, BufferLocation:{Offset:0, ResourceOrHeap:obj#18})	100	
+	 SetComputeRootDescriptorTable(RootParameterIndex:2, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:2})	101	
+	 SetComputeRootDescriptorTable(RootParameterIndex:3, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:1})	102	
+	 SetDescriptorHeaps(NumDescriptorHeaps:2, ppDescriptorHeaps:{Element:obj#15, Element:obj#16})	103	
+	 SetComputeRootDescriptorTable(RootParameterIndex:4, BaseDescriptor:{HeapHandle:obj#16, HeapIndex:0})	104	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	109	
+	 RSSetViewports(NumViewports:1, pViewports:{TopLeftX:0, TopLeftY:0, Width:1920, Height:1080, MinDepth:0, MaxDepth:1})	113	
+	 RSSetScissorRects(NumRects:1, pRects:{left:0, top:0, right:1920, bottom:1080})	114	
+	 SetPipelineState(pPipelineState:obj#11)	115	
+	 SetGraphicsRootSignature(pRootSignature:obj#12)	116	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	117	
+	 SetGraphicsRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:0})	118	
+	 OMSetRenderTargets(NumRenderTargetDescriptors:1, pRenderTargetDescriptors:res#2, RTsSingleHandleToDescriptorRange:0, pDepthStencilDescriptor:nullptr)	119	
+	 IASetPrimitiveTopology(PrimitiveTopology:D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)	120	
+	 Close()	123	
+	 Reset(pAllocator:obj#25, pInitialState:nullptr)	124	
+	 PrepareForPresent()	125	
+	 Close()	126	
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	131	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	132	
+	 SetComputeRootSignature(pRootSignature:obj#14)	133	
+	 SetPipelineState(pPipelineState:obj#13)	134	
+	 SetComputeRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:3})	135	
+	 SetComputeRoot32BitConstants(RootParameterIndex:1, Num32BitValuesToSet:4, pSrcData:<blob>, DestOffsetIn32BitValues:0)	136	
+	 SetPipelineState(pPipelineState:obj#9)	140	
+	 SetComputeRootSignature(pRootSignature:obj#10)	141	
+	 SetComputeRootConstantBufferView(RootParameterIndex:0, BufferLocation:{Offset:0, ResourceOrHeap:obj#17})	142	
+	 SetComputeRootConstantBufferView(RootParameterIndex:1, BufferLocation:{Offset:0, ResourceOrHeap:obj#18})	143	
+	 SetComputeRootDescriptorTable(RootParameterIndex:2, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:2})	144	
+	 SetComputeRootDescriptorTable(RootParameterIndex:3, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:1})	145	
+	 SetDescriptorHeaps(NumDescriptorHeaps:2, ppDescriptorHeaps:{Element:obj#15, Element:obj#16})	146	
+	 SetComputeRootDescriptorTable(RootParameterIndex:4, BaseDescriptor:{HeapHandle:obj#16, HeapIndex:0})	147	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	152	
+	 RSSetViewports(NumViewports:1, pViewports:{TopLeftX:0, TopLeftY:0, Width:1920, Height:1080, MinDepth:0, MaxDepth:1})	156	
+	 RSSetScissorRects(NumRects:1, pRects:{left:0, top:0, right:1920, bottom:1080})	157	
+	 SetPipelineState(pPipelineState:obj#11)	158	
+	 SetGraphicsRootSignature(pRootSignature:obj#12)	159	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	160	
+	 SetGraphicsRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:0})	161	
+	 OMSetRenderTargets(NumRenderTargetDescriptors:1, pRenderTargetDescriptors:res#1, RTsSingleHandleToDescriptorRange:0, pDepthStencilDescriptor:nullptr)	162	
+	 IASetPrimitiveTopology(PrimitiveTopology:D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)	163	
+	 Close()	166	
+	 Reset(pAllocator:obj#20, pInitialState:nullptr)	167	
+	 PrepareForPresent()	168	
+	 Close()	169	
+	 Reset(pAllocator:obj#4, pInitialState:nullptr)	174	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	175	
+	 SetComputeRootSignature(pRootSignature:obj#14)	176	
+	 SetPipelineState(pPipelineState:obj#13)	177	
+	 SetComputeRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:3})	178	
+	 SetComputeRoot32BitConstants(RootParameterIndex:1, Num32BitValuesToSet:4, pSrcData:<blob>, DestOffsetIn32BitValues:0)	179	
+	 SetPipelineState(pPipelineState:obj#9)	183	
+	 SetComputeRootSignature(pRootSignature:obj#10)	184	
+	 SetComputeRootConstantBufferView(RootParameterIndex:0, BufferLocation:{Offset:0, ResourceOrHeap:obj#17})	185	
+	 SetComputeRootConstantBufferView(RootParameterIndex:1, BufferLocation:{Offset:0, ResourceOrHeap:obj#18})	186	
+	 SetComputeRootDescriptorTable(RootParameterIndex:2, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:2})	187	
+	 SetComputeRootDescriptorTable(RootParameterIndex:3, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:1})	188	
+	 SetDescriptorHeaps(NumDescriptorHeaps:2, ppDescriptorHeaps:{Element:obj#15, Element:obj#16})	189	
+	 SetComputeRootDescriptorTable(RootParameterIndex:4, BaseDescriptor:{HeapHandle:obj#16, HeapIndex:0})	190	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	195	
+	 RSSetViewports(NumViewports:1, pViewports:{TopLeftX:0, TopLeftY:0, Width:1920, Height:1080, MinDepth:0, MaxDepth:1})	199	
+	 RSSetScissorRects(NumRects:1, pRects:{left:0, top:0, right:1920, bottom:1080})	200	
+	 SetPipelineState(pPipelineState:obj#11)	201	
+	 SetGraphicsRootSignature(pRootSignature:obj#12)	202	
+	 SetDescriptorHeaps(NumDescriptorHeaps:1, ppDescriptorHeaps:obj#15)	203	
+	 SetGraphicsRootDescriptorTable(RootParameterIndex:0, BaseDescriptor:{HeapHandle:obj#15, HeapIndex:0})	204	
+	 OMSetRenderTargets(NumRenderTargetDescriptors:1, pRenderTargetDescriptors:res#2, RTsSingleHandleToDescriptorRange:0, pDepthStencilDescriptor:nullptr)	205	
+	 IASetPrimitiveTopology(PrimitiveTopology:D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)	206	
+	 Close()	209	
+	 Reset(pAllocator:obj#23, pInitialState:nullptr)	210	
+	 PrepareForPresent()	211	
+	 Close()	212	
+1	 Signal(pFence:obj#5, Value:1)	2	
+2	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	9	
+3	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	10	
+4-5	 <deprecated - use pix3.h instead> RayMarcher::March	11	
+4	 <deprecated - use pix3.h instead> Dispatch RayMarch	20	
+4	 Dispatch(ThreadGroupCountX:120, ThreadGroupCountY:68, ThreadGroupCountZ:1)	21	
+5	 <deprecated - use pix3.h instead> UAV Barrier	22	
+5	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	23	
+6	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	25	
+7	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	26	
+8	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#6, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	27	
+9	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	36	
+10	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#6, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	37	
+11	 Signal(pFence:obj#21, Value:1)	42	
+12	 Present(pResource:obj#6, Subresource:0, window:<unknown>)	43	
+13	 Signal(pFence:obj#5, Value:2)	44	
+14	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	51	
+15	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	52	
+16-17	 <deprecated - use pix3.h instead> RayMarcher::March	53	
+16	 <deprecated - use pix3.h instead> Dispatch RayMarch	62	
+16	 Dispatch(ThreadGroupCountX:120, ThreadGroupCountY:68, ThreadGroupCountZ:1)	63	
+17	 <deprecated - use pix3.h instead> UAV Barrier	64	
+17	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	65	
+18	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	67	
+19	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	68	
+20	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	69	
+21	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	78	
+22	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	79	
+23	 Signal(pFence:obj#21, Value:2)	84	
+24	 Present(pResource:obj#22, Subresource:0, window:<unknown>)	85	
+25	 Signal(pFence:obj#5, Value:3)	86	
+26	 Wait(pFence:obj#24, Value:1)	87	
+27	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	94	
+28	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	95	
+29-30	 <deprecated - use pix3.h instead> RayMarcher::March	96	
+29	 <deprecated - use pix3.h instead> Dispatch RayMarch	105	
+29	 Dispatch(ThreadGroupCountX:120, ThreadGroupCountY:68, ThreadGroupCountZ:1)	106	
+30	 <deprecated - use pix3.h instead> UAV Barrier	107	
+30	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	108	
+31	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	110	
+32	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	111	
+33	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	112	
+34	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	121	
+35	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	122	
+36	 Signal(pFence:obj#21, Value:3)	127	
+37	 Present(pResource:obj#6, Subresource:0, window:<unknown>)	128	
+38	 Signal(pFence:obj#5, Value:4)	129	
+39	 Wait(pFence:obj#24, Value:2)	130	
+40	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	137	
+41	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	138	
+42-43	 <deprecated - use pix3.h instead> RayMarcher::March	139	
+42	 <deprecated - use pix3.h instead> Dispatch RayMarch	148	
+42	 Dispatch(ThreadGroupCountX:120, ThreadGroupCountY:68, ThreadGroupCountZ:1)	149	
+43	 <deprecated - use pix3.h instead> UAV Barrier	150	
+43	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	151	
+44	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	153	
+45	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	154	
+46	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#6, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	155	
+47	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	164	
+48	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#6, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	165	
+49	 Signal(pFence:obj#21, Value:4)	170	
+50	 Present(pResource:obj#22, Subresource:0, window:<unknown>)	171	
+51	 Signal(pFence:obj#5, Value:5)	172	
+52	 Wait(pFence:obj#24, Value:3)	173	
+53	 Dispatch(ThreadGroupCountX:16, ThreadGroupCountY:16, ThreadGroupCountZ:16)	180	
+54	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#8}})	181	
+55-56	 <deprecated - use pix3.h instead> RayMarcher::March	182	
+55	 <deprecated - use pix3.h instead> Dispatch RayMarch	191	
+55	 Dispatch(ThreadGroupCountX:120, ThreadGroupCountY:68, ThreadGroupCountZ:1)	192	
+56	 <deprecated - use pix3.h instead> UAV Barrier	193	
+56	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	194	
+57	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_UAV, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, UAV:{pResource:obj#7}})	196	
+58	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#7, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_UNORDERED_ACCESS, StateAfter:D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}})	197	
+59	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_COMMON, StateAfter:D3D12_RESOURCE_STATE_RENDER_TARGET}})	198	
+60	 DrawInstanced(VertexCountPerInstance:3, InstanceCount:1, StartVertexLocation:0, StartInstanceLocation:0)	207	
+61	 ResourceBarrier(NumBarriers:1, pBarriers:{Type:D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, Flags:D3D12_RESOURCE_BARRIER_FLAG_NONE, Transition:{pResource:obj#22, Subresource:4294967295, StateBefore:D3D12_RESOURCE_STATE_RENDER_TARGET, StateAfter:D3D12_RESOURCE_STATE_COMMON}})	208	
+62	 Signal(pFence:obj#21, Value:5)	213	
+63	 Present(pResource:obj#6, Subresource:0, window:<unknown>)	214	
