@@ -21,26 +21,8 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // Create circular shape (discard pixels outside circle)
-    float2 coord = input.texCoord * 2.0 - 1.0;  // -1 to 1
-    float distFromCenter = length(coord);
-
-    if (distFromCenter > 1.0) {
-        discard;  // Outside circle
-    }
-
-    // Soft edge falloff for antialiasing
-    float edgeFalloff = 1.0 - smoothstep(0.8, 1.0, distFromCenter);
-
-    // Combine base color with RT lighting
-    // Base color is the particle's emission (temperature-based)
-    // RT lighting is the light received from other particles
-    float3 finalColor = input.color.rgb + input.lighting.rgb;
-
-    // Apply alpha with edge falloff
-    float finalAlpha = input.alpha * edgeFalloff;
-
-    output.color = float4(finalColor, finalAlpha);
+    // DEBUG: Render solid white particles for testing
+    output.color = float4(1.0, 1.0, 1.0, 1.0);
 
     return output;
 }

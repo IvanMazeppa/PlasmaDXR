@@ -219,7 +219,7 @@ void Application::Render() {
         renderConstants.cameraPos = DirectX::XMFLOAT3(0, 100, 200);
         renderConstants.cameraUp = DirectX::XMFLOAT3(0, 1, 0);
         renderConstants.time = m_totalTime;
-        renderConstants.particleSize = 1.0f;
+        renderConstants.particleSize = 50.0f;  // Much larger particles for visibility at distance
 
         m_particleRenderer->Render(cmdList,
                                   m_particleSystem->GetParticleBuffer(),

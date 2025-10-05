@@ -60,20 +60,7 @@ bool ParticleRenderer::InitializeMeshShaderPath() {
     return false;
 }
 
-bool ParticleRenderer::InitializeComputeFallbackPath() {
-    // For minimal version: Just create a simple PSO that can render points
-    // Full version would:
-    // 1. Create compute shader to build vertex buffer
-    // 2. Create traditional raster PSO
-    // 3. Create vertex/index buffers
-
-    // For now, just log success - we'll render as points directly
-    LOG_INFO("Compute fallback path initialized (minimal version)");
-    LOG_INFO("  Note: Full vertex building not yet implemented");
-    LOG_INFO("  Particles will render as simple points for now");
-
-    return true;
-}
+// Implementation in ParticleRenderer_Billboard.cpp
 
 void ParticleRenderer::Render(ID3D12GraphicsCommandList* cmdList,
                               ID3D12Resource* particleBuffer,
@@ -102,19 +89,4 @@ void ParticleRenderer::RenderWithMeshShaders(ID3D12GraphicsCommandList* cmdList,
     LOG_WARN("Mesh shader rendering not yet implemented");
 }
 
-void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdList,
-                                                ID3D12Resource* particleBuffer,
-                                                ID3D12Resource* rtLightingBuffer,
-                                                const RenderConstants& constants) {
-    // Compute fallback rendering
-    // Step 1: Run compute shader to build vertices (not yet implemented)
-    // Step 2: Draw with traditional pipeline (not yet implemented)
-
-    // For now: Just log that we're rendering
-    static uint32_t frameCount = 0;
-    if (frameCount % 60 == 0) {
-        LOG_INFO("Rendering {} particles via compute fallback (frame {})",
-                 m_particleCount, frameCount);
-    }
-    frameCount++;
-}
+// Implementation in ParticleRenderer_Billboard.cpp
