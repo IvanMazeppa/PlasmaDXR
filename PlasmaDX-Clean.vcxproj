@@ -73,6 +73,7 @@
     <ClCompile Include="src\core\FeatureDetector.cpp" />
     <ClCompile Include="src\particles\ParticleSystem.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer.cpp" />
+    <ClCompile Include="src\particles\ParticleRenderer_Billboard.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem_RayQuery.cpp" />
     <ClCompile Include="src\utils\Logger.cpp" />

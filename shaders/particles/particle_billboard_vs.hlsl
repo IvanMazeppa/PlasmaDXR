@@ -31,7 +31,7 @@ struct Particle
 StructuredBuffer<Particle> g_particles : register(t0);
 
 // Input: RT lighting data (from RayQuery compute shader)
-Buffer<float4> g_rtLighting : register(t1);
+StructuredBuffer<float4> g_rtLighting : register(t1);
 
 // Output to pixel shader
 struct PixelInput
@@ -44,12 +44,21 @@ struct PixelInput
 };
 
 // Vertex shader entry point
-// Uses SV_VertexID to generate billboard vertices (4 vertices per particle)
+// Uses SV_VertexID to generate billboard vertices (6 vertices per particle = 2 triangles)
 PixelInput main(uint vertexID : SV_VertexID)
 {
-    // Decode particle index and corner index from vertex ID
-    uint particleIdx = vertexID / 4;  // 4 vertices per particle
-    uint cornerIdx = vertexID % 4;     // 0=BL, 1=BR, 2=TL, 3=TR
+    // Decode particle index and vertex index from vertex ID
+    uint particleIdx = vertexID / 6;  // 6 vertices per particle (2 triangles)
+    uint vertIdx = vertexID % 6;       // 0-5: vertex in quad
+
+    // Map to corner: 0,1,2, 2,1,3 -> BL,BR,TL, TL,BR,TR
+    uint cornerIdx;
+    if (vertIdx == 0) cornerIdx = 0;      // BL
+    else if (vertIdx == 1) cornerIdx = 1; // BR
+    else if (vertIdx == 2) cornerIdx = 2; // TL
+    else if (vertIdx == 3) cornerIdx = 2; // TL (second triangle)
+    else if (vertIdx == 4) cornerIdx = 1; // BR (second triangle)
+    else cornerIdx = 3;                    // TR
 
     // Read particle data
     Particle p = g_particles[particleIdx];
