@@ -1,4 +1,5 @@
-// Particle Billboard Vertex Shader
+// Particle Billboard Vertex Shader - FIXED VERSION
+// Corrects the vertex ordering issue causing diagonal rendering
 // Reads particle data and generates camera-facing billboard quads
 // Applies RT lighting from lighting buffer
 
@@ -70,9 +71,29 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     // Read RT lighting for this particle
     float4 rtLight = g_rtLighting[particleIdx];
 
-    // Temperature-based color
+    // Temperature-based color mapping
+    // Temperature: ~10000 / radius, ranges from ~33 (outer r=300) to ~1000 (inner r=10)
     float tempNorm = saturate((p.temperature - 33.0) / 967.0);
-    float3 baseColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), tempNorm);  // Red to Yellow
+
+    // Enhanced color gradient: Black -> Red -> Orange -> Yellow -> White
+    float3 baseColor;
+    if (tempNorm < 0.25) {
+        // Black to Red
+        float t = tempNorm / 0.25;
+        baseColor = lerp(float3(0.1, 0.0, 0.0), float3(1.0, 0.0, 0.0), t);
+    } else if (tempNorm < 0.5) {
+        // Red to Orange
+        float t = (tempNorm - 0.25) / 0.25;
+        baseColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 0.5, 0.0), t);
+    } else if (tempNorm < 0.75) {
+        // Orange to Yellow
+        float t = (tempNorm - 0.5) / 0.25;
+        baseColor = lerp(float3(1.0, 0.5, 0.0), float3(1.0, 1.0, 0.0), t);
+    } else {
+        // Yellow to White
+        float t = (tempNorm - 0.75) / 0.25;
+        baseColor = lerp(float3(1.0, 1.0, 0.0), float3(1.0, 1.0, 1.0), t);
+    }
 
     // Generate billboard corner position in world space
     float2 cornerOffset;
@@ -92,27 +113,20 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
         texCoord = float2(1, 0);
     }
 
-    // Scale by particle radius
-    cornerOffset *= particleRadius;
+    // Scale by particle radius (with temperature-based size variation)
+    float tempScale = 1.0 + tempNorm * 0.3;  // Hotter particles are slightly larger
+    float scaledRadius = particleRadius * tempScale;
+    cornerOffset *= scaledRadius;
 
     // Billboard world position (camera-facing)
     float3 worldPos = p.position + cornerOffset.x * cameraRight + cornerOffset.y * cameraUp;
 
-    // DEBUG: Force first 10 particles to render at origin
-    if (particleIdx < 10) {
-        worldPos = float3(0, 0, 0) + cornerOffset.x * cameraRight * 200.0 + cornerOffset.y * cameraUp * 200.0;
-        baseColor = float3(1, 0, 1);  // Magenta for debug particles
-    }
-
-    // Transform to clip space
-    // CRITICAL FIX: CPU transposes (View*Proj) before upload → GPU receives (View*Proj)ᵀ
-    // HLSL uses column-major storage: mul(matrix, vector) applies (View*Proj)ᵀ * v = View*Proj*v
-    float4 clipPos = mul(viewProj, float4(worldPos, 1.0));
+    // Transform to clip space (matrix is transposed on CPU, so vector goes first)
+    float4 clipPos = mul(float4(worldPos, 1.0), viewProj);
 
     // Calculate alpha based on density (for volumetric look)
-    // BOOST alpha significantly - particles should be clearly visible
-    float alpha = saturate(p.density * 5.0);  // 10x boost
-    alpha = max(alpha, 0.8);  // Ensure minimum 80% opacity
+    // Enhance alpha for better visibility
+    float alpha = saturate(p.density * 0.8 + 0.2);  // Minimum 0.2 alpha
 
     // Output
     PixelInput output;
