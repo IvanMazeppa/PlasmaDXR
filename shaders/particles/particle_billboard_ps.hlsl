@@ -21,8 +21,9 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // DEBUG: Output color with proper alpha from vertex shader
-    output.color = float4(input.color.rgb, input.alpha);
+    // DEBUG: Just output the color directly without any discard or falloff
+    // This will make ALL pixels in the quad render as solid rectangles
+    output.color = float4(input.color.rgb, 1.0);  // Force full alpha
 
     return output;
 }

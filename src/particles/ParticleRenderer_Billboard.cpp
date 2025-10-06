@@ -53,7 +53,7 @@ bool ParticleRenderer::InitializeComputeFallbackPath() {
     // t1: Buffer<float4> rtLighting
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[4];
-        rootParams[0].InitAsConstants(28, 0);  // b0: Camera (4x4 matrix + 3 vec4s = 28 DWORDs)
+        rootParams[0].InitAsConstants(28, 0);  // b0: Camera (4x4 matrix=16 + 3 vec3=9 + 3 padding=3 = 28 DWORDs)
         rootParams[1].InitAsConstants(4, 1);   // b1: Particle constants
         rootParams[2].InitAsShaderResourceView(0);  // t0: particles
         rootParams[3].InitAsShaderResourceView(1);  // t1: RT lighting
@@ -190,27 +190,19 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
     cmdList->SetGraphicsRootSignature(m_rasterRootSignature.Get());
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // Calculate camera vectors
+    // Calculate billboard-facing vectors
+    // Use Y-axis aligned billboards (up is always world Y)
     DirectX::XMVECTOR cameraPos = DirectX::XMLoadFloat3(&constants.cameraPos);
-    DirectX::XMVECTOR lookAt = DirectX::XMVectorSet(0, 0, 0, 0);  // Look at origin
-    DirectX::XMVECTOR up = DirectX::XMLoadFloat3(&constants.cameraUp);
+    DirectX::XMVECTOR lookAt = DirectX::XMVectorSet(0, 0, 0, 0);
 
-    DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(cameraPos, lookAt, up);
+    // Forward = direction from camera to lookat (view direction)
+    DirectX::XMVECTOR forward = DirectX::XMVector3Normalize(DirectX::XMVectorSubtract(lookAt, cameraPos));
 
-    // Use actual window dimensions for correct aspect ratio
-    float aspectRatio = static_cast<float>(constants.screenWidth) / static_cast<float>(constants.screenHeight);
-    DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, aspectRatio, 0.1f, 10000.0f);
-    DirectX::XMMATRIX viewProj = view * proj;
+    // For Y-axis billboards: up is ALWAYS (0, 1, 0)
+    DirectX::XMVECTOR cameraUpVec = DirectX::XMVectorSet(0, 1, 0, 0);
 
-    // Extract camera right and up vectors from view matrix
-    DirectX::XMVECTOR cameraRight = DirectX::XMVector3Normalize(DirectX::XMVectorSet(
-        DirectX::XMVectorGetX(view.r[0]),
-        DirectX::XMVectorGetY(view.r[0]),
-        DirectX::XMVectorGetZ(view.r[0]), 0));
-    DirectX::XMVECTOR cameraUpVec = DirectX::XMVector3Normalize(DirectX::XMVectorSet(
-        DirectX::XMVectorGetX(view.r[1]),
-        DirectX::XMVectorGetY(view.r[1]),
-        DirectX::XMVectorGetZ(view.r[1]), 0));
+    // Right = up × forward (perpendicular to both, pointing right)
+    DirectX::XMVECTOR cameraRight = DirectX::XMVector3Normalize(DirectX::XMVector3Cross(cameraUpVec, forward));
 
     // Set root parameters
     struct CameraConstants {
@@ -223,17 +215,20 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
         float padding2;
     } cameraConsts;
 
-    DirectX::XMStoreFloat4x4(&cameraConsts.viewProj, DirectX::XMMatrixTranspose(viewProj));
+    // ViewProj matrix is already transposed from Application.cpp, just copy it
+    cameraConsts.viewProj = constants.viewProj;
     DirectX::XMStoreFloat3(&cameraConsts.cameraPos, cameraPos);
     DirectX::XMStoreFloat3(&cameraConsts.cameraRight, cameraRight);
     DirectX::XMStoreFloat3(&cameraConsts.cameraUp, cameraUpVec);
 
-    // Log matrix on first frame
+    // Log matrix and camera vectors on first frame
     if (isFirstFrame) {
         LOG_INFO("  ViewProj row 0: ({}, {}, {}, {})", cameraConsts.viewProj._11, cameraConsts.viewProj._12, cameraConsts.viewProj._13, cameraConsts.viewProj._14);
         LOG_INFO("  ViewProj row 1: ({}, {}, {}, {})", cameraConsts.viewProj._21, cameraConsts.viewProj._22, cameraConsts.viewProj._23, cameraConsts.viewProj._24);
         LOG_INFO("  ViewProj row 2: ({}, {}, {}, {})", cameraConsts.viewProj._31, cameraConsts.viewProj._32, cameraConsts.viewProj._33, cameraConsts.viewProj._34);
         LOG_INFO("  ViewProj row 3: ({}, {}, {}, {})", cameraConsts.viewProj._41, cameraConsts.viewProj._42, cameraConsts.viewProj._43, cameraConsts.viewProj._44);
+        LOG_INFO("  Camera Right: ({}, {}, {})", cameraConsts.cameraRight.x, cameraConsts.cameraRight.y, cameraConsts.cameraRight.z);
+        LOG_INFO("  Camera Up: ({}, {}, {})", cameraConsts.cameraUp.x, cameraConsts.cameraUp.y, cameraConsts.cameraUp.z);
     }
 
     cmdList->SetGraphicsRoot32BitConstants(0, 28, &cameraConsts, 0);
