@@ -40,6 +40,9 @@ public:
     ID3D12Resource* GetParticleBuffer() const { return m_particleBuffer.Get(); }
     uint32_t GetParticleCount() const { return m_particleCount; }
 
+    // Debug: Readback particle data from GPU
+    void DebugReadbackParticles(int count = 5);
+
 private:
     void InitializeAccretionDisk();
     bool CreateComputePipeline();
@@ -50,8 +53,7 @@ private:
 
     // Particle data
     uint32_t m_particleCount = 0;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_particleBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_particleUploadBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_particleBuffer;  // GPU-initialized by physics shader
 
     // Physics compute pipeline
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_computeRootSignature;

@@ -22,106 +22,31 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
 
     LOG_INFO("Initializing ParticleSystem with {} particles...", particleCount);
 
-    // Create particle buffer on GPU
-    ResourceManager::BufferDesc bufferDesc = {};
-    bufferDesc.size = particleCount * sizeof(Particle);
-    bufferDesc.heapType = D3D12_HEAP_TYPE_DEFAULT;
-    bufferDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-    bufferDesc.initialState = D3D12_RESOURCE_STATE_COMMON;
+    // Create particle buffer like working PlasmaDX project
+    // Key: Initial state is UAV, NO CPU initialization, physics shader initializes on first frame!
+    size_t bufferSize = particleCount * sizeof(Particle);
 
-    m_particleBuffer = m_resources->CreateBuffer("ParticleBuffer", bufferDesc);
-    if (!m_particleBuffer) {
-        LOG_ERROR("Failed to create particle buffer");
-        return false;
-    }
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
+        bufferSize,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    );
 
-    // Create upload buffer for initial data
-    bufferDesc.heapType = D3D12_HEAP_TYPE_UPLOAD;
-    bufferDesc.flags = D3D12_RESOURCE_FLAG_NONE;
-    bufferDesc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,  // CRITICAL: Start in UAV, not COMMON!
+        nullptr, IID_PPV_ARGS(&m_particleBuffer));
 
-    m_particleUploadBuffer = m_resources->CreateBuffer("ParticleUploadBuffer", bufferDesc);
-    if (!m_particleUploadBuffer) {
-        LOG_ERROR("Failed to create particle upload buffer");
-        return false;
-    }
-
-    // Initialize particles on CPU
-    std::vector<Particle> particles(particleCount);
-    InitializeAccretionDisk();
-
-    // Map upload buffer and copy data
-    void* mappedData = nullptr;
-    D3D12_RANGE readRange = { 0, 0 };
-    HRESULT hr = m_particleUploadBuffer.Get()->Map(0, &readRange, &mappedData);
     if (FAILED(hr)) {
-        LOG_ERROR("Failed to map particle upload buffer");
+        LOG_ERROR("Failed to create particle buffer: {}", static_cast<int>(hr));
         return false;
     }
 
-    // Generate particle data
-    std::mt19937 rng(12345); // Fixed seed for reproducibility
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    LOG_INFO("Particle buffer created ({} bytes, state: UAV)", bufferSize);
+    LOG_INFO("Physics shader will GPU-initialize particles when totalTime < 0.01");
 
-    Particle* particleData = static_cast<Particle*>(mappedData);
-
-    for (uint32_t i = 0; i < particleCount; i++) {
-        float theta = dist(rng) * 2.0f * 3.14159265f;
-        float radiusFactor = powf(dist(rng), 0.5f); // Square root for better distribution
-        float radius = INNER_STABLE_ORBIT + radiusFactor * (OUTER_DISK_RADIUS - INNER_STABLE_ORBIT);
-        float height = (dist(rng) - 0.5f) * DISK_THICKNESS * expf(-radiusFactor * 2.0f); // Thinner at edges
-
-        particleData[i].position.x = radius * cosf(theta);
-        particleData[i].position.y = height;
-        particleData[i].position.z = radius * sinf(theta);
-
-        // Keplerian orbital velocity
-        float v = sqrtf(BLACK_HOLE_MASS / radius) * INITIAL_ANGULAR_MOMENTUM * 0.01f;
-        particleData[i].velocity.x = -v * sinf(theta);
-        particleData[i].velocity.y = 0.0f;
-        particleData[i].velocity.z = v * cosf(theta);
-
-        // Temperature: hotter near black hole (blackbody radiation)
-        particleData[i].temperature = 10000.0f / (radius * 0.1f);
-
-        // Density: higher near black hole, exponential falloff
-        particleData[i].density = expf(-radiusFactor * 2.0f) * 2.0f;
-
-        // Debug: Log first 5 particle positions
-        if (i < 5) {
-            LOG_INFO("Particle {}: pos=({}, {}, {}) radius={} temp={}",
-                     i, particleData[i].position.x, particleData[i].position.y, particleData[i].position.z,
-                     radius, particleData[i].temperature);
-        }
-    }
-
-    m_particleUploadBuffer.Get()->Unmap(0, nullptr);
-
-    // Copy from upload buffer to GPU buffer
-    // This needs to be done on the command list
-    auto cmdList = m_device->GetCommandList();
-
-    // Transition particle buffer to copy dest
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = m_particleBuffer.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-    cmdList->ResourceBarrier(1, &barrier);
-
-    // Copy data
-    cmdList->CopyResource(m_particleBuffer.Get(), m_particleUploadBuffer.Get());
-
-    // Transition to UAV for compute access
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    cmdList->ResourceBarrier(1, &barrier);
-
-    // Execute and wait
-    cmdList->Close();
-    m_device->ExecuteCommandList();
-    m_device->WaitForGPU();
-    m_device->ResetCommandList();
+    // NO CPU initialization, NO upload buffer, NO copy command!
+    // Physics shader will initialize on first frame (totalTime < 0.01)
 
     LOG_INFO("ParticleSystem initialized successfully");
     LOG_INFO("  Particles: {}", particleCount);
@@ -139,10 +64,11 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
 }
 
 void ParticleSystem::InitializeAccretionDisk() {
-    // NASA-quality distribution calculated in Initialize()
-    // This is just a placeholder for future enhancements
-    LOG_INFO("Generating NASA-quality accretion disk distribution...");
+    // Physics shader handles GPU initialization - this is just a placeholder
+    LOG_INFO("Particles will be GPU-initialized by physics shader");
 }
+
+// Removed all CPU initialization code - physics shader handles GPU init
 
 bool ParticleSystem::CreateComputePipeline() {
     HRESULT hr;
@@ -231,6 +157,17 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
 
     m_totalTime = totalTime;
 
+    // CRITICAL DEBUG: Log first few frames to verify GPU initialization
+    static int s_debugFrameCount = 0;
+    s_debugFrameCount++;
+    if (s_debugFrameCount <= 5) {
+        LOG_INFO("=== PHYSICS UPDATE {} ===", s_debugFrameCount);
+        LOG_INFO("  deltaTime: {}", deltaTime);
+        LOG_INFO("  totalTime: {}", totalTime);
+        LOG_INFO("  Will GPU-init: {}", (totalTime < 0.01f) ? "YES" : "NO");
+        LOG_INFO("  innerRadius: {}, outerRadius: {}", INNER_STABLE_ORBIT, OUTER_DISK_RADIUS);
+    }
+
     auto cmdList = m_device->GetCommandList();
 
     // Set compute pipeline
@@ -240,7 +177,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     // Setup physics constants
     struct ParticleConstants {
         float deltaTime;
-        float totalTime;  // FIX: Start > 0.01 to prevent GPU re-initialization over CPU data
+        float totalTime;  // GPU initializes when < 0.01, then runs physics
         float blackHoleMass;
         float gravityStrength;
         DirectX::XMFLOAT3 blackHolePosition;
@@ -259,7 +196,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     } constants = {};
 
     constants.deltaTime = deltaTime;
-    constants.totalTime = (std::max)(0.02f, totalTime);  // Prevent GPU re-init (shader checks < 0.01)
+    constants.totalTime = totalTime;  // FIXED: Pass real totalTime so shader can GPU-init when < 0.01
     constants.blackHoleMass = BLACK_HOLE_MASS;
     constants.gravityStrength = m_gravityStrength;
     constants.blackHolePosition = m_blackHolePosition;
@@ -283,6 +220,14 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     uint32_t threadGroupCount = (m_particleCount + 63) / 64;
     cmdList->Dispatch(threadGroupCount, 1, 1);
 
+    // Log every 60 frames
+    static int s_updateCount = 0;
+    s_updateCount++;
+    if (s_updateCount % 60 == 0) {
+        LOG_INFO("Physics update {} (totalTime={}, dispatched {} thread groups)",
+                 s_updateCount, totalTime, threadGroupCount);
+    }
+
     // Barrier: UAV -> SRV for rendering
     D3D12_RESOURCE_BARRIER barrier = {};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -295,9 +240,92 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
 
 void ParticleSystem::Shutdown() {
     m_particleBuffer.Reset();
-    m_particleUploadBuffer.Reset();
     m_computeRootSignature.Reset();
     m_computePSO.Reset();
 
     LOG_INFO("ParticleSystem shut down");
+}
+
+void ParticleSystem::DebugReadbackParticles(int count) {
+    if (!m_particleBuffer || !m_device) {
+        LOG_ERROR("Cannot readback - particle buffer or device not initialized");
+        return;
+    }
+
+    count = (std::min)(count, (int)m_particleCount);
+    LOG_INFO("=== GPU Particle Readback ({} particles) ===", count);
+
+    // Create readback buffer
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackBuffer;
+    D3D12_HEAP_PROPERTIES readbackHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+    D3D12_RESOURCE_DESC readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(count * sizeof(Particle));
+
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &readbackHeapProps, D3D12_HEAP_FLAG_NONE, &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readbackBuffer));
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create readback buffer, HRESULT={}", static_cast<int>(hr));
+        return;
+    }
+
+    LOG_INFO("Readback buffer created successfully");
+
+    // Reset command list to ensure clean state
+    m_device->ResetCommandList();
+    auto cmdList = m_device->GetCommandList();
+
+    // Transition particle buffer to copy source
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = m_particleBuffer.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Copy particles
+    cmdList->CopyBufferRegion(readbackBuffer.Get(), 0, m_particleBuffer.Get(), 0, count * sizeof(Particle));
+
+    // Transition back to UAV
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Execute and wait
+    hr = cmdList->Close();
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to close command list, HRESULT={}", static_cast<int>(hr));
+        m_device->ResetCommandList();
+        return;
+    }
+
+    LOG_INFO("Command list closed, executing...");
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();
+    LOG_INFO("GPU synchronized, mapping readback buffer...");
+
+    // Map and read
+    void* readbackData = nullptr;
+    hr = readbackBuffer->Map(0, nullptr, &readbackData);
+    if (SUCCEEDED(hr)) {
+        LOG_INFO("Map succeeded, reading particles...");
+        Particle* particles = static_cast<Particle*>(readbackData);
+
+        for (int i = 0; i < count; i++) {
+            LOG_INFO("Particle {}: pos=({}, {}, {}) vel=({}, {}, {}) temp={} dens={}",
+                i,
+                particles[i].position.x, particles[i].position.y, particles[i].position.z,
+                particles[i].velocity.x, particles[i].velocity.y, particles[i].velocity.z,
+                particles[i].temperature, particles[i].density);
+        }
+
+        readbackBuffer->Unmap(0, nullptr);
+    } else {
+        LOG_ERROR("Failed to map readback buffer, HRESULT={}", static_cast<int>(hr));
+    }
+
+    m_device->ResetCommandList();
+    LOG_INFO("===========================================");
 }

@@ -133,8 +133,11 @@ void main(uint3 id : SV_DispatchThreadID) {
         float3 toCenter = constants.blackHolePosition - position;
         float distance = max(length(toCenter), 0.1);
 
+        // Safe normalize: avoid NaN when toCenter is zero
+        float3 toCenterNorm = distance > 0.01 ? toCenter / distance : float3(0, 1, 0);
+
         float gravityMagnitude = constants.gravityStrength / (distance * distance + 1.0);
-        float3 gravityForce = normalize(toCenter) * gravityMagnitude;
+        float3 gravityForce = toCenterNorm * gravityMagnitude;
 
         // CURL NOISE TURBULENCE - creates vortices
         float3 curlPos = position * 0.08 + float3(constants.totalTime * 0.03, 0, 0);
@@ -174,12 +177,14 @@ void main(uint3 id : SV_DispatchThreadID) {
         ) * 8.0;
         velocity += randomNoise * constants.deltaTime;
 
-        // Calculate orbital correction (perpendicular to radius)
-        float3 tangent = cross(normalize(toCenter), float3(0.0, 1.0, 0.0));
-        if (length(tangent) < 0.1) {
-            tangent = cross(normalize(toCenter), float3(1.0, 0.0, 0.0));
+        // Calculate orbital correction (perpendicular to radius) - use safe normalized vector
+        float3 tangent = cross(toCenterNorm, float3(0.0, 1.0, 0.0));
+        float tangentLen = length(tangent);
+        if (tangentLen < 0.01) {
+            tangent = cross(toCenterNorm, float3(1.0, 0.0, 0.0));
+            tangentLen = length(tangent);
         }
-        tangent = normalize(tangent);
+        tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
 
         float currentSpeed = length(velocity);
         float targetOrbitalSpeed = sqrt(constants.gravityStrength / (distance + 1.0));

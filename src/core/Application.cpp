@@ -127,6 +127,9 @@ void Application::Shutdown() {
 int Application::Run() {
     MSG msg = {};
 
+    // Reset frame timer so first deltaTime isn't huge (initialization time)
+    m_lastFrameTime = std::chrono::high_resolution_clock::now();
+
     while (m_isRunning) {
         // Process Windows messages
         while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -160,16 +163,30 @@ int Application::Run() {
 void Application::Update(float deltaTime) {
     m_totalTime += deltaTime;
 
-    // Update particle physics if enabled
-    if (m_physicsEnabled && m_particleSystem) {
-        m_particleSystem->Update(deltaTime, m_totalTime);
+    // Physics update moved to Render() to ensure proper command list ordering
+    // (physics commands must be recorded after ResetCommandList())
+
+    // DEBUG: Disabled for now - readback needs to be called after frame completes
+    // TODO: Add readback in a separate debug command or after Present()
+    /*
+    static int s_debugFrameCount = 0;
+    s_debugFrameCount++;
+    if (s_debugFrameCount == 10 && m_particleSystem) {
+        LOG_INFO("=== Frame 10: Checking GPU particle data ===");
+        m_particleSystem->DebugReadbackParticles(5);
     }
+    */
 }
 
 void Application::Render() {
     // Reset command list
     m_device->ResetCommandList();
     auto cmdList = m_device->GetCommandList();
+
+    // CRITICAL: Run physics update AFTER reset, so commands are recorded properly!
+    if (m_physicsEnabled && m_particleSystem) {
+        m_particleSystem->Update(m_deltaTime, m_totalTime);
+    }
 
     // Get current back buffer
     auto backBuffer = m_swapChain->GetCurrentBackBuffer();
@@ -440,6 +457,14 @@ void Application::OnKeyPress(UINT8 key) {
     case 'P':
         m_physicsEnabled = !m_physicsEnabled;
         LOG_INFO("Physics: {}", m_physicsEnabled ? "ENABLED" : "DISABLED");
+        break;
+
+    // Debug: Readback particle data
+    case 'D':
+        LOG_INFO("=== DEBUG: Reading back first 10 particles from GPU ===");
+        if (m_particleSystem) {
+            m_particleSystem->DebugReadbackParticles(10);
+        }
         break;
 
     // Log camera state
