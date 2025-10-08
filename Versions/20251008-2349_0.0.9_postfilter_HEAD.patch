@@ -1,0 +1,17 @@
+commit 55f7d293c4d52f5c249837dd50b7b447a629ca44
+Author:     IvanMazeppa <130244688+IvanMazeppa@users.noreply.github.com>
+AuthorDate: Wed Oct 8 23:49:41 2025 +0100
+Commit:     IvanMazeppa <130244688+IvanMazeppa@users.noreply.github.com>
+CommitDate: Wed Oct 8 23:49:41 2025 +0100
+
+    chore: stop tracking PIX directory and ignore it [APPROVE_DELETE]
+
+diff --git a/.gitignore b/.gitignore
+index 5ff93f4..8caa6c5 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -62,3 +62,4 @@ screenshots/image copy 18.png
+ screenshots/image copy 19.png
+ screenshots/image copy 20.png
+ screenshots/image copy 21.png
++PIX/
