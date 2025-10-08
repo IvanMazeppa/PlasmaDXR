@@ -65,7 +65,7 @@ private:
 
     // Settings
     uint32_t m_raysPerParticle = 4;          // Default: medium quality
-    float m_maxLightingDistance = 20.0f;
+    float m_maxLightingDistance = 500.0f;    // Disk radius is 300, allow rays up to 500
     float m_lightingIntensity = 1.0f;
     float m_particleRadius = 0.5f;
 
