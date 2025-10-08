@@ -140,5 +140,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Average lighting over all rays and apply global intensity
     // Write as float4 (RGB + 0 for alpha) to match buffer format
-    g_particleLighting[particleIdx] = float4((accumulatedLight / float(raysPerParticle)) * lightingIntensity, 0.0);
+    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity;
+
+    // DEBUG: If no lighting, output GREEN to prove shader is running
+    if (length(finalLight) < 0.001) {
+        finalLight = float3(0.0, 1.0, 0.0);  // Bright green = shader works but no lighting
+    }
+
+    g_particleLighting[particleIdx] = float4(finalLight, 0.0);
 }

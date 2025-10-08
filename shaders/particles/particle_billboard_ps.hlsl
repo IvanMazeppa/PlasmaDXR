@@ -21,9 +21,15 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // DEBUG: Just output the color directly without any discard or falloff
-    // This will make ALL pixels in the quad render as solid rectangles
-    output.color = float4(input.color.rgb, 1.0);  // Force full alpha
+    // Combine base color with RT lighting
+    float3 finalColor = input.color.rgb;
+
+    // If we have RT lighting, use it (shader outputs GREEN if running but no hits)
+    if (length(input.lighting.rgb) > 0.001) {
+        finalColor = input.lighting.rgb;
+    }
+
+    output.color = float4(finalColor, 1.0);
 
     return output;
 }
