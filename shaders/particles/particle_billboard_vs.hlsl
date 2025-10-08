@@ -4,7 +4,7 @@
 
 cbuffer CameraConstants : register(b0)
 {
-    float4x4 viewProj;
+    row_major float4x4 viewProj;
     float3 cameraPos;
     float padding0;
     float3 cameraRight;
@@ -92,22 +92,24 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
         texCoord = float2(1, 0);
     }
 
+    // CORRECT APPROACH: Calculate billboard basis PER-PARTICLE (like PlasmaDX mesh shader)
+    // This ensures each particle faces the camera correctly based on its actual position
+    float3 toCamera = cameraPos - p.position;
+    float3 forward = normalize(toCamera);
+    float3 right = normalize(cross(forward, float3(0, 1, 0)));  // Y-axis aligned
+    float3 up = cross(right, forward);
+
     // Scale by particle radius
-    cornerOffset *= particleRadius;
+    right *= particleRadius;
+    up *= particleRadius;
 
-    // Billboard world position (camera-facing)
-    float3 worldPos = p.position + cornerOffset.x * cameraRight + cornerOffset.y * cameraUp;
-
-    // DEBUG: Force first 10 particles to render at origin
-    if (particleIdx < 10) {
-        worldPos = float3(0, 0, 0) + cornerOffset.x * cameraRight * 200.0 + cornerOffset.y * cameraUp * 200.0;
-        baseColor = float3(1, 0, 1);  // Magenta for debug particles
-    }
+    // Build billboard corner in world space
+    float3 worldPos = p.position + cornerOffset.x * right + cornerOffset.y * up;
 
     // Transform to clip space
-    // CRITICAL FIX: CPU transposes (View*Proj) before upload → GPU receives (View*Proj)ᵀ
-    // HLSL uses column-major storage: mul(matrix, vector) applies (View*Proj)ᵀ * v = View*Proj*v
-    float4 clipPos = mul(viewProj, float4(worldPos, 1.0));
+    // DirectXMath is row-major, HLSL defaults to row-major
+    // Use row-vector multiplication: v * M
+    float4 clipPos = mul(float4(worldPos, 1.0), viewProj);
 
     // Calculate alpha based on density (for volumetric look)
     // BOOST alpha significantly - particles should be clearly visible

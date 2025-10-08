@@ -200,6 +200,7 @@ void Application::Render() {
     ID3D12Resource* rtLightingBuffer = nullptr;
     if (m_rtLighting && m_particleSystem) {
         // Full DXR 1.1 RayQuery pipeline: AABB → BLAS → TLAS → RT Lighting
+        // RT lighting uses particle buffer as UAV (already in correct state from initialization)
         m_rtLighting->ComputeLighting(cmdList,
                                      m_particleSystem->GetParticleBuffer(),
                                      m_config.particleCount);
@@ -210,6 +211,17 @@ void Application::Render() {
         if ((m_frameCount % 60) == 0) {
             LOG_INFO("RT Lighting computed (frame {})", m_frameCount);
         }
+    }
+
+    // Transition particle buffer from UAV to SRV for rendering
+    if (m_particleSystem) {
+        D3D12_RESOURCE_BARRIER particleBarrier = {};
+        particleBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        particleBarrier.Transition.pResource = m_particleSystem->GetParticleBuffer();
+        particleBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        particleBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        particleBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &particleBarrier);
     }
 
     // Render particles
@@ -227,7 +239,8 @@ void Application::Render() {
         DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4,
                                                                     static_cast<float>(m_width) / static_cast<float>(m_height),
                                                                     0.1f, 10000.0f);
-        DirectX::XMStoreFloat4x4(&renderConstants.viewProj, DirectX::XMMatrixTranspose(view * proj));
+        // DON'T transpose - HLSL uses row-major by default, DirectXMath is row-major
+        DirectX::XMStoreFloat4x4(&renderConstants.viewProj, view * proj);
 
         // Use runtime camera controls
         renderConstants.cameraPos = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
@@ -254,6 +267,17 @@ void Application::Render() {
                                   m_particleSystem->GetParticleBuffer(),
                                   rtLightingBuffer,
                                   renderConstants);
+    }
+
+    // Transition particle buffer back to UAV for next frame's physics/RT lighting
+    if (m_particleSystem) {
+        D3D12_RESOURCE_BARRIER particleBackToUAV = {};
+        particleBackToUAV.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        particleBackToUAV.Transition.pResource = m_particleSystem->GetParticleBuffer();
+        particleBackToUAV.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        particleBackToUAV.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        particleBackToUAV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &particleBackToUAV);
     }
 
     // Transition to present

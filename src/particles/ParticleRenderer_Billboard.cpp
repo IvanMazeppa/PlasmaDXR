@@ -15,10 +15,30 @@
 bool ParticleRenderer::InitializeComputeFallbackPath() {
     LOG_INFO("Initializing billboard particle renderer...");
 
-    // Load shaders
-    std::ifstream vsFile("shaders/particles/particle_billboard_vs.dxil", std::ios::binary);
+    // Load vertex shader - try multiple paths for different working directories
+    std::vector<std::string> vsShaderPaths = {
+        "shaders/particles/particle_billboard_vs.dxil",           // From project root
+        "../shaders/particles/particle_billboard_vs.dxil",        // From build/
+        "../../shaders/particles/particle_billboard_vs.dxil"      // From build/Debug/
+    };
+
+    std::ifstream vsFile;
+    std::string foundVsPath;
+    for (const auto& path : vsShaderPaths) {
+        vsFile.open(path, std::ios::binary);
+        if (vsFile) {
+            foundVsPath = path;
+            LOG_INFO("Found particle_billboard_vs.dxil at: {}", path);
+            break;
+        }
+        vsFile.clear();
+    }
+
     if (!vsFile) {
-        LOG_ERROR("Failed to open particle_billboard_vs.dxil");
+        LOG_ERROR("Failed to open particle_billboard_vs.dxil - tried {} paths", vsShaderPaths.size());
+        for (const auto& path : vsShaderPaths) {
+            LOG_ERROR("  - {}", path);
+        }
         return false;
     }
 
@@ -31,9 +51,30 @@ bool ParticleRenderer::InitializeComputeFallbackPath() {
     }
     memcpy(vsBlob->GetBufferPointer(), vsData.data(), vsData.size());
 
-    std::ifstream psFile("shaders/particles/particle_billboard_ps.dxil", std::ios::binary);
+    // Load pixel shader - try multiple paths for different working directories
+    std::vector<std::string> psShaderPaths = {
+        "shaders/particles/particle_billboard_ps.dxil",           // From project root
+        "../shaders/particles/particle_billboard_ps.dxil",        // From build/
+        "../../shaders/particles/particle_billboard_ps.dxil"      // From build/Debug/
+    };
+
+    std::ifstream psFile;
+    std::string foundPsPath;
+    for (const auto& path : psShaderPaths) {
+        psFile.open(path, std::ios::binary);
+        if (psFile) {
+            foundPsPath = path;
+            LOG_INFO("Found particle_billboard_ps.dxil at: {}", path);
+            break;
+        }
+        psFile.clear();
+    }
+
     if (!psFile) {
-        LOG_ERROR("Failed to open particle_billboard_ps.dxil");
+        LOG_ERROR("Failed to open particle_billboard_ps.dxil - tried {} paths", psShaderPaths.size());
+        for (const auto& path : psShaderPaths) {
+            LOG_ERROR("  - {}", path);
+        }
         return false;
     }
 
@@ -60,7 +101,7 @@ bool ParticleRenderer::InitializeComputeFallbackPath() {
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
         rootSigDesc.Init_1_1(4, rootParams, 0, nullptr,
-            D3D12_ROOT_SIGNATURE_FLAG_NONE);
+            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
         hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
