@@ -106,13 +106,47 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         ray.TMax = maxLightingDistance;
 
         // Create RayQuery object (DXR 1.1 inline ray tracing)
-        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+        RayQuery<RAY_FLAG_NONE> query;  // Don't use ACCEPT_FIRST_HIT for procedural - we need to test manually
         query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
 
-        // Process ray query
-        query.Proceed();
+        // Process all candidates (for procedural primitives, we must manually test intersection)
+        while (query.Proceed())
+        {
+            // Check if we hit an AABB (procedural primitive candidate)
+            if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE)
+            {
+                // Get candidate particle index
+                uint candidateIdx = query.CandidatePrimitiveIndex();
 
-        // Check if ray hit a particle
+                // Skip self-intersection
+                if (candidateIdx == particleIdx)
+                    continue;
+
+                // Read particle position
+                Particle candidate = g_particles[candidateIdx];
+
+                // Manual sphere-ray intersection test
+                // Use VERY large radius - particles are 30-50 units apart in outer disk!
+                const float rtLightingRadius = 25.0;
+                float3 oc = ray.Origin - candidate.position;
+                float b = dot(oc, ray.Direction);
+                float c = dot(oc, oc) - (rtLightingRadius * rtLightingRadius);
+                float discriminant = b * b - c;
+
+                // If ray hits sphere, commit the hit
+                if (discriminant >= 0.0)
+                {
+                    float t = -b - sqrt(discriminant);
+                    if (t >= ray.TMin && t <= ray.TMax)
+                    {
+                        // Commit this procedural primitive hit
+                        query.CommitProceduralPrimitiveHit(t);
+                    }
+                }
+            }
+        }
+
+        // After Proceed() loop completes, check if we got a committed hit
         if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT)
         {
             // Get hit particle index (PrimitiveIndex maps to particle index)
@@ -139,13 +173,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     // Average lighting over all rays and apply global intensity
-    // Write as float4 (RGB + 0 for alpha) to match buffer format
-    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity;
+    // Boost intensity significantly so we can actually see the lighting!
+    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 5.0;
 
-    // DEBUG: If no lighting, output GREEN to prove shader is running
-    if (length(finalLight) < 0.001) {
-        finalLight = float3(0.0, 1.0, 0.0);  // Bright green = shader works but no lighting
-    }
+    // DEBUG REMOVED: Show actual lighting (black=no hits, colored=RT lighting)
+    // Particles with no neighbors will be black, center will be bright
 
     g_particleLighting[particleIdx] = float4(finalLight, 0.0);
 }

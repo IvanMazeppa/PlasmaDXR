@@ -56,3 +56,9 @@ Thumbs.db
 # Keep certain files
 !external/D3D12/*.dll
 !shaders/**/*.dxil
+PIX/GPU 8_GpuId9_API Parameters.bmp
+PIX/image.png
+screenshots/image copy 18.png
+screenshots/image copy 19.png
+screenshots/image copy 20.png
+screenshots/image copy 21.png

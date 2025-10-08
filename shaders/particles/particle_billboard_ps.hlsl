@@ -21,13 +21,14 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // Combine base color with RT lighting
-    float3 finalColor = input.color.rgb;
+    // Combine base temperature color with RT lighting
+    // Base color = self-emission (temperature glow)
+    // RT lighting = light received from nearby hot particles
+    float3 baseColor = input.color.rgb * 0.3;  // Dim the base color (self-emission)
+    float3 rtLighting = input.lighting.rgb;     // RT lighting from neighbors
 
-    // If we have RT lighting, use it (shader outputs GREEN if running but no hits)
-    if (length(input.lighting.rgb) > 0.001) {
-        finalColor = input.lighting.rgb;
-    }
+    // Add them together - particles glow from their own heat + light from neighbors
+    float3 finalColor = baseColor + rtLighting;
 
     output.color = float4(finalColor, 1.0);
 

@@ -67,7 +67,7 @@ private:
     uint32_t m_raysPerParticle = 4;          // Default: medium quality
     float m_maxLightingDistance = 500.0f;    // Disk radius is 300, allow rays up to 500
     float m_lightingIntensity = 1.0f;
-    float m_particleRadius = 0.5f;
+    float m_particleRadius = 25.0f;          // Very large radius - particles 30-50 units apart in outer disk
 
     // Compute shaders (RayQuery approach - no lib_6_x needed!)
     Microsoft::WRL::ComPtr<ID3DBlob> m_aabbGenShader;
