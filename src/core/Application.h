@@ -80,7 +80,7 @@ private:
     float m_cameraAngle = 0.0f;         // Orbit angle
     float m_cameraPitch = 0.0f;         // Vertical rotation
     float m_particleSize = 50.0f;       // Larger for initial visibility
-    bool m_physicsEnabled = true;       // ENABLED by default to show motion
+    bool m_physicsEnabled = false;      // DISABLED by default - press P to enable
 
     // Mouse look state
     bool m_mouseLookActive = false;

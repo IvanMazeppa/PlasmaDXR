@@ -147,10 +147,30 @@ void ParticleSystem::InitializeAccretionDisk() {
 bool ParticleSystem::CreateComputePipeline() {
     HRESULT hr;
 
-    // Load physics compute shader
-    std::ifstream shaderFile("shaders/particles/particle_physics.dxil", std::ios::binary);
+    // Load physics compute shader - try multiple paths for different working directories
+    std::vector<std::string> shaderPaths = {
+        "shaders/particles/particle_physics.dxil",           // From project root
+        "../shaders/particles/particle_physics.dxil",        // From build/
+        "../../shaders/particles/particle_physics.dxil"      // From build/Debug/
+    };
+
+    std::ifstream shaderFile;
+    std::string foundPath;
+    for (const auto& path : shaderPaths) {
+        shaderFile.open(path, std::ios::binary);
+        if (shaderFile) {
+            foundPath = path;
+            LOG_INFO("Found particle_physics.dxil at: {}", path);
+            break;
+        }
+        shaderFile.clear();
+    }
+
     if (!shaderFile) {
-        LOG_ERROR("Failed to open particle_physics.dxil");
+        LOG_ERROR("Failed to open particle_physics.dxil - tried {} paths", shaderPaths.size());
+        for (const auto& path : shaderPaths) {
+            LOG_ERROR("  - {}", path);
+        }
         return false;
     }
 
