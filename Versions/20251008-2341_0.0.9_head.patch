@@ -1,0 +1,149 @@
+commit ae129aa9d756db0b37a168f3fccb16c35c7b3b20
+Author:     IvanMazeppa <130244688+IvanMazeppa@users.noreply.github.com>
+AuthorDate: Wed Oct 8 23:30:40 2025 +0100
+Commit:     IvanMazeppa <130244688+IvanMazeppa@users.noreply.github.com>
+CommitDate: Wed Oct 8 23:30:40 2025 +0100
+
+    feat: Update particle ray tracing shaders for improved lighting calculations
+    
+    - Modified the particle ray tracing compute shader to enhance procedural primitive hit detection and manual intersection testing.
+    - Increased lighting intensity in the final output to improve visibility of lighting effects.
+    - Updated pixel shader to combine base temperature color with ray tracing lighting, ensuring a more accurate representation of particle glow.
+    
+    These changes enhance the visual fidelity and performance of the particle lighting system.
+
+diff --git a/.gitignore b/.gitignore
+index 50ba0d2..5ff93f4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -55,4 +55,10 @@ Thumbs.db
+ 
+ # Keep certain files
+ !external/D3D12/*.dll
+-!shaders/**/*.dxil
+\ No newline at end of file
++!shaders/**/*.dxil
++PIX/GPU 8_GpuId9_API Parameters.bmp
++PIX/image.png
++screenshots/image copy 18.png
++screenshots/image copy 19.png
++screenshots/image copy 20.png
++screenshots/image copy 21.png
+diff --git a/shaders/dxr/particle_raytraced_lighting_cs.dxil b/shaders/dxr/particle_raytraced_lighting_cs.dxil
+index 8c61d76..cf6ce66 100644
+Binary files a/shaders/dxr/particle_raytraced_lighting_cs.dxil and b/shaders/dxr/particle_raytraced_lighting_cs.dxil differ
+diff --git a/shaders/dxr/particle_raytraced_lighting_cs.hlsl b/shaders/dxr/particle_raytraced_lighting_cs.hlsl
+index 61e4ae9..500ff5a 100644
+--- a/shaders/dxr/particle_raytraced_lighting_cs.hlsl
++++ b/shaders/dxr/particle_raytraced_lighting_cs.hlsl
+@@ -106,13 +106,47 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
+         ray.TMax = maxLightingDistance;
+ 
+         // Create RayQuery object (DXR 1.1 inline ray tracing)
+-        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
++        RayQuery<RAY_FLAG_NONE> query;  // Don't use ACCEPT_FIRST_HIT for procedural - we need to test manually
+         query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
+ 
+-        // Process ray query
+-        query.Proceed();
++        // Process all candidates (for procedural primitives, we must manually test intersection)
++        while (query.Proceed())
++        {
++            // Check if we hit an AABB (procedural primitive candidate)
++            if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE)
++            {
++                // Get candidate particle index
++                uint candidateIdx = query.CandidatePrimitiveIndex();
++
++                // Skip self-intersection
++                if (candidateIdx == particleIdx)
++                    continue;
++
++                // Read particle position
++                Particle candidate = g_particles[candidateIdx];
++
++                // Manual sphere-ray intersection test
++                // Use VERY large radius - particles are 30-50 units apart in outer disk!
++                const float rtLightingRadius = 25.0;
++                float3 oc = ray.Origin - candidate.position;
++                float b = dot(oc, ray.Direction);
++                float c = dot(oc, oc) - (rtLightingRadius * rtLightingRadius);
++                float discriminant = b * b - c;
++
++                // If ray hits sphere, commit the hit
++                if (discriminant >= 0.0)
++                {
++                    float t = -b - sqrt(discriminant);
++                    if (t >= ray.TMin && t <= ray.TMax)
++                    {
++                        // Commit this procedural primitive hit
++                        query.CommitProceduralPrimitiveHit(t);
++                    }
++                }
++            }
++        }
+ 
+-        // Check if ray hit a particle
++        // After Proceed() loop completes, check if we got a committed hit
+         if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT)
+         {
+             // Get hit particle index (PrimitiveIndex maps to particle index)
+@@ -139,13 +173,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
+     }
+ 
+     // Average lighting over all rays and apply global intensity
+-    // Write as float4 (RGB + 0 for alpha) to match buffer format
+-    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity;
++    // Boost intensity significantly so we can actually see the lighting!
++    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 5.0;
+ 
+-    // DEBUG: If no lighting, output GREEN to prove shader is running
+-    if (length(finalLight) < 0.001) {
+-        finalLight = float3(0.0, 1.0, 0.0);  // Bright green = shader works but no lighting
+-    }
++    // DEBUG REMOVED: Show actual lighting (black=no hits, colored=RT lighting)
++    // Particles with no neighbors will be black, center will be bright
+ 
+     g_particleLighting[particleIdx] = float4(finalLight, 0.0);
+ }
+diff --git a/shaders/particles/particle_billboard_ps.dxil b/shaders/particles/particle_billboard_ps.dxil
+index 7b04a9c..621ea21 100644
+Binary files a/shaders/particles/particle_billboard_ps.dxil and b/shaders/particles/particle_billboard_ps.dxil differ
+diff --git a/shaders/particles/particle_billboard_ps.hlsl b/shaders/particles/particle_billboard_ps.hlsl
+index d7b0ab0..b963f74 100644
+--- a/shaders/particles/particle_billboard_ps.hlsl
++++ b/shaders/particles/particle_billboard_ps.hlsl
+@@ -21,13 +21,14 @@ PixelOutput main(PixelInput input)
+ {
+     PixelOutput output;
+ 
+-    // Combine base color with RT lighting
+-    float3 finalColor = input.color.rgb;
++    // Combine base temperature color with RT lighting
++    // Base color = self-emission (temperature glow)
++    // RT lighting = light received from nearby hot particles
++    float3 baseColor = input.color.rgb * 0.3;  // Dim the base color (self-emission)
++    float3 rtLighting = input.lighting.rgb;     // RT lighting from neighbors
+ 
+-    // If we have RT lighting, use it (shader outputs GREEN if running but no hits)
+-    if (length(input.lighting.rgb) > 0.001) {
+-        finalColor = input.lighting.rgb;
+-    }
++    // Add them together - particles glow from their own heat + light from neighbors
++    float3 finalColor = baseColor + rtLighting;
+ 
+     output.color = float4(finalColor, 1.0);
+ 
+diff --git a/src/lighting/RTLightingSystem_RayQuery.h b/src/lighting/RTLightingSystem_RayQuery.h
+index b0d3ec4..abfbc71 100644
+--- a/src/lighting/RTLightingSystem_RayQuery.h
++++ b/src/lighting/RTLightingSystem_RayQuery.h
+@@ -67,7 +67,7 @@ private:
+     uint32_t m_raysPerParticle = 4;          // Default: medium quality
+     float m_maxLightingDistance = 500.0f;    // Disk radius is 300, allow rays up to 500
+     float m_lightingIntensity = 1.0f;
+-    float m_particleRadius = 0.5f;
++    float m_particleRadius = 25.0f;          // Very large radius - particles 30-50 units apart in outer disk
+ 
+     // Compute shaders (RayQuery approach - no lib_6_x needed!)
+     Microsoft::WRL::ComPtr<ID3DBlob> m_aabbGenShader;
