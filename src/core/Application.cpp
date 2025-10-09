@@ -316,6 +316,11 @@ void Application::Render() {
             LOG_INFO("  Disk: inner r={}, outer r={}", 10.0f, 300.0f);
             LOG_INFO("  Mouse Look: CTRL+LMB drag");
             LOG_INFO("  Particle size: {}", m_particleSize);
+            LOG_INFO("=== Gaussian RT Controls ===");
+            LOG_INFO("  F5: Shadow Rays [{}]", m_useShadowRays ? "ON" : "OFF");
+            LOG_INFO("  F6: In-Scattering [{}]", m_useInScattering ? "ON" : "OFF");
+            LOG_INFO("  F7: Phase Function [{}]", m_usePhaseFunction ? "ON" : "OFF");
+            LOG_INFO("  F8/Shift+F8: Phase Strength [{:.1f}]", m_phaseStrength);
             LOG_INFO("============================");
             loggedCamera = true;
         }
@@ -358,6 +363,12 @@ void Application::Render() {
             gaussianConstants.dopplerStrength = renderConstants.dopplerStrength;
             gaussianConstants.useGravitationalRedshift = renderConstants.useGravitationalRedshift ? 1u : 0u;
             gaussianConstants.redshiftStrength = renderConstants.redshiftStrength;
+
+            // RT system toggles
+            gaussianConstants.useShadowRays = m_useShadowRays ? 1u : 0u;
+            gaussianConstants.useInScattering = m_useInScattering ? 1u : 0u;
+            gaussianConstants.usePhaseFunction = m_usePhaseFunction ? 1u : 0u;
+            gaussianConstants.phaseStrength = m_phaseStrength;
 
             // Render to UAV texture
             m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
@@ -697,6 +708,34 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("RT Quality Mode: {}", modes[m_rtQualityMode]);
         break;
     }
+
+    // F5: Toggle shadow rays
+    case VK_F5:
+        m_useShadowRays = !m_useShadowRays;
+        LOG_INFO("Shadow Rays: {}", m_useShadowRays ? "ON" : "OFF");
+        break;
+
+    // F6: Toggle in-scattering
+    case VK_F6:
+        m_useInScattering = !m_useInScattering;
+        LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
+        break;
+
+    // F7: Toggle phase function
+    case VK_F7:
+        m_usePhaseFunction = !m_usePhaseFunction;
+        LOG_INFO("Phase Function: {}", m_usePhaseFunction ? "ON" : "OFF");
+        break;
+
+    // F8: Adjust phase strength (Shift+F8 decrease, F8 increase)
+    case VK_F8:
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_phaseStrength = (std::max)(0.0f, m_phaseStrength - 1.0f);
+        } else {
+            m_phaseStrength = (std::min)(20.0f, m_phaseStrength + 1.0f);
+        }
+        LOG_INFO("Phase Strength: {:.1f}", m_phaseStrength);
+        break;
 
     // Physics controls: Gravity (V = velocity/gravity)
     case 'V':

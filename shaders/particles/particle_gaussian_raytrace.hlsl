@@ -29,7 +29,11 @@ cbuffer GaussianConstants : register(b0)
     float dopplerStrength;
     uint useGravitationalRedshift;
     float redshiftStrength;
-    float2 padding2;
+
+    uint useShadowRays;
+    uint useInScattering;
+    uint usePhaseFunction;
+    float phaseStrength;
 };
 
 // Derived values
@@ -336,27 +340,37 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Add RT lighting as external contribution (like being lit by neighbors)
             illumination += rtLight * 0.5; // Reduced influence to preserve colors
 
-            // === NEW: Cast shadow ray to primary light source ===
-            float3 toLightDir = normalize(volParams.lightPos - pos);
-            float lightDist = length(volParams.lightPos - pos);
-            float shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+            // === NEW: Cast shadow ray to primary light source (TOGGLEABLE) ===
+            float shadowTerm = 1.0;
+            if (useShadowRays != 0) {
+                float3 toLightDir = normalize(volParams.lightPos - pos);
+                float lightDist = length(volParams.lightPos - pos);
+                shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+            }
 
             // Apply shadow to external illumination
             illumination *= lerp(0.3, 1.0, shadowTerm); // Ambient + direct
 
-            // === NEW: Add in-scattering for volumetric depth ===
-            float3 inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
+            // === NEW: Add in-scattering for volumetric depth (TOGGLEABLE) ===
+            float3 inScatter = float3(0, 0, 0);
+            if (useInScattering != 0) {
+                inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
+            }
 
             // === FIXED: Combine emission with illumination properly ===
             // Emission is the particle's intrinsic color
             // Illumination modulates it based on external light
-            float3 totalEmission = emission * intensity * illumination + inScatter * 0.2;
+            float3 totalEmission = emission * intensity * illumination + inScatter * 0.3;
 
-            // Apply phase function for view-dependent scattering
-            float3 lightDir = normalize(volParams.lightPos - pos);
-            float cosTheta = dot(ray.Direction, lightDir);
-            float phase = HenyeyGreenstein(cosTheta, volParams.scatteringG);
-            totalEmission *= (1.0 + phase * 0.5); // Subtle phase effect
+            // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
+            if (usePhaseFunction != 0) {
+                float3 lightDir = normalize(volParams.lightPos - pos);
+                float cosTheta = dot(-ray.Direction, lightDir); // Negative for forward scattering
+                float phase = HenyeyGreenstein(cosTheta, volParams.scatteringG);
+
+                // Boost the phase function effect dramatically
+                totalEmission *= (1.0 + phase * phaseStrength);
+            }
 
             // Volume rendering equation with proper absorption/emission
             float absorption = density * stepSize * volParams.extinction;

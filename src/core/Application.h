@@ -105,6 +105,12 @@ private:
     bool m_useGravitationalRedshift = false;
     float m_redshiftStrength = 1.0f;       // 0.0-5.0 (multiplier)
 
+    // Gaussian RT system toggles
+    bool m_useShadowRays = true;           // F5 to toggle
+    bool m_useInScattering = true;         // F6 to toggle
+    bool m_usePhaseFunction = true;        // F7 to toggle
+    float m_phaseStrength = 5.0f;          // F8/Shift+F8 to adjust (0.0-20.0)
+
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 
     // Mouse look state

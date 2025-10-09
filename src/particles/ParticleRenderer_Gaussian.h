@@ -37,7 +37,12 @@ public:
         float dopplerStrength;
         uint32_t useGravitationalRedshift;
         float redshiftStrength;
-        float padding2[2];
+
+        // RT system toggles for performance
+        uint32_t useShadowRays;
+        uint32_t useInScattering;
+        uint32_t usePhaseFunction;
+        float phaseStrength;
     };
 
 public:
