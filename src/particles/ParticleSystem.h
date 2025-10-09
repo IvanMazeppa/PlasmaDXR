@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <DirectXMath.h>
+#include <algorithm>
 
 class Device;
 class ResourceManager;
@@ -39,6 +40,23 @@ public:
     // Get particle buffer for rendering
     ID3D12Resource* GetParticleBuffer() const { return m_particleBuffer.Get(); }
     uint32_t GetParticleCount() const { return m_particleCount; }
+
+    // Physics parameter accessors for runtime control
+    float GetGravityStrength() const { return m_gravityStrength; }
+    void SetGravityStrength(float value) { m_gravityStrength = value; }
+    void AdjustGravityStrength(float delta) { m_gravityStrength = (std::max)(0.0f, m_gravityStrength + delta); }
+
+    float GetAngularMomentum() const { return m_angularMomentumBoost; }
+    void SetAngularMomentum(float value) { m_angularMomentumBoost = value; }
+    void AdjustAngularMomentum(float delta) { m_angularMomentumBoost = (std::max)(0.0f, m_angularMomentumBoost + delta); }
+
+    float GetTurbulence() const { return m_turbulenceStrength; }
+    void SetTurbulence(float value) { m_turbulenceStrength = value; }
+    void AdjustTurbulence(float delta) { m_turbulenceStrength = (std::max)(0.0f, m_turbulenceStrength + delta); }
+
+    float GetDamping() const { return m_dampingFactor; }
+    void SetDamping(float value) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, value)); }
+    void AdjustDamping(float delta) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, m_dampingFactor + delta)); }
 
     // Debug: Readback particle data from GPU
     void DebugReadbackParticles(int count = 5);

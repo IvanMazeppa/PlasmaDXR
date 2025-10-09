@@ -572,10 +572,55 @@ void Application::OnKeyPress(UINT8 key) {
         break;
 
     // Cycle RT quality modes
-    case 'Q':
+    case 'Q': {
         m_rtQualityMode = (m_rtQualityMode + 1) % 3;
         const char* modes[] = {"Normal", "ReSTIR", "Adaptive"};
         LOG_INFO("RT Quality Mode: {}", modes[m_rtQualityMode]);
+        break;
+    }
+
+    // Physics controls: Gravity (V = velocity/gravity)
+    case 'V':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustGravityStrength(-50.0f);
+            LOG_INFO("Gravity Strength: {:.1f}", m_particleSystem->GetGravityStrength());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustGravityStrength(50.0f);
+            LOG_INFO("Gravity Strength: {:.1f}", m_particleSystem->GetGravityStrength());
+        }
+        break;
+
+    // aNgular momentum / orbital speed (N)
+    case 'N':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustAngularMomentum(-0.1f);
+            LOG_INFO("Angular Momentum: {:.2f}", m_particleSystem->GetAngularMomentum());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustAngularMomentum(0.1f);
+            LOG_INFO("Angular Momentum: {:.2f}", m_particleSystem->GetAngularMomentum());
+        }
+        break;
+
+    // Turbulence (B = brownian motion)
+    case 'B':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustTurbulence(-2.0f);
+            LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustTurbulence(2.0f);
+            LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
+        }
+        break;
+
+    // Damping (M = momentum damping)
+    case 'M':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustDamping(-0.01f);
+            LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustDamping(0.01f);
+            LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
+        }
         break;
     }
 }
@@ -620,6 +665,14 @@ void Application::UpdateFrameStats() {
             features += buf;
         }
         if (m_rtLighting) features += L"[RT] ";
+
+        // Add physics parameters to status bar
+        wchar_t physBuf[128];
+        swprintf_s(physBuf, L"G:%.0f A:%.1f T:%.0f ",
+                  m_particleSystem->GetGravityStrength(),
+                  m_particleSystem->GetAngularMomentum(),
+                  m_particleSystem->GetTurbulence());
+        features += physBuf;
 
         // Update window title with FPS, renderer, and active features
         swprintf_s(statusBar, L"PlasmaDX-Clean - FPS: %.1f - Size: %.0f - %s%s",

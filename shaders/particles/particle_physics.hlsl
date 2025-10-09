@@ -108,20 +108,40 @@ void main(uint3 id : SV_DispatchThreadID) {
             sin(angle) * radius
         );
 
-        // Random initial velocity
+        // Initialize with Keplerian orbital velocity
+        // v = sqrt(GM/r) in tangent direction
+        float3 toCenter = constants.blackHolePosition - p.position;
+        float distance = max(length(toCenter), 0.1);
+        float3 toCenterNorm = toCenter / distance;
+
+        // Calculate orbital direction (perpendicular to both radius and disk axis)
+        float3 orbitalDir = cross(toCenterNorm, constants.diskAxis);
+        float orbitalDirLen = length(orbitalDir);
+        if (orbitalDirLen > 0.01) {
+            orbitalDir /= orbitalDirLen;
+        } else {
+            orbitalDir = float3(1, 0, 0);  // Fallback
+        }
+
+        // Keplerian speed with some randomization
+        float keplerianSpeed = sqrt(constants.gravityStrength / (distance + 0.1));
         uint seed4 = seed3 * 2654435761u;
+        float speedVariation = (float((seed4 >> 16) & 0x7fff) / 32767.0 - 0.5) * 0.2;  // ±10%
+        float initialSpeed = keplerianSpeed * (1.0 + speedVariation);
+
+        p.velocity = orbitalDir * initialSpeed;
+
+        // Add small random perturbation for variety
         uint seed5 = seed4 * 48271u;
         uint seed6 = seed5 * 1103515245u;
-
-        float3 randomVel = float3(
-            (float((seed4 >> 16) & 0x7fff) / 32767.0 - 0.5),
+        float3 randomPerturbation = float3(
             (float((seed5 >> 16) & 0x7fff) / 32767.0 - 0.5),
-            (float((seed6 >> 16) & 0x7fff) / 32767.0 - 0.5)
-        );
-        p.velocity = randomVel * 40.0;
+            (float((seed6 >> 16) & 0x7fff) / 32767.0 - 0.5),
+            (float((seed4 >> 8) & 0x7fff) / 32767.0 - 0.5)
+        ) * 5.0;
+        p.velocity += randomPerturbation;
 
-        float distance = length(p.position - constants.blackHolePosition);
-        // Temperature falls off with distance (hotter near center)
+        // Temperature falls off with distance (hotter near center, distance already calculated above)
         // Use inverse square law scaled for our radius range (10-300)
         float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
         p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
@@ -179,19 +199,27 @@ void main(uint3 id : SV_DispatchThreadID) {
         ) * 8.0;
         velocity += randomNoise * constants.deltaTime;
 
-        // Calculate orbital correction (perpendicular to radius) - use safe normalized vector
-        float3 tangent = cross(toCenterNorm, float3(0.0, 1.0, 0.0));
+        // KEPLERIAN ORBITAL MECHANICS
+        // For stable circular orbit: v = sqrt(GM/r)
+        // Calculate orbital velocity perpendicular to radius
+        float3 tangent = cross(toCenterNorm, constants.diskAxis);
         float tangentLen = length(tangent);
         if (tangentLen < 0.01) {
+            // Fallback if particle is along disk axis
             tangent = cross(toCenterNorm, float3(1.0, 0.0, 0.0));
             tangentLen = length(tangent);
         }
         tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
 
-        float currentSpeed = length(velocity);
-        float targetOrbitalSpeed = sqrt(constants.gravityStrength / (distance + 1.0));
-        float3 orbitalCorrection = tangent * (targetOrbitalSpeed - currentSpeed) * 0.02;
-        orbitalCorrection += tangent * constants.angularMomentumBoost * 0.08;
+        // Calculate Keplerian orbital speed for this radius
+        float keplerianSpeed = sqrt(constants.gravityStrength / (distance + 0.1)) * constants.angularMomentumBoost;
+
+        // Project current velocity onto orbital direction
+        float currentOrbitalSpeed = dot(velocity, tangent);
+
+        // Calculate correction needed to achieve Keplerian orbit
+        float speedDifference = keplerianSpeed - currentOrbitalSpeed;
+        float3 orbitalCorrection = tangent * speedDifference * 2.5;  // Strong correction for stable orbits
 
         // Apply forces
         float3 acceleration = gravityForce + orbitalCorrection;
