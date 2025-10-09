@@ -121,8 +121,10 @@ void main(uint3 id : SV_DispatchThreadID) {
         p.velocity = randomVel * 40.0;
 
         float distance = length(p.position - constants.blackHolePosition);
-        float tempFactor = 1.0 / max(distance * distance * distance / 1000.0, 1.0);
-        p.temperature = 800.0 + 25000.0 * tempFactor;
+        // Temperature falls off with distance (hotter near center)
+        // Use inverse square law scaled for our radius range (10-300)
+        float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
+        p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
         p.density = 1.0;
     } else {
         // Physics update for existing particles
@@ -207,9 +209,10 @@ void main(uint3 id : SV_DispatchThreadID) {
             velocity += pushBack * constants.deltaTime;
         }
 
-        // Update temperature based on distance
-        float tempFactor = 1.0 / max(distance * distance * distance / 1000.0, 1.0);
-        p.temperature = 800.0 + 25000.0 * tempFactor;
+        // Update temperature based on distance (hotter near center)
+        // Use inverse square law scaled for our radius range (10-300)
+        float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
+        p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
 
         p.position = position;
         p.velocity = velocity;

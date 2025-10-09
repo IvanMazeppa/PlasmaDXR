@@ -472,6 +472,48 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("Camera - Distance: {}, Height: {}, Angle: {}, ParticleSize: {}",
                  m_cameraDistance, m_cameraHeight, m_cameraAngle, m_particleSize);
         break;
+
+    // RT Lighting Intensity controls
+    case 'I':  // Increase intensity
+        m_rtLightingIntensity *= 2.0f;
+        if (m_rtLighting) {
+            m_rtLighting->SetLightingIntensity(m_rtLightingIntensity);
+        }
+        LOG_INFO("RT Lighting Intensity: {}", m_rtLightingIntensity);
+        break;
+
+    case 'K':  // Decrease intensity
+        m_rtLightingIntensity *= 0.5f;
+        if (m_rtLighting) {
+            m_rtLighting->SetLightingIntensity(m_rtLightingIntensity);
+        }
+        LOG_INFO("RT Lighting Intensity: {}", m_rtLightingIntensity);
+        break;
+
+    // RT Max Distance controls
+    case 'O':  // Increase distance
+        m_rtMaxDistance += 100.0f;
+        if (m_rtLighting) {
+            m_rtLighting->SetMaxLightingDistance(m_rtMaxDistance);
+        }
+        LOG_INFO("RT Max Distance: {}", m_rtMaxDistance);
+        break;
+
+    case 'L':  // Decrease distance
+        m_rtMaxDistance = (std::max)(50.0f, m_rtMaxDistance - 100.0f);
+        if (m_rtLighting) {
+            m_rtLighting->SetMaxLightingDistance(m_rtMaxDistance);
+        }
+        LOG_INFO("RT Max Distance: {}", m_rtMaxDistance);
+        break;
+
+    // Temperature variation test
+    case 'T':
+        LOG_INFO("=== Temperature Variation Test ===");
+        if (m_particleSystem) {
+            m_particleSystem->DebugReadbackParticles(20);
+        }
+        break;
     }
 }
 

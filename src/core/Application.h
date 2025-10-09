@@ -82,6 +82,11 @@ private:
     float m_particleSize = 50.0f;       // Larger for initial visibility
     bool m_physicsEnabled = true;       // ENABLED - physics shader initializes particles on GPU
 
+    // RT Lighting runtime controls
+    float m_rtLightingIntensity = 1.0f;
+    float m_rtMaxDistance = 500.0f;
+    float m_rtParticleRadius = 25.0f;
+
     // Mouse look state
     bool m_mouseLookActive = false;
     int m_lastMouseX = 0;

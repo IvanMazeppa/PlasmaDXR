@@ -163,9 +163,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float intensity = EmissionIntensity(emitter.temperature);
             float3 emissionColor = TemperatureToEmission(emitter.temperature);
 
-            // Calculate distance falloff (inverse square law)
+            // Calculate distance falloff (LINEAR falloff for sparse particles!)
+            // Particles are 30-50 units apart - inverse square kills lighting at this scale
             float distance = query.CommittedRayT();
-            float attenuation = 1.0 / (1.0 + distance * distance);
+            float attenuation = 1.0 / (1.0 + distance * 0.01);  // Very weak falloff
 
             // Accumulate lighting contribution
             accumulatedLight += emissionColor * intensity * attenuation;
@@ -173,8 +174,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     // Average lighting over all rays and apply global intensity
-    // Boost intensity significantly so we can actually see the lighting!
-    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 5.0;
+    // Boost intensity dramatically for sparse particles
+    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 50.0;
 
     // DEBUG REMOVED: Show actual lighting (black=no hits, colored=RT lighting)
     // Particles with no neighbors will be black, center will be bright

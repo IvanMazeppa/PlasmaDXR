@@ -21,16 +21,39 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // Combine base temperature color with RT lighting
-    // Base color = self-emission (temperature glow)
-    // RT lighting = light received from nearby hot particles
-    float3 baseColor = input.color.rgb * 0.3;  // Dim the base color (self-emission)
-    float3 rtLighting = input.lighting.rgb;     // RT lighting from neighbors
+    // Create spherical particle shape using texture coordinates (from PlasmaDX)
+    float2 center = input.texCoord - 0.5;
+    float distFromCenter = length(center) * 2.0; // Scale to 0-1 range
 
-    // Add them together - particles glow from their own heat + light from neighbors
-    float3 finalColor = baseColor + rtLighting;
+    // Discard pixels outside circle for hard edge
+    if (distFromCenter > 1.0) discard;
 
-    output.color = float4(finalColor, 1.0);
+    // Simulate 3D sphere lighting with sqrt falloff (like a real sphere)
+    float sphereZ = sqrt(max(0.0, 1.0 - distFromCenter * distFromCenter));
+
+    // Smooth edge fadeout
+    float edgeFade = 1.0 - smoothstep(0.8, 1.0, distFromCenter);
+
+    // Combine sphere lighting with edge fade
+    float intensity = sphereZ * edgeFade;
+
+    // Base color from temperature
+    float3 color = input.color.rgb;
+
+    // Add bright center (hot core) - makes particle look 3D
+    float hotSpot = pow(1.0 - distFromCenter, 3.0);
+    color = lerp(color, color * 1.5, hotSpot * 0.5);
+
+    // Apply sphere shading (makes it look round)
+    color *= (0.6 + intensity * 0.8);
+
+    // ADD RT lighting from neighbors
+    color += input.lighting.rgb;
+
+    // Alpha based on intensity and input alpha
+    float alpha = intensity * input.alpha;
+
+    output.color = float4(color, alpha);
 
     return output;
 }
