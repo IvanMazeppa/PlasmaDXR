@@ -19,7 +19,7 @@ public:
     ~Application();
 
     // Lifecycle
-    bool Initialize(HINSTANCE hInstance, int nCmdShow);
+    bool Initialize(HINSTANCE hInstance, int nCmdShow, int argc = 0, char** argv = nullptr);
     int Run();
     void Shutdown();
 
@@ -67,11 +67,17 @@ private:
     float m_fps = 0.0f;
 
     // Configuration
+    enum class RendererType {
+        Billboard,      // Traditional billboard particles (current/stable)
+        Gaussian        // 3D Gaussian Splatting (volumetric)
+    };
+
     struct Config {
         uint32_t particleCount = 100000;
         bool enableRT = true;
         bool preferMeshShaders = true;
         bool enableDebugLayer = false;
+        RendererType rendererType = RendererType::Billboard;
     } m_config;
 
     // Runtime camera controls - TOP-DOWN VIEW of accretion disk

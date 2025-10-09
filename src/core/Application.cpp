@@ -19,11 +19,31 @@ Application::~Application() {
     Shutdown();
 }
 
-bool Application::Initialize(HINSTANCE hInstance, int nCmdShow) {
+bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char** argv) {
     LOG_INFO("Initializing Application...");
 
-    // Load configuration (could be from file)
-    m_config.particleCount = 100000;
+    // Parse command-line arguments
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--gaussian" || arg == "-g") {
+            m_config.rendererType = RendererType::Gaussian;
+            LOG_INFO("Renderer: 3D Gaussian Splatting (volumetric)");
+        } else if (arg == "--billboard" || arg == "-b") {
+            m_config.rendererType = RendererType::Billboard;
+            LOG_INFO("Renderer: Billboard (stable)");
+        } else if (arg == "--particles" && i + 1 < argc) {
+            m_config.particleCount = std::atoi(argv[++i]);
+            LOG_INFO("Particle count: {}", m_config.particleCount);
+        } else if (arg == "--help" || arg == "-h") {
+            LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
+            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer");
+            LOG_INFO("  --billboard, -b     : Use Billboard renderer (default)");
+            LOG_INFO("  --particles <count> : Set particle count (default: 100000)");
+        }
+    }
+
+    // Load default configuration
+    if (m_config.particleCount == 0) m_config.particleCount = 100000;
     m_config.enableRT = true;
     m_config.preferMeshShaders = true;
 #ifdef _DEBUG

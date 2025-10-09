@@ -5,6 +5,8 @@
 #include "utils/Logger.h"
 #include <windows.h>
 #include <exception>
+#include <string>
+#include <vector>
 
 // Agility SDK exports
 extern "C" {
@@ -12,7 +14,7 @@ extern "C" {
     __declspec(dllexport) extern const char* D3D12SDKPath = "D3D12\\";
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow) {
     try {
         // Initialize logging
         Logger::Initialize("PlasmaDX-Clean");
@@ -21,13 +23,54 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         LOG_INFO("Clean architecture, modern design");
         LOG_INFO("Target: 100K particles with RT lighting");
 
+        // Parse command line into argc/argv
+        int argc = 0;
+        char** argv = nullptr;
+        if (lpCmdLine && lpCmdLine[0]) {
+            // Simple command line parsing (Windows provides a single string)
+            std::string cmdLine = lpCmdLine;
+            std::vector<std::string> args;
+            args.push_back("PlasmaDX-Clean.exe"); // argv[0]
+
+            size_t pos = 0;
+            while (pos < cmdLine.length()) {
+                // Skip whitespace
+                while (pos < cmdLine.length() && isspace(cmdLine[pos])) pos++;
+                if (pos >= cmdLine.length()) break;
+
+                // Extract argument
+                size_t start = pos;
+                while (pos < cmdLine.length() && !isspace(cmdLine[pos])) pos++;
+                args.push_back(cmdLine.substr(start, pos - start));
+            }
+
+            argc = static_cast<int>(args.size());
+            argv = new char*[argc];
+            for (int i = 0; i < argc; i++) {
+                argv[i] = new char[args[i].length() + 1];
+                strcpy_s(argv[i], args[i].length() + 1, args[i].c_str());
+            }
+        }
+
         // Create and run application
         Application app;
 
-        if (!app.Initialize(hInstance, nCmdShow)) {
+        if (!app.Initialize(hInstance, nCmdShow, argc, argv)) {
             LOG_ERROR("Failed to initialize application");
             MessageBoxA(nullptr, "Failed to initialize application. Check logs folder.", "Init Error", MB_OK | MB_ICONERROR);
+
+            // Cleanup argv
+            if (argv) {
+                for (int i = 0; i < argc; i++) delete[] argv[i];
+                delete[] argv;
+            }
             return -1;
+        }
+
+        // Cleanup argv
+        if (argv) {
+            for (int i = 0; i < argc; i++) delete[] argv[i];
+            delete[] argv;
         }
 
         // Main loop
