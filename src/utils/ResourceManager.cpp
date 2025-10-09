@@ -217,6 +217,26 @@ D3D12_GPU_DESCRIPTOR_HANDLE ResourceManager::GetGPUDescriptor(D3D12_DESCRIPTOR_H
     return handle;
 }
 
+D3D12_GPU_DESCRIPTOR_HANDLE ResourceManager::GetGPUHandle(D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle) {
+    // Find which heap this CPU handle belongs to
+    for (auto& pair : m_descriptorHeaps) {
+        auto& heapInfo = pair.second;
+        D3D12_CPU_DESCRIPTOR_HANDLE heapStart = heapInfo.heap->GetCPUDescriptorHandleForHeapStart();
+
+        // Check if CPU handle is within this heap's range
+        SIZE_T offset = cpuHandle.ptr - heapStart.ptr;
+        if (offset < heapInfo.numDescriptors * heapInfo.descriptorSize) {
+            // Found the heap - calculate corresponding GPU handle
+            D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = heapInfo.heap->GetGPUDescriptorHandleForHeapStart();
+            gpuHandle.ptr += offset;
+            return gpuHandle;
+        }
+    }
+
+    LOG_ERROR("CPU handle does not belong to any known descriptor heap");
+    return { 0 };
+}
+
 void ResourceManager::UploadBufferData(ID3D12Resource* buffer, const void* data, size_t size) {
     if (!buffer || !data || size == 0) {
         LOG_ERROR("Invalid parameters for buffer upload");

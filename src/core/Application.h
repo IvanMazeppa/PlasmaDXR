@@ -10,6 +10,7 @@ class SwapChain;
 class FeatureDetector;
 class ParticleSystem;
 class ParticleRenderer;
+class ParticleRenderer_Gaussian;
 class RTLightingSystem_RayQuery;
 class ResourceManager;
 
@@ -54,7 +55,8 @@ private:
 
     // Subsystems
     std::unique_ptr<ParticleSystem> m_particleSystem;
-    std::unique_ptr<ParticleRenderer> m_particleRenderer;
+    std::unique_ptr<ParticleRenderer> m_particleRenderer;           // Billboard renderer (stable)
+    std::unique_ptr<ParticleRenderer_Gaussian> m_gaussianRenderer;  // Gaussian Splatting (optional)
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
 
     // Timing

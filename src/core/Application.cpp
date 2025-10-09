@@ -4,6 +4,7 @@
 #include "FeatureDetector.h"
 #include "../particles/ParticleSystem.h"
 #include "../particles/ParticleRenderer.h"
+#include "../particles/ParticleRenderer_Gaussian.h"
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
@@ -97,15 +98,26 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         return false;
     }
 
-    // Initialize particle renderer with automatic path selection
-    m_particleRenderer = std::make_unique<ParticleRenderer>();
-    if (!m_particleRenderer->Initialize(m_device.get(), m_resources.get(),
-                                        m_features.get(), m_config.particleCount)) {
-        LOG_ERROR("Failed to initialize particle renderer");
-        return false;
+    // Initialize particle renderer based on command-line selection
+    if (m_config.rendererType == RendererType::Gaussian) {
+        LOG_INFO("Initializing 3D Gaussian Splatting renderer...");
+        m_gaussianRenderer = std::make_unique<ParticleRenderer_Gaussian>();
+        if (!m_gaussianRenderer->Initialize(m_device.get(), m_resources.get(),
+                                            m_config.particleCount, m_width, m_height)) {
+            LOG_ERROR("Failed to initialize Gaussian renderer");
+            return false;
+        }
+        LOG_INFO("Render Path: 3D Gaussian Splatting");
+    } else {
+        LOG_INFO("Initializing Billboard renderer...");
+        m_particleRenderer = std::make_unique<ParticleRenderer>();
+        if (!m_particleRenderer->Initialize(m_device.get(), m_resources.get(),
+                                            m_features.get(), m_config.particleCount)) {
+            LOG_ERROR("Failed to initialize particle renderer");
+            return false;
+        }
+        LOG_INFO("Render Path: {}", m_particleRenderer->GetActivePathName());
     }
-
-    LOG_INFO("Render Path: {}", m_particleRenderer->GetActivePathName());
 
     // Initialize RT lighting if supported
     if (m_features->CanUseDXR() && m_config.enableRT) {
@@ -261,8 +273,8 @@ void Application::Render() {
         cmdList->ResourceBarrier(1, &particleBarrier);
     }
 
-    // Render particles
-    if (m_particleRenderer && m_particleSystem) {
+    // Render particles (Billboard or Gaussian path)
+    if (m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
 
         // Build proper view-projection matrix with mouse look support
@@ -308,10 +320,100 @@ void Application::Render() {
             loggedCamera = true;
         }
 
-        m_particleRenderer->Render(cmdList,
-                                  m_particleSystem->GetParticleBuffer(),
-                                  rtLightingBuffer,
-                                  renderConstants);
+        // Choose rendering path
+        if (m_gaussianRenderer) {
+            LOG_INFO("Entering Gaussian render path");
+            // 3D Gaussian Splatting path
+            ParticleRenderer_Gaussian::RenderConstants gaussianConstants = {};
+            gaussianConstants.viewProj = renderConstants.viewProj;
+
+            // Calculate inverse view-projection for ray generation
+            DirectX::XMMATRIX viewProjMat = DirectX::XMLoadFloat4x4(&renderConstants.viewProj);
+            DirectX::XMVECTOR det;
+            DirectX::XMMATRIX invViewProjMat = DirectX::XMMatrixInverse(&det, viewProjMat);
+            DirectX::XMStoreFloat4x4(&gaussianConstants.invViewProj, invViewProjMat);
+
+            // Camera vectors
+            gaussianConstants.cameraPos = renderConstants.cameraPos;
+            DirectX::XMVECTOR camPos = DirectX::XMLoadFloat3(&renderConstants.cameraPos);
+            DirectX::XMVECTOR target = DirectX::XMVectorSet(0, 0, 0, 1.0f);
+            DirectX::XMVECTOR upVec = DirectX::XMVectorSet(0, 1, 0, 0);
+            DirectX::XMVECTOR forward = DirectX::XMVector3Normalize(DirectX::XMVectorSubtract(target, camPos));
+            DirectX::XMVECTOR right = DirectX::XMVector3Normalize(DirectX::XMVector3Cross(upVec, forward));
+            DirectX::XMVECTOR up = DirectX::XMVector3Cross(forward, right);
+            DirectX::XMStoreFloat3(&gaussianConstants.cameraRight, right);
+            DirectX::XMStoreFloat3(&gaussianConstants.cameraUp, up);
+            DirectX::XMStoreFloat3(&gaussianConstants.cameraForward, forward);
+
+            // Other parameters
+            gaussianConstants.particleRadius = renderConstants.particleSize;
+            gaussianConstants.time = renderConstants.time;
+            gaussianConstants.screenWidth = renderConstants.screenWidth;
+            gaussianConstants.screenHeight = renderConstants.screenHeight;
+            gaussianConstants.fovY = DirectX::XM_PIDIV4; // 45 degrees
+            gaussianConstants.aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
+            gaussianConstants.particleCount = m_config.particleCount;
+            gaussianConstants.usePhysicalEmission = renderConstants.usePhysicalEmission ? 1u : 0u;
+            gaussianConstants.emissionStrength = renderConstants.emissionStrength;
+            gaussianConstants.useDopplerShift = renderConstants.useDopplerShift ? 1u : 0u;
+            gaussianConstants.dopplerStrength = renderConstants.dopplerStrength;
+            gaussianConstants.useGravitationalRedshift = renderConstants.useGravitationalRedshift ? 1u : 0u;
+            gaussianConstants.redshiftStrength = renderConstants.redshiftStrength;
+
+            // Render to UAV texture
+            LOG_INFO("Calling Gaussian renderer");
+            m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                                      m_particleSystem->GetParticleBuffer(),
+                                      rtLightingBuffer,
+                                      m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
+                                      gaussianConstants);
+            LOG_INFO("Gaussian renderer returned");
+
+            // Copy Gaussian output texture to backbuffer
+            D3D12_RESOURCE_BARRIER copyBarriers[2] = {};
+
+            // Transition Gaussian output to COPY_SOURCE
+            copyBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            copyBarriers[0].Transition.pResource = m_gaussianRenderer->GetOutputTexture();
+            copyBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            copyBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+            copyBarriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+            // Transition backbuffer to COPY_DEST
+            copyBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            copyBarriers[1].Transition.pResource = backBuffer;
+            copyBarriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            copyBarriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+            copyBarriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            cmdList->ResourceBarrier(2, copyBarriers);
+
+            // Copy texture to backbuffer
+            D3D12_TEXTURE_COPY_LOCATION src = {};
+            src.pResource = m_gaussianRenderer->GetOutputTexture();
+            src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            src.SubresourceIndex = 0;
+
+            D3D12_TEXTURE_COPY_LOCATION dst = {};
+            dst.pResource = backBuffer;
+            dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            dst.SubresourceIndex = 0;
+
+            cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+            // Transition back
+            copyBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+            copyBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            copyBarriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+            copyBarriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            cmdList->ResourceBarrier(2, copyBarriers);
+
+        } else if (m_particleRenderer) {
+            // Billboard path (current/stable)
+            m_particleRenderer->Render(cmdList,
+                                      m_particleSystem->GetParticleBuffer(),
+                                      rtLightingBuffer,
+                                      renderConstants);
+        }
     }
 
     // Transition particle buffer back to UAV for next frame's physics/RT lighting

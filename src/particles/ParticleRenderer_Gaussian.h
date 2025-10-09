@@ -72,7 +72,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pso;
 
-    // Output texture (UAV)
+    // Output texture (UAV) - bound via descriptor table (typed UAV requirement)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_outputTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE m_outputUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_outputUAVGPU;

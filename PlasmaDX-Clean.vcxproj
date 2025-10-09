@@ -74,6 +74,7 @@
     <ClCompile Include="src\particles\ParticleSystem.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer_Billboard.cpp" />
+    <ClCompile Include="src\particles\ParticleRenderer_Gaussian.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem_RayQuery.cpp" />
     <ClCompile Include="src\utils\Logger.cpp" />
@@ -88,6 +89,7 @@
     <ClInclude Include="src\core\FeatureDetector.h" />
     <ClInclude Include="src\particles\ParticleSystem.h" />
     <ClInclude Include="src\particles\ParticleRenderer.h" />
+    <ClInclude Include="src\particles\ParticleRenderer_Gaussian.h" />
     <ClInclude Include="src\lighting\RTLightingSystem.h" />
     <ClInclude Include="src\lighting\RTLightingSystem_RayQuery.h" />
     <ClInclude Include="src\utils\Logger.h" />

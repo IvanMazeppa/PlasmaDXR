@@ -4,27 +4,39 @@
 
 #include "gaussian_common.hlsl"
 
-cbuffer CameraConstants : register(b0)
+// Match C++ ParticleRenderer_Gaussian::RenderConstants structure
+cbuffer GaussianConstants : register(b0)
 {
     row_major float4x4 viewProj;
     row_major float4x4 invViewProj;
     float3 cameraPos;
-    float padding0;
+    float particleRadius;          // baseParticleRadius
     float3 cameraRight;
-    float padding1;
+    float time;
     float3 cameraUp;
-    float padding2;
-    float2 resolution;
-    float2 invResolution;
+    uint screenWidth;
+    float3 cameraForward;
+    uint screenHeight;
+    float fovY;
+    float aspectRatio;
+    uint particleCount;
+    float padding;
+
+    uint usePhysicalEmission;
+    float emissionStrength;
+    uint useDopplerShift;
+    float dopplerStrength;
+    uint useGravitationalRedshift;
+    float redshiftStrength;
+    float2 padding2;
 };
 
-cbuffer GaussianConstants : register(b1)
-{
-    float baseParticleRadius;
-    uint maxIntersectionsPerRay;
-    float volumeStepSize;
-    float densityMultiplier;
-};
+// Derived values
+static const float2 resolution = float2(screenWidth, screenHeight);
+static const float2 invResolution = 1.0 / resolution;
+static const float baseParticleRadius = particleRadius;
+static const float volumeStepSize = 0.1;         // Fixed step size
+static const float densityMultiplier = 5.0;      // Tunable
 
 // Input: Particle buffer
 StructuredBuffer<Particle> g_particles : register(t0);
