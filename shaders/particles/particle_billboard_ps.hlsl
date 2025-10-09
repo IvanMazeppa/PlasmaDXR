@@ -47,8 +47,14 @@ PixelOutput main(PixelInput input)
     // Apply sphere shading (makes it look round)
     color *= (0.6 + intensity * 0.8);
 
-    // ADD RT lighting from neighbors
-    color += input.lighting.rgb;
+    // ADD RT lighting from neighbors with exposure control
+    // Use a softer blend to prevent overexposure
+    float3 rtLight = input.lighting.rgb;
+
+    // Simple tone mapping to prevent overexposure
+    // Reinhard tone mapping: x / (1 + x)
+    color += rtLight * 0.5;  // Reduce RT contribution
+    color = color / (1.0 + color);  // Tone map to prevent values > 1
 
     // Alpha based on intensity and input alpha
     float alpha = intensity * input.alpha;

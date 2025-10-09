@@ -126,8 +126,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 Particle candidate = g_particles[candidateIdx];
 
                 // Manual sphere-ray intersection test
-                // Use VERY large radius - particles are 30-50 units apart in outer disk!
-                const float rtLightingRadius = 25.0;
+                // Match visual particle size for accurate lighting
+                // Visual particles use particleRadius from constants (typically 1-5 units)
+                const float rtLightingRadius = 5.0;  // Reduced from 25.0 to match visual size
                 float3 oc = ray.Origin - candidate.position;
                 float b = dot(oc, ray.Direction);
                 float c = dot(oc, oc) - (rtLightingRadius * rtLightingRadius);
@@ -163,10 +164,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float intensity = EmissionIntensity(emitter.temperature);
             float3 emissionColor = TemperatureToEmission(emitter.temperature);
 
-            // Calculate distance falloff (LINEAR falloff for sparse particles!)
-            // Particles are 30-50 units apart - inverse square kills lighting at this scale
+            // Calculate distance falloff using inverse-square law with soft minimum
+            // More physically accurate while avoiding singularity at zero distance
             float distance = query.CommittedRayT();
-            float attenuation = 1.0 / (1.0 + distance * 0.01);  // Very weak falloff
+            float attenuation = 1.0 / (1.0 + distance * 0.1 + distance * distance * 0.01);  // Quadratic falloff
 
             // Accumulate lighting contribution
             accumulatedLight += emissionColor * intensity * attenuation;
@@ -174,8 +175,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     // Average lighting over all rays and apply global intensity
-    // Boost intensity dramatically for sparse particles
-    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 50.0;
+    // Reduced intensity multiplier to prevent overexposure
+    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 2.0;  // Reduced from 50x to 2x
 
     // DEBUG REMOVED: Show actual lighting (black=no hits, colored=RT lighting)
     // Particles with no neighbors will be black, center will be bright

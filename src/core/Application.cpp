@@ -514,6 +514,31 @@ void Application::OnKeyPress(UINT8 key) {
             m_particleSystem->DebugReadbackParticles(20);
         }
         break;
+
+    // Toggle physical emission model
+    case 'E':
+        m_usePhysicalEmission = !m_usePhysicalEmission;
+        LOG_INFO("Physical Emission: {}", m_usePhysicalEmission ? "ENABLED" : "DISABLED");
+        break;
+
+    // Toggle Doppler shift
+    case 'R':
+        m_useDopplerShift = !m_useDopplerShift;
+        LOG_INFO("Doppler Shift: {}", m_useDopplerShift ? "ENABLED" : "DISABLED");
+        break;
+
+    // Toggle gravitational redshift
+    case 'G':
+        m_useGravitationalRedshift = !m_useGravitationalRedshift;
+        LOG_INFO("Gravitational Redshift: {}", m_useGravitationalRedshift ? "ENABLED" : "DISABLED");
+        break;
+
+    // Cycle RT quality modes
+    case 'Q':
+        m_rtQualityMode = (m_rtQualityMode + 1) % 3;
+        const char* modes[] = {"Normal", "ReSTIR", "Adaptive"};
+        LOG_INFO("RT Quality Mode: {}", modes[m_rtQualityMode]);
+        break;
     }
 }
 

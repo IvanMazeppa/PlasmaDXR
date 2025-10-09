@@ -70,9 +70,25 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     // Read RT lighting for this particle
     float4 rtLight = g_rtLighting[particleIdx];
 
-    // Temperature-based color
-    float tempNorm = saturate((p.temperature - 33.0) / 967.0);
-    float3 baseColor = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), tempNorm);  // Red to Yellow
+    // Temperature-based color (same as PlasmaDX mesh shader)
+    // Normalize temperature to 0-1 range (800K to 26000K)
+    float t = saturate((p.temperature - 800.0) / 25200.0);
+
+    // Galaxy-inspired color gradient: Red → Orange → Yellow → White
+    float3 baseColor;
+    if (t < 0.25) {
+        float blend = t / 0.25;
+        baseColor = lerp(float3(0.5, 0.1, 0.05), float3(1.0, 0.3, 0.1), blend);
+    } else if (t < 0.5) {
+        float blend = (t - 0.25) / 0.25;
+        baseColor = lerp(float3(1.0, 0.3, 0.1), float3(1.0, 0.6, 0.2), blend);
+    } else if (t < 0.75) {
+        float blend = (t - 0.5) / 0.25;
+        baseColor = lerp(float3(1.0, 0.6, 0.2), float3(1.0, 0.95, 0.7), blend);
+    } else {
+        float blend = (t - 0.75) / 0.25;
+        baseColor = lerp(float3(1.0, 0.95, 0.7), float3(1.0, 1.0, 1.0), blend);
+    }
 
     // Generate billboard corner position in world space
     float2 cornerOffset;

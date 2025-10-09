@@ -84,8 +84,14 @@ private:
 
     // RT Lighting runtime controls
     float m_rtLightingIntensity = 1.0f;
-    float m_rtMaxDistance = 500.0f;
-    float m_rtParticleRadius = 25.0f;
+    float m_rtMaxDistance = 100.0f;  // Updated to match shader
+    float m_rtParticleRadius = 5.0f;   // Updated to match shader
+
+    // Enhancement toggles
+    bool m_usePhysicalEmission = false;
+    bool m_useDopplerShift = false;
+    bool m_useGravitationalRedshift = false;
+    int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 
     // Mouse look state
     bool m_mouseLookActive = false;
