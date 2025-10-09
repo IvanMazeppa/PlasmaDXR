@@ -29,6 +29,11 @@ public:
         float particleSize;
         uint32_t screenWidth;
         uint32_t screenHeight;
+
+        // Physical emission toggles
+        bool usePhysicalEmission = false;
+        bool useDopplerShift = false;
+        bool useGravitationalRedshift = false;
     };
 
 public:

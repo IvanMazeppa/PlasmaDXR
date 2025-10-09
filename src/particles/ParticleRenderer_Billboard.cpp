@@ -276,8 +276,15 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
 
     struct ParticleConstants {
         float particleRadius;
-        float padding[3];
-    } particleConsts = { constants.particleSize, {0, 0, 0} };
+        uint32_t usePhysicalEmission;
+        uint32_t useDopplerShift;
+        uint32_t useGravitationalRedshift;
+    } particleConsts = {
+        constants.particleSize,
+        constants.usePhysicalEmission ? 1u : 0u,
+        constants.useDopplerShift ? 1u : 0u,
+        constants.useGravitationalRedshift ? 1u : 0u
+    };
 
     cmdList->SetGraphicsRoot32BitConstants(1, 4, &particleConsts, 0);
     cmdList->SetGraphicsRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());

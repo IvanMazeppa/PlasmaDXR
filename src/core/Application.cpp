@@ -267,6 +267,11 @@ void Application::Render() {
         renderConstants.screenWidth = m_width;
         renderConstants.screenHeight = m_height;
 
+        // Physical emission toggles
+        renderConstants.usePhysicalEmission = m_usePhysicalEmission;
+        renderConstants.useDopplerShift = m_useDopplerShift;
+        renderConstants.useGravitationalRedshift = m_useGravitationalRedshift;
+
         // Log camera view on first frame
         static bool loggedCamera = false;
         if (!loggedCamera) {
@@ -562,13 +567,24 @@ void Application::UpdateFrameStats() {
     if (elapsedTime >= 1.0f) {
         m_fps = static_cast<float>(frameCounter) / elapsedTime;
 
-        // Update window title
-        wchar_t title[256];
-        swprintf_s(title, L"PlasmaDX-Clean - FPS: %.1f - %s",
-                  m_fps, m_particleRenderer ?
+        // Build status string with runtime controls
+        wchar_t statusBar[512];
+        std::wstring features = L"";
+
+        if (m_usePhysicalEmission) features += L"[Emission] ";
+        if (m_useDopplerShift) features += L"[Doppler] ";
+        if (m_useGravitationalRedshift) features += L"[Redshift] ";
+        if (m_rtLighting) features += L"[RT] ";
+
+        // Update window title with FPS, renderer, and active features
+        swprintf_s(statusBar, L"PlasmaDX-Clean - FPS: %.1f - Size: %.0f - %s%s",
+                  m_fps,
+                  m_particleSize,
+                  features.c_str(),
+                  m_particleRenderer ?
                   (m_particleRenderer->GetActivePath() == ParticleRenderer::RenderPath::MeshShaders ?
-                   L"Mesh Shaders" : L"Compute Fallback") : L"No Renderer");
-        SetWindowText(m_hwnd, title);
+                   L"Mesh" : L"Billboard") : L"NoRender");
+        SetWindowText(m_hwnd, statusBar);
 
         elapsedTime = 0.0f;
         frameCounter = 0;
