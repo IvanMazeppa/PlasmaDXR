@@ -191,67 +191,43 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
 
     // Set descriptor heap (required for descriptor tables!)
-    // NOTE: May already be set by RT lighting or other systems, but setting again doesn't hurt
     ID3D12DescriptorHeap* heap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    LOG_INFO("Got descriptor heap: {:p}", (void*)heap);
-
-    ID3D12DescriptorHeap* heaps[] = { heap };
-    if (heaps[0]) {
-        LOG_INFO("Setting descriptor heaps. Heap={:p}, cmdList={:p}", (void*)heap, (void*)cmdList);
-
+    if (heap) {
         // Cast to base ID3D12GraphicsCommandList for SetDescriptorHeaps
         ID3D12GraphicsCommandList* baseList = static_cast<ID3D12GraphicsCommandList*>(cmdList);
-        baseList->SetDescriptorHeaps(1, heaps);
-
-        LOG_INFO("Descriptor heaps set");
-    } else {
-        LOG_WARN("Descriptor heap is null - hoping it's already set!");
+        baseList->SetDescriptorHeaps(1, &heap);
     }
 
     // Set Gaussian raytrace pipeline
-    LOG_INFO("Setting pipeline state");
     cmdList->SetPipelineState(m_pso.Get());
-    LOG_INFO("Setting root signature");
     cmdList->SetComputeRootSignature(m_rootSignature.Get());
-    LOG_INFO("Pipeline setup complete");
 
     // Set constants (only 48 DWORDs to match root signature)
     const uint32_t constantSize = 48;  // Limited to 48 DWORDs for root signature
-    LOG_INFO("Setting constants. Size={} DWORDs", constantSize);
     cmdList->SetComputeRoot32BitConstants(0, constantSize, &constants, 0);
-    LOG_INFO("Constants set");
 
     // Set resources
     cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
     cmdList->SetComputeRootShaderResourceView(2, rtLightingBuffer->GetGPUVirtualAddress());
 
     // Set TLAS for RayQuery operations
-    if (tlas) {
-        cmdList->SetComputeRootShaderResourceView(3, tlas->GetGPUVirtualAddress());
-    } else {
+    if (!tlas) {
         LOG_ERROR("TLAS is null! RayQuery will fail");
         return;
     }
+    cmdList->SetComputeRootShaderResourceView(3, tlas->GetGPUVirtualAddress());
 
-    // Get fresh GPU handle (in case it changed)
-    LOG_INFO("Getting GPU handle for UAV. CPU handle: 0x{:X}", m_outputUAV.ptr);
+    // Get GPU handle for UAV descriptor table
     D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_resources->GetGPUHandle(m_outputUAV);
-    LOG_INFO("Got GPU handle: 0x{:X}", gpuHandle.ptr);
-
     if (gpuHandle.ptr == 0) {
-        LOG_ERROR("GPU handle is ZERO! CPU handle: 0x{:X}", m_outputUAV.ptr);
+        LOG_ERROR("GPU handle is ZERO!");
         return;
     }
-
-    LOG_INFO("Setting descriptor table at root param 4");
     cmdList->SetComputeRootDescriptorTable(4, gpuHandle);
-    LOG_INFO("Descriptor table set successfully");
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
     uint32_t dispatchY = (constants.screenHeight + 7) / 8;
-
-    LOG_INFO("About to dispatch Gaussian compute: {}x{} groups", dispatchX, dispatchY);
     cmdList->Dispatch(dispatchX, dispatchY, 1);
 
     // Add UAV barrier to ensure compute shader completes before we use the output
@@ -259,6 +235,4 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarrier.UAV.pResource = m_outputTexture.Get();
     cmdList->ResourceBarrier(1, &uavBarrier);
-
-    LOG_INFO("Gaussian dispatch completed successfully");
 }

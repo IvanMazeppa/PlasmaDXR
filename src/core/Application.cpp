@@ -322,7 +322,6 @@ void Application::Render() {
 
         // Choose rendering path
         if (m_gaussianRenderer) {
-            LOG_INFO("Entering Gaussian render path");
             // 3D Gaussian Splatting path
             ParticleRenderer_Gaussian::RenderConstants gaussianConstants = {};
             gaussianConstants.viewProj = renderConstants.viewProj;
@@ -361,13 +360,11 @@ void Application::Render() {
             gaussianConstants.redshiftStrength = renderConstants.redshiftStrength;
 
             // Render to UAV texture
-            LOG_INFO("Calling Gaussian renderer");
             m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                                       m_particleSystem->GetParticleBuffer(),
                                       rtLightingBuffer,
                                       m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
                                       gaussianConstants);
-            LOG_INFO("Gaussian renderer returned");
 
             // Copy Gaussian output texture to backbuffer
             D3D12_RESOURCE_BARRIER copyBarriers[2] = {};

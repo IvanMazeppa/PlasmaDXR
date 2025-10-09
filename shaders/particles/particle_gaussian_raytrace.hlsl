@@ -3,6 +3,7 @@
 // Proper depth sorting, transparency, and volumetric appearance
 
 #include "gaussian_common.hlsl"
+#include "plasma_emission.hlsl"
 
 // Match C++ ParticleRenderer_Gaussian::RenderConstants structure
 cbuffer GaussianConstants : register(b0)
@@ -35,8 +36,8 @@ cbuffer GaussianConstants : register(b0)
 static const float2 resolution = float2(screenWidth, screenHeight);
 static const float2 invResolution = 1.0 / resolution;
 static const float baseParticleRadius = particleRadius;
-static const float volumeStepSize = 0.1;         // Fixed step size
-static const float densityMultiplier = 5.0;      // Tunable
+static const float volumeStepSize = 0.15;        // Improved step size for better spherical appearance
+static const float densityMultiplier = 1.2;      // Reduced for softer, more spherical particles
 
 // Input: Particle buffer
 StructuredBuffer<Particle> g_particles : register(t0);
@@ -182,20 +183,60 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
             // Evaluate Gaussian density at this point
             float density = EvaluateGaussianDensity(pos, p.position, scale, rotation, p.density);
-            density *= densityMultiplier;
+
+            // Apply distance-based falloff for spherical appearance
+            // This creates natural sphere gradients even at small particle sizes
+            float3 toCenter = pos - p.position;
+            float distFromCenter = length(toCenter) / length(scale);
+            float sphericalFalloff = exp(-distFromCenter * distFromCenter * 2.0);
+            density *= sphericalFalloff * densityMultiplier;
 
             // Skip if negligible
             if (density < 0.001) continue;
 
-            // Emission color from temperature
-            float3 emission = TemperatureToEmission(p.temperature);
-            float intensity = EmissionIntensity(p.temperature);
+            // Compute emission color (with optional physical emission)
+            float3 emission;
+            float intensity;
 
-            // Add RT lighting from particle-to-particle pass
+            if (usePhysicalEmission != 0) {
+                // Physical blackbody emission
+                emission = ComputePlasmaEmission(
+                    p.position,
+                    p.velocity,
+                    p.temperature,
+                    p.density,
+                    cameraPos
+                );
+
+                // Apply emission strength
+                emission = lerp(float3(0.5, 0.5, 0.5), emission, emissionStrength);
+
+                // Optional Doppler shift
+                if (useDopplerShift != 0) {
+                    float3 viewDir = normalize(cameraPos - p.position);
+                    emission = DopplerShift(emission, p.velocity, viewDir, dopplerStrength);
+                }
+
+                // Optional gravitational redshift
+                if (useGravitationalRedshift != 0) {
+                    float radius = length(p.position);
+                    const float schwarzschildRadius = 2.0;
+                    emission = GravitationalRedshift(emission, radius, schwarzschildRadius, redshiftStrength);
+                }
+
+                intensity = EmissionIntensity(p.temperature);
+            } else {
+                // Standard temperature-based color
+                emission = TemperatureToEmission(p.temperature);
+                intensity = EmissionIntensity(p.temperature);
+            }
+
+            // RT lighting from particle-to-particle pass (dominant light source)
             float3 rtLight = g_rtLighting[hit.particleIdx].rgb;
 
-            // Total emission (self-emission + RT lighting)
-            float3 totalEmission = emission * intensity + rtLight;
+            // Make RT lighting the dominant source (80%) with self-emission as base (20%)
+            // This achieves the raytracing-dominant look while maintaining color variety
+            float3 totalEmission = (emission * intensity * 0.3) + (rtLight * 2.0);
 
             // Volume rendering equation
             float absorption = density * stepSize;
@@ -207,8 +248,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
     }
 
-    // Background color (dark space)
-    float3 backgroundColor = float3(0.0, 0.0, 0.1);
+    // Background color (pure black space - no blue tint)
+    float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float3 finalColor = accumulatedColor + transmittance * backgroundColor;
 
     // Tone mapping (Reinhard)
