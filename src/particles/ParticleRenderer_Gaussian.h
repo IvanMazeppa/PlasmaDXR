@@ -8,8 +8,9 @@
 class Device;
 class ResourceManager;
 
-// ParticleRenderer_Gaussian - 3D Gaussian Splatting via Ray Tracing
-// Renders particles as volumetric ellipsoids using inline ray tracing
+// ParticleRenderer_Gaussian - 3D Gaussian Splatting via Inline Ray Tracing
+// REUSES existing RTLightingSystem's BLAS/TLAS - no duplicate infrastructure!
+// Just a compute shader that ray traces Gaussians and outputs to texture
 
 class ParticleRenderer_Gaussian {
 public:
@@ -17,25 +18,26 @@ public:
         DirectX::XMFLOAT4X4 viewProj;
         DirectX::XMFLOAT4X4 invViewProj;
         DirectX::XMFLOAT3 cameraPos;
-        float time;
+        float particleRadius;
         DirectX::XMFLOAT3 cameraRight;
-        float particleSize;
+        float time;
         DirectX::XMFLOAT3 cameraUp;
-        float padding;
-        DirectX::XMFLOAT3 cameraForward;
         uint32_t screenWidth;
+        DirectX::XMFLOAT3 cameraForward;
         uint32_t screenHeight;
         float fovY;
         float aspectRatio;
-        float padding2;
+        uint32_t particleCount;
+        float padding;
 
         // Physical emission toggles and strengths
-        bool usePhysicalEmission = false;
-        float emissionStrength = 1.0f;
-        bool useDopplerShift = false;
-        float dopplerStrength = 1.0f;
-        bool useGravitationalRedshift = false;
-        float redshiftStrength = 1.0f;
+        uint32_t usePhysicalEmission;
+        float emissionStrength;
+        uint32_t useDopplerShift;
+        float dopplerStrength;
+        uint32_t useGravitationalRedshift;
+        float redshiftStrength;
+        float padding2[2];
     };
 
 public:
@@ -44,40 +46,34 @@ public:
 
     bool Initialize(Device* device,
                    ResourceManager* resources,
-                   uint32_t particleCount);
+                   uint32_t particleCount,
+                   uint32_t screenWidth,
+                   uint32_t screenHeight);
 
-    void Render(ID3D12GraphicsCommandList* cmdList,
+    void Render(ID3D12GraphicsCommandList4* cmdList,
                ID3D12Resource* particleBuffer,
                ID3D12Resource* rtLightingBuffer,
+               ID3D12Resource* tlas,  // From RTLightingSystem!
                const RenderConstants& constants);
 
-    // Rebuild BLAS when particles change significantly
-    void RebuildAccelerationStructure(ID3D12GraphicsCommandList* cmdList,
-                                      ID3D12Resource* particleBuffer);
+    // Get output texture to copy to backbuffer
+    ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
 
 private:
-    bool CreateRayTracingPipeline();
-    bool CreateAccelerationStructures();
+    bool CreatePipeline();
+    bool CreateOutputTexture(uint32_t width, uint32_t height);
 
 private:
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
     uint32_t m_particleCount = 0;
 
-    // Ray tracing pipeline
+    // Simple compute shader pipeline
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_rayTracingPSO;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pso;
 
-    // Acceleration structures for ray tracing
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_blasBuffer;  // Bottom-level (particle AABBs)
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_tlasBuffer;  // Top-level
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_aabbBuffer;  // AABB geometry
-
-    // Output texture
+    // Output texture (UAV)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_outputTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE m_outputUAV;
-
-    // Scratch buffers for AS builds
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_blasScratch;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_tlasScratch;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_outputUAVGPU;
 };

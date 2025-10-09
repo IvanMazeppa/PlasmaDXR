@@ -42,6 +42,9 @@ public:
     // Get output lighting buffer
     ID3D12Resource* GetLightingBuffer() const { return m_lightingBuffer.Get(); }
 
+    // Get acceleration structures (for reuse by Gaussian renderer)
+    ID3D12Resource* GetTLAS() const { return m_topLevelAS.Get(); }
+
     // Settings
     void SetRaysPerParticle(uint32_t rays) { m_raysPerParticle = rays; }
     void SetMaxLightingDistance(float dist) { m_maxLightingDistance = dist; }
