@@ -370,6 +370,18 @@ void Application::Render() {
             gaussianConstants.usePhaseFunction = m_usePhaseFunction ? 1u : 0u;
             gaussianConstants.phaseStrength = m_phaseStrength;
 
+            // Debug: Log RT toggle values once
+            static bool loggedToggles = false;
+            if (!loggedToggles) {
+                LOG_INFO("=== DEBUG: Gaussian Constants ===");
+                LOG_INFO("  useShadowRays: {}", gaussianConstants.useShadowRays);
+                LOG_INFO("  useInScattering: {}", gaussianConstants.useInScattering);
+                LOG_INFO("  usePhaseFunction: {}", gaussianConstants.usePhaseFunction);
+                LOG_INFO("  phaseStrength: {}", gaussianConstants.phaseStrength);
+                LOG_INFO("================================");
+                loggedToggles = true;
+            }
+
             // Render to UAV texture
             m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                                       m_particleSystem->GetParticleBuffer(),

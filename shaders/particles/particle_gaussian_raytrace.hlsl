@@ -388,6 +388,20 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float3 finalColor = accumulatedColor + transmittance * backgroundColor;
 
+    // DEBUG: Visual indicators for active features
+    // Top-left corner: Shadow rays (red tint if ON)
+    if (useShadowRays != 0 && pixelPos.x < 50 && pixelPos.y < 50) {
+        finalColor += float3(0.3, 0, 0);
+    }
+    // Top-right corner: In-scattering (green tint if ON)
+    if (useInScattering != 0 && pixelPos.x > resolution.x - 50 && pixelPos.y < 50) {
+        finalColor += float3(0, 0.3, 0);
+    }
+    // Bottom-left corner: Phase function (blue tint if ON)
+    if (usePhaseFunction != 0 && pixelPos.x < 50 && pixelPos.y > resolution.y - 50) {
+        finalColor += float3(0, 0, 0.3);
+    }
+
     // Enhanced tone mapping for HDR
     // Use ACES tone mapping for better color preservation
     float3 aces_input = finalColor;

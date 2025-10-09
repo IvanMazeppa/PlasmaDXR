@@ -121,7 +121,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
 
     CD3DX12_ROOT_PARAMETER1 rootParams[5];
-    rootParams[0].InitAsConstants(48, 0);                  // b0 - 48 DWORDs (limit for stability)
+    rootParams[0].InitAsConstants(64, 0);                  // b0 - 64 DWORDs (increased for RT toggles)
     rootParams[1].InitAsShaderResourceView(0);             // t0
     rootParams[2].InitAsShaderResourceView(1);             // t1
     rootParams[3].InitAsShaderResourceView(2);             // t2 (TLAS)
