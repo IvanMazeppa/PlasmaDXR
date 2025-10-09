@@ -1,6 +1,5 @@
-// 3D Gaussian Splatting Ray Tracing
-// Replaces billboard rasterization with volumetric ray-traced Gaussians
-// Proper depth sorting, transparency, and volumetric appearance
+// 3D Gaussian Splatting Ray Tracing - FIXED VERSION
+// Fixes: Proper volumetric illumination, shadow rays, color preservation, physical emission
 
 #include "gaussian_common.hlsl"
 #include "plasma_emission.hlsl"
@@ -57,7 +56,7 @@ struct HitRecord {
     uint particleIdx;
     float tNear;
     float tFar;
-    float sortKey; // For depth sorting
+    float sortKey;
 };
 
 // Volumetric lighting parameters
@@ -68,93 +67,11 @@ struct VolumetricParams {
     float extinction;      // Extinction coefficient for shadows
 };
 
-// Cast shadow ray to check occlusion (returns transmittance 0-1)
-float CastShadowRay(float3 origin, float3 direction, float maxDist) {
-    RayDesc shadowRay;
-    shadowRay.Origin = origin + direction * shadowBias;
-    shadowRay.Direction = direction;
-    shadowRay.TMin = 0.001;
-    shadowRay.TMax = maxDist;
-
-    float transmittance = 1.0;
-
-    // Use RayQuery to accumulate optical depth along shadow ray
-    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> shadowQuery;
-    shadowQuery.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, shadowRay);
-
-    while (shadowQuery.Proceed()) {
-        if (shadowQuery.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
-            uint particleIdx = shadowQuery.CandidatePrimitiveIndex();
-
-            // Simple occlusion test - if we hit any particle, we're in shadow
-            shadowQuery.CommitProceduralPrimitiveHit(0.5);
-            transmittance *= 0.3; // Partial occlusion
-        }
-    }
-
-    if (shadowQuery.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
-        return transmittance;
-    }
-
-    return 1.0; // No occlusion
-}
-
-// Compute in-scattering from nearby particles
-float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
-    float3 totalScattering = float3(0, 0, 0);
-
-    // Sample a few random directions for scattering
-    const uint numSamples = 4;
-
-    for (uint i = 0; i < numSamples; i++) {
-        // Simple stratified sampling on hemisphere
-        float phi = (i + 0.5) * 6.28318 / numSamples;
-        float3 scatterDir = float3(cos(phi), 0.5, sin(phi));
-        scatterDir = normalize(scatterDir);
-
-        // Trace a short ray to gather light from nearby particles
-        RayDesc scatterRay;
-        scatterRay.Origin = pos;
-        scatterRay.Direction = scatterDir;
-        scatterRay.TMin = 0.01;
-        scatterRay.TMax = 50.0; // Short range for local scattering
-
-        RayQuery<RAY_FLAG_NONE> scatterQuery;
-        scatterQuery.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, scatterRay);
-
-        while (scatterQuery.Proceed()) {
-            if (scatterQuery.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
-                uint idx = scatterQuery.CandidatePrimitiveIndex();
-                if (idx != skipIdx) {
-                    Particle p = g_particles[idx];
-
-                    // Simple distance-based attenuation
-                    float dist = length(p.position - pos);
-                    float atten = 1.0 / (1.0 + dist * 0.1);
-
-                    // Add scattered light from this particle
-                    float3 emission = TemperatureToEmission(p.temperature);
-                    float intensity = EmissionIntensity(p.temperature);
-
-                    // Phase function for scattering direction
-                    float phase = HenyeyGreenstein(dot(viewDir, scatterDir), 0.3);
-
-                    totalScattering += emission * intensity * phase * atten;
-                }
-            }
-        }
-    }
-
-    return totalScattering / numSamples;
-}
-
 // Generate camera ray from pixel coordinates
 RayDesc GenerateCameraRay(float2 pixelPos) {
-    // NDC coordinates (-1 to 1)
     float2 ndc = (pixelPos + 0.5) * invResolution * 2.0 - 1.0;
-    ndc.y = -ndc.y; // Flip Y for D3D
+    ndc.y = -ndc.y;
 
-    // Unproject to world space
     float4 nearPoint = mul(float4(ndc, 0.0, 1.0), invViewProj);
     float4 farPoint = mul(float4(ndc, 1.0, 1.0), invViewProj);
 
@@ -170,17 +87,117 @@ RayDesc GenerateCameraRay(float2 pixelPos) {
     return ray;
 }
 
-// Insert hit into sorted list (simple insertion sort for small batches)
-void InsertHit(inout HitRecord hits[64], inout uint hitCount, uint particleIdx, float tNear, float tFar, uint maxHits) {
+// Cast shadow ray to check occlusion (returns transmittance 0-1)
+float CastShadowRay(float3 origin, float3 direction, float maxDist) {
+    RayDesc shadowRay;
+    shadowRay.Origin = origin + direction * shadowBias;
+    shadowRay.Direction = direction;
+    shadowRay.TMin = 0.001;
+    shadowRay.TMax = maxDist;
+
+    float transmittance = 1.0;
+
+    // Use RayQuery to accumulate optical depth along shadow ray
+    RayQuery<RAY_FLAG_NONE> query;
+    query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, shadowRay);
+
+    while (query.Proceed()) {
+        if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
+            uint particleIdx = query.CandidatePrimitiveIndex();
+            Particle p = g_particles[particleIdx];
+
+            float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+            float3x3 rotation = ComputeGaussianRotation(p.velocity);
+
+            float2 t = RayGaussianIntersection(shadowRay.Origin, shadowRay.Direction,
+                                              p.position, scale, rotation);
+
+            if (t.x > shadowRay.TMin && t.x < shadowRay.TMax && t.y > t.x) {
+                // Simplified shadow: just accumulate density
+                float midT = (t.x + t.y) * 0.5;
+                float3 samplePos = shadowRay.Origin + shadowRay.Direction * midT;
+
+                float density = EvaluateGaussianDensity(samplePos, p.position,
+                                                       scale, rotation, p.density);
+
+                // Accumulate extinction
+                float opticalDepth = density * (t.y - t.x) * 0.5; // Simplified integral
+                transmittance *= exp(-opticalDepth);
+
+                if (transmittance < 0.01) break; // Early exit for opaque shadows
+            }
+        }
+    }
+
+    return transmittance;
+}
+
+// Compute in-scattering from neighboring particles
+float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
+    float3 totalScattering = float3(0, 0, 0);
+
+    // Sample a few directions for in-scattering (simplified for performance)
+    const uint numSamples = 4;
+    const float sampleRadius = 10.0;
+
+    for (uint i = 0; i < numSamples; i++) {
+        // Generate sample direction (simplified hemisphere)
+        float angle = (i + 0.5) * 6.28318 / numSamples;
+        float3 sampleDir = normalize(float3(cos(angle), 0.5, sin(angle)));
+
+        // Cast ray to find neighboring emitters
+        RayDesc scatterRay;
+        scatterRay.Origin = pos;
+        scatterRay.Direction = sampleDir;
+        scatterRay.TMin = 0.01;
+        scatterRay.TMax = sampleRadius;
+
+        RayQuery<RAY_FLAG_NONE> query;
+        query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, scatterRay);
+
+        while (query.Proceed()) {
+            if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
+                uint particleIdx = query.CandidatePrimitiveIndex();
+                if (particleIdx == skipIdx) continue;
+
+                Particle p = g_particles[particleIdx];
+                float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+
+                // Simple sphere test for performance
+                float3 toParticle = p.position - pos;
+                float dist = length(toParticle);
+                if (dist < length(scale) * 2.0) {
+                    // Get particle emission
+                    float3 emission = TemperatureToEmission(p.temperature);
+                    float intensity = EmissionIntensity(p.temperature);
+
+                    // Phase function for scattering direction
+                    float cosTheta = dot(sampleDir, -viewDir);
+                    float phase = HenyeyGreenstein(cosTheta, 0.3); // Forward scattering
+
+                    // Distance attenuation
+                    float atten = exp(-dist * 0.1);
+
+                    totalScattering += emission * intensity * phase * atten;
+                }
+            }
+        }
+    }
+
+    return totalScattering / numSamples;
+}
+
+// Insert hit into sorted list
+void InsertHit(inout HitRecord hits[64], inout uint hitCount, uint particleIdx,
+               float tNear, float tFar, uint maxHits) {
     if (hitCount >= maxHits) return;
 
     HitRecord newHit;
     newHit.particleIdx = particleIdx;
     newHit.tNear = tNear;
     newHit.tFar = tFar;
-    newHit.sortKey = tNear; // Sort by entry distance
+    newHit.sortKey = tNear;
 
-    // Insertion sort (simple for small batches)
     uint insertPos = hitCount;
     for (uint i = 0; i < hitCount; i++) {
         if (newHit.sortKey < hits[i].sortKey) {
@@ -189,7 +206,6 @@ void InsertHit(inout HitRecord hits[64], inout uint hitCount, uint particleIdx, 
         }
     }
 
-    // Shift elements
     for (uint i = hitCount; i > insertPos; i--) {
         hits[i] = hits[i - 1];
     }
@@ -203,70 +219,57 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
     uint2 pixelPos = dispatchThreadID.xy;
 
-    // Early exit if outside render target
     if (any(pixelPos >= (uint2)resolution))
         return;
 
-    // Generate primary ray
     RayDesc ray = GenerateCameraRay((float2)pixelPos);
 
-    // Collect all Gaussian intersections via RayQuery
-    const uint MAX_HITS = 64; // Batch size
+    // Collect all Gaussian intersections
+    const uint MAX_HITS = 64;
     HitRecord hits[MAX_HITS];
     uint hitCount = 0;
 
     RayQuery<RAY_FLAG_NONE> query;
     query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
 
-    // Process all AABB candidates
     while (query.Proceed()) {
         if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
             uint particleIdx = query.CandidatePrimitiveIndex();
-
-            // Read particle
             Particle p = g_particles[particleIdx];
 
-            // Compute Gaussian parameters
             float3 scale = ComputeGaussianScale(p, baseParticleRadius);
             float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
-            // Detailed Gaussian-ellipsoid intersection
-            float2 t = RayGaussianIntersection(ray.Origin, ray.Direction, p.position, scale, rotation);
+            float2 t = RayGaussianIntersection(ray.Origin, ray.Direction,
+                                              p.position, scale, rotation);
 
-            // Valid intersection?
             if (t.x > ray.TMin && t.x < ray.TMax && t.y > t.x) {
-                // Commit the AABB hit (required for procedural primitives)
                 query.CommitProceduralPrimitiveHit(t.x);
-
-                // Store in hit list
                 InsertHit(hits, hitCount, particleIdx, t.x, t.y, MAX_HITS);
             }
         }
     }
 
-    // Volume rendering: march through sorted Gaussians
+    // Volume rendering with proper illumination
     float3 accumulatedColor = float3(0, 0, 0);
     float transmittance = 1.0;
 
     // Setup volumetric lighting
     VolumetricParams volParams;
-    volParams.lightPos = float3(0, 10, 0);  // Light above origin (black hole)
+    volParams.lightPos = float3(0, 10, 0);  // Example: light above origin
     volParams.lightColor = float3(2, 2, 2); // Bright white light
     volParams.scatteringG = 0.3;            // Forward scattering
     volParams.extinction = 0.5;             // Medium extinction
 
     for (uint i = 0; i < hitCount; i++) {
-        // Early exit if fully opaque
         if (transmittance < 0.001) break;
 
         HitRecord hit = hits[i];
         Particle p = g_particles[hit.particleIdx];
 
-        // Gaussian parameters
         float3 scale = ComputeGaussianScale(p, baseParticleRadius);
         float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
-        // Ray-march through this Gaussian
         float tStart = max(hit.tNear, ray.TMin);
         float tEnd = min(hit.tFar, ray.TMax);
 
@@ -277,7 +280,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float t = tStart + (step + 0.5) * stepSize;
             float3 pos = ray.Origin + ray.Direction * t;
 
-            // Evaluate Gaussian density at this point
+            // Evaluate Gaussian density
             float density = EvaluateGaussianDensity(pos, p.position, scale, rotation, p.density);
 
             // Enhanced spherical falloff for better 3D appearance
@@ -286,15 +289,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float sphericalFalloff = exp(-distFromCenter * distFromCenter * 3.0);
             density *= sphericalFalloff * densityMultiplier;
 
-            // Skip if negligible
             if (density < 0.001) continue;
 
-            // Compute emission color (with optional physical emission)
+            // === FIXED: Proper emission calculation ===
             float3 emission;
             float intensity;
 
             if (usePhysicalEmission != 0) {
-                // Physical blackbody emission
+                // Use physical blackbody emission
                 emission = ComputePlasmaEmission(
                     p.position,
                     p.velocity,
@@ -302,24 +304,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     p.density,
                     cameraPos
                 );
+                intensity = emissionStrength; // Use the control directly
 
-                // Apply emission strength
-                emission = lerp(float3(0.5, 0.5, 0.5), emission, emissionStrength);
-
-                // Optional Doppler shift
+                // Apply optional effects
                 if (useDopplerShift != 0) {
                     float3 viewDir = normalize(cameraPos - p.position);
                     emission = DopplerShift(emission, p.velocity, viewDir, dopplerStrength);
                 }
 
-                // Optional gravitational redshift
                 if (useGravitationalRedshift != 0) {
                     float radius = length(p.position);
                     const float schwarzschildRadius = 2.0;
                     emission = GravitationalRedshift(emission, radius, schwarzschildRadius, redshiftStrength);
                 }
-
-                intensity = EmissionIntensity(p.temperature);
             } else {
                 // Standard temperature-based color
                 emission = TemperatureToEmission(p.temperature);
@@ -365,12 +362,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             accumulatedColor += transmittance * emission_contribution;
             transmittance *= exp(-absorption);
 
-            // Early exit
             if (transmittance < 0.001) break;
         }
     }
 
-    // Background color (pure black space - no blue tint)
+    // Black space background
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float3 finalColor = accumulatedColor + transmittance * backgroundColor;
 
