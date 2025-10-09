@@ -87,10 +87,16 @@ private:
     float m_rtMaxDistance = 100.0f;  // Updated to match shader
     float m_rtParticleRadius = 5.0f;   // Updated to match shader
 
-    // Enhancement toggles
+    // Enhancement toggles and strengths
     bool m_usePhysicalEmission = false;
+    float m_emissionStrength = 1.0f;       // 0.0-5.0
+
     bool m_useDopplerShift = false;
+    float m_dopplerStrength = 1.0f;        // 0.0-5.0 (multiplier)
+
     bool m_useGravitationalRedshift = false;
+    float m_redshiftStrength = 1.0f;       // 0.0-5.0 (multiplier)
+
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 
     // Mouse look state

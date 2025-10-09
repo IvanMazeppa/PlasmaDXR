@@ -267,10 +267,13 @@ void Application::Render() {
         renderConstants.screenWidth = m_width;
         renderConstants.screenHeight = m_height;
 
-        // Physical emission toggles
+        // Physical emission toggles and strengths
         renderConstants.usePhysicalEmission = m_usePhysicalEmission;
+        renderConstants.emissionStrength = m_emissionStrength;
         renderConstants.useDopplerShift = m_useDopplerShift;
+        renderConstants.dopplerStrength = m_dopplerStrength;
         renderConstants.useGravitationalRedshift = m_useGravitationalRedshift;
+        renderConstants.redshiftStrength = m_redshiftStrength;
 
         // Log camera view on first frame
         static bool loggedCamera = false;
@@ -520,22 +523,52 @@ void Application::OnKeyPress(UINT8 key) {
         }
         break;
 
-    // Toggle physical emission model
+    // Physical emission strength (E = toggle, Shift+E = decrease, Ctrl+E = increase)
     case 'E':
-        m_usePhysicalEmission = !m_usePhysicalEmission;
-        LOG_INFO("Physical Emission: {}", m_usePhysicalEmission ? "ENABLED" : "DISABLED");
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            // Shift+E: Decrease strength
+            m_emissionStrength = (std::max)(0.0f, m_emissionStrength - 0.25f);
+            LOG_INFO("Emission Strength: {:.2f}", m_emissionStrength);
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            // Ctrl+E: Increase strength
+            m_emissionStrength = (std::min)(5.0f, m_emissionStrength + 0.25f);
+            LOG_INFO("Emission Strength: {:.2f}", m_emissionStrength);
+        } else {
+            // E: Toggle on/off
+            m_usePhysicalEmission = !m_usePhysicalEmission;
+            LOG_INFO("Physical Emission: {} (strength: {:.2f})",
+                    m_usePhysicalEmission ? "ON" : "OFF", m_emissionStrength);
+        }
         break;
 
-    // Toggle Doppler shift
+    // Doppler shift strength (R = toggle, Shift+R = decrease, Ctrl+R = increase)
     case 'R':
-        m_useDopplerShift = !m_useDopplerShift;
-        LOG_INFO("Doppler Shift: {}", m_useDopplerShift ? "ENABLED" : "DISABLED");
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_dopplerStrength = (std::max)(0.0f, m_dopplerStrength - 0.25f);
+            LOG_INFO("Doppler Strength: {:.2f}", m_dopplerStrength);
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_dopplerStrength = (std::min)(5.0f, m_dopplerStrength + 0.25f);
+            LOG_INFO("Doppler Strength: {:.2f}", m_dopplerStrength);
+        } else {
+            m_useDopplerShift = !m_useDopplerShift;
+            LOG_INFO("Doppler Shift: {} (strength: {:.2f})",
+                    m_useDopplerShift ? "ON" : "OFF", m_dopplerStrength);
+        }
         break;
 
-    // Toggle gravitational redshift
+    // Gravitational redshift strength (G = toggle, Shift+G = decrease, Ctrl+G = increase)
     case 'G':
-        m_useGravitationalRedshift = !m_useGravitationalRedshift;
-        LOG_INFO("Gravitational Redshift: {}", m_useGravitationalRedshift ? "ENABLED" : "DISABLED");
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_redshiftStrength = (std::max)(0.0f, m_redshiftStrength - 0.25f);
+            LOG_INFO("Redshift Strength: {:.2f}", m_redshiftStrength);
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_redshiftStrength = (std::min)(5.0f, m_redshiftStrength + 0.25f);
+            LOG_INFO("Redshift Strength: {:.2f}", m_redshiftStrength);
+        } else {
+            m_useGravitationalRedshift = !m_useGravitationalRedshift;
+            LOG_INFO("Gravitational Redshift: {} (strength: {:.2f})",
+                    m_useGravitationalRedshift ? "ON" : "OFF", m_redshiftStrength);
+        }
         break;
 
     // Cycle RT quality modes
@@ -571,9 +604,21 @@ void Application::UpdateFrameStats() {
         wchar_t statusBar[512];
         std::wstring features = L"";
 
-        if (m_usePhysicalEmission) features += L"[Emission] ";
-        if (m_useDopplerShift) features += L"[Doppler] ";
-        if (m_useGravitationalRedshift) features += L"[Redshift] ";
+        if (m_usePhysicalEmission) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[E:%.1f] ", m_emissionStrength);
+            features += buf;
+        }
+        if (m_useDopplerShift) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[D:%.1f] ", m_dopplerStrength);
+            features += buf;
+        }
+        if (m_useGravitationalRedshift) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[R:%.1f] ", m_redshiftStrength);
+            features += buf;
+        }
         if (m_rtLighting) features += L"[RT] ";
 
         // Update window title with FPS, renderer, and active features

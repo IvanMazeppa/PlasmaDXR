@@ -30,10 +30,13 @@ public:
         uint32_t screenWidth;
         uint32_t screenHeight;
 
-        // Physical emission toggles
+        // Physical emission toggles and strengths
         bool usePhysicalEmission = false;
+        float emissionStrength = 1.0f;
         bool useDopplerShift = false;
+        float dopplerStrength = 1.0f;
         bool useGravitationalRedshift = false;
+        float redshiftStrength = 1.0f;
     };
 
 public:

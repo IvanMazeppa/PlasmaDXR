@@ -66,15 +66,15 @@ float DiskTemperature(float radius, float innerRadius, float blackHoleMass, floa
     return maxTemp * tempFactor;
 }
 
-// Doppler shift for rotating disk
-float3 DopplerShift(float3 baseColor, float3 velocity, float3 viewDir) {
+// Doppler shift for rotating disk with adjustable strength
+float3 DopplerShift(float3 baseColor, float3 velocity, float3 viewDir, float strength) {
     const float c = 300000.0; // Speed of light (km/s) - scaled for game units
 
     // Radial velocity component
     float radialVelocity = dot(velocity, viewDir);
 
-    // Relativistic Doppler factor
-    float beta = radialVelocity / c;
+    // Relativistic Doppler factor (modulated by strength)
+    float beta = (radialVelocity / c) * strength; // Apply strength multiplier
     float dopplerFactor = sqrt((1.0 - beta) / (1.0 + beta));
 
     // Shift spectrum (simplified - shifts RGB channels)
@@ -95,7 +95,8 @@ float3 DopplerShift(float3 baseColor, float3 velocity, float3 viewDir) {
     // Apply intensity change from Doppler effect
     shiftedColor *= dopplerFactor;
 
-    return shiftedColor;
+    // Lerp between original and shifted based on strength
+    return lerp(baseColor, shiftedColor, saturate(strength));
 }
 
 // Complete plasma emission for particle
@@ -113,9 +114,9 @@ float3 ComputePlasmaEmission(
     float opacity = 1.0 - exp(-density * 0.1);
     emission *= opacity;
 
-    // Apply Doppler shift based on velocity
+    // Apply Doppler shift based on velocity (using default strength 1.0)
     float3 viewDir = normalize(viewPos - position);
-    emission = DopplerShift(emission, velocity, viewDir);
+    emission = DopplerShift(emission, velocity, viewDir, 1.0);
 
     // Add emission line for hot plasma (simplified H-alpha at 656nm)
     if (temperature > 10000.0) {
@@ -126,10 +127,10 @@ float3 ComputePlasmaEmission(
     return emission;
 }
 
-// Gravitational redshift near black hole
-float3 GravitationalRedshift(float3 color, float radius, float schwarzschildRadius) {
+// Gravitational redshift near black hole with adjustable strength
+float3 GravitationalRedshift(float3 color, float radius, float schwarzschildRadius, float strength) {
     // Simplified gravitational redshift: z = 1/sqrt(1 - rs/r) - 1
-    float ratio = schwarzschildRadius / radius;
+    float ratio = (schwarzschildRadius / radius) * strength; // Apply strength
     ratio = clamp(ratio, 0.0, 0.9); // Prevent singularity
 
     float redshiftFactor = 1.0 / sqrt(1.0 - ratio);
@@ -140,5 +141,6 @@ float3 GravitationalRedshift(float3 color, float radius, float schwarzschildRadi
     redshifted.g = color.g * sqrt(redshiftFactor);
     redshifted.b = color.b / redshiftFactor;
 
-    return redshifted;
+    // Lerp between original and redshifted based on strength
+    return lerp(color, redshifted, saturate(strength));
 }

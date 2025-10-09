@@ -95,7 +95,7 @@ bool ParticleRenderer::InitializeComputeFallbackPath() {
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[4];
         rootParams[0].InitAsConstants(28, 0);  // b0: Camera (4x4 matrix=16 + 3 vec3=9 + 3 padding=3 = 28 DWORDs)
-        rootParams[1].InitAsConstants(4, 1);   // b1: Particle constants
+        rootParams[1].InitAsConstants(8, 1);   // b1: Particle constants (radius + 3 bools + 3 strengths + padding = 8 DWORDs)
         rootParams[2].InitAsShaderResourceView(0);  // t0: particles
         rootParams[3].InitAsShaderResourceView(1);  // t1: RT lighting
 
@@ -279,14 +279,22 @@ void ParticleRenderer::RenderWithComputeFallback(ID3D12GraphicsCommandList* cmdL
         uint32_t usePhysicalEmission;
         uint32_t useDopplerShift;
         uint32_t useGravitationalRedshift;
+        float emissionStrength;
+        float dopplerStrength;
+        float redshiftStrength;
+        float padding;
     } particleConsts = {
         constants.particleSize,
         constants.usePhysicalEmission ? 1u : 0u,
         constants.useDopplerShift ? 1u : 0u,
-        constants.useGravitationalRedshift ? 1u : 0u
+        constants.useGravitationalRedshift ? 1u : 0u,
+        constants.emissionStrength,
+        constants.dopplerStrength,
+        constants.redshiftStrength,
+        0.0f
     };
 
-    cmdList->SetGraphicsRoot32BitConstants(1, 4, &particleConsts, 0);
+    cmdList->SetGraphicsRoot32BitConstants(1, 8, &particleConsts, 0);
     cmdList->SetGraphicsRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
 
     if (rtLightingBuffer) {

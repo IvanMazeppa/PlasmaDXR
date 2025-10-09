@@ -21,6 +21,10 @@ cbuffer ParticleConstants : register(b1)
     uint usePhysicalEmission;
     uint useDopplerShift;
     uint useGravitationalRedshift;
+    float emissionStrength;
+    float dopplerStrength;
+    float redshiftStrength;
+    float padding;
 };
 
 // Input: Particle data
@@ -78,7 +82,7 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     float3 baseColor;
 
     if (usePhysicalEmission != 0) {
-        // Physical blackbody emission with optional effects
+        // Physical blackbody emission (strength modulates intensity)
         baseColor = ComputePlasmaEmission(
             p.position,
             p.velocity,
@@ -87,17 +91,20 @@ PixelInput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
             cameraPos
         );
 
-        // Optional Doppler shift
+        // Apply emission strength
+        baseColor = lerp(float3(0.5, 0.5, 0.5), baseColor, emissionStrength);
+
+        // Optional Doppler shift with strength
         if (useDopplerShift != 0) {
             float3 viewDir = normalize(cameraPos - p.position);
-            baseColor = DopplerShift(baseColor, p.velocity, viewDir);
+            baseColor = DopplerShift(baseColor, p.velocity, viewDir, dopplerStrength);
         }
 
-        // Optional gravitational redshift
+        // Optional gravitational redshift with strength
         if (useGravitationalRedshift != 0) {
             float radius = length(p.position); // Distance from center
             const float schwarzschildRadius = 2.0; // Adjust based on black hole
-            baseColor = GravitationalRedshift(baseColor, radius, schwarzschildRadius);
+            baseColor = GravitationalRedshift(baseColor, radius, schwarzschildRadius, redshiftStrength);
         }
     } else {
         // Standard temperature-based color (default)
