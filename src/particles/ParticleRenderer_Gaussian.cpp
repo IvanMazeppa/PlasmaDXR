@@ -24,6 +24,36 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     LOG_INFO("  Resolution: {}x{}", screenWidth, screenHeight);
     LOG_INFO("  Reusing existing RTLightingSystem BLAS/TLAS");
 
+    // Create constant buffer for RenderConstants
+    // Use upload heap so we can map/write every frame
+    const UINT constantBufferSize = (sizeof(RenderConstants) + 255) & ~255;  // Align to 256 bytes
+    D3D12_HEAP_PROPERTIES uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &bufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_constantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create constant buffer");
+        return false;
+    }
+
+    // Map the constant buffer (keep it mapped for the lifetime of the buffer)
+    hr = m_constantBuffer->Map(0, nullptr, &m_constantBufferMapped);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to map constant buffer");
+        return false;
+    }
+
+    LOG_INFO("Created constant buffer: {} bytes (aligned from {} bytes)",
+             constantBufferSize, sizeof(RenderConstants));
+
     if (!CreateOutputTexture(screenWidth, screenHeight)) {
         return false;
     }
@@ -112,7 +142,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     LOG_INFO("Loaded Gaussian shader: {} bytes", shaderData.size());
 
     // Root signature matches particle_gaussian_raytrace.hlsl
-    // b0: GaussianConstants (48 DWORDs - core constants only, no emission for test)
+    // b0: GaussianConstants (CBV - no size limit!)
     // t0: StructuredBuffer<Particle> g_particles
     // t1: Buffer<float4> g_rtLighting
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
@@ -121,7 +151,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
 
     CD3DX12_ROOT_PARAMETER1 rootParams[5];
-    rootParams[0].InitAsConstants(64, 0);                  // b0 - 64 DWORDs (increased for RT toggles)
+    rootParams[0].InitAsConstantBufferView(0);             // b0 - CBV (no DWORD limit!)
     rootParams[1].InitAsShaderResourceView(0);             // t0
     rootParams[2].InitAsShaderResourceView(1);             // t1
     rootParams[3].InitAsShaderResourceView(2);             // t2 (TLAS)
@@ -202,9 +232,11 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     cmdList->SetPipelineState(m_pso.Get());
     cmdList->SetComputeRootSignature(m_rootSignature.Get());
 
-    // Set constants (only 48 DWORDs to match root signature)
-    const uint32_t constantSize = 48;  // Limited to 48 DWORDs for root signature
-    cmdList->SetComputeRoot32BitConstants(0, constantSize, &constants, 0);
+    // Upload constants to GPU (copy to mapped constant buffer)
+    memcpy(m_constantBufferMapped, &constants, sizeof(RenderConstants));
+
+    // Bind constant buffer view (no size limit!)
+    cmdList->SetComputeRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
 
     // Set resources
     cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());

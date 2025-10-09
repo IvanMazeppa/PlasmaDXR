@@ -77,6 +77,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pso;
 
+    // Constant buffer (replaces root constants to avoid 64 DWORD limit)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_constantBuffer;
+    void* m_constantBufferMapped = nullptr;
+
     // Output texture (UAV) - bound via descriptor table (typed UAV requirement)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_outputTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE m_outputUAV;
