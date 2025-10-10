@@ -376,6 +376,8 @@ void Application::Render() {
             gaussianConstants.phaseStrength = m_phaseStrength;
             gaussianConstants.inScatterStrength = m_inScatterStrength;
             gaussianConstants.rtLightingStrength = m_rtLightingStrength;
+            gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
+            gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -774,6 +776,24 @@ void Application::OnKeyPress(UINT8 key) {
             m_rtLightingStrength = (std::min)(10.0f, m_rtLightingStrength + 0.25f);
         }
         LOG_INFO("RT Lighting Strength: {:.2f}", m_rtLightingStrength);
+        break;
+
+    // F11: Toggle anisotropic Gaussians (velocity-stretched particles)
+    case VK_F11:
+        m_useAnisotropicGaussians = !m_useAnisotropicGaussians;
+        LOG_INFO("Anisotropic Gaussians: {} ({})",
+                 m_useAnisotropicGaussians ? "ON" : "OFF",
+                 m_useAnisotropicGaussians ? "particles stretch with velocity" : "spherical particles");
+        break;
+
+    // F12: Adjust anisotropy strength (Shift+F12 decrease, F12 increase)
+    case VK_F12:
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_anisotropyStrength = (std::max)(0.0f, m_anisotropyStrength - 0.2f);
+        } else {
+            m_anisotropyStrength = (std::min)(3.0f, m_anisotropyStrength + 0.2f);
+        }
+        LOG_INFO("Anisotropy Strength: {:.1f} (0=spherical, 3=max stretch)", m_anisotropyStrength);
         break;
 
     // Physics controls: Gravity (V = velocity/gravity)

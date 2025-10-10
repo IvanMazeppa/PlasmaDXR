@@ -112,6 +112,8 @@ private:
     float m_phaseStrength = 5.0f;          // F8/Shift+F8 to adjust (0.0-20.0)
     float m_inScatterStrength = 1.0f;      // F9/Shift+F9 to adjust (0.0-10.0)
     float m_rtLightingStrength = 2.0f;     // F10/Shift+F10 to adjust (0.0-10.0)
+    bool m_useAnisotropicGaussians = true; // F11 to toggle (anisotropic particle shapes)
+    float m_anisotropyStrength = 1.0f;     // F12/Shift+F12 to adjust (0.0-3.0, how stretched)
 
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 

@@ -35,7 +35,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     Particle p = particles[particleIndex];
 
     // Compute Gaussian AABB (conservative, axis-aligned bound)
-    AABB gaussianAABB = ComputeGaussianAABB(p, particleRadius);
+    // Use maximum anisotropic bounds for conservative AABB (true, 3.0 max strength)
+    AABB gaussianAABB = ComputeGaussianAABB(p, particleRadius, true, 3.0);
 
     // Write to output buffer in D3D12 format
     AABBOutput aabb;

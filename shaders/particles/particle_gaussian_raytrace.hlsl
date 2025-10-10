@@ -36,6 +36,8 @@ cbuffer GaussianConstants : register(b0)
     float phaseStrength;
     float inScatterStrength;
     float rtLightingStrength;
+    uint useAnisotropicGaussians;
+    float anisotropyStrength;
 };
 
 // Derived values
@@ -223,8 +225,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Read particle
             Particle p = g_particles[particleIdx];
 
-            // Compute Gaussian parameters
-            float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+            // Compute Gaussian parameters (with anisotropic control)
+            float3 scale = ComputeGaussianScale(p, baseParticleRadius,
+                                                useAnisotropicGaussians != 0,
+                                                anisotropyStrength);
             float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
             // Detailed Gaussian-ellipsoid intersection
@@ -259,8 +263,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         HitRecord hit = hits[i];
         Particle p = g_particles[hit.particleIdx];
 
-        // Gaussian parameters
-        float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+        // Gaussian parameters (with anisotropic control)
+        float3 scale = ComputeGaussianScale(p, baseParticleRadius,
+                                            useAnisotropicGaussians != 0,
+                                            anisotropyStrength);
         float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
         // Ray-march through this Gaussian with fixed step count for stability

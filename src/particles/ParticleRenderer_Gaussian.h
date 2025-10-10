@@ -45,6 +45,8 @@ public:
         float phaseStrength;
         float inScatterStrength;
         float rtLightingStrength;
+        uint32_t useAnisotropicGaussians;
+        float anisotropyStrength;
     };
 
 public:

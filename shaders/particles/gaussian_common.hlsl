@@ -8,8 +8,8 @@ struct Particle {
     float density;
 };
 
-// Compute Gaussian scale from particle properties
-float3 ComputeGaussianScale(Particle p, float baseRadius) {
+// Compute Gaussian scale from particle properties (with anisotropy control)
+float3 ComputeGaussianScale(Particle p, float baseRadius, bool useAnisotropic, float anisotropyStrength) {
     // Scale based on temperature (hotter = larger)
     float tempScale = 1.0 + (p.temperature - 800.0) / 25200.0; // 1.0-2.0 range
 
@@ -18,17 +18,23 @@ float3 ComputeGaussianScale(Particle p, float baseRadius) {
 
     float radius = baseRadius * tempScale * densityScale;
 
-    // Ellipsoid: stretch along velocity direction for motion blur effect
-    float speedFactor = length(p.velocity) / 100.0; // Normalize velocity
-    speedFactor = clamp(speedFactor, 1.0, 3.0); // Limit stretch
+    if (useAnisotropic) {
+        // Ellipsoid: stretch along velocity direction for motion blur effect
+        float speedFactor = length(p.velocity) / 100.0; // Normalize velocity
+        speedFactor = 1.0 + (speedFactor - 1.0) * anisotropyStrength; // Apply strength
+        speedFactor = clamp(speedFactor, 1.0, 3.0 * anisotropyStrength); // Limit stretch
 
-    // Perpendicular radii (circular cross-section)
-    float perpRadius = radius;
+        // Perpendicular radii (circular cross-section)
+        float perpRadius = radius;
 
-    // Parallel radius (stretched along velocity)
-    float paraRadius = radius * speedFactor;
+        // Parallel radius (stretched along velocity)
+        float paraRadius = radius * speedFactor;
 
-    return float3(perpRadius, perpRadius, paraRadius);
+        return float3(perpRadius, perpRadius, paraRadius);
+    } else {
+        // Spherical (isotropic) Gaussians
+        return float3(radius, radius, radius);
+    }
 }
 
 // Get Gaussian orientation from velocity
@@ -64,8 +70,8 @@ struct AABB {
     float3 maxPoint;
 };
 
-AABB ComputeGaussianAABB(Particle p, float baseRadius) {
-    float3 scale = ComputeGaussianScale(p, baseRadius);
+AABB ComputeGaussianAABB(Particle p, float baseRadius, bool useAnisotropic, float anisotropyStrength) {
+    float3 scale = ComputeGaussianScale(p, baseRadius, useAnisotropic, anisotropyStrength);
 
     // Conservative bound: max of all axes (axis-aligned)
     float maxRadius = max(scale.x, max(scale.y, scale.z)) * 3.0; // 3 std devs
