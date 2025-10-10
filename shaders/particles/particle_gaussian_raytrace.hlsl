@@ -107,8 +107,8 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
 float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
     float3 totalScattering = float3(0, 0, 0);
 
-    // Sample a few random directions for scattering
-    const uint numSamples = 4;
+    // Sample more directions for better scattering quality
+    const uint numSamples = 8;
 
     for (uint i = 0; i < numSamples; i++) {
         // Simple stratified sampling on hemisphere
@@ -121,7 +121,7 @@ float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
         scatterRay.Origin = pos;
         scatterRay.Direction = scatterDir;
         scatterRay.TMin = 0.01;
-        scatterRay.TMax = 50.0; // Short range for local scattering
+        scatterRay.TMax = 150.0; // Extended range for better scattering visibility
 
         RayQuery<RAY_FLAG_NONE> scatterQuery;
         scatterQuery.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, scatterRay);
@@ -254,10 +254,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Setup volumetric lighting
     VolumetricParams volParams;
-    volParams.lightPos = float3(0, 10, 0);  // Light above origin (black hole)
-    volParams.lightColor = float3(2, 2, 2); // Bright white light
-    volParams.scatteringG = 0.3;            // Forward scattering
-    volParams.extinction = 0.5;             // Medium extinction
+    volParams.lightPos = float3(0, 500, 200);  // Light OUTSIDE the disk for proper shadows
+    volParams.lightColor = float3(10, 10, 10); // Much brighter light for visible effects
+    volParams.scatteringG = 0.7;            // Stronger forward scattering for halos
+    volParams.extinction = 1.0;             // Stronger extinction for more dramatic shadows
 
     for (uint i = 0; i < hitCount; i++) {
         // Early exit if fully opaque
@@ -338,7 +338,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float3 illumination = float3(1, 1, 1); // Base self-illumination
 
             // Add RT lighting as external contribution (like being lit by neighbors)
-            illumination += rtLight * 0.5; // Reduced influence to preserve colors
+            illumination += rtLight * 2.0; // Increased for visibility
 
             // === NEW: Cast shadow ray to primary light source (TOGGLEABLE) ===
             float shadowTerm = 1.0;
@@ -349,7 +349,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             }
 
             // Apply shadow to external illumination
-            illumination *= lerp(0.3, 1.0, shadowTerm); // Ambient + direct
+            illumination *= lerp(0.1, 1.0, shadowTerm); // Deeper shadows for contrast
 
             // === NEW: Add in-scattering for volumetric depth (TOGGLEABLE) ===
             float3 inScatter = float3(0, 0, 0);
@@ -360,7 +360,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === FIXED: Combine emission with illumination properly ===
             // Emission is the particle's intrinsic color
             // Illumination modulates it based on external light
-            float3 totalEmission = emission * intensity * illumination + inScatter * 0.3;
+            float3 totalEmission = emission * intensity * illumination + inScatter * 2.0; // Boosted in-scattering
 
             // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
             if (usePhaseFunction != 0) {
