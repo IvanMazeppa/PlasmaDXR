@@ -271,15 +271,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         float3 scale = ComputeGaussianScale(p, baseParticleRadius);
         float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
-        // Ray-march through this Gaussian
+        // Ray-march through this Gaussian with fixed step count for stability
         float tStart = max(hit.tNear, ray.TMin);
         float tEnd = min(hit.tFar, ray.TMax);
 
-        uint steps = max(1, (uint)((tEnd - tStart) / volumeStepSize));
-        float stepSize = (tEnd - tStart) / steps;
+        // Fixed step count prevents flickering (was variable based on distance)
+        const uint steps = 16; // Consistent sampling regardless of particle size
+        float stepSize = (tEnd - tStart) / float(steps);
 
         for (uint step = 0; step < steps; step++) {
-            float t = tStart + (step + 0.5) * stepSize;
+            // Add sub-pixel jitter to reduce temporal aliasing
+            // Uses pixel position as seed for consistent per-pixel randomness
+            float jitter = frac(sin(dot(float2(pixelPos), float2(12.9898, 78.233))) * 43758.5453);
+            float t = tStart + (step + jitter) * stepSize;
             float3 pos = ray.Origin + ray.Direction * t;
 
             // Evaluate Gaussian density at this point
@@ -288,11 +292,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Enhanced spherical falloff for better 3D appearance
             float3 toCenter = pos - p.position;
             float distFromCenter = length(toCenter) / length(scale);
-            float sphericalFalloff = exp(-distFromCenter * distFromCenter * 3.0);
+            float sphericalFalloff = exp(-distFromCenter * distFromCenter * 2.5); // Slightly softer (was 3.0)
             density *= sphericalFalloff * densityMultiplier;
 
-            // Skip if negligible
-            if (density < 0.001) continue;
+            // Higher threshold to skip low-density regions that cause flickering
+            if (density < 0.01) continue;
 
             // Compute emission color (with optional physical emission)
             float3 emission;
@@ -361,7 +365,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === FIXED: Combine emission with illumination properly ===
             // Emission is the particle's intrinsic color
             // Illumination modulates it based on external light
-            float3 totalEmission = emission * intensity * illumination + inScatter * 2.0; // Boosted in-scattering
+            float3 totalEmission = emission * intensity * illumination + inScatter * 5.0; // Heavily boosted in-scattering for visibility
 
             // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
             if (usePhaseFunction != 0) {
@@ -389,18 +393,18 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float3 finalColor = accumulatedColor + transmittance * backgroundColor;
 
-    // DEBUG: Visual indicators for active features
-    // Top-left corner: Shadow rays (red tint if ON)
-    if (useShadowRays != 0 && pixelPos.x < 50 && pixelPos.y < 50) {
-        finalColor += float3(0.3, 0, 0);
+    // DEBUG: Visual indicators for active features (BRIGHTER for visibility)
+    // Top-left corner: Shadow rays (red bar if ON)
+    if (useShadowRays != 0 && pixelPos.x < 100 && pixelPos.y < 20) {
+        finalColor = float3(1, 0, 0); // Solid red bar
     }
-    // Top-right corner: In-scattering (green tint if ON)
-    if (useInScattering != 0 && pixelPos.x > resolution.x - 50 && pixelPos.y < 50) {
-        finalColor += float3(0, 0.3, 0);
+    // Top-right corner: In-scattering (green bar if ON)
+    if (useInScattering != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y < 20) {
+        finalColor = float3(0, 1, 0); // Solid green bar
     }
-    // Bottom-left corner: Phase function (blue tint if ON)
-    if (usePhaseFunction != 0 && pixelPos.x < 50 && pixelPos.y > resolution.y - 50) {
-        finalColor += float3(0, 0, 0.3);
+    // Bottom-left corner: Phase function (blue bar if ON)
+    if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
+        finalColor = float3(0, 0, 1); // Solid blue bar
     }
 
     // Enhanced tone mapping for HDR

@@ -178,13 +178,12 @@ int Application::Run() {
             // Calculate frame time
             auto currentTime = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> deltaTimeDuration = currentTime - m_lastFrameTime;
-            float rawDeltaTime = deltaTimeDuration.count();
-
-            // Clamp deltaTime to prevent physics acceleration during GPU stalls
-            // Max 60 FPS equivalent (0.0167s) to maintain stable physics even at low framerates
-            m_deltaTime = (rawDeltaTime < 0.0167f) ? rawDeltaTime : 0.0167f;
-
             m_lastFrameTime = currentTime;
+
+            // Use fixed timestep for consistent physics regardless of framerate
+            // This ensures physics runs at same speed whether you're at 10 FPS or 200 FPS
+            const float fixedTimeStep = 1.0f / 120.0f; // 120 Hz physics
+            m_deltaTime = fixedTimeStep;
 
             // Update and render
             Update(m_deltaTime);

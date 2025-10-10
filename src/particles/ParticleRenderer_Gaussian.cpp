@@ -68,13 +68,14 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
 
 bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t height) {
     // Create UAV texture for Gaussian rendering output
+    // TODO: Use R16G16B16A16_FLOAT to prevent color banding (needs format check)
     D3D12_RESOURCE_DESC texDesc = {};
     texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     texDesc.Width = width;
     texDesc.Height = height;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Reverted - R16 causing crash
     texDesc.SampleDesc.Count = 1;
     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 

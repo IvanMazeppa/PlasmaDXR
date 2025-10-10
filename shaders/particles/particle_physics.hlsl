@@ -145,7 +145,10 @@ void main(uint3 id : SV_DispatchThreadID) {
         // Use inverse square law scaled for our radius range (10-300)
         float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
         p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
-        p.density = 1.0;
+
+        // Density varies with distance - denser near black hole (accretion disk physics)
+        // Exponential falloff creates realistic density gradient
+        p.density = 0.2 + 2.8 * pow(tempFactor, 1.5);  // 0.2-3.0 range (denser near center)
     } else {
         // Physics update for existing particles
         float3 position = p.position;
@@ -241,6 +244,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         // Use inverse square law scaled for our radius range (10-300)
         float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
         p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
+
+        // Update density to match temperature/distance
+        p.density = 0.2 + 2.8 * pow(tempFactor, 1.5);  // 0.2-3.0 range (denser near center)
 
         p.position = position;
         p.velocity = velocity;
