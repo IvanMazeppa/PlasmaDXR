@@ -103,12 +103,13 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
     return 1.0; // No occlusion
 }
 
-// Compute in-scattering from nearby particles
+// Compute in-scattering from nearby particles (OPTIMIZED)
 float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
     float3 totalScattering = float3(0, 0, 0);
 
-    // Sample more directions for better scattering quality
-    const uint numSamples = 8;
+    // Adaptive sampling based on distance from camera
+    float distFromCamera = length(pos - cameraPos);
+    uint numSamples = distFromCamera < 100.0 ? 4 : 2; // Fewer samples for distant particles
 
     for (uint i = 0; i < numSamples; i++) {
         // Simple stratified sampling on hemisphere
@@ -121,30 +122,30 @@ float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
         scatterRay.Origin = pos;
         scatterRay.Direction = scatterDir;
         scatterRay.TMin = 0.01;
-        scatterRay.TMax = 150.0; // Extended range for better scattering visibility
+        scatterRay.TMax = 80.0; // Reduced range for performance
 
-        RayQuery<RAY_FLAG_NONE> scatterQuery;
-        scatterQuery.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, scatterRay);
+        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> scatterQuery;
+        scatterQuery.TraceRayInline(g_particleBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, scatterRay);
+        scatterQuery.Proceed();
 
-        while (scatterQuery.Proceed()) {
-            if (scatterQuery.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
-                uint idx = scatterQuery.CandidatePrimitiveIndex();
-                if (idx != skipIdx) {
-                    Particle p = g_particles[idx];
+        // Only process first hit (early termination)
+        if (scatterQuery.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
+            uint idx = scatterQuery.CommittedPrimitiveIndex();
+            if (idx != skipIdx) {
+                Particle p = g_particles[idx];
 
-                    // Simple distance-based attenuation
-                    float dist = length(p.position - pos);
-                    float atten = 1.0 / (1.0 + dist * 0.1);
+                // Simple distance-based attenuation
+                float dist = length(p.position - pos);
+                float atten = 1.0 / (1.0 + dist * 0.05); // Softer falloff
 
-                    // Add scattered light from this particle
-                    float3 emission = TemperatureToEmission(p.temperature);
-                    float intensity = EmissionIntensity(p.temperature);
+                // Add scattered light from this particle
+                float3 emission = TemperatureToEmission(p.temperature);
+                float intensity = EmissionIntensity(p.temperature);
 
-                    // Phase function for scattering direction
-                    float phase = HenyeyGreenstein(dot(viewDir, scatterDir), 0.3);
+                // Phase function for scattering direction
+                float phase = HenyeyGreenstein(dot(viewDir, scatterDir), 0.3);
 
-                    totalScattering += emission * intensity * phase * atten;
-                }
+                totalScattering += emission * intensity * phase * atten;
             }
         }
     }

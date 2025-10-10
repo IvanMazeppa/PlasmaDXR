@@ -107,7 +107,7 @@ private:
 
     // Gaussian RT system toggles
     bool m_useShadowRays = true;           // F5 to toggle
-    bool m_useInScattering = true;         // F6 to toggle
+    bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     bool m_usePhaseFunction = true;        // F7 to toggle
     float m_phaseStrength = 5.0f;          // F8/Shift+F8 to adjust (0.0-20.0)
 

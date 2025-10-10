@@ -8,6 +8,7 @@
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#include <algorithm>
 
 // Window procedure forward declaration
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -177,7 +178,12 @@ int Application::Run() {
             // Calculate frame time
             auto currentTime = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> deltaTimeDuration = currentTime - m_lastFrameTime;
-            m_deltaTime = deltaTimeDuration.count();
+            float rawDeltaTime = deltaTimeDuration.count();
+
+            // Clamp deltaTime to prevent physics acceleration during GPU stalls
+            // Max 60 FPS equivalent (0.0167s) to maintain stable physics even at low framerates
+            m_deltaTime = (rawDeltaTime < 0.0167f) ? rawDeltaTime : 0.0167f;
+
             m_lastFrameTime = currentTime;
 
             // Update and render
