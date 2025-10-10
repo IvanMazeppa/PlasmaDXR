@@ -43,6 +43,8 @@ public:
         uint32_t useInScattering;
         uint32_t usePhaseFunction;
         float phaseStrength;
+        float inScatterStrength;
+        float rtLightingStrength;
     };
 
 public:

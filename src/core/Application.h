@@ -110,6 +110,8 @@ private:
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     bool m_usePhaseFunction = true;        // F7 to toggle
     float m_phaseStrength = 5.0f;          // F8/Shift+F8 to adjust (0.0-20.0)
+    float m_inScatterStrength = 1.0f;      // F9/Shift+F9 to adjust (0.0-10.0)
+    float m_rtLightingStrength = 2.0f;     // F10/Shift+F10 to adjust (0.0-10.0)
 
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 

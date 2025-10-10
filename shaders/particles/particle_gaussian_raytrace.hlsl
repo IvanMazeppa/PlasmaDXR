@@ -34,6 +34,8 @@ cbuffer GaussianConstants : register(b0)
     uint useInScattering;
     uint usePhaseFunction;
     float phaseStrength;
+    float inScatterStrength;
+    float rtLightingStrength;
 };
 
 // Derived values
@@ -103,53 +105,43 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
     return 1.0; // No occlusion
 }
 
-// Compute in-scattering from nearby particles (OPTIMIZED)
+// Compute in-scattering from nearby particles (OPTIMIZED + RUNTIME CONTROLLED)
 float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
     float3 totalScattering = float3(0, 0, 0);
 
     // Adaptive sampling based on distance from camera
     float distFromCamera = length(pos - cameraPos);
-    uint numSamples = distFromCamera < 100.0 ? 4 : 2; // Fewer samples for distant particles
+    uint numSamples = distFromCamera < 100.0 ? 4 : 2;
 
     for (uint i = 0; i < numSamples; i++) {
-        // Simple stratified sampling on hemisphere
         float phi = (i + 0.5) * 6.28318 / numSamples;
         float3 scatterDir = float3(cos(phi), 0.5, sin(phi));
         scatterDir = normalize(scatterDir);
 
-        // Trace a short ray to gather light from nearby particles
         RayDesc scatterRay;
         scatterRay.Origin = pos;
         scatterRay.Direction = scatterDir;
         scatterRay.TMin = 0.01;
-        scatterRay.TMax = 80.0; // Reduced range for performance
+        scatterRay.TMax = 80.0;
 
         RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> scatterQuery;
         scatterQuery.TraceRayInline(g_particleBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, scatterRay);
         scatterQuery.Proceed();
 
-        // Only process first hit (early termination)
         if (scatterQuery.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
             uint idx = scatterQuery.CommittedPrimitiveIndex();
             if (idx != skipIdx) {
                 Particle p = g_particles[idx];
-
-                // Simple distance-based attenuation
                 float dist = length(p.position - pos);
-                float atten = 1.0 / (1.0 + dist * 0.05); // Softer falloff
-
-                // Add scattered light from this particle
+                float atten = 1.0 / (1.0 + dist * 0.02);
                 float3 emission = TemperatureToEmission(p.temperature);
                 float intensity = EmissionIntensity(p.temperature);
-
-                // Phase function for scattering direction
-                float phase = HenyeyGreenstein(dot(viewDir, scatterDir), 0.3);
-
-                totalScattering += emission * intensity * phase * atten;
+                float scatterStrength = p.density * 2.0;
+                float phase = HenyeyGreenstein(dot(viewDir, scatterDir), 0.5);
+                totalScattering += emission * intensity * phase * atten * scatterStrength;
             }
         }
     }
-
     return totalScattering / numSamples;
 }
 
@@ -342,8 +334,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // It modulates the emission based on received light
             float3 illumination = float3(1, 1, 1); // Base self-illumination
 
-            // Add RT lighting as external contribution (like being lit by neighbors)
-            illumination += rtLight * 2.0; // Increased for visibility
+            // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
+            illumination += rtLight * rtLightingStrength;
 
             // === NEW: Cast shadow ray to primary light source (TOGGLEABLE) ===
             float shadowTerm = 1.0;
@@ -365,7 +357,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === FIXED: Combine emission with illumination properly ===
             // Emission is the particle's intrinsic color
             // Illumination modulates it based on external light
-            float3 totalEmission = emission * intensity * illumination + inScatter * 5.0; // Heavily boosted in-scattering for visibility
+            // In-scattering adds volumetric glow from nearby particles (RUNTIME ADJUSTABLE)
+            float3 totalEmission = emission * intensity * illumination + inScatter * inScatterStrength;
 
             // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
             if (usePhaseFunction != 0) {
@@ -398,9 +391,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (useShadowRays != 0 && pixelPos.x < 100 && pixelPos.y < 20) {
         finalColor = float3(1, 0, 0); // Solid red bar
     }
-    // Top-right corner: In-scattering (green bar if ON)
+    // Top-right corner: In-scattering visualization
     if (useInScattering != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y < 20) {
-        finalColor = float3(0, 1, 0); // Solid green bar
+        // Show actual in-scattering contribution scaled for visibility
+        // Green bar shows it's enabled, intensity shows contribution
+        finalColor = float3(0, 1, 0) + accumulatedColor * 10.0; // Green + boosted scene color
     }
     // Bottom-left corner: Phase function (blue bar if ON)
     if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {

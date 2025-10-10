@@ -374,6 +374,8 @@ void Application::Render() {
             gaussianConstants.useInScattering = m_useInScattering ? 1u : 0u;
             gaussianConstants.usePhaseFunction = m_usePhaseFunction ? 1u : 0u;
             gaussianConstants.phaseStrength = m_phaseStrength;
+            gaussianConstants.inScatterStrength = m_inScatterStrength;
+            gaussianConstants.rtLightingStrength = m_rtLightingStrength;
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -752,6 +754,26 @@ void Application::OnKeyPress(UINT8 key) {
             m_phaseStrength = (std::min)(20.0f, m_phaseStrength + 1.0f);
         }
         LOG_INFO("Phase Strength: {:.1f}", m_phaseStrength);
+        break;
+
+    // F9: Adjust in-scattering strength (Shift+F9 decrease, F9 increase)
+    case VK_F9:
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_inScatterStrength = (std::max)(0.0f, m_inScatterStrength - 0.5f);
+        } else {
+            m_inScatterStrength = (std::min)(10.0f, m_inScatterStrength + 0.5f);
+        }
+        LOG_INFO("In-Scattering Strength: {:.1f}", m_inScatterStrength);
+        break;
+
+    // F10: Adjust RT lighting strength (Shift+F10 decrease, F10 increase)
+    case VK_F10:
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_rtLightingStrength = (std::max)(0.0f, m_rtLightingStrength - 0.25f);
+        } else {
+            m_rtLightingStrength = (std::min)(10.0f, m_rtLightingStrength + 0.25f);
+        }
+        LOG_INFO("RT Lighting Strength: {:.2f}", m_rtLightingStrength);
         break;
 
     // Physics controls: Gravity (V = velocity/gravity)
