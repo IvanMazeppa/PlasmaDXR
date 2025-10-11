@@ -273,6 +273,7 @@ bool ValidateReservoir(Reservoir prevReservoir, float3 viewPos) {
 }
 
 // Sample light particles using importance sampling
+// Note: rayDirection is the CAMERA ray direction (not used for sampling, just for phase function later)
 Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixelIndex, uint numCandidates) {
     Reservoir reservoir;
     reservoir.lightPos = float3(0, 0, 0);
@@ -282,7 +283,12 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
     reservoir.particleIdx = 0;
     reservoir.pad = 0;
 
+    // DEBUG: Track how many rays we trace and how many hit
+    uint raysTraced = 0;
+    uint raysHit = 0;
+
     for (uint i = 0; i < numCandidates; i++) {
+        raysTraced++;
         // Generate random direction (uniform sphere)
         float rand1 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000);
         float rand2 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000 + 1);
@@ -315,20 +321,29 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
                 uint candidateIdx = query.CandidatePrimitiveIndex();
                 Particle candidateParticle = g_particles[candidateIdx];
 
-                // Compute t-value to particle center
-                float3 toParticle = candidateParticle.position - ray.Origin;
-                float tValue = dot(toParticle, ray.Direction);
+                // FIX: Compute proper Gaussian parameters (same as main rendering loop)
+                float3 scale = ComputeGaussianScale(candidateParticle, baseParticleRadius,
+                                                    useAnisotropicGaussians != 0,
+                                                    anisotropyStrength);
+                float3x3 rotation = ComputeGaussianRotation(candidateParticle.velocity);
 
-                // Commit if within ray range
-                if (tValue >= ray.TMin && tValue <= ray.TMax) {
-                    query.CommitProceduralPrimitiveHit(tValue);
-                    break;  // Take first hit only
+                // FIX: Compute actual ray-ellipsoid intersection (not just distance to center)
+                float2 t = RayGaussianIntersection(ray.Origin, ray.Direction,
+                                                   candidateParticle.position,
+                                                   scale, rotation);
+
+                // FIX: Proper validation (entry < exit, within ray range)
+                if (t.x > ray.TMin && t.x < ray.TMax && t.y > t.x) {
+                    // Commit the entry point (t.x), not the center distance
+                    query.CommitProceduralPrimitiveHit(t.x);
+                    // Let BVH traversal complete naturally (no break)
                 }
             }
         }
 
         // Check if we got a hit
         if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
+            raysHit++;  // DEBUG: Count successful hits
             uint hitParticleIdx = query.CommittedPrimitiveIndex();
             Particle hitParticle = g_particles[hitParticleIdx];
 
@@ -336,13 +351,16 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
             float3 emission = TemperatureToEmission(hitParticle.temperature);
             float intensity = EmissionIntensity(hitParticle.temperature);
             float dist = length(hitParticle.position - rayOrigin);
-            float attenuation = 1.0 / max(dist * dist, 1.0);
 
-            // Weight = luminance of light contribution
+            // FIXED: Weaker attenuation for large scenes (accretion disk spans 10-300 radii)
+            // Use linear + quadratic falloff with minimum to prevent division by zero
+            float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
+
+            // Weight = luminance of light contribution (importance)
             float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
 
-            // Skip if weight too low
-            if (weight > 0.001) {
+            // FIXED: Much lower threshold - we want to sample ANY visible light
+            if (weight > 0.00001) {
                 // Random value for reservoir update
                 float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
 
@@ -355,6 +373,14 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
     // Compute final weight
     if (reservoir.M > 0) {
         reservoir.W = reservoir.weightSum / float(reservoir.M);
+    }
+
+    // DEBUG: Always encode hit stats for debugging
+    if (reservoir.M == 0) {
+        // No hits found - encode debug info to understand why
+        // X = rays traced, Y = rays hit, Z = special marker
+        reservoir.lightPos = float3(float(raysTraced), float(raysHit), 8888.0);
+        reservoir.M = 88888;  // Special debug marker for "no hits"
     }
 
     return reservoir;
@@ -426,8 +452,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         // Load previous frame's reservoir
         Reservoir prevReservoir = g_prevReservoirs[pixelIndex];
 
-        // Validate temporal sample (check if still visible from current position)
-        bool temporalValid = ValidateReservoir(prevReservoir, ray.Origin);
+        // Validate temporal sample (check if still visible from current CAMERA position)
+        bool temporalValid = ValidateReservoir(prevReservoir, cameraPos);
 
         // Initialize current reservoir
         currentReservoir.lightPos = float3(0, 0, 0);
@@ -446,11 +472,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
 
         // Generate new candidate samples for this frame
-        Reservoir newSamples = SampleLightParticles(ray.Origin, ray.Direction,
+        // Use CAMERA position, not near plane position!
+        Reservoir newSamples = SampleLightParticles(cameraPos, ray.Direction,
                                                      pixelIndex, restirInitialCandidates);
 
         // Combine temporal + new samples using reservoir merging
-        if (newSamples.M > 0) {
+        // IMPORTANT: Skip if M is our debug marker (88888) which means no real hits
+        if (newSamples.M > 0 && newSamples.M != 88888) {
             // Update with new samples
             float combinedWeight = currentReservoir.weightSum + newSamples.weightSum;
             currentReservoir.M += newSamples.M;
@@ -670,10 +698,26 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
         finalColor = float3(0, 0, 1); // Solid blue bar
     }
-    // Bottom-right corner: ReSTIR (yellow bar if ON, brightness shows sample count)
-    if (useReSTIR != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y > resolution.y - 20) {
-        float reservoirQuality = saturate(float(currentReservoir.M) / max(float(restirInitialCandidates), 1.0));
-        finalColor = float3(1, 1, 0) * max(reservoirQuality, 0.3); // Yellow, always at least 30% bright
+    // Bottom-right corner: ReSTIR status (complex debug info)
+    if (pixelPos.x > resolution.x - 200 && pixelPos.y > resolution.y - 40) {
+        // Show different colors based on ReSTIR state
+        if (useReSTIR != 0) {
+            // ReSTIR is ON - show reservoir quality
+            if (currentReservoir.M == 0) {
+                // No samples found - RED alert!
+                finalColor = float3(1, 0, 0);
+            } else if (currentReservoir.M < restirInitialCandidates / 2) {
+                // Few samples - Orange warning
+                finalColor = float3(1, 0.5, 0);
+            } else {
+                // Good samples - Green success with brightness showing quality
+                float quality = saturate(float(currentReservoir.M) / float(restirInitialCandidates));
+                finalColor = float3(0, quality, 0);
+            }
+        } else {
+            // ReSTIR is OFF - show gray
+            finalColor = float3(0.3, 0.3, 0.3);
+        }
     }
 
     g_output[pixelPos] = float4(finalColor, 1.0);
