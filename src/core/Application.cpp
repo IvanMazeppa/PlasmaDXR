@@ -379,6 +379,12 @@ void Application::Render() {
             gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
             gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 
+            // ReSTIR parameters
+            gaussianConstants.useReSTIR = m_useReSTIR ? 1u : 0u;
+            gaussianConstants.restirInitialCandidates = m_restirInitialCandidates;
+            gaussianConstants.frameIndex = static_cast<uint32_t>(m_frameCount);
+            gaussianConstants.restirTemporalWeight = m_restirTemporalWeight;
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -742,20 +748,34 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
         break;
 
-    // F7: Toggle phase function
+    // F7: Toggle ReSTIR (Ctrl+F7/Shift+F7 adjust temporal weight)
     case VK_F7:
-        m_usePhaseFunction = !m_usePhaseFunction;
-        LOG_INFO("Phase Function: {}", m_usePhaseFunction ? "ON" : "OFF");
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_restirTemporalWeight = (std::min)(1.0f, m_restirTemporalWeight + 0.1f);
+            LOG_INFO("ReSTIR Temporal Weight: {:.1f}", m_restirTemporalWeight);
+        } else if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_restirTemporalWeight = (std::max)(0.0f, m_restirTemporalWeight - 0.1f);
+            LOG_INFO("ReSTIR Temporal Weight: {:.1f}", m_restirTemporalWeight);
+        } else {
+            m_useReSTIR = !m_useReSTIR;
+            LOG_INFO("ReSTIR: {} (temporal resampling for {} faster convergence)",
+                     m_useReSTIR ? "ON" : "OFF",
+                     m_useReSTIR ? "10-60x" : "");
+        }
         break;
 
-    // F8: Adjust phase strength (Shift+F8 decrease, F8 increase)
+    // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)
     case VK_F8:
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            m_phaseStrength = (std::max)(0.0f, m_phaseStrength - 1.0f);
-        } else {
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
             m_phaseStrength = (std::min)(20.0f, m_phaseStrength + 1.0f);
+            LOG_INFO("Phase Strength: {:.1f}", m_phaseStrength);
+        } else if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_phaseStrength = (std::max)(0.0f, m_phaseStrength - 1.0f);
+            LOG_INFO("Phase Strength: {:.1f}", m_phaseStrength);
+        } else {
+            m_usePhaseFunction = !m_usePhaseFunction;
+            LOG_INFO("Phase Function: {}", m_usePhaseFunction ? "ON" : "OFF");
         }
-        LOG_INFO("Phase Strength: {:.1f}", m_phaseStrength);
         break;
 
     // F9: Adjust in-scattering strength (Shift+F9 decrease, F9 increase)
