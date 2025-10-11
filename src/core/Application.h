@@ -30,7 +30,7 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     // Frame timing
-    void UpdateFrameStats();
+    void UpdateFrameStats(float actualFrameTime);
 
     // Core update/render
     void Update(float deltaTime);

@@ -1,4 +1,3 @@
-# GPT-5 Consultation: DirectX Raytracing Enhancement for Volumetric Particle Renderer
 
 ## Project Overview
 

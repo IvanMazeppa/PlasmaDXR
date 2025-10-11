@@ -175,9 +175,10 @@ int Application::Run() {
         }
 
         if (m_isRunning) {
-            // Calculate frame time
+            // Calculate ACTUAL frame time for FPS measurement
             auto currentTime = std::chrono::high_resolution_clock::now();
             std::chrono::duration<float> deltaTimeDuration = currentTime - m_lastFrameTime;
+            float actualFrameTime = deltaTimeDuration.count();
             m_lastFrameTime = currentTime;
 
             // Use fixed timestep for consistent physics regardless of framerate
@@ -185,12 +186,12 @@ int Application::Run() {
             const float fixedTimeStep = 1.0f / 120.0f; // 120 Hz physics
             m_deltaTime = fixedTimeStep;
 
-            // Update and render
+            // Update and render (with fixed physics timestep)
             Update(m_deltaTime);
             Render();
 
-            // Update stats
-            UpdateFrameStats();
+            // Update stats (with ACTUAL frame time for correct FPS)
+            UpdateFrameStats(actualFrameTime);
         }
     }
 
@@ -387,14 +388,27 @@ void Application::Render() {
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
+            static bool lastReSTIRState = false;
             if (!loggedToggles) {
                 LOG_INFO("=== DEBUG: Gaussian Constants ===");
                 LOG_INFO("  useShadowRays: {}", gaussianConstants.useShadowRays);
                 LOG_INFO("  useInScattering: {}", gaussianConstants.useInScattering);
                 LOG_INFO("  usePhaseFunction: {}", gaussianConstants.usePhaseFunction);
                 LOG_INFO("  phaseStrength: {}", gaussianConstants.phaseStrength);
+                LOG_INFO("  useReSTIR: {}", gaussianConstants.useReSTIR);
+                LOG_INFO("  restirInitialCandidates: {}", gaussianConstants.restirInitialCandidates);
                 LOG_INFO("================================");
                 loggedToggles = true;
+                lastReSTIRState = m_useReSTIR;
+            }
+
+            // Log when ReSTIR state changes
+            if (m_useReSTIR != lastReSTIRState) {
+                LOG_INFO("ReSTIR state changed: {} -> {}", lastReSTIRState, m_useReSTIR);
+                LOG_INFO("  gaussianConstants.useReSTIR = {}", gaussianConstants.useReSTIR);
+                LOG_INFO("  restirInitialCandidates = {}", gaussianConstants.restirInitialCandidates);
+                LOG_INFO("  frameIndex = {}", gaussianConstants.frameIndex);
+                lastReSTIRState = m_useReSTIR;
             }
 
             // Render to UAV texture
@@ -872,11 +886,11 @@ void Application::OnMouseMove(int dx, int dy) {
     m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
 }
 
-void Application::UpdateFrameStats() {
+void Application::UpdateFrameStats(float actualFrameTime) {
     static float elapsedTime = 0.0f;
     static uint32_t frameCounter = 0;
 
-    elapsedTime += m_deltaTime;
+    elapsedTime += actualFrameTime;  // Use ACTUAL frame time, not physics timestep
     frameCounter++;
 
     if (elapsedTime >= 1.0f) {
@@ -902,6 +916,29 @@ void Application::UpdateFrameStats() {
             features += buf;
         }
         if (m_rtLighting) features += L"[RT] ";
+
+        // F-key RT feature indicators
+        if (m_useShadowRays) features += L"[F5:Shadow] ";
+        if (m_useInScattering) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[F6:InScat:%.1f] ", m_inScatterStrength);
+            features += buf;
+        }
+        if (m_useReSTIR) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[F7:ReSTIR:%.1f] ", m_restirTemporalWeight);
+            features += buf;
+        }
+        if (m_usePhaseFunction) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[F8:Phase:%.1f] ", m_phaseStrength);
+            features += buf;
+        }
+        if (m_useAnisotropicGaussians) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"[F11:Aniso:%.1f] ", m_anisotropyStrength);
+            features += buf;
+        }
 
         // Add physics parameters to status bar
         wchar_t physBuf[128];

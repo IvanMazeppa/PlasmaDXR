@@ -220,19 +220,22 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t0: StructuredBuffer<Particle> g_particles
     // t1: Buffer<float4> g_rtLighting
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
-    // t3: StructuredBuffer<Reservoir> g_prevReservoirs (previous frame, read-only)
+    // t3: StructuredBuffer<Reservoir> g_prevReservoirs (previous frame, descriptor table)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
-    // u1: RWStructuredBuffer<Reservoir> g_currentReservoirs (current frame, write)
+    // u1: RWStructuredBuffer<Reservoir> g_currentReservoirs (descriptor table)
+    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // t3: StructuredBuffer (prev reservoirs)
+
     CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // u1: RWStructuredBuffer
 
     CD3DX12_ROOT_PARAMETER1 rootParams[7];
     rootParams[0].InitAsConstantBufferView(0);             // b0 - CBV (no DWORD limit!)
-    rootParams[1].InitAsShaderResourceView(0);             // t0 - particles
-    rootParams[2].InitAsShaderResourceView(1);             // t1 - rtLighting
-    rootParams[3].InitAsShaderResourceView(2);             // t2 - TLAS
-    rootParams[4].InitAsShaderResourceView(3);             // t3 - previous reservoirs (SRV)
+    rootParams[1].InitAsShaderResourceView(0);             // t0 - particles (raw buffer is OK)
+    rootParams[2].InitAsShaderResourceView(1);             // t1 - rtLighting (raw buffer is OK)
+    rootParams[3].InitAsShaderResourceView(2);             // t2 - TLAS (raw is OK)
+    rootParams[4].InitAsDescriptorTable(1, &srvRange);     // t3 - previous reservoirs (descriptor table!)
     rootParams[5].InitAsDescriptorTable(1, &uavRanges[0]); // u0 - output texture
     rootParams[6].InitAsDescriptorTable(1, &uavRanges[1]); // u1 - current reservoirs (UAV)
 
@@ -328,9 +331,14 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
     cmdList->SetComputeRootShaderResourceView(3, tlas->GetGPUVirtualAddress());
 
-    // ReSTIR: Bind previous frame's reservoir (read-only SRV)
+    // ReSTIR: Bind previous frame's reservoir (SRV via descriptor table)
     uint32_t prevIndex = 1 - m_currentReservoirIndex;  // Ping-pong
-    cmdList->SetComputeRootShaderResourceView(4, m_reservoirBuffer[prevIndex]->GetGPUVirtualAddress());
+    D3D12_GPU_DESCRIPTOR_HANDLE prevReservoirSRVHandle = m_reservoirSRVGPU[prevIndex];
+    if (prevReservoirSRVHandle.ptr == 0) {
+        LOG_ERROR("Previous reservoir SRV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(4, prevReservoirSRVHandle);
 
     // Bind output texture (UAV descriptor table)
     D3D12_GPU_DESCRIPTOR_HANDLE outputUAVHandle = m_resources->GetGPUHandle(m_outputUAV);

@@ -283,13 +283,13 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
     reservoir.pad = 0;
 
     for (uint i = 0; i < numCandidates; i++) {
-        // Generate random direction (hemisphere around view direction)
+        // Generate random direction (uniform sphere)
         float rand1 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000);
         float rand2 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000 + 1);
 
-        // Uniform hemisphere sampling
-        float cosTheta = rand1;
-        float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+        // Uniform sphere sampling (not hemisphere - we want all directions)
+        float cosTheta = 2.0 * rand1 - 1.0;  // -1 to 1
+        float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
         float phi = 2.0 * 3.14159265 * rand2;
 
         float3 sampleDir;
@@ -300,14 +300,34 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
         // Trace ray to find light source
         RayDesc ray;
         ray.Origin = rayOrigin;
-        ray.Direction = sampleDir;
+        ray.Direction = normalize(sampleDir);
         ray.TMin = 0.01;
-        ray.TMax = 200.0;  // Reasonable max distance for particle-to-particle lighting
+        ray.TMax = 500.0;  // Longer range to find more particles
 
+        // Use RayQuery to find ANY procedural primitive hit
         RayQuery<RAY_FLAG_NONE> query;
         query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
-        query.Proceed();
 
+        // Process candidates - for procedural primitives we need to loop!
+        while (query.Proceed()) {
+            if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
+                // Get the primitive index to find actual particle position
+                uint candidateIdx = query.CandidatePrimitiveIndex();
+                Particle candidateParticle = g_particles[candidateIdx];
+
+                // Compute t-value to particle center
+                float3 toParticle = candidateParticle.position - ray.Origin;
+                float tValue = dot(toParticle, ray.Direction);
+
+                // Commit if within ray range
+                if (tValue >= ray.TMin && tValue <= ray.TMax) {
+                    query.CommitProceduralPrimitiveHit(tValue);
+                    break;  // Take first hit only
+                }
+            }
+        }
+
+        // Check if we got a hit
         if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
             uint hitParticleIdx = query.CommittedPrimitiveIndex();
             Particle hitParticle = g_particles[hitParticleIdx];
@@ -321,11 +341,14 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
             // Weight = luminance of light contribution
             float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
 
-            // Random value for reservoir update
-            float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
+            // Skip if weight too low
+            if (weight > 0.001) {
+                // Random value for reservoir update
+                float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
 
-            // Update reservoir
-            UpdateReservoir(reservoir, hitParticle.position, hitParticleIdx, weight, random);
+                // Update reservoir
+                UpdateReservoir(reservoir, hitParticle.position, hitParticleIdx, weight, random);
+            }
         }
     }
 
@@ -383,6 +406,79 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 InsertHit(hits, hitCount, particleIdx, t.x, t.y, MAX_HITS);
             }
         }
+    }
+
+    // =============================================================================
+    // ReSTIR: Temporal Resampling for Better Light Sampling
+    // =============================================================================
+    uint pixelIndex = pixelPos.y * screenWidth + pixelPos.x;
+
+    // Initialize reservoir (always, even if ReSTIR is off)
+    Reservoir currentReservoir;
+    currentReservoir.lightPos = float3(0, 0, 0);
+    currentReservoir.weightSum = 0;
+    currentReservoir.M = 0;
+    currentReservoir.W = 0;
+    currentReservoir.particleIdx = 0;
+    currentReservoir.pad = 0;
+
+    if (useReSTIR != 0) {
+        // Load previous frame's reservoir
+        Reservoir prevReservoir = g_prevReservoirs[pixelIndex];
+
+        // Validate temporal sample (check if still visible from current position)
+        bool temporalValid = ValidateReservoir(prevReservoir, ray.Origin);
+
+        // Initialize current reservoir
+        currentReservoir.lightPos = float3(0, 0, 0);
+        currentReservoir.weightSum = 0;
+        currentReservoir.M = 0;
+        currentReservoir.W = 0;
+        currentReservoir.particleIdx = 0;
+        currentReservoir.pad = 0;
+
+        // Reuse temporal sample if valid
+        if (temporalValid && prevReservoir.M > 0) {
+            // Decay M to prevent infinite accumulation
+            float temporalM = prevReservoir.M * restirTemporalWeight;
+            currentReservoir = prevReservoir;
+            currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
+        }
+
+        // Generate new candidate samples for this frame
+        Reservoir newSamples = SampleLightParticles(ray.Origin, ray.Direction,
+                                                     pixelIndex, restirInitialCandidates);
+
+        // Combine temporal + new samples using reservoir merging
+        if (newSamples.M > 0) {
+            // Update with new samples
+            float combinedWeight = currentReservoir.weightSum + newSamples.weightSum;
+            currentReservoir.M += newSamples.M;
+
+            // Probabilistically select between temporal and new
+            float random = Hash(pixelIndex + frameIndex * 3000);
+            float newProbability = newSamples.weightSum / max(combinedWeight, 0.0001);
+
+            if (random < newProbability) {
+                currentReservoir.lightPos = newSamples.lightPos;
+                currentReservoir.particleIdx = newSamples.particleIdx;
+            }
+
+            currentReservoir.weightSum = combinedWeight;
+        }
+
+        // Compute final weight
+        if (currentReservoir.M > 0) {
+            currentReservoir.W = currentReservoir.weightSum / float(currentReservoir.M);
+        }
+
+        // Store for next frame
+        g_currentReservoirs[pixelIndex] = currentReservoir;
+    } else {
+        // DEBUG: Even when ReSTIR is OFF, write a test value to verify buffer binding works
+        currentReservoir.lightPos = float3(pixelPos.x, pixelPos.y, 999.0);
+        currentReservoir.M = 12345;  // Magic number to verify writes work
+        g_currentReservoirs[pixelIndex] = currentReservoir;
     }
 
     // Volume rendering: march through sorted Gaussians
@@ -474,7 +570,22 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             }
 
             // === FIXED: RT lighting as illumination, not replacement ===
-            float3 rtLight = g_rtLighting[hit.particleIdx].rgb;
+            float3 rtLight;
+
+            if (useReSTIR != 0 && currentReservoir.M > 0) {
+                // ReSTIR: Use the intelligently sampled light source
+                Particle lightParticle = g_particles[currentReservoir.particleIdx];
+                float3 lightEmission = TemperatureToEmission(lightParticle.temperature);
+                float lightIntensity = EmissionIntensity(lightParticle.temperature);
+                float dist = length(currentReservoir.lightPos - pos);
+                float attenuation = 1.0 / max(dist * dist, 1.0);
+
+                // Apply reservoir weight for importance sampling correction
+                rtLight = lightEmission * lightIntensity * attenuation * currentReservoir.W;
+            } else {
+                // Fallback: Use pre-computed RT lighting
+                rtLight = g_rtLighting[hit.particleIdx].rgb;
+            }
 
             // RT light acts as external illumination on the particle volume
             // It modulates the emission based on received light
@@ -532,22 +643,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float3 finalColor = accumulatedColor + transmittance * backgroundColor;
 
-    // DEBUG: Visual indicators for active features (BRIGHTER for visibility)
-    // Top-left corner: Shadow rays (red bar if ON)
-    if (useShadowRays != 0 && pixelPos.x < 100 && pixelPos.y < 20) {
-        finalColor = float3(1, 0, 0); // Solid red bar
-    }
-    // Top-right corner: In-scattering visualization
-    if (useInScattering != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y < 20) {
-        // Show actual in-scattering contribution scaled for visibility
-        // Green bar shows it's enabled, intensity shows contribution
-        finalColor = float3(0, 1, 0) + accumulatedColor * 10.0; // Green + boosted scene color
-    }
-    // Bottom-left corner: Phase function (blue bar if ON)
-    if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
-        finalColor = float3(0, 0, 1); // Solid blue bar
-    }
-
     // Enhanced tone mapping for HDR
     // Use ACES tone mapping for better color preservation
     float3 aces_input = finalColor;
@@ -561,6 +656,25 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Gamma correction
     finalColor = pow(finalColor, 1.0 / 2.2);
+
+    // DEBUG: Visual indicators for active features (AFTER tone mapping so they're visible!)
+    // Top-left corner: Shadow rays (red bar if ON)
+    if (useShadowRays != 0 && pixelPos.x < 100 && pixelPos.y < 20) {
+        finalColor = float3(1, 0, 0); // Solid red bar
+    }
+    // Top-right corner: In-scattering (green bar if ON)
+    if (useInScattering != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y < 20) {
+        finalColor = float3(0, 1, 0); // Solid green bar
+    }
+    // Bottom-left corner: Phase function (blue bar if ON)
+    if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
+        finalColor = float3(0, 0, 1); // Solid blue bar
+    }
+    // Bottom-right corner: ReSTIR (yellow bar if ON, brightness shows sample count)
+    if (useReSTIR != 0 && pixelPos.x > resolution.x - 100 && pixelPos.y > resolution.y - 20) {
+        float reservoirQuality = saturate(float(currentReservoir.M) / max(float(restirInitialCandidates), 1.0));
+        finalColor = float3(1, 1, 0) * max(reservoirQuality, 0.3); // Yellow, always at least 30% bright
+    }
 
     g_output[pixelPos] = float4(finalColor, 1.0);
 }
