@@ -359,8 +359,15 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
             // Weight = luminance of light contribution (importance)
             float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
 
-            // FIXED: Much lower threshold - we want to sample ANY visible light
-            if (weight > 0.00001) {
+            // DEBUG: For first pixel, store weight info in reservoir for debugging
+            if (pixelIndex == 0 && raysHit == 1) {
+                // Store debug info: temperature, intensity, weight in first hit
+                reservoir.lightPos = float3(hitParticle.temperature, intensity, weight);
+            }
+
+            // FIXED: Lower threshold to capture low-temp particles at distance (10x more sensitive)
+            // Agent analysis: 800K particles at 500+ units need this lower threshold
+            if (weight > 0.000001) {
                 // Random value for reservoir update
                 float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
 
@@ -463,12 +470,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         currentReservoir.particleIdx = 0;
         currentReservoir.pad = 0;
 
-        // Reuse temporal sample if valid
-        if (temporalValid && prevReservoir.M > 0) {
+        // Reuse temporal sample if valid AND has non-zero weight (BUG FIX!)
+        // CRITICAL: Without weightSum check, M persists while weightSum decays to 0
+        if (temporalValid && prevReservoir.M > 0 && prevReservoir.weightSum > 0.000001) {
             // Decay M to prevent infinite accumulation
             float temporalM = prevReservoir.M * restirTemporalWeight;
             currentReservoir = prevReservoir;
             currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
+
+            // CRITICAL: Also decay weightSum proportionally to maintain W = weightSum/M balance
+            currentReservoir.weightSum = prevReservoir.weightSum * restirTemporalWeight;
         }
 
         // Generate new candidate samples for this frame
@@ -600,13 +611,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === FIXED: RT lighting as illumination, not replacement ===
             float3 rtLight;
 
-            if (useReSTIR != 0 && currentReservoir.M > 0) {
+            if (useReSTIR != 0 && currentReservoir.M > 0 && currentReservoir.M != 88888) {
                 // ReSTIR: Use the intelligently sampled light source
                 Particle lightParticle = g_particles[currentReservoir.particleIdx];
                 float3 lightEmission = TemperatureToEmission(lightParticle.temperature);
                 float lightIntensity = EmissionIntensity(lightParticle.temperature);
                 float dist = length(currentReservoir.lightPos - pos);
-                float attenuation = 1.0 / max(dist * dist, 1.0);
+
+                // FIXED: Use same attenuation as sampling (must match for unbiased estimate!)
+                float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
 
                 // Apply reservoir weight for importance sampling correction
                 rtLight = lightEmission * lightIntensity * attenuation * currentReservoir.W;
