@@ -18,6 +18,8 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     m_device = device;
     m_resources = resources;
     m_particleCount = particleCount;
+    m_screenWidth = screenWidth;
+    m_screenHeight = screenHeight;
 
     LOG_INFO("Initializing 3D Gaussian Splatting renderer...");
     LOG_INFO("  Particles: {}", particleCount);
@@ -56,6 +58,77 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
 
     if (!CreateOutputTexture(screenWidth, screenHeight)) {
         return false;
+    }
+
+    // Create ReSTIR reservoir buffers (ping-pong for temporal reuse)
+    // Reservoir struct: float3 lightPos (12B) + float weightSum (4B) + uint M (4B) + float W (4B) = 24 bytes
+    // Pad to 32 bytes for cache alignment
+    const uint32_t reservoirElementSize = 32;  // bytes per pixel
+    const uint32_t reservoirBufferSize = screenWidth * screenHeight * reservoirElementSize;
+
+    LOG_INFO("Creating ReSTIR reservoir buffers...");
+    LOG_INFO("  Resolution: {}x{} pixels", screenWidth, screenHeight);
+    LOG_INFO("  Element size: {} bytes", reservoirElementSize);
+    LOG_INFO("  Buffer size: {} MB per buffer", reservoirBufferSize / (1024 * 1024));
+    LOG_INFO("  Total memory: {} MB (2x buffers)", (reservoirBufferSize * 2) / (1024 * 1024));
+
+    D3D12_HEAP_PROPERTIES defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_RESOURCE_DESC reservoirBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
+        reservoirBufferSize,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    );
+
+    for (int i = 0; i < 2; i++) {
+        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &reservoirBufferDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_reservoirBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create reservoir buffer {}", i);
+            return false;
+        }
+
+        // Create SRV (for reading previous frame)
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = screenWidth * screenHeight;
+        srvDesc.Buffer.StructureByteStride = reservoirElementSize;
+
+        m_reservoirSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_reservoirBuffer[i].Get(),
+            &srvDesc,
+            m_reservoirSRV[i]
+        );
+        m_reservoirSRVGPU[i] = m_resources->GetGPUHandle(m_reservoirSRV[i]);
+
+        // Create UAV (for writing current frame)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uavDesc.Buffer.FirstElement = 0;
+        uavDesc.Buffer.NumElements = screenWidth * screenHeight;
+        uavDesc.Buffer.StructureByteStride = reservoirElementSize;
+
+        m_reservoirUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_reservoirBuffer[i].Get(),
+            nullptr,
+            &uavDesc,
+            m_reservoirUAV[i]
+        );
+        m_reservoirUAVGPU[i] = m_resources->GetGPUHandle(m_reservoirUAV[i]);
+
+        LOG_INFO("Created reservoir buffer {}: SRV=0x{:016X}, UAV=0x{:016X}",
+                 i, m_reservoirSRVGPU[i].ptr, m_reservoirUAVGPU[i].ptr);
     }
 
     if (!CreatePipeline()) {
@@ -147,19 +220,24 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t0: StructuredBuffer<Particle> g_particles
     // t1: Buffer<float4> g_rtLighting
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
+    // t3: StructuredBuffer<Reservoir> g_prevReservoirs (previous frame, read-only)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
-    CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-    uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
+    // u1: RWStructuredBuffer<Reservoir> g_currentReservoirs (current frame, write)
+    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
+    uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
+    uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // u1: RWStructuredBuffer
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[5];
+    CD3DX12_ROOT_PARAMETER1 rootParams[7];
     rootParams[0].InitAsConstantBufferView(0);             // b0 - CBV (no DWORD limit!)
-    rootParams[1].InitAsShaderResourceView(0);             // t0
-    rootParams[2].InitAsShaderResourceView(1);             // t1
-    rootParams[3].InitAsShaderResourceView(2);             // t2 (TLAS)
-    rootParams[4].InitAsDescriptorTable(1, &uavRange);     // u0 via descriptor table
+    rootParams[1].InitAsShaderResourceView(0);             // t0 - particles
+    rootParams[2].InitAsShaderResourceView(1);             // t1 - rtLighting
+    rootParams[3].InitAsShaderResourceView(2);             // t2 - TLAS
+    rootParams[4].InitAsShaderResourceView(3);             // t3 - previous reservoirs (SRV)
+    rootParams[5].InitAsDescriptorTable(1, &uavRanges[0]); // u0 - output texture
+    rootParams[6].InitAsDescriptorTable(1, &uavRanges[1]); // u1 - current reservoirs (UAV)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(5, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(7, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -250,22 +328,39 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
     cmdList->SetComputeRootShaderResourceView(3, tlas->GetGPUVirtualAddress());
 
-    // Get GPU handle for UAV descriptor table
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_resources->GetGPUHandle(m_outputUAV);
-    if (gpuHandle.ptr == 0) {
+    // ReSTIR: Bind previous frame's reservoir (read-only SRV)
+    uint32_t prevIndex = 1 - m_currentReservoirIndex;  // Ping-pong
+    cmdList->SetComputeRootShaderResourceView(4, m_reservoirBuffer[prevIndex]->GetGPUVirtualAddress());
+
+    // Bind output texture (UAV descriptor table)
+    D3D12_GPU_DESCRIPTOR_HANDLE outputUAVHandle = m_resources->GetGPUHandle(m_outputUAV);
+    if (outputUAVHandle.ptr == 0) {
         LOG_ERROR("GPU handle is ZERO!");
         return;
     }
-    cmdList->SetComputeRootDescriptorTable(4, gpuHandle);
+    cmdList->SetComputeRootDescriptorTable(5, outputUAVHandle);
+
+    // ReSTIR: Bind current frame's reservoir (write UAV descriptor table)
+    D3D12_GPU_DESCRIPTOR_HANDLE currentReservoirUAVHandle = m_reservoirUAVGPU[m_currentReservoirIndex];
+    if (currentReservoirUAVHandle.ptr == 0) {
+        LOG_ERROR("Reservoir UAV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(6, currentReservoirUAVHandle);
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
     uint32_t dispatchY = (constants.screenHeight + 7) / 8;
     cmdList->Dispatch(dispatchX, dispatchY, 1);
 
-    // Add UAV barrier to ensure compute shader completes before we use the output
-    D3D12_RESOURCE_BARRIER uavBarrier = {};
-    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    uavBarrier.UAV.pResource = m_outputTexture.Get();
-    cmdList->ResourceBarrier(1, &uavBarrier);
+    // Add UAV barriers to ensure compute shader completes before next frame
+    D3D12_RESOURCE_BARRIER uavBarriers[2] = {};
+    uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarriers[0].UAV.pResource = m_outputTexture.Get();
+    uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarriers[1].UAV.pResource = m_reservoirBuffer[m_currentReservoirIndex].Get();
+    cmdList->ResourceBarrier(2, uavBarriers);
+
+    // ReSTIR: Swap reservoir buffers for next frame (ping-pong)
+    m_currentReservoirIndex = 1 - m_currentReservoirIndex;
 }

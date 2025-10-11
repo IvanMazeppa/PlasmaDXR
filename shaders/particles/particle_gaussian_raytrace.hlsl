@@ -38,6 +38,12 @@ cbuffer GaussianConstants : register(b0)
     float rtLightingStrength;
     uint useAnisotropicGaussians;
     float anisotropyStrength;
+
+    // ReSTIR parameters
+    uint useReSTIR;
+    uint restirInitialCandidates;  // M = 16-32
+    uint frameIndex;               // For temporal validation
+    float restirTemporalWeight;    // 0-1, how much to trust previous frame
 };
 
 // Derived values
@@ -57,8 +63,24 @@ StructuredBuffer<float4> g_rtLighting : register(t1);
 // Input: Ray tracing acceleration structure
 RaytracingAccelerationStructure g_particleBVH : register(t2);
 
+// ReSTIR: Reservoir structure (matches C++ side: 32 bytes for cache alignment)
+struct Reservoir {
+    float3 lightPos;       // 12 bytes - position of selected light source
+    float weightSum;       // 4 bytes  - sum of weights (W)
+    uint M;                // 4 bytes  - number of samples seen
+    float W;               // 4 bytes  - final weight for this sample
+    uint particleIdx;      // 4 bytes  - which particle is providing light
+    float pad;             // 4 bytes  - padding to 32 bytes
+};
+
+// ReSTIR: Previous frame's reservoirs (read-only)
+StructuredBuffer<Reservoir> g_prevReservoirs : register(t3);
+
 // Output: Final rendered image
 RWTexture2D<float4> g_output : register(u0);
+
+// ReSTIR: Current frame's reservoirs (write-only)
+RWStructuredBuffer<Reservoir> g_currentReservoirs : register(u1);
 
 // Hit record for batch processing
 struct HitRecord {
@@ -195,6 +217,124 @@ void InsertHit(inout HitRecord hits[64], inout uint hitCount, uint particleIdx, 
 
     hits[insertPos] = newHit;
     hitCount++;
+}
+
+// =============================================================================
+// ReSTIR HELPER FUNCTIONS
+// =============================================================================
+
+// Simple hash function for pseudo-random numbers
+float Hash(uint seed) {
+    seed = seed * 747796405u + 2891336453u;
+    seed = ((seed >> 16) ^ seed) * 747796405u;
+    seed = ((seed >> 16) ^ seed);
+    return float(seed) / 4294967295.0;
+}
+
+// Update reservoir with new sample using weighted reservoir sampling
+void UpdateReservoir(inout Reservoir r, float3 lightPos, uint particleIdx, float weight, float random) {
+    r.weightSum += weight;
+    r.M += 1;
+
+    // Probabilistically replace current sample
+    float probability = weight / max(r.weightSum, 0.0001);
+    if (random < probability) {
+        r.lightPos = lightPos;
+        r.particleIdx = particleIdx;
+    }
+}
+
+// Validate previous frame's reservoir (check if light source still visible)
+bool ValidateReservoir(Reservoir prevReservoir, float3 viewPos) {
+    if (prevReservoir.M == 0) return false;
+
+    // Cast shadow ray to previous light source
+    float3 toLightDir = normalize(prevReservoir.lightPos - viewPos);
+    float lightDist = length(prevReservoir.lightPos - viewPos);
+
+    RayDesc ray;
+    ray.Origin = viewPos + toLightDir * 0.01;
+    ray.Direction = toLightDir;
+    ray.TMin = 0.001;
+    ray.TMax = lightDist - 0.01;
+
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+    query.TraceRayInline(g_particleBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, ray);
+    query.Proceed();
+
+    if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
+        uint hitIdx = query.CommittedPrimitiveIndex();
+        // Valid if we hit the same particle (or within tolerance)
+        return (hitIdx == prevReservoir.particleIdx);
+    }
+
+    // Valid if unoccluded
+    return (query.CommittedStatus() == COMMITTED_NOTHING);
+}
+
+// Sample light particles using importance sampling
+Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixelIndex, uint numCandidates) {
+    Reservoir reservoir;
+    reservoir.lightPos = float3(0, 0, 0);
+    reservoir.weightSum = 0;
+    reservoir.M = 0;
+    reservoir.W = 0;
+    reservoir.particleIdx = 0;
+    reservoir.pad = 0;
+
+    for (uint i = 0; i < numCandidates; i++) {
+        // Generate random direction (hemisphere around view direction)
+        float rand1 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000);
+        float rand2 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000 + 1);
+
+        // Uniform hemisphere sampling
+        float cosTheta = rand1;
+        float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+        float phi = 2.0 * 3.14159265 * rand2;
+
+        float3 sampleDir;
+        sampleDir.x = sinTheta * cos(phi);
+        sampleDir.y = sinTheta * sin(phi);
+        sampleDir.z = cosTheta;
+
+        // Trace ray to find light source
+        RayDesc ray;
+        ray.Origin = rayOrigin;
+        ray.Direction = sampleDir;
+        ray.TMin = 0.01;
+        ray.TMax = 200.0;  // Reasonable max distance for particle-to-particle lighting
+
+        RayQuery<RAY_FLAG_NONE> query;
+        query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
+        query.Proceed();
+
+        if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
+            uint hitParticleIdx = query.CommittedPrimitiveIndex();
+            Particle hitParticle = g_particles[hitParticleIdx];
+
+            // Compute light contribution
+            float3 emission = TemperatureToEmission(hitParticle.temperature);
+            float intensity = EmissionIntensity(hitParticle.temperature);
+            float dist = length(hitParticle.position - rayOrigin);
+            float attenuation = 1.0 / max(dist * dist, 1.0);
+
+            // Weight = luminance of light contribution
+            float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
+
+            // Random value for reservoir update
+            float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
+
+            // Update reservoir
+            UpdateReservoir(reservoir, hitParticle.position, hitParticleIdx, weight, random);
+        }
+    }
+
+    // Compute final weight
+    if (reservoir.M > 0) {
+        reservoir.W = reservoir.weightSum / float(reservoir.M);
+    }
+
+    return reservoir;
 }
 
 [numthreads(8, 8, 1)]

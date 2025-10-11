@@ -78,7 +78,7 @@ maxHits = 4;
 
 ## Troubleshooting
 
-### No Shadows Visible
+### No Shadows Visible\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 1. Check `useShadowRays = 1`
 2. Verify light is outside particle volume
 3. Increase `volParams.extinction` to 3.0+
