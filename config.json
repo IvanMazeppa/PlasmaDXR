@@ -1,0 +1,53 @@
+{
+  "rendering": {
+    "particleCount": 10000,
+    "renderer": "Gaussian",
+    "enableRT": true,
+    "preferMeshShaders": true,
+    "baseParticleRadius": 50.0
+  },
+  "camera": {
+    "position": {
+      "x": 0.0,
+      "y": 1200.0,
+      "z": 800.0
+    },
+    "lookAt": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    }
+  },
+  "physics": {
+    "innerRadius": 10.0,
+    "outerRadius": 300.0,
+    "diskThickness": 50.0,
+    "gravity": 200.0,
+    "angularMomentum": 2.5,
+    "turbulence": 10.0,
+    "damping": 0.95
+  },
+  "gaussianRT": {
+    "useShadowRays": true,
+    "useInScattering": false,
+    "usePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "inScatterStrength": 1.0,
+    "rtLightingStrength": 2.0,
+    "useReSTIR": false,
+    "restirInitialCandidates": 16,
+    "restirTemporalWeight": 0.95,
+    "useAnisotropicGaussians": true,
+    "anisotropyStrength": 2.0
+  },
+  "pix": {
+    "autoCapture": false,
+    "captureFrame": 1,
+    "outputPath": "pix/Captures/auto_capture.wpix"
+  },
+  "debug": {
+    "logPhysicsUpdates": false,
+    "logRenderingStats": false,
+    "maxLoggedFrames": 10
+  }
+}
