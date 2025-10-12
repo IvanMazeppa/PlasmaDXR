@@ -1,6 +1,6 @@
 #include "PIXCaptureHelper.h"
-#include <iostream>
-#include <cstdio>
+#include "../utils/Logger.h"
+#include <string>
 
 namespace Debug {
 
@@ -19,26 +19,21 @@ void PIXCaptureHelper::Initialize() {
 
     s_initialized = true;
 
-    // Health check: Log initialization start
-    std::printf("[PIX] PIXCaptureHelper::Initialize() called\n");
-    std::fflush(stdout);
+    LOG_INFO("[PIX] Initializing PIX capture system...");
 
 #ifdef USE_PIX
     // Load WinPixGpuCapturer.dll from PIX installation
     s_pixModule = PIXLoadLatestWinPixGpuCapturerLibrary();
 
     if (s_pixModule) {
-        std::printf("[PIX] ✓ GPU Capturer DLL loaded successfully\n");
-        std::fflush(stdout);
+        LOG_INFO("[PIX] GPU Capturer DLL loaded successfully");
     } else {
-        std::printf("[PIX] ✗ GPU Capturer DLL NOT loaded - PIX captures disabled\n");
-        std::printf("[PIX]   Ensure PIX is installed at: C:\\Program Files\\Microsoft PIX\\\n");
-        std::fflush(stdout);
+        LOG_WARN("[PIX] GPU Capturer DLL NOT loaded - PIX captures disabled");
+        LOG_WARN("[PIX] Ensure WinPixGpuCapturer.dll is in exe directory or PIX is installed");
         return;
     }
 #else
-    std::printf("[PIX] ✗ USE_PIX not defined - PIX support disabled at compile time\n");
-    std::fflush(stdout);
+    LOG_WARN("[PIX] USE_PIX not defined - PIX support disabled at compile time");
     return;
 #endif
 
@@ -50,12 +45,10 @@ void PIXCaptureHelper::Initialize() {
         s_autoCapture = true;
         s_captureFrame = frameEnv ? std::atoi(frameEnv) : 120; // Default to frame 120 (~2s @ 60fps)
 
-        std::printf("[PIX] ✓ Auto-capture ENABLED - will capture at frame %d\n", s_captureFrame);
-        std::printf("[PIX]   Environment: PIX_AUTO_CAPTURE=1, PIX_CAPTURE_FRAME=%d\n", s_captureFrame);
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Auto-capture ENABLED - will capture at frame {}", s_captureFrame);
+        LOG_INFO("[PIX] Environment: PIX_AUTO_CAPTURE=1, PIX_CAPTURE_FRAME={}", s_captureFrame);
     } else {
-        std::printf("[PIX] Auto-capture DISABLED (no PIX_AUTO_CAPTURE=1 env var)\n");
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Auto-capture DISABLED (no PIX_AUTO_CAPTURE=1 env var)");
     }
 }
 
@@ -67,8 +60,7 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
 #ifdef USE_PIX
     // If capture is not yet started and we've reached the trigger frame
     if (!s_captureInProgress && frameNumber >= s_captureFrame) {
-        std::printf("[PIX] Frame %d: Starting capture...\n", frameNumber);
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Frame {}: Starting capture...", frameNumber);
 
         // Begin capture - filename will be set by pixtool via save-capture
         HRESULT hr = PIXBeginCapture(PIX_CAPTURE_GPU, nullptr);
@@ -76,11 +68,9 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
         if (SUCCEEDED(hr)) {
             s_captureInProgress = true;
             s_captureStartFrame = frameNumber;
-            std::printf("[PIX] ✓ Capture started successfully\n");
-            std::fflush(stdout);
+            LOG_INFO("[PIX] Capture started successfully");
         } else {
-            std::printf("[PIX] ✗ Capture START failed (HRESULT: 0x%08X)\n", hr);
-            std::fflush(stdout);
+            LOG_ERROR("[PIX] Capture START failed (HRESULT: 0x{:08X})", static_cast<unsigned int>(hr));
             // Still exit to avoid infinite loop
             PostQuitMessage(0);
             return true;
@@ -89,23 +79,19 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
 
     // If capture is in progress, end it after one frame
     if (s_captureInProgress && frameNumber > s_captureStartFrame) {
-        std::printf("[PIX] Frame %d: Ending capture...\n", frameNumber);
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Frame {}: Ending capture...", frameNumber);
 
         // End capture - discard=FALSE to save the capture
         HRESULT hr = PIXEndCapture(FALSE);
 
         if (SUCCEEDED(hr)) {
-            std::printf("[PIX] ✓ Capture ended successfully\n");
-            std::fflush(stdout);
+            LOG_INFO("[PIX] Capture ended successfully");
         } else {
-            std::printf("[PIX] ✗ Capture END failed (HRESULT: 0x%08X)\n", hr);
-            std::fflush(stdout);
+            LOG_ERROR("[PIX] Capture END failed (HRESULT: 0x{:08X})", static_cast<unsigned int>(hr));
         }
 
         // Exit application so pixtool can save the capture
-        std::printf("[PIX] Exiting application for capture save...\n");
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Exiting application for capture save...");
         PostQuitMessage(0);
         return true;
     }
@@ -116,25 +102,21 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
 
 bool PIXCaptureHelper::BeginCapture(const wchar_t* filename) {
     if (!s_pixModule) {
-        std::printf("[PIX] ✗ Cannot begin capture - PIX not loaded\n");
-        std::fflush(stdout);
+        LOG_WARN("[PIX] Cannot begin capture - PIX not loaded");
         return false;
     }
 
 #ifdef USE_PIX
-    std::printf("[PIX] Beginning manual capture...\n");
-    std::fflush(stdout);
+    LOG_INFO("[PIX] Beginning manual capture...");
 
     HRESULT hr = PIXBeginCapture(PIX_CAPTURE_GPU, nullptr);
 
     if (SUCCEEDED(hr)) {
         s_captureInProgress = true;
-        std::printf("[PIX] ✓ Manual capture started\n");
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Manual capture started");
         return true;
     } else {
-        std::printf("[PIX] ✗ Manual capture START failed (HRESULT: 0x%08X)\n", hr);
-        std::fflush(stdout);
+        LOG_ERROR("[PIX] Manual capture START failed (HRESULT: 0x{:08X})", static_cast<unsigned int>(hr));
         return false;
     }
 #else
@@ -144,25 +126,21 @@ bool PIXCaptureHelper::BeginCapture(const wchar_t* filename) {
 
 bool PIXCaptureHelper::EndCapture() {
     if (!s_pixModule || !s_captureInProgress) {
-        std::printf("[PIX] ✗ Cannot end capture - no capture in progress\n");
-        std::fflush(stdout);
+        LOG_WARN("[PIX] Cannot end capture - no capture in progress");
         return false;
     }
 
 #ifdef USE_PIX
-    std::printf("[PIX] Ending manual capture...\n");
-    std::fflush(stdout);
+    LOG_INFO("[PIX] Ending manual capture...");
 
     HRESULT hr = PIXEndCapture(FALSE);
 
     if (SUCCEEDED(hr)) {
         s_captureInProgress = false;
-        std::printf("[PIX] ✓ Manual capture ended\n");
-        std::fflush(stdout);
+        LOG_INFO("[PIX] Manual capture ended");
         return true;
     } else {
-        std::printf("[PIX] ✗ Manual capture END failed (HRESULT: 0x%08X)\n", hr);
-        std::fflush(stdout);
+        LOG_ERROR("[PIX] Manual capture END failed (HRESULT: 0x{:08X})", static_cast<unsigned int>(hr));
         return false;
     }
 #else
