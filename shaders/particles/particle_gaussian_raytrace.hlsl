@@ -621,8 +621,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // FIXED: Use same attenuation as sampling (must match for unbiased estimate!)
                 float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
 
-                // Apply reservoir weight for importance sampling correction
-                rtLight = lightEmission * lightIntensity * attenuation * currentReservoir.W;
+                // FIX: W is average weight per sample (weightSum/M), need to scale by M
+                // This gives total light contribution from all samples
+                // Normalize by number of candidates to match non-ReSTIR brightness
+                float restirScale = (currentReservoir.W * currentReservoir.M) / float(restirInitialCandidates);
+                rtLight = lightEmission * lightIntensity * attenuation * restirScale;
             } else {
                 // Fallback: Use pre-computed RT lighting
                 rtLight = g_rtLighting[hit.particleIdx].rgb;
