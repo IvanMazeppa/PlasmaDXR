@@ -8,6 +8,7 @@
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#include "../debug/PIXCaptureHelper.h"
 #include <algorithm>
 
 // Window procedure forward declaration
@@ -189,6 +190,12 @@ int Application::Run() {
             // Update and render (with fixed physics timestep)
             Update(m_deltaTime);
             Render();
+
+            // Check for PIX auto-capture (may exit app if capture triggered)
+            if (Debug::PIXCaptureHelper::CheckAutomaticCapture(m_frameCount)) {
+                // Capture was triggered - app will exit
+                m_isRunning = false;
+            }
 
             // Update stats (with ACTUAL frame time for correct FPS)
             UpdateFrameStats(actualFrameTime);

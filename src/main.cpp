@@ -3,6 +3,7 @@
 
 #include "core/Application.h"
 #include "utils/Logger.h"
+#include "debug/PIXCaptureHelper.h"
 #include <windows.h>
 #include <exception>
 #include <string>
@@ -22,6 +23,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
         LOG_INFO("=== PlasmaDX-Clean Starting ===");
         LOG_INFO("Clean architecture, modern design");
         LOG_INFO("Target: 100K particles with RT lighting");
+
+        // Initialize PIX capture system (checks for auto-capture env vars)
+        Debug::PIXCaptureHelper::Initialize();
 
         // Parse command line into argc/argv
         int argc = 0;
