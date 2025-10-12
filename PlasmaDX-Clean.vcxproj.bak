@@ -27,7 +27,6 @@
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
-    <UseDebugLibraries Condition="'$(Configuration)'=='DebugPIX'">true</UseDebugLibraries>
     <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
@@ -35,11 +34,9 @@
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
 
-  <!-- Output directories - DebugPIX goes to separate folder -->
   <PropertyGroup>
     <OutDir>$(SolutionDir)build\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)build\obj\$(Configuration)\</IntDir>
-    <TargetName Condition="'$(Configuration)'=='DebugPIX'">$(ProjectName)-PIX</TargetName>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -47,20 +44,14 @@
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(Configuration)'=='DebugPIX'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)src;C:\Program Files\Microsoft PIX\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-
-      <!-- USE_PIX only defined for DebugPIX configuration -->
-      <PreprocessorDefinitions Condition="'$(Configuration)'=='DebugPIX'">USE_PIX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-
+      <PreprocessorDefinitions>USE_PIX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization Condition="'$(Configuration)'=='Debug'">Disabled</Optimization>
-      <Optimization Condition="'$(Configuration)'=='DebugPIX'">Disabled</Optimization>
       <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
       <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
-      <RuntimeLibrary Condition="'$(Configuration)'=='DebugPIX'">MultiThreadedDebugDLL</RuntimeLibrary>
       <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
 
@@ -93,8 +84,7 @@
     <ClCompile Include="src\lighting\RTLightingSystem_RayQuery.cpp" />
     <ClCompile Include="src\utils\Logger.cpp" />
     <ClCompile Include="src\utils\ResourceManager.cpp" />
-    <!-- PIXCaptureHelper only compiled in DebugPIX build -->
-    <ClCompile Include="src\debug\PIXCaptureHelper.cpp" Condition="'$(Configuration)'=='DebugPIX'" />
+    <ClCompile Include="src\debug\PIXCaptureHelper.cpp" />
   </ItemGroup>
 
   <!-- Header Files -->

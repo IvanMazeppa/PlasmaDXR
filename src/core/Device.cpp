@@ -47,7 +47,17 @@ void Device::Shutdown() {
 }
 
 bool Device::CreateDevice(bool enableDebugLayer) {
-    // Enable debug layer if requested
+#ifdef USE_PIX
+    // Check if PIX is attached - debug layer conflicts with PIX's injection
+    bool pixAttached = (GetModuleHandleW(L"WinPixGpuCapturer.dll") != nullptr);
+
+    if (pixAttached) {
+        LOG_INFO("PIX detected - D3D12 Debug Layer disabled (use PIX's debug layer analysis instead)");
+        enableDebugLayer = false;  // Override to prevent conflicts
+    }
+#endif
+
+    // Enable debug layer if requested (and PIX not attached)
     if (enableDebugLayer) {
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&m_debugController)))) {
             m_debugController->EnableDebugLayer();
@@ -68,10 +78,12 @@ bool Device::CreateDevice(bool enableDebugLayer) {
         dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     }
 
+    LOG_INFO("Creating DXGI Factory (debug flags: {})", dxgiFactoryFlags);
     if (FAILED(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&m_dxgiFactory)))) {
         LOG_ERROR("Failed to create DXGI Factory");
         return false;
     }
+    LOG_INFO("DXGI Factory created successfully");
 
     // Find RTX 4060 Ti (or any hardware adapter)
     for (UINT adapterIndex = 0;

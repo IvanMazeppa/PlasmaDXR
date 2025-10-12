@@ -8,7 +8,9 @@
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#ifdef USE_PIX
 #include "../debug/PIXCaptureHelper.h"
+#endif
 #include <algorithm>
 
 // Window procedure forward declaration
@@ -30,23 +32,25 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         std::string arg = argv[i];
         if (arg == "--gaussian" || arg == "-g") {
             m_config.rendererType = RendererType::Gaussian;
-            LOG_INFO("Renderer: 3D Gaussian Splatting (volumetric)");
         } else if (arg == "--billboard" || arg == "-b") {
             m_config.rendererType = RendererType::Billboard;
-            LOG_INFO("Renderer: Billboard (stable)");
         } else if (arg == "--particles" && i + 1 < argc) {
             m_config.particleCount = std::atoi(argv[++i]);
-            LOG_INFO("Particle count: {}", m_config.particleCount);
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
-            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer");
-            LOG_INFO("  --billboard, -b     : Use Billboard renderer (default)");
-            LOG_INFO("  --particles <count> : Set particle count (default: 100000)");
+            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer (default)");
+            LOG_INFO("  --billboard, -b     : Use Billboard renderer");
+            LOG_INFO("  --particles <count> : Set particle count (default: 10000)");
         }
     }
 
-    // Load default configuration
-    if (m_config.particleCount == 0) m_config.particleCount = 100000;
+    // Log configuration
+    LOG_INFO("Particle count: {}", m_config.particleCount);
+    LOG_INFO("Renderer: {}", m_config.rendererType == RendererType::Gaussian ?
+             "3D Gaussian Splatting (volumetric)" : "Billboard (stable)");
+
+    // Load default configuration (fallback - should already be set in header)
+    if (m_config.particleCount == 0) m_config.particleCount = 10000;
     m_config.enableRT = true;
     m_config.preferMeshShaders = true;
 #ifdef _DEBUG
@@ -191,11 +195,13 @@ int Application::Run() {
             Update(m_deltaTime);
             Render();
 
+#ifdef USE_PIX
             // Check for PIX auto-capture (may exit app if capture triggered)
             if (Debug::PIXCaptureHelper::CheckAutomaticCapture(m_frameCount)) {
                 // Capture was triggered - app will exit
                 m_isRunning = false;
             }
+#endif
 
             // Update stats (with ACTUAL frame time for correct FPS)
             UpdateFrameStats(actualFrameTime);

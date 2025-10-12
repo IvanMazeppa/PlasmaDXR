@@ -23,7 +23,14 @@ extern "C" {
 #define PIX_CAPTURE_GPU (1 << 0)
 #define PIX_CAPTURE_TIMING (1 << 1)
 
+// PIX capture parameters structure
+struct PIXCaptureParameters
+{
+    PCWSTR GpuCaptureFileName;  // Path to .wpix file
+};
+
 // PIX function typedefs
+// Note: BeginCapture takes const void* to allow both PIXCaptureParameters* and nullptr
 typedef HRESULT (WINAPI* BeginCaptureFunctionPtr)(DWORD CaptureFlags, const void* pParameters);
 typedef HRESULT (WINAPI* EndCaptureFunctionPtr)(BOOL Discard);
 

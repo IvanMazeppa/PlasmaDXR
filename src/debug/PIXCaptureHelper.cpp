@@ -62,7 +62,8 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
     if (!s_captureInProgress && frameNumber >= s_captureFrame) {
         LOG_INFO("[PIX] Frame {}: Starting capture...", frameNumber);
 
-        // Begin capture - filename will be set by pixtool via save-capture
+        // When launched with programmatic-capture, pass NULL to let pixtool manage the filename
+        // PIX will use a temporary file and pixtool will save it with the specified name
         HRESULT hr = PIXBeginCapture(PIX_CAPTURE_GPU, nullptr);
 
         if (SUCCEEDED(hr)) {
@@ -109,7 +110,11 @@ bool PIXCaptureHelper::BeginCapture(const wchar_t* filename) {
 #ifdef USE_PIX
     LOG_INFO("[PIX] Beginning manual capture...");
 
-    HRESULT hr = PIXBeginCapture(PIX_CAPTURE_GPU, nullptr);
+    // Set up capture parameters
+    PIXCaptureParameters captureParams = {};
+    captureParams.GpuCaptureFileName = filename ? filename : L"D:\\Users\\dilli\\AndroidStudioProjects\\PlasmaDX-Clean\\pix\\Captures\\manual_capture.wpix";
+
+    HRESULT hr = PIXBeginCapture(PIX_CAPTURE_GPU, &captureParams);
 
     if (SUCCEEDED(hr)) {
         s_captureInProgress = true;

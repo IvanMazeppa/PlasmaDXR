@@ -75,11 +75,11 @@ private:
     };
 
     struct Config {
-        uint32_t particleCount = 100000;
+        uint32_t particleCount = 10000;        // Default: 10K particles (was 100K)
         bool enableRT = true;
         bool preferMeshShaders = true;
         bool enableDebugLayer = false;
-        RendererType rendererType = RendererType::Billboard;
+        RendererType rendererType = RendererType::Gaussian;  // Default: Gaussian (was Billboard)
     } m_config;
 
     // Runtime camera controls - TOP-DOWN VIEW of accretion disk
