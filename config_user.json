@@ -7,7 +7,7 @@
     "height": 1080
   },
   "features": {
-    "enableReSTIR": true,
+    "enableReSTIR": false,
     "restirCandidates": 16,
     "restirTemporalReuse": true,
     "restirSpatialReuse": true,

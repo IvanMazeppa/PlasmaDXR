@@ -1,53 +1,272 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "description": "PlasmaDX-Clean Configuration File - All runtime parameters",
+    "note": "Parameters with runtime keys can be toggled/adjusted during execution",
+    "last_updated": "2025-10-12"
+  },
+
+  "_comment_rendering": "=== RENDERING CONFIGURATION ===",
   "rendering": {
     "particleCount": 10000,
+    "_particleCount_note": "Number of particles in simulation (10K-100K recommended)",
+
     "renderer": "Gaussian",
-    "enableRT": true,
-    "preferMeshShaders": true,
-    "baseParticleRadius": 50.0
+    "_renderer_note": "Options: 'Gaussian' (volumetric 3D splats) or 'Billboard' (stable fallback)",
+    "_renderer_cmdline": "--gaussian or --billboard",
+
+    "resolutionWidth": 1920,
+    "resolutionHeight": 1080,
+    "_resolution_note": "Window resolution (supports 1080p, 1440p, 4K)"
   },
+
+  "_comment_camera": "=== CAMERA CONFIGURATION ===",
   "camera": {
-    "position": {
-      "x": 0.0,
-      "y": 1200.0,
-      "z": 800.0
-    },
-    "lookAt": {
-      "x": 0.0,
-      "y": 0.0,
-      "z": 0.0
-    }
+    "startDistance": 800.0,
+    "_startDistance_note": "Initial camera distance from origin (in world units)",
+
+    "startHeight": 1200.0,
+    "_startHeight_note": "Initial camera height above disk plane",
+
+    "startAngle": 0.0,
+    "_startAngle_note": "Initial camera rotation angle (radians)",
+
+    "startPitch": 0.0,
+    "_startPitch_note": "Initial camera pitch angle (radians)",
+
+    "moveSpeed": 100.0,
+    "_moveSpeed_note": "Camera movement speed (WASD keys)",
+    "_moveSpeed_runtime": "No runtime key (affects responsiveness)",
+
+    "rotateSpeed": 0.5,
+    "_rotateSpeed_note": "Camera rotation speed (CTRL+Mouse)",
+
+    "particleSize": 50.0,
+    "_particleSize_note": "Base particle radius for rendering",
+    "_particleSize_runtime": "+ / - keys: Increase/Decrease particle size"
   },
+
+  "_comment_physics": "=== PHYSICS SIMULATION ===",
   "physics": {
     "innerRadius": 10.0,
+    "_innerRadius_note": "Inner edge of accretion disk (Schwarzschild radii from black hole)",
+
     "outerRadius": 300.0,
+    "_outerRadius_note": "Outer edge of accretion disk (world units)",
+
     "diskThickness": 50.0,
-    "gravity": 200.0,
+    "_diskThickness_note": "Vertical thickness of disk (world units)",
+
+    "timeStep": 0.00833333,
+    "_timeStep_note": "Physics timestep (1/120 = 120Hz update rate)",
+
+    "physicsEnabled": true,
+    "_physicsEnabled_runtime": "P key: Toggle physics simulation on/off",
+
+    "gravityStrength": 200.0,
+    "_gravityStrength_note": "Black hole gravitational strength",
+    "_gravityStrength_runtime": "V key: CTRL+V increase, SHIFT+V decrease",
+
     "angularMomentum": 2.5,
+    "_angularMomentum_note": "Initial orbital angular momentum (Keplerian orbits)",
+    "_angularMomentum_runtime": "N key: CTRL+N increase, SHIFT+N decrease",
+
     "turbulence": 10.0,
-    "damping": 0.95
+    "_turbulence_note": "Brownian motion / random velocity noise",
+    "_turbulence_runtime": "B key: CTRL+B increase, SHIFT+B decrease",
+
+    "damping": 0.95,
+    "_damping_note": "Velocity damping factor per frame (0.0-1.0)",
+    "_damping_runtime": "M key: CTRL+M increase, SHIFT+M decrease"
   },
-  "gaussianRT": {
-    "useShadowRays": true,
-    "useInScattering": false,
-    "usePhaseFunction": true,
-    "phaseStrength": 5.0,
+
+  "_comment_features_rt": "=== RAY TRACING FEATURES ===",
+  "features": {
+    "_section_note": "Gaussian renderer RT lighting features (DXR 1.1)",
+
+    "enableShadowRays": true,
+    "_enableShadowRays_note": "Cast shadow rays to primary light source",
+    "_enableShadowRays_runtime": "F5 key: Toggle shadow rays on/off",
+
+    "enableInScattering": false,
+    "_enableInScattering_note": "Volumetric in-scattering (atmospheric fog effect)",
+    "_enableInScattering_runtime": "F6 key: Toggle in-scattering on/off",
+
     "inScatterStrength": 1.0,
+    "_inScatterStrength_note": "Intensity of volumetric in-scattering",
+    "_inScatterStrength_runtime": "F9 key: F9 increase, SHIFT+F9 decrease",
+
+    "enablePhaseFunction": true,
+    "_enablePhaseFunction_note": "Henyey-Greenstein scattering phase function",
+    "_enablePhaseFunction_runtime": "F8 key: Toggle phase function on/off",
+
+    "phaseStrength": 5.0,
+    "_phaseStrength_note": "Forward scattering strength (0=isotropic, 20=max forward)",
+    "_phaseStrength_runtime": "F8 key: CTRL+F8 increase, SHIFT+F8 decrease (1.0 steps)",
+
     "rtLightingStrength": 2.0,
-    "useReSTIR": false,
+    "_rtLightingStrength_note": "Overall RT lighting contribution multiplier",
+    "_rtLightingStrength_runtime": "F10 key: F10 increase, SHIFT+F10 decrease (0.25 steps)"
+  },
+
+  "_comment_features_restir": "=== RESTIR (Reservoir-based Spatio-Temporal Importance Resampling) ===",
+  "restir": {
+    "enableReSTIR": false,
+    "_enableReSTIR_note": "Enable ReSTIR temporal resampling (10-60x faster convergence)",
+    "_enableReSTIR_runtime": "F7 key: Toggle ReSTIR on/off",
+    "_enableReSTIR_warning": "May cause brightness issues at close distances (actively debugging)",
+
     "restirInitialCandidates": 16,
+    "_restirInitialCandidates_note": "Number of light candidates sampled per pixel (4-32 typical)",
+
+    "restirTemporalReuse": true,
+    "_restirTemporalReuse_note": "Reuse samples from previous frame (temporal accumulation)",
+
+    "restirSpatialReuse": false,
+    "_restirSpatialReuse_note": "Reuse samples from neighboring pixels (not yet implemented)",
+
     "restirTemporalWeight": 0.95,
+    "_restirTemporalWeight_note": "Temporal sample decay factor (0.8-0.99 typical)",
+    "_restirTemporalWeight_runtime": "F7 key: CTRL+F7 increase, SHIFT+F7 decrease (0.1 steps)"
+  },
+
+  "_comment_features_gaussians": "=== GAUSSIAN SPLATTING ===",
+  "gaussians": {
     "useAnisotropicGaussians": true,
-    "anisotropyStrength": 2.0
+    "_useAnisotropicGaussians_note": "Stretch particles along velocity (motion blur effect)",
+    "_useAnisotropicGaussians_runtime": "F11 key: Toggle anisotropic Gaussians on/off",
+
+    "anisotropyStrength": 2.0,
+    "_anisotropyStrength_note": "Strength of velocity-based stretching (0.0-5.0 typical)",
+    "_anisotropyStrength_runtime": "F12 key: F12 increase, SHIFT+F12 decrease (0.2 steps)"
   },
-  "pix": {
-    "autoCapture": false,
-    "captureFrame": 1,
-    "outputPath": "pix/Captures/auto_capture.wpix"
+
+  "_comment_features_physical": "=== PHYSICAL EFFECTS (Relativistic) ===",
+  "physical": {
+    "usePhysicalEmission": false,
+    "_usePhysicalEmission_note": "Stefan-Boltzmann law for particle emission",
+    "_usePhysicalEmission_runtime": "E key: Toggle physical emission on/off",
+
+    "emissionStrength": 1.0,
+    "_emissionStrength_note": "Multiplier for physical emission intensity",
+    "_emissionStrength_runtime": "E key: CTRL+E increase, SHIFT+E decrease (0.25 steps)",
+
+    "useDopplerShift": false,
+    "_useDopplerShift_note": "Doppler shift for moving particles (velocity-based color shift)",
+    "_useDopplerShift_runtime": "G key: Toggle Doppler shift on/off",
+
+    "dopplerStrength": 1.0,
+    "_dopplerStrength_note": "Strength of Doppler color shift",
+    "_dopplerStrength_runtime": "G key: CTRL+G increase, SHIFT+G decrease",
+
+    "useGravitationalRedshift": false,
+    "_useGravitationalRedshift_note": "Gravitational redshift near black hole event horizon",
+    "_useGravitationalRedshift_runtime": "No runtime key",
+
+    "redshiftStrength": 1.0,
+    "_redshiftStrength_note": "Strength of gravitational color shift",
+    "_redshiftStrength_runtime": "No runtime key",
+
+    "rtLightIntensity": 1.0,
+    "_rtLightIntensity_note": "RT lighting intensity multiplier (affects raytraced lighting brightness)",
+    "_rtLightIntensity_runtime": "I / K keys: Increase (×2) / Decrease (×0.5)",
+
+    "rtMaxDistance": 1000.0,
+    "_rtMaxDistance_note": "Maximum distance for RT lighting calculations",
+    "_rtMaxDistance_runtime": "O / L keys: Increase (+100) / Decrease (-100, min 50)"
   },
+
+  "_comment_debug": "=== DEBUG & DIAGNOSTICS ===",
   "debug": {
+    "enableDebugLayer": false,
+    "_enableDebugLayer_note": "D3D12 debug layer (WARNING: 5-10x slower, use DebugPIX build)",
+
+    "logLevel": "Info",
+    "_logLevel_note": "Options: 'Info', 'Debug', 'Trace'",
+
+    "enablePIX": false,
+    "_enablePIX_note": "Enable PIX capture support (use DebugPIX build instead)",
+
+    "pixAutoCapture": false,
+    "_pixAutoCapture_note": "Automatically capture frame on startup",
+    "_pixAutoCapture_envvar": "Set PIX_AUTO_CAPTURE=1 environment variable",
+
+    "pixCaptureFrame": 120,
+    "_pixCaptureFrame_note": "Frame number to capture (if auto-capture enabled)",
+    "_pixCaptureFrame_envvar": "Set PIX_CAPTURE_FRAME=120 environment variable",
+
+    "showFPS": true,
+    "_showFPS_note": "Display FPS counter in window title",
+
+    "showParticleStats": true,
+    "_showParticleStats_note": "Log particle count and memory usage",
+
     "logPhysicsUpdates": false,
-    "logRenderingStats": false,
-    "maxLoggedFrames": 10
+    "_logPhysicsUpdates_note": "Log every physics update (WARNING: extremely verbose)"
+  },
+
+  "_comment_pix_analysis": "=== PIX AUTOMATED ANALYSIS ===",
+  "pixAnalysis": {
+    "_section_note": "Configuration for PIX Agent v2/v3 automated capture/analysis",
+
+    "captureFrames": [1, 60, 120, 300],
+    "_captureFrames_note": "Array of frame numbers to capture for comparison analysis",
+
+    "capturePrefix": "analysis_",
+    "_capturePrefix_note": "Filename prefix for PIX captures (e.g., analysis_frame120.wpix)",
+
+    "enableReservoirLogging": false,
+    "_enableReservoirLogging_note": "Log ReSTIR reservoir states to buffer (for PIX inspection)",
+
+    "enablePerformanceCounters": false,
+    "_enablePerformanceCounters_note": "Enable GPU performance counters (timing mode)",
+
+    "trackResourceUsage": false,
+    "_trackResourceUsage_note": "Track VRAM allocation and buffer sizes"
+  },
+
+  "_comment_profiles": "=== CONFIGURATION PROFILES ===",
+  "_profiles_note": "Use --config=config_<profile>.json to load specific profile",
+  "_profiles_available": [
+    "config.json - Default balanced settings",
+    "config_dev.json - Developer mode (fast iteration, minimal logging)",
+    "config_user.json - User experience mode (visual quality, all effects)",
+    "config_pix_analysis.json - PIX analysis mode (diagnostics enabled)",
+    "config_restir_test.json - ReSTIR testing configuration"
+  ],
+
+  "_comment_keyboard_reference": "=== QUICK KEYBOARD REFERENCE ===",
+  "_keyboard_movement": {
+    "WASD": "Camera movement (forward/left/back/right)",
+    "CTRL+Mouse": "Camera rotation (look around)",
+    "+/-": "Particle size increase/decrease",
+    "P": "Toggle physics simulation",
+    "ESC": "Exit application"
+  },
+  "_keyboard_rendering": {
+    "F5": "Toggle shadow rays",
+    "F6": "Toggle in-scattering",
+    "F7": "Toggle ReSTIR (CTRL/SHIFT adjust temporal weight)",
+    "F8": "Toggle phase function (CTRL/SHIFT adjust strength)",
+    "F9": "Adjust in-scatter strength (SHIFT decrease)",
+    "F10": "Adjust RT lighting strength (SHIFT decrease)",
+    "F11": "Toggle anisotropic Gaussians",
+    "F12": "Adjust anisotropy strength (SHIFT decrease)"
+  },
+  "_keyboard_physics": {
+    "V": "Gravity: CTRL+V increase, SHIFT+V decrease",
+    "N": "Angular momentum: CTRL+N increase, SHIFT+N decrease",
+    "B": "Turbulence: CTRL+B increase, SHIFT+B decrease",
+    "M": "Damping: CTRL+M increase, SHIFT+M decrease"
+  },
+  "_keyboard_physical_effects": {
+    "E": "Physical emission: E toggle, CTRL+E/SHIFT+E adjust",
+    "G": "Doppler shift: G toggle, CTRL+G/SHIFT+G adjust"
+  },
+  "_keyboard_rt_lighting": {
+    "I": "Increase RT light intensity (×2)",
+    "K": "Decrease RT light intensity (×0.5)",
+    "O": "Increase RT max distance (+100)",
+    "L": "Decrease RT max distance (-100, min 50)"
   }
 }

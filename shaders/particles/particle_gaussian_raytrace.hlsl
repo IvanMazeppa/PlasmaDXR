@@ -473,6 +473,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         // Reuse temporal sample if valid AND has non-zero weight (BUG FIX!)
         // CRITICAL: Without weightSum check, M persists while weightSum decays to 0
         if (temporalValid && prevReservoir.M > 0 && prevReservoir.weightSum > 0.000001) {
+            // CRITICAL FIX #1: Clamp M to prevent unbounded accumulation
+            // ReSTIR best practice: max M = 20x initial candidates (NVIDIA 2020 paper)
+            const uint maxTemporalM = restirInitialCandidates * 20;  // 16 * 20 = 320
+
+            if (prevReservoir.M > maxTemporalM) {
+                // Scale weight proportionally to maintain unbiased estimator
+                prevReservoir.weightSum *= float(maxTemporalM) / float(prevReservoir.M);
+                prevReservoir.M = maxTemporalM;
+            }
+
             // Decay M to prevent infinite accumulation
             float temporalM = prevReservoir.M * restirTemporalWeight;
             currentReservoir = prevReservoir;
@@ -504,6 +514,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             }
 
             currentReservoir.weightSum = combinedWeight;
+
+            // CRITICAL FIX #1 (continued): Clamp combined M after merging
+            const uint maxCombinedM = restirInitialCandidates * 20;
+            if (currentReservoir.M > maxCombinedM) {
+                currentReservoir.weightSum *= float(maxCombinedM) / float(currentReservoir.M);
+                currentReservoir.M = maxCombinedM;
+            }
         }
 
         // Compute final weight
@@ -621,10 +638,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // FIXED: Use same attenuation as sampling (must match for unbiased estimate!)
                 float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
 
-                // FIX: ReSTIR W already represents the average contribution
-                // Don't scale by M - that causes over-brightness when M is high
-                // W = weightSum / M is the unbiased estimator
-                rtLight = lightEmission * lightIntensity * attenuation * currentReservoir.W;
+                // Evaluate light contribution (no W multiplication here)
+                float3 directLight = lightEmission * lightIntensity * attenuation;
+
+                // CRITICAL FIX #2: W is the MIS weight, not a brightness multiplier
+                // ReSTIR W = (weightSum / M) represents the average importance weight
+                // The unbiased estimator is: (1 / M) * sum(f(x_i) * w_i / p(x_i))
+                // Since W already encodes this average, we normalize by the number of candidates:
+                float misWeight = currentReservoir.W * float(restirInitialCandidates) / max(float(currentReservoir.M), 1.0);
+
+                // Clamp to prevent extreme values from stale temporal samples
+                misWeight = clamp(misWeight, 0.0, 2.0);
+
+                rtLight = directLight * misWeight;
             } else {
                 // Fallback: Use pre-computed RT lighting
                 rtLight = g_rtLighting[hit.particleIdx].rgb;
