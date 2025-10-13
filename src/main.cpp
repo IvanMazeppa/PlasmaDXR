@@ -26,12 +26,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
         LOG_INFO("Clean architecture, modern design");
         LOG_INFO("Target: 100K particles with RT lighting");
 
-#ifdef USE_PIX
-        // Initialize PIX capture system (checks for auto-capture env vars)
-        Debug::PIXCaptureHelper::Initialize();
-#else
-        LOG_INFO("[PIX] PIX support disabled (USE_PIX not defined)");
-#endif
+        // PIX will be initialized by Application after loading config
 
         // Parse command line into argc/argv
         int argc = 0;

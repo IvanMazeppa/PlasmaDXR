@@ -1,0 +1,61 @@
+{
+  "profile": "pix_inside",
+  "rendering": {
+    "particleCount": 10000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080
+  },
+  "features": {
+    "enableReSTIR": true,
+    "restirCandidates": 16,
+    "restirTemporalReuse": true,
+    "restirSpatialReuse": true,
+    "restirTemporalWeight": 0.9,
+    "enableInScattering": false,
+    "inScatterStrength": 1.0,
+    "enableShadowRays": true,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "anisotropyStrength": 1.0,
+    "rtLightingStrength": 2.0,
+    "usePhysicalEmission": false,
+    "emissionStrength": 1.0,
+    "useDopplerShift": false,
+    "dopplerStrength": 1.0,
+    "useGravitationalRedshift": false,
+    "redshiftStrength": 1.0
+  },
+  "physics": {
+    "innerRadius": 10.0,
+    "outerRadius": 300.0,
+    "diskThickness": 50.0,
+    "timeStep": 0.008333,
+    "physicsEnabled": true
+  },
+  "camera": {
+    "startDistance": 50.0,
+    "startHeight": 20.0,
+    "startAngle": 0.0,
+    "startPitch": -0.2,
+    "moveSpeed": 100.0,
+    "rotateSpeed": 0.5,
+    "particleSize": 20.0
+  },
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": true,
+    "pixAutoCapture": false,
+    "pixCaptureFrame": 60,
+    "showFPS": true,
+    "showParticleStats": true
+  },
+  "pix_analysis": {
+    "capturePrefix": "inside_",
+    "enableReservoirLogging": true,
+    "enablePerformanceCounters": true,
+    "trackResourceUsage": true
+  }
+}

@@ -52,6 +52,42 @@ void PIXCaptureHelper::Initialize() {
     }
 }
 
+void PIXCaptureHelper::InitializeWithConfig(bool autoCapture, int captureFrame) {
+    if (s_initialized) {
+        return;
+    }
+
+    s_initialized = true;
+
+    LOG_INFO("[PIX] Initializing PIX capture system (config mode)...");
+
+#ifdef USE_PIX
+    // Load WinPixGpuCapturer.dll from PIX installation
+    s_pixModule = PIXLoadLatestWinPixGpuCapturerLibrary();
+
+    if (s_pixModule) {
+        LOG_INFO("[PIX] GPU Capturer DLL loaded successfully");
+    } else {
+        LOG_WARN("[PIX] GPU Capturer DLL NOT loaded - PIX captures disabled");
+        LOG_WARN("[PIX] Ensure WinPixGpuCapturer.dll is in exe directory or PIX is installed");
+        return;
+    }
+#else
+    LOG_WARN("[PIX] USE_PIX not defined - PIX support disabled at compile time");
+    return;
+#endif
+
+    // Use config parameters directly
+    s_autoCapture = autoCapture;
+    s_captureFrame = captureFrame;
+
+    if (s_autoCapture) {
+        LOG_INFO("[PIX] Auto-capture ENABLED (from config) - will capture at frame {}", s_captureFrame);
+    } else {
+        LOG_INFO("[PIX] Auto-capture DISABLED (from config)");
+    }
+}
+
 bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
     if (!s_initialized || !s_autoCapture || !s_pixModule) {
         return false;
@@ -72,9 +108,10 @@ bool PIXCaptureHelper::CheckAutomaticCapture(int frameNumber) {
             LOG_INFO("[PIX] Capture started successfully");
         } else {
             LOG_ERROR("[PIX] Capture START failed (HRESULT: 0x{:08X})", static_cast<unsigned int>(hr));
-            // Still exit to avoid infinite loop
-            PostQuitMessage(0);
-            return true;
+            // Disable auto-capture to avoid retrying every frame
+            s_autoCapture = false;
+            LOG_WARN("[PIX] Auto-capture disabled due to error - app will continue running");
+            return false;
         }
     }
 

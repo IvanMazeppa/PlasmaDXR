@@ -33,6 +33,14 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     configMgr.Initialize(argc, argv);
     const ::Config::AppConfig& appConfig = configMgr.GetConfig();
 
+    // Initialize PIX with config parameters (must be after config load, before window creation)
+#ifdef USE_PIX
+    Debug::PIXCaptureHelper::InitializeWithConfig(appConfig.debug.pixAutoCapture,
+                                                    appConfig.debug.pixCaptureFrame);
+#else
+    LOG_INFO("[PIX] PIX support disabled (USE_PIX not defined)");
+#endif
+
     // Apply configuration to Application settings
     m_config.particleCount = appConfig.rendering.particleCount;
     m_config.rendererType = (appConfig.rendering.rendererType == ::Config::RendererType::Gaussian) ?

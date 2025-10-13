@@ -621,11 +621,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // FIXED: Use same attenuation as sampling (must match for unbiased estimate!)
                 float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
 
-                // FIX: W is average weight per sample (weightSum/M), need to scale by M
-                // This gives total light contribution from all samples
-                // Normalize by number of candidates to match non-ReSTIR brightness
-                float restirScale = (currentReservoir.W * currentReservoir.M) / float(restirInitialCandidates);
-                rtLight = lightEmission * lightIntensity * attenuation * restirScale;
+                // FIX: ReSTIR W already represents the average contribution
+                // Don't scale by M - that causes over-brightness when M is high
+                // W = weightSum / M is the unbiased estimator
+                rtLight = lightEmission * lightIntensity * attenuation * currentReservoir.W;
             } else {
                 // Fallback: Use pre-computed RT lighting
                 rtLight = g_rtLighting[hit.particleIdx].rgb;
@@ -636,7 +635,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float3 illumination = float3(1, 1, 1); // Base self-illumination
 
             // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
-            illumination += rtLight * rtLightingStrength;
+            // Clamp to prevent over-brightness from extreme ReSTIR samples
+            illumination += clamp(rtLight * rtLightingStrength, 0.0, 10.0);
 
             // === NEW: Cast shadow ray to primary light source (TOGGLEABLE) ===
             float shadowTerm = 1.0;

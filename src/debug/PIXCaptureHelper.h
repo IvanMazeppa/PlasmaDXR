@@ -30,6 +30,13 @@ public:
     static void Initialize();
 
     /// <summary>
+    /// Initialize PIX capture system with config parameters (overrides env vars)
+    /// </summary>
+    /// <param name="autoCapture">Enable automatic capture</param>
+    /// <param name="captureFrame">Frame number to capture</param>
+    static void InitializeWithConfig(bool autoCapture, int captureFrame);
+
+    /// <summary>
     /// Check if automatic capture should trigger on this frame
     /// Call every frame with incrementing frame number
     /// If capture is triggered, begins capture, waits one frame, ends capture, and exits app
