@@ -85,6 +85,7 @@
     <ClCompile Include="src\core\Device.cpp" />
     <ClCompile Include="src\core\SwapChain.cpp" />
     <ClCompile Include="src\core\FeatureDetector.cpp" />
+    <ClCompile Include="src\config\Config.cpp" />
     <ClCompile Include="src\particles\ParticleSystem.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer_Billboard.cpp" />

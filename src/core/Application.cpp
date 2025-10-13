@@ -2,6 +2,7 @@
 #include "Device.h"
 #include "SwapChain.h"
 #include "FeatureDetector.h"
+#include "../config/Config.h"
 #include "../particles/ParticleSystem.h"
 #include "../particles/ParticleRenderer.h"
 #include "../particles/ParticleRenderer_Gaussian.h"
@@ -27,7 +28,49 @@ Application::~Application() {
 bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char** argv) {
     LOG_INFO("Initializing Application...");
 
-    // Parse command-line arguments
+    // Load configuration from JSON file
+    ::Config::ConfigManager configMgr;
+    configMgr.Initialize(argc, argv);
+    const ::Config::AppConfig& appConfig = configMgr.GetConfig();
+
+    // Apply configuration to Application settings
+    m_config.particleCount = appConfig.rendering.particleCount;
+    m_config.rendererType = (appConfig.rendering.rendererType == ::Config::RendererType::Gaussian) ?
+                            RendererType::Gaussian : RendererType::Billboard;
+    m_config.enableRT = true; // Always enabled
+    m_config.preferMeshShaders = true;
+    m_config.enableDebugLayer = appConfig.debug.enableDebugLayer;
+
+    m_width = appConfig.rendering.resolutionWidth;
+    m_height = appConfig.rendering.resolutionHeight;
+
+    // Apply camera config
+    m_cameraDistance = appConfig.camera.startDistance;
+    m_cameraHeight = appConfig.camera.startHeight;
+    m_cameraAngle = appConfig.camera.startAngle;
+    m_cameraPitch = appConfig.camera.startPitch;
+    m_particleSize = appConfig.camera.particleSize;
+
+    // Apply feature toggles
+    m_useShadowRays = appConfig.features.enableShadowRays;
+    m_useInScattering = appConfig.features.enableInScattering;
+    m_inScatterStrength = appConfig.features.inScatterStrength;
+    m_usePhaseFunction = appConfig.features.enablePhaseFunction;
+    m_phaseStrength = appConfig.features.phaseStrength;
+    m_useAnisotropicGaussians = appConfig.features.useAnisotropicGaussians;
+    m_anisotropyStrength = appConfig.features.anisotropyStrength;
+    m_rtLightingStrength = appConfig.features.rtLightingStrength;
+    m_usePhysicalEmission = appConfig.features.usePhysicalEmission;
+    m_emissionStrength = appConfig.features.emissionStrength;
+    m_useDopplerShift = appConfig.features.useDopplerShift;
+    m_dopplerStrength = appConfig.features.dopplerStrength;
+    m_useGravitationalRedshift = appConfig.features.useGravitationalRedshift;
+    m_redshiftStrength = appConfig.features.redshiftStrength;
+    m_useReSTIR = appConfig.features.enableReSTIR;
+    m_restirInitialCandidates = appConfig.features.restirCandidates;
+    m_restirTemporalWeight = appConfig.features.restirTemporalWeight;
+
+    // Parse command-line argument overrides (these override config file)
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--gaussian" || arg == "-g") {
@@ -36,11 +79,18 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_config.rendererType = RendererType::Billboard;
         } else if (arg == "--particles" && i + 1 < argc) {
             m_config.particleCount = std::atoi(argv[++i]);
+        } else if (arg == "--no-restir") {
+            m_useReSTIR = false;
+        } else if (arg == "--restir") {
+            m_useReSTIR = true;
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
-            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer (default)");
+            LOG_INFO("  --config=<file>     : Load configuration from JSON file");
+            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer");
             LOG_INFO("  --billboard, -b     : Use Billboard renderer");
-            LOG_INFO("  --particles <count> : Set particle count (default: 10000)");
+            LOG_INFO("  --particles <count> : Set particle count");
+            LOG_INFO("  --restir            : Enable ReSTIR");
+            LOG_INFO("  --no-restir         : Disable ReSTIR");
         }
     }
 
@@ -48,16 +98,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     LOG_INFO("Particle count: {}", m_config.particleCount);
     LOG_INFO("Renderer: {}", m_config.rendererType == RendererType::Gaussian ?
              "3D Gaussian Splatting (volumetric)" : "Billboard (stable)");
-
-    // Load default configuration (fallback - should already be set in header)
-    if (m_config.particleCount == 0) m_config.particleCount = 10000;
-    m_config.enableRT = true;
-    m_config.preferMeshShaders = true;
-#ifdef _DEBUG
-    m_config.enableDebugLayer = true;
-#else
-    m_config.enableDebugLayer = false;
-#endif
 
     // Create window
     if (!CreateAppWindow(hInstance, nCmdShow)) {

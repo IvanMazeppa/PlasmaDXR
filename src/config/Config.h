@@ -1,0 +1,165 @@
+#pragma once
+
+#include <string>
+#include <vector>
+#include <optional>
+
+// Configuration system for PlasmaDX-Clean
+// Supports multiple profiles: dev, user, pix_analysis
+//
+// Priority order:
+// 1. Command line: --config=config_user.json
+// 2. Environment variable: PLASMADX_CONFIG=config_pix_analysis.json
+// 3. Default: config_dev.json (if exists)
+// 4. Fallback: Hardcoded defaults
+
+namespace Config {
+
+    enum class Profile {
+        Dev,           // Developer debug mode - fast iteration
+        User,          // User experience mode - visual quality
+        PIXAnalysis,   // PIX analysis mode - maximum diagnostics
+        Custom         // Custom JSON file
+    };
+
+    enum class RendererType {
+        Billboard,
+        Gaussian
+    };
+
+    enum class LogLevel {
+        Info,
+        Debug,
+        Trace
+    };
+
+    struct RenderingConfig {
+        uint32_t particleCount = 10000;
+        RendererType rendererType = RendererType::Gaussian;
+        uint32_t resolutionWidth = 1920;
+        uint32_t resolutionHeight = 1080;
+    };
+
+    struct FeaturesConfig {
+        bool enableReSTIR = false;
+        uint32_t restirCandidates = 16;
+        bool restirTemporalReuse = true;
+        bool restirSpatialReuse = true;
+        float restirTemporalWeight = 0.9f;
+
+        bool enableInScattering = false;
+        float inScatterStrength = 1.0f;
+
+        bool enableShadowRays = true;
+        bool enablePhaseFunction = true;
+        float phaseStrength = 5.0f;
+
+        bool useAnisotropicGaussians = true;
+        float anisotropyStrength = 1.0f;
+
+        float rtLightingStrength = 2.0f;
+
+        bool usePhysicalEmission = false;
+        float emissionStrength = 1.0f;
+
+        bool useDopplerShift = false;
+        float dopplerStrength = 1.0f;
+
+        bool useGravitationalRedshift = false;
+        float redshiftStrength = 1.0f;
+    };
+
+    struct PhysicsConfig {
+        float innerRadius = 10.0f;
+        float outerRadius = 300.0f;
+        float diskThickness = 50.0f;
+        float timeStep = 1.0f / 120.0f;  // 120Hz physics
+        bool physicsEnabled = true;
+    };
+
+    struct CameraConfig {
+        float startDistance = 800.0f;
+        float startHeight = 1200.0f;
+        float startAngle = 0.0f;
+        float startPitch = 0.0f;
+        float moveSpeed = 100.0f;
+        float rotateSpeed = 0.5f;
+        float particleSize = 50.0f;
+    };
+
+    struct DebugConfig {
+        bool enableDebugLayer = false;
+        LogLevel logLevel = LogLevel::Info;
+        bool enablePIX = false;
+        bool pixAutoCapture = false;
+        uint32_t pixCaptureFrame = 120;
+        bool showFPS = true;
+        bool showParticleStats = true;
+    };
+
+    struct PIXAnalysisConfig {
+        std::vector<uint32_t> captureFrames = {1, 60, 120, 300};
+        std::string capturePrefix = "analysis_";
+        bool enableReservoirLogging = false;
+        bool enablePerformanceCounters = false;
+        bool trackResourceUsage = false;
+    };
+
+    // Main configuration structure
+    struct AppConfig {
+        Profile profile = Profile::Dev;
+        std::string profileName = "dev";
+
+        RenderingConfig rendering;
+        FeaturesConfig features;
+        PhysicsConfig physics;
+        CameraConfig camera;
+        DebugConfig debug;
+        PIXAnalysisConfig pixAnalysis;
+
+        // Metadata
+        std::string configFilePath;
+        bool loadedFromFile = false;
+    };
+
+    // Configuration loader/manager
+    class ConfigManager {
+    public:
+        ConfigManager();
+        ~ConfigManager();
+
+        // Load configuration from file
+        bool LoadFromFile(const std::string& filepath);
+
+        // Load configuration by profile name
+        bool LoadProfile(Profile profile);
+
+        // Parse command-line arguments and load config
+        bool Initialize(int argc, char** argv);
+
+        // Get current configuration
+        const AppConfig& GetConfig() const { return m_config; }
+
+        // Get mutable config (for runtime changes)
+        AppConfig& GetMutableConfig() { return m_config; }
+
+        // Save current config to file
+        bool SaveToFile(const std::string& filepath) const;
+
+        // Generate default config files
+        static bool GenerateDefaultConfigs();
+
+    private:
+        // Parse JSON from file
+        bool ParseJSON(const std::string& filepath);
+
+        // Set defaults based on profile
+        void SetProfileDefaults(Profile profile);
+
+        // Get default config file path for profile
+        static std::string GetProfilePath(Profile profile);
+
+        AppConfig m_config;
+    };
+
+} // namespace Config
