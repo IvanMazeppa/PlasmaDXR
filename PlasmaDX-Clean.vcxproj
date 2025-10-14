@@ -51,7 +51,7 @@
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;C:\Program Files\Microsoft PIX\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)external\imgui;$(ProjectDir)external\imgui\backends;C:\Program Files\Microsoft PIX\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 
       <!-- USE_PIX only defined for DebugPIX configuration -->
       <PreprocessorDefinitions Condition="'$(Configuration)'=='DebugPIX'">USE_PIX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -96,6 +96,14 @@
     <ClCompile Include="src\utils\ResourceManager.cpp" />
     <!-- PIXCaptureHelper only compiled in DebugPIX build -->
     <ClCompile Include="src\debug\PIXCaptureHelper.cpp" Condition="'$(Configuration)'=='DebugPIX'" />
+    <!-- ImGui -->
+    <ClCompile Include="external\imgui\imgui.cpp" />
+    <ClCompile Include="external\imgui\imgui_demo.cpp" />
+    <ClCompile Include="external\imgui\imgui_draw.cpp" />
+    <ClCompile Include="external\imgui\imgui_tables.cpp" />
+    <ClCompile Include="external\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="external\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="external\imgui\backends\imgui_impl_dx12.cpp" />
   </ItemGroup>
 
   <!-- Header Files -->

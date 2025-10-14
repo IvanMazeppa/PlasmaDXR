@@ -1,12 +1,15 @@
 #pragma once
 
 #include <windows.h>
+#include <wrl/client.h>
+#include <d3d12.h>
 #include <memory>
 #include <chrono>
 #include <string>
 
 // Forward declarations
 struct ID3D12Resource;
+struct ID3D12DescriptorHeap;
 class Device;
 class SwapChain;
 class FeatureDetector;
@@ -137,4 +140,11 @@ private:
     void DumpGPUBuffers();
     void DumpBufferToFile(ID3D12Resource* buffer, const char* name);
     void WriteMetadataJSON();
+
+    // ImGui
+    void InitializeImGui();
+    void ShutdownImGui();
+    void RenderImGui();
+    bool m_showImGui = true;  // F1 to toggle
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_imguiDescriptorHeap;
 };

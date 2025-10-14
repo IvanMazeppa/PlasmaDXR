@@ -71,6 +71,9 @@ public:
                ID3D12Resource* tlas,  // From RTLightingSystem!
                const RenderConstants& constants);
 
+    // Resize output textures and buffers when window size changes
+    bool Resize(uint32_t newWidth, uint32_t newHeight);
+
     // Get output texture to copy to backbuffer
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
 

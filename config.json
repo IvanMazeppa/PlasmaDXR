@@ -22,17 +22,17 @@
 
   "_comment_camera": "=== CAMERA CONFIGURATION ===",
   "camera": {
-    "startDistance": 800.0,
+    "startDistance": 700.0,
     "_startDistance_note": "Initial camera distance from origin (in world units)",
 
-    "startHeight": 1200.0,
+    "startHeight": 250.0,
     "_startHeight_note": "Initial camera height above disk plane",
 
-    "startAngle": 0.0,
-    "_startAngle_note": "Initial camera rotation angle (radians)",
+    "startAngle": 0.785,
+    "_startAngle_note": "Initial camera rotation angle (radians - 0.785 = 45° diagonal view)",
 
-    "startPitch": 0.0,
-    "_startPitch_note": "Initial camera pitch angle (radians)",
+    "startPitch": -0.4,
+    "_startPitch_note": "Initial camera pitch angle (radians - negative = looking down at disk)",
 
     "moveSpeed": 100.0,
     "_moveSpeed_note": "Camera movement speed (WASD keys)",

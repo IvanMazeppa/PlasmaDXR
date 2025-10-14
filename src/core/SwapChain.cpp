@@ -37,7 +37,7 @@ bool SwapChain::CreateSwapChain(HWND hwnd, UINT width, UINT height) {
     swapChainDesc.BufferCount = BUFFER_COUNT;
     swapChainDesc.Width = width;
     swapChainDesc.Height = height;
-    swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    swapChainDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM; // 10-bit color (4x better than 8-bit)
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.SampleDesc.Count = 1;
@@ -128,7 +128,7 @@ bool SwapChain::Resize(UINT width, UINT height) {
 
     // Resize swap chain
     if (FAILED(m_swapChain->ResizeBuffers(BUFFER_COUNT, width, height,
-                                          DXGI_FORMAT_R8G8B8A8_UNORM, 0))) {
+                                          DXGI_FORMAT_R10G10B10A2_UNORM, 0))) {
         LOG_ERROR("Failed to resize swap chain");
         return false;
     }

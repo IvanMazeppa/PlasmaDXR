@@ -15,6 +15,14 @@
 #include <algorithm>
 #include <filesystem>
 
+// ImGui
+#include "../../external/imgui/imgui.h"
+#include "../../external/imgui/backends/imgui_impl_win32.h"
+#include "../../external/imgui/backends/imgui_impl_dx12.h"
+
+// Forward declare ImGui WndProc handler
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 // Window procedure forward declaration
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -202,6 +210,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         }
     }
 
+    // Initialize ImGui
+    InitializeImGui();
+
     m_isRunning = true;
     LOG_INFO("Application initialized successfully");
 
@@ -212,6 +223,9 @@ void Application::Shutdown() {
     if (m_device) {
         m_device->WaitForGPU();
     }
+
+    // Shutdown ImGui
+    ShutdownImGui();
 
     m_rtLighting.reset();
     m_particleRenderer.reset();
@@ -560,6 +574,17 @@ void Application::Render() {
         cmdList->ResourceBarrier(1, &particleBackToUAV);
     }
 
+    // Render ImGui overlay
+    if (m_showImGui) {
+        // Set ImGui descriptor heap
+        ID3D12DescriptorHeap* descriptorHeaps[] = { m_imguiDescriptorHeap.Get() };
+        cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+        // Render ImGui commands
+        RenderImGui();
+        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList);
+    }
+
     // Transition to present
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -590,6 +615,10 @@ void Application::Render() {
 }
 
 bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
+    // Make the application DPI-aware so Windows doesn't scale our window
+    // This prevents the 1920x1080 window from becoming 2880x1620 on 150% scaled displays
+    SetProcessDPIAware();
+
     // Register window class
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -602,6 +631,27 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
 
     if (!RegisterClassEx(&wc)) {
         return false;
+    }
+
+    // Get monitor resolution to ensure window fits on screen
+    MONITORINFO monitorInfo = { sizeof(MONITORINFO) };
+    HMONITOR hMonitor = MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY);
+    GetMonitorInfo(hMonitor, &monitorInfo);
+
+    int monitorWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+    int monitorHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
+
+    LOG_INFO("Monitor resolution: {}x{}", monitorWidth, monitorHeight);
+    LOG_INFO("Requested window: {}x{}", m_width, m_height);
+
+    // If requested resolution is larger than monitor, scale down to 90% of monitor size
+    if (m_width > monitorWidth || m_height > monitorHeight) {
+        float scaleW = static_cast<float>(monitorWidth) / m_width * 0.9f;
+        float scaleH = static_cast<float>(monitorHeight) / m_height * 0.9f;
+        float scale = (scaleW < scaleH) ? scaleW : scaleH;
+        m_width = static_cast<int>(m_width * scale);
+        m_height = static_cast<int>(m_height * scale);
+        LOG_INFO("Scaled window to fit monitor: {}x{}", m_width, m_height);
     }
 
     // Create window
@@ -628,6 +678,10 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
 }
 
 LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    // Let ImGui handle input first
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+        return true;
+
     Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
     switch (msg) {
@@ -641,6 +695,36 @@ LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 
     case WM_DESTROY:
         PostQuitMessage(0);
+        return 0;
+
+    case WM_SIZE:
+        if (app && wParam != SIZE_MINIMIZED) {
+            UINT width = LOWORD(lParam);
+            UINT height = HIWORD(lParam);
+
+            // Only resize if dimensions actually changed
+            if (width != app->m_width || height != app->m_height) {
+                app->m_width = width;
+                app->m_height = height;
+
+                // Resize swap chain and recreate render targets
+                if (app->m_swapChain) {
+                    app->m_device->WaitForGPU();  // Wait for GPU before resizing
+                    app->m_swapChain->Resize(width, height);
+
+                    // Resize Gaussian renderer output texture and reservoirs
+                    if (app->m_gaussianRenderer) {
+                        app->m_gaussianRenderer->Resize(width, height);
+                    }
+
+                    // Update ImGui display size
+                    ImGuiIO& io = ImGui::GetIO();
+                    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+
+                    LOG_INFO("Window resized: {}x{}", width, height);
+                }
+            }
+        }
         return 0;
 
     case WM_KEYDOWN:
@@ -691,7 +775,8 @@ void Application::OnKeyPress(UINT8 key) {
         break;
 
     case VK_F1:
-        LOG_INFO("F1: Testing RT Lighting - particles should turn GREEN");
+        m_showImGui = !m_showImGui;
+        LOG_INFO("ImGui: {}", m_showImGui ? "ON" : "OFF");
         break;
 
     case 'S':
@@ -1246,4 +1331,154 @@ void Application::UpdateFrameStats(float actualFrameTime) {
         elapsedTime = 0.0f;
         frameCounter = 0;
     }
+}
+
+void Application::InitializeImGui() {
+    LOG_INFO("Initializing ImGui...");
+
+    // Setup Dear ImGui context FIRST
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard navigation
+
+    // Setup Dear ImGui style (dark theme)
+    ImGui::StyleColorsDark();
+
+    // Build font atlas BEFORE initializing backends
+    // This is critical - the DX12 backend needs the atlas built
+    io.Fonts->Build();
+
+    // Setup Win32 backend (must be before DX12 backend)
+    ImGui_ImplWin32_Init(m_hwnd);
+
+    // Create descriptor heap for ImGui (1 descriptor for font texture)
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heapDesc.NumDescriptors = 1;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+    HRESULT hr = m_device->GetDevice()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_imguiDescriptorHeap));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create ImGui descriptor heap");
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        return;
+    }
+
+    // Setup DX12 backend - this will build the font atlas automatically
+    ImGui_ImplDX12_Init(m_device->GetDevice(),
+                        3,  // Number of frames in flight (swap chain buffer count)
+                        DXGI_FORMAT_R8G8B8A8_UNORM,
+                        m_imguiDescriptorHeap.Get(),
+                        m_imguiDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                        m_imguiDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
+    // Upload fonts to GPU
+    // We need to do this manually by executing a command list
+    m_device->ResetCommandList();
+    auto cmdList = m_device->GetCommandList();
+    ImGui_ImplDX12_CreateDeviceObjects();
+    cmdList->Close();
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();
+
+    LOG_INFO("ImGui initialized successfully (Press F1 to toggle)");
+}
+
+void Application::ShutdownImGui() {
+    if (m_imguiDescriptorHeap) {
+        ImGui_ImplDX12_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        m_imguiDescriptorHeap.Reset();
+    }
+}
+
+void Application::RenderImGui() {
+    if (!m_showImGui) return;
+
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    // Create control panel window
+    ImGui::Begin("PlasmaDX Control Panel", &m_showImGui);
+
+    ImGui::Text("FPS: %.1f", m_fps);
+    ImGui::Separator();
+
+    // Camera controls
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Distance", &m_cameraDistance, 100.0f, 2000.0f);
+        ImGui::SliderFloat("Height", &m_cameraHeight, 0.0f, 2000.0f);
+        ImGui::SliderFloat("Particle Size", &m_particleSize, 1.0f, 100.0f);
+    }
+
+    // Rendering features
+    if (ImGui::CollapsingHeader("Rendering Features", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Shadow Rays (F5)", &m_useShadowRays);
+        ImGui::Checkbox("In-Scattering (F6)", &m_useInScattering);
+        if (m_useInScattering) {
+            ImGui::SliderFloat("In-Scatter Strength", &m_inScatterStrength, 0.0f, 10.0f);
+        }
+        ImGui::Checkbox("ReSTIR (F7)", &m_useReSTIR);
+        if (m_useReSTIR) {
+            ImGui::SliderFloat("Temporal Weight", &m_restirTemporalWeight, 0.0f, 1.0f);
+        }
+        ImGui::Checkbox("Phase Function (F8)", &m_usePhaseFunction);
+        if (m_usePhaseFunction) {
+            ImGui::SliderFloat("Phase Strength", &m_phaseStrength, 0.0f, 20.0f);
+        }
+        ImGui::SliderFloat("RT Lighting Strength", &m_rtLightingStrength, 0.0f, 10.0f);
+        ImGui::Checkbox("Anisotropic Gaussians (F11)", &m_useAnisotropicGaussians);
+        if (m_useAnisotropicGaussians) {
+            ImGui::SliderFloat("Anisotropy Strength", &m_anisotropyStrength, 0.0f, 3.0f);
+        }
+    }
+
+    // Physical effects
+    if (ImGui::CollapsingHeader("Physical Effects")) {
+        ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
+        if (m_usePhysicalEmission) {
+            ImGui::SliderFloat("Emission Strength", &m_emissionStrength, 0.0f, 5.0f);
+        }
+        ImGui::Checkbox("Doppler Shift (R)", &m_useDopplerShift);
+        if (m_useDopplerShift) {
+            ImGui::SliderFloat("Doppler Strength", &m_dopplerStrength, 0.0f, 5.0f);
+        }
+        ImGui::Checkbox("Gravitational Redshift (G)", &m_useGravitationalRedshift);
+        if (m_useGravitationalRedshift) {
+            ImGui::SliderFloat("Redshift Strength", &m_redshiftStrength, 0.0f, 5.0f);
+        }
+    }
+
+    // Physics controls
+    if (ImGui::CollapsingHeader("Physics")) {
+        ImGui::Checkbox("Physics Enabled (P)", &m_physicsEnabled);
+        if (m_particleSystem) {
+            float gravity = m_particleSystem->GetGravityStrength();
+            if (ImGui::SliderFloat("Gravity (V)", &gravity, 0.0f, 2000.0f)) {
+                m_particleSystem->SetGravityStrength(gravity);
+            }
+            float angularMomentum = m_particleSystem->GetAngularMomentum();
+            if (ImGui::SliderFloat("Angular Momentum (N)", &angularMomentum, 0.0f, 5.0f)) {
+                m_particleSystem->SetAngularMomentum(angularMomentum);
+            }
+            float turbulence = m_particleSystem->GetTurbulence();
+            if (ImGui::SliderFloat("Turbulence (B)", &turbulence, 0.0f, 100.0f)) {
+                m_particleSystem->SetTurbulence(turbulence);
+            }
+            float damping = m_particleSystem->GetDamping();
+            if (ImGui::SliderFloat("Damping (M)", &damping, 0.0f, 1.0f)) {
+                m_particleSystem->SetDamping(damping);
+            }
+        }
+    }
+
+    ImGui::End();
+
+    // Rendering
+    ImGui::Render();
 }

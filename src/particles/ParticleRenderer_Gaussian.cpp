@@ -148,7 +148,7 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
     texDesc.Height = height;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Reverted - R16 causing crash
+    texDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM; // 10-bit color (4x better than 8-bit, compatible with swap chain)
     texDesc.SampleDesc.Count = 1;
     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
@@ -169,7 +169,7 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
 
     // Create UAV descriptor (typed UAVs require descriptor table binding)
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    uavDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM; // MUST match resource format!
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
@@ -184,7 +184,7 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
     // Get GPU handle for binding in Render()
     m_outputUAVGPU = m_resources->GetGPUHandle(m_outputUAV);
 
-    LOG_INFO("Created Gaussian output texture: {}x{}", width, height);
+    LOG_INFO("Created Gaussian output texture: {}x{} (R10G10B10A2_UNORM - 10-bit color)", width, height);
     LOG_INFO("  UAV CPU handle: 0x{:016X}", m_outputUAV.ptr);
     LOG_INFO("  UAV GPU handle: 0x{:016X}", m_outputUAVGPU.ptr);
 
@@ -371,4 +371,87 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
     // ReSTIR: Swap reservoir buffers for next frame (ping-pong)
     m_currentReservoirIndex = 1 - m_currentReservoirIndex;
+}
+
+bool ParticleRenderer_Gaussian::Resize(uint32_t newWidth, uint32_t newHeight) {
+    if (newWidth == m_screenWidth && newHeight == m_screenHeight) {
+        return true;  // No resize needed
+    }
+
+    LOG_INFO("Resizing Gaussian renderer: {}x{} -> {}x{}", m_screenWidth, m_screenHeight, newWidth, newHeight);
+
+    m_screenWidth = newWidth;
+    m_screenHeight = newHeight;
+
+    // Release old resources
+    m_outputTexture.Reset();
+    m_reservoirBuffer[0].Reset();
+    m_reservoirBuffer[1].Reset();
+
+    // Recreate output texture at new resolution
+    if (!CreateOutputTexture(newWidth, newHeight)) {
+        LOG_ERROR("Failed to recreate output texture during resize");
+        return false;
+    }
+
+    // Recreate ReSTIR reservoir buffers at new resolution
+    const uint32_t reservoirElementSize = 32;
+    const uint32_t reservoirBufferSize = newWidth * newHeight * reservoirElementSize;
+
+    D3D12_HEAP_PROPERTIES defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_RESOURCE_DESC reservoirBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
+        reservoirBufferSize,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    );
+
+    for (int i = 0; i < 2; i++) {
+        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &reservoirBufferDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_reservoirBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to recreate reservoir buffer {} during resize", i);
+            return false;
+        }
+
+        // Recreate SRV
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = newWidth * newHeight;
+        srvDesc.Buffer.StructureByteStride = reservoirElementSize;
+
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_reservoirBuffer[i].Get(),
+            &srvDesc,
+            m_reservoirSRV[i]
+        );
+        m_reservoirSRVGPU[i] = m_resources->GetGPUHandle(m_reservoirSRV[i]);
+
+        // Recreate UAV
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uavDesc.Buffer.FirstElement = 0;
+        uavDesc.Buffer.NumElements = newWidth * newHeight;
+        uavDesc.Buffer.StructureByteStride = reservoirElementSize;
+
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_reservoirBuffer[i].Get(),
+            nullptr,
+            &uavDesc,
+            m_reservoirUAV[i]
+        );
+        m_reservoirUAVGPU[i] = m_resources->GetGPUHandle(m_reservoirUAV[i]);
+    }
+
+    LOG_INFO("Gaussian renderer resized successfully to {}x{}", newWidth, newHeight);
+    return true;
 }
