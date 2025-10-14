@@ -483,13 +483,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 prevReservoir.M = maxTemporalM;
             }
 
-            // Decay M to prevent infinite accumulation
-            float temporalM = prevReservoir.M * restirTemporalWeight;
+            // FIX #2: Distance-adaptive temporal weight
+            // When close to particles, they move significantly → reduce temporal weight
+            float distToLight = length(prevReservoir.lightPos - cameraPos);
+            float adaptiveTemporalWeight = lerp(0.3, restirTemporalWeight,
+                                                saturate(distToLight / 200.0));
+
+            // Decay M to prevent infinite accumulation (using adaptive weight)
+            float temporalM = prevReservoir.M * adaptiveTemporalWeight;
             currentReservoir = prevReservoir;
             currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
 
             // CRITICAL: Also decay weightSum proportionally to maintain W = weightSum/M balance
-            currentReservoir.weightSum = prevReservoir.weightSum * restirTemporalWeight;
+            currentReservoir.weightSum = prevReservoir.weightSum * adaptiveTemporalWeight;
         }
 
         // Generate new candidate samples for this frame
@@ -648,7 +654,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 float misWeight = currentReservoir.W * float(currentReservoir.M);
 
                 // Clamp to prevent extreme values from stale temporal samples
-                misWeight = clamp(misWeight, 0.0, 2.0);
+                // FIX #3: Increased from 2.0 to 10.0 to allow proper dynamic range
+                misWeight = clamp(misWeight, 0.0, 10.0);
 
                 rtLight = directLight * misWeight;
             } else {
