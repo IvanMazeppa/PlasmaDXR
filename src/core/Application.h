@@ -32,6 +32,7 @@ public:
 private:
     // Window management
     bool CreateAppWindow(HINSTANCE hInstance, int nCmdShow);
+    void ToggleFullscreen();
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     // Frame timing
@@ -51,6 +52,8 @@ private:
     bool m_isRunning = false;
     int m_width = 1920;
     int m_height = 1080;
+    bool m_isFullscreen = false;
+    RECT m_windowedRect = {};  // Store windowed position/size for fullscreen toggle
 
     // Core systems (dependency injection - no god object!)
     std::unique_ptr<Device> m_device;
@@ -93,7 +96,15 @@ private:
     float m_cameraAngle = 0.0f;         // Orbit angle
     float m_cameraPitch = 0.0f;         // Vertical rotation
     float m_particleSize = 50.0f;       // Larger for initial visibility
+    float m_cameraMoveSpeed = 100.0f;   // Camera movement speed
+    float m_cameraRotateSpeed = 0.5f;   // Camera rotation speed
     bool m_physicsEnabled = true;       // ENABLED - physics shader initializes particles on GPU
+
+    // Physics system parameters (readonly for now - would require ParticleSystem API changes)
+    float m_innerRadius = 10.0f;        // Inner accretion disk radius
+    float m_outerRadius = 300.0f;       // Outer accretion disk radius
+    float m_diskThickness = 50.0f;      // Disk thickness
+    float m_physicsTimeStep = 0.008333f; // Physics timestep (fixed at 120Hz)
 
     // RT Lighting runtime controls
     float m_rtLightingIntensity = 1.0f;

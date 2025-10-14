@@ -677,12 +677,60 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
     return true;
 }
 
+void Application::ToggleFullscreen() {
+    m_isFullscreen = !m_isFullscreen;
+
+    if (m_isFullscreen) {
+        // Save windowed position/size
+        GetWindowRect(m_hwnd, &m_windowedRect);
+
+        // Get monitor info for fullscreen resolution
+        HMONITOR hMonitor = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTOPRIMARY);
+        MONITORINFO monitorInfo = { sizeof(MONITORINFO) };
+        GetMonitorInfo(hMonitor, &monitorInfo);
+
+        int monitorWidth = monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left;
+        int monitorHeight = monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top;
+
+        // Set borderless window style
+        SetWindowLong(m_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+
+        // Move window to cover entire monitor
+        SetWindowPos(m_hwnd, HWND_TOP,
+                     monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+                     monitorWidth, monitorHeight,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+        LOG_INFO("Fullscreen enabled ({}x{})", monitorWidth, monitorHeight);
+    } else {
+        // Restore windowed style
+        SetWindowLong(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+
+        // Restore windowed position/size
+        int width = m_windowedRect.right - m_windowedRect.left;
+        int height = m_windowedRect.bottom - m_windowedRect.top;
+
+        SetWindowPos(m_hwnd, HWND_NOTOPMOST,
+                     m_windowedRect.left, m_windowedRect.top,
+                     width, height,
+                     SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+        LOG_INFO("Fullscreen disabled ({}x{})", m_width, m_height);
+    }
+}
+
 LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+
+    // Handle Alt+Enter BEFORE ImGui (fullscreen toggle should always work)
+    if (msg == WM_SYSKEYDOWN && wParam == VK_RETURN && app) {
+        app->ToggleFullscreen();
+        return 0;
+    }
+
     // Let ImGui handle input first
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
         return true;
-
-    Application* app = reinterpret_cast<Application*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 
     switch (msg) {
     case WM_CREATE:
@@ -1407,13 +1455,20 @@ void Application::RenderImGui() {
     ImGui::Begin("PlasmaDX Control Panel", &m_showImGui);
 
     ImGui::Text("FPS: %.1f", m_fps);
+    ImGui::Text("Fullscreen: %s (Alt+Enter)", m_isFullscreen ? "ON" : "OFF");
     ImGui::Separator();
 
     // Camera controls
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Distance", &m_cameraDistance, 100.0f, 2000.0f);
-        ImGui::SliderFloat("Height", &m_cameraHeight, 0.0f, 2000.0f);
-        ImGui::SliderFloat("Particle Size", &m_particleSize, 1.0f, 100.0f);
+        ImGui::SliderFloat("Distance (W/A)", &m_cameraDistance, 100.0f, 2000.0f);
+        ImGui::SliderFloat("Height (Up/Down)", &m_cameraHeight, 0.0f, 2000.0f);
+        ImGui::SliderFloat("Angle (Left/Right)", &m_cameraAngle, -3.14f, 3.14f);
+        ImGui::SliderFloat("Pitch (Mouse Y)", &m_cameraPitch, -1.5f, 1.5f);
+        ImGui::SliderFloat("Particle Size (+/-)", &m_particleSize, 1.0f, 100.0f);
+        ImGui::Separator();
+        ImGui::Text("Camera Speed Settings");
+        ImGui::SliderFloat("Move Speed", &m_cameraMoveSpeed, 10.0f, 500.0f);
+        ImGui::SliderFloat("Rotate Speed", &m_cameraRotateSpeed, 0.1f, 2.0f);
     }
 
     // Rendering features
@@ -1421,20 +1476,21 @@ void Application::RenderImGui() {
         ImGui::Checkbox("Shadow Rays (F5)", &m_useShadowRays);
         ImGui::Checkbox("In-Scattering (F6)", &m_useInScattering);
         if (m_useInScattering) {
-            ImGui::SliderFloat("In-Scatter Strength", &m_inScatterStrength, 0.0f, 10.0f);
+            ImGui::SliderFloat("In-Scatter Strength (F9)", &m_inScatterStrength, 0.0f, 10.0f);
         }
         ImGui::Checkbox("ReSTIR (F7)", &m_useReSTIR);
         if (m_useReSTIR) {
-            ImGui::SliderFloat("Temporal Weight", &m_restirTemporalWeight, 0.0f, 1.0f);
+            ImGui::SliderFloat("Temporal Weight (Ctrl/Shift+F7)", &m_restirTemporalWeight, 0.0f, 1.0f);
+            ImGui::SliderInt("Initial Candidates", reinterpret_cast<int*>(&m_restirInitialCandidates), 8, 32);
         }
         ImGui::Checkbox("Phase Function (F8)", &m_usePhaseFunction);
         if (m_usePhaseFunction) {
-            ImGui::SliderFloat("Phase Strength", &m_phaseStrength, 0.0f, 20.0f);
+            ImGui::SliderFloat("Phase Strength (Ctrl/Shift+F8)", &m_phaseStrength, 0.0f, 20.0f);
         }
-        ImGui::SliderFloat("RT Lighting Strength", &m_rtLightingStrength, 0.0f, 10.0f);
+        ImGui::SliderFloat("RT Lighting Strength (F10)", &m_rtLightingStrength, 0.0f, 10.0f);
         ImGui::Checkbox("Anisotropic Gaussians (F11)", &m_useAnisotropicGaussians);
         if (m_useAnisotropicGaussians) {
-            ImGui::SliderFloat("Anisotropy Strength", &m_anisotropyStrength, 0.0f, 3.0f);
+            ImGui::SliderFloat("Anisotropy Strength (F12)", &m_anisotropyStrength, 0.0f, 3.0f);
         }
     }
 
@@ -1442,15 +1498,15 @@ void Application::RenderImGui() {
     if (ImGui::CollapsingHeader("Physical Effects")) {
         ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
         if (m_usePhysicalEmission) {
-            ImGui::SliderFloat("Emission Strength", &m_emissionStrength, 0.0f, 5.0f);
+            ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
         }
         ImGui::Checkbox("Doppler Shift (R)", &m_useDopplerShift);
         if (m_useDopplerShift) {
-            ImGui::SliderFloat("Doppler Strength", &m_dopplerStrength, 0.0f, 5.0f);
+            ImGui::SliderFloat("Doppler Strength (Ctrl/Shift+R)", &m_dopplerStrength, 0.0f, 5.0f);
         }
         ImGui::Checkbox("Gravitational Redshift (G)", &m_useGravitationalRedshift);
         if (m_useGravitationalRedshift) {
-            ImGui::SliderFloat("Redshift Strength", &m_redshiftStrength, 0.0f, 5.0f);
+            ImGui::SliderFloat("Redshift Strength (Ctrl/Shift+G)", &m_redshiftStrength, 0.0f, 5.0f);
         }
     }
 
@@ -1458,6 +1514,8 @@ void Application::RenderImGui() {
     if (ImGui::CollapsingHeader("Physics")) {
         ImGui::Checkbox("Physics Enabled (P)", &m_physicsEnabled);
         if (m_particleSystem) {
+            ImGui::Separator();
+            ImGui::Text("Dynamic Physics Parameters");
             float gravity = m_particleSystem->GetGravityStrength();
             if (ImGui::SliderFloat("Gravity (V)", &gravity, 0.0f, 2000.0f)) {
                 m_particleSystem->SetGravityStrength(gravity);
@@ -1475,6 +1533,12 @@ void Application::RenderImGui() {
                 m_particleSystem->SetDamping(damping);
             }
         }
+        ImGui::Separator();
+        ImGui::Text("Accretion Disk Parameters (Read-only)");
+        ImGui::Text("Inner Radius: %.1f", m_innerRadius);
+        ImGui::Text("Outer Radius: %.1f", m_outerRadius);
+        ImGui::Text("Disk Thickness: %.1f", m_diskThickness);
+        ImGui::Text("Physics Timestep: %.6f (120Hz)", m_physicsTimeStep);
     }
 
     ImGui::End();
