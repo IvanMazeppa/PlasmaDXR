@@ -576,16 +576,17 @@ float3 GetSweepingLightDirection(float time) {
 }
 
 // Simple volumetric self-shadowing using inline ray queries
+// OPTIMIZED: Reduced steps 16 → 8, single exponential, early exit threshold
 float ComputeVolumetricShadow(float3 pos, float3 lightDir) {
 #if INLINE_RT_ENABLED
     // Cast shadow ray through the volume
-    float shadowFactor = 1.0;
     float3 rayStart = pos;
     float3 rayDir = lightDir;
 
-    // March through volume towards light
-    const int shadowSteps = 16;
+    // March through volume towards light (OPTIMIZED: 8 steps instead of 16)
+    const int shadowSteps = 8;
     float stepSize = 0.1;
+    float opticalDepth = 0.0;
 
     [loop]
     for (int i = 0; i < shadowSteps; i++) {
@@ -593,15 +594,18 @@ float ComputeVolumetricShadow(float3 pos, float3 lightDir) {
         float density = max(0.0, SampleComplexVolume(samplePos));
 
         if (density > 0.1) {
-            shadowFactor *= exp(-density * 0.8); // Exponential attenuation
-            if (shadowFactor < 0.01) break; // Early termination
+            opticalDepth += density * stepSize;
+
+            // Early exit (perceptual threshold: exp(-3.5) = 0.03)
+            if (opticalDepth > 3.5) break;
         }
 
         // Stop if we're too far from the volume
         if (length(samplePos) > 2.0) break;
     }
 
-    return shadowFactor;
+    // Single exponential (instead of per-step multiplication)
+    return exp(-opticalDepth * 0.8);
 #else
     return 1.0; // No shadows if inline RT not available
 #endif
@@ -802,26 +806,31 @@ void ExecutePlasmaAccretion(inout RayPayload payload, float3 rayOrigin, float3 r
 
 #if INLINE_RT_ENABLED
             // Self-shadowing through plasma using inline ray tracing
-            float shadowFactor = 1.0;
+            // OPTIMIZED: Reduced steps from 16 → 8 (sufficient for volumetric)
             float3 shadowRayDir = normalize(float3(0.5, 1.0, 0.3)); // Directional for shadows
 
-            // Cast shadow ray through plasma disk
-            const int shadowSteps = 16;
+            const int shadowSteps = 8;  // Reduced from 16
             float shadowStepSize = 0.1;
+            float opticalDepth = 0.0;
 
+            // Single accumulation loop (not nested!)
             for (int s = 0; s < shadowSteps; s++) {
                 float3 shadowPos = samplePos + shadowRayDir * (s * shadowStepSize);
                 float shadowDensity = SamplePlasmaAccretionDisk(shadowPos, time);
 
                 if (shadowDensity > 0.05) {
-                    shadowFactor *= exp(-shadowDensity * 0.5);
-                    if (shadowFactor < 0.1) break;
+                    opticalDepth += shadowDensity * shadowStepSize;
+
+                    // Early exit (perceptual threshold: exp(-3.5) = 0.03)
+                    if (opticalDepth > 3.5) break;
                 }
 
                 // Stop shadow ray at disk boundaries
                 if (length(shadowPos.xz) > 3.0 || abs(shadowPos.y) > 0.8) break;
             }
 
+            // Single exponential for shadow factor
+            float shadowFactor = exp(-opticalDepth * 0.5);
             emission *= shadowFactor;
 #endif
 

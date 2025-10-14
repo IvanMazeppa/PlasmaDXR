@@ -37,7 +37,15 @@ static const float2 invResolution = 1.0 / resolution;
 static const float baseParticleRadius = particleRadius;
 static const float volumeStepSize = 0.1;         // Finer steps for better quality
 static const float densityMultiplier = 2.0;      // Increased for more volumetric appearance
-static const float shadowBias = 0.01;            // Bias for shadow ray origin
+
+// Adaptive shadow bias function - prevents shadow acne at close range and peter-panning at far range
+float ComputeAdaptiveBias(float3 worldPos, float particleRadius) {
+    float distanceToCamera = length(worldPos - cameraPos);
+    float normalizedDistance = distanceToCamera / 500.0;
+    float baseBias = particleRadius * 0.0005;
+    float adaptiveBias = baseBias * (1.0 + normalizedDistance * 2.0);
+    return clamp(adaptiveBias, 0.001, 0.1);
+}
 
 // Input: Particle buffer
 StructuredBuffer<Particle> g_particles : register(t0);
@@ -88,9 +96,10 @@ RayDesc GenerateCameraRay(float2 pixelPos) {
 }
 
 // Cast shadow ray to check occlusion (returns transmittance 0-1)
-float CastShadowRay(float3 origin, float3 direction, float maxDist) {
+float CastShadowRay(float3 origin, float3 direction, float maxDist, float particleRadius) {
+    float adaptiveBias = ComputeAdaptiveBias(origin, particleRadius);
     RayDesc shadowRay;
-    shadowRay.Origin = origin + direction * shadowBias;
+    shadowRay.Origin = origin + direction * adaptiveBias;
     shadowRay.Direction = direction;
     shadowRay.TMin = 0.001;
     shadowRay.TMax = maxDist;
@@ -106,7 +115,7 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
             uint particleIdx = query.CandidatePrimitiveIndex();
             Particle p = g_particles[particleIdx];
 
-            float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+            float3 scale = ComputeGaussianScale(p, baseParticleRadius, false, 0.0);
             float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
             float2 t = RayGaussianIntersection(shadowRay.Origin, shadowRay.Direction,
@@ -161,7 +170,7 @@ float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
                 if (particleIdx == skipIdx) continue;
 
                 Particle p = g_particles[particleIdx];
-                float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+                float3 scale = ComputeGaussianScale(p, baseParticleRadius, false, 0.0);
 
                 // Simple sphere test for performance
                 float3 toParticle = p.position - pos;
@@ -237,7 +246,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             uint particleIdx = query.CandidatePrimitiveIndex();
             Particle p = g_particles[particleIdx];
 
-            float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+            float3 scale = ComputeGaussianScale(p, baseParticleRadius, false, 0.0);
             float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
             float2 t = RayGaussianIntersection(ray.Origin, ray.Direction,
@@ -267,7 +276,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         HitRecord hit = hits[i];
         Particle p = g_particles[hit.particleIdx];
 
-        float3 scale = ComputeGaussianScale(p, baseParticleRadius);
+        float3 scale = ComputeGaussianScale(p, baseParticleRadius, false, 0.0);
         float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
         float tStart = max(hit.tNear, ray.TMin);
@@ -336,7 +345,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === NEW: Cast shadow ray to primary light source ===
             float3 toLightDir = normalize(volParams.lightPos - pos);
             float lightDist = length(volParams.lightPos - pos);
-            float shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+            float shadowTerm = CastShadowRay(pos, toLightDir, lightDist, length(scale));
 
             // Apply shadow to external illumination
             illumination *= lerp(0.3, 1.0, shadowTerm); // Ambient + direct
