@@ -13,6 +13,7 @@
 #include "../debug/PIXCaptureHelper.h"
 #endif
 #include <algorithm>
+#include <filesystem>
 
 // Window procedure forward declaration
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -91,14 +92,30 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_useReSTIR = false;
         } else if (arg == "--restir") {
             m_useReSTIR = true;
+        } else if (arg == "--dump-buffers") {
+            m_enableBufferDump = true;
+            // Check if next arg is a frame number (optional)
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                m_dumpTargetFrame = std::atoi(argv[i + 1]);
+                i++;
+                LOG_INFO("Buffer dump enabled (frame {})", m_dumpTargetFrame);
+            } else {
+                LOG_INFO("Buffer dump enabled (manual trigger with Ctrl+D)");
+            }
+        } else if (arg == "--dump-dir" && i + 1 < argc) {
+            m_dumpOutputDir = argv[i + 1];
+            i++;
+            LOG_INFO("Dump directory: {}", m_dumpOutputDir);
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
-            LOG_INFO("  --config=<file>     : Load configuration from JSON file");
-            LOG_INFO("  --gaussian, -g      : Use 3D Gaussian Splatting renderer");
-            LOG_INFO("  --billboard, -b     : Use Billboard renderer");
-            LOG_INFO("  --particles <count> : Set particle count");
-            LOG_INFO("  --restir            : Enable ReSTIR");
-            LOG_INFO("  --no-restir         : Disable ReSTIR");
+            LOG_INFO("  --config=<file>      : Load configuration from JSON file");
+            LOG_INFO("  --gaussian, -g       : Use 3D Gaussian Splatting renderer");
+            LOG_INFO("  --billboard, -b      : Use Billboard renderer");
+            LOG_INFO("  --particles <count>  : Set particle count");
+            LOG_INFO("  --restir             : Enable ReSTIR");
+            LOG_INFO("  --no-restir          : Disable ReSTIR");
+            LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
+            LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
         }
     }
 
@@ -278,6 +295,12 @@ void Application::Update(float deltaTime) {
 }
 
 void Application::Render() {
+    // Check if we should schedule buffer dump (zero overhead: 2 int comparisons + 1 bool check)
+    if (m_enableBufferDump && m_dumpTargetFrame > 0 && m_frameCount == static_cast<uint32_t>(m_dumpTargetFrame)) {
+        m_dumpBuffersNextFrame = true;
+        LOG_INFO("Buffer dump scheduled for next frame (frame {})", m_frameCount);
+    }
+
     // Reset command list
     m_device->ResetCommandList();
     auto cmdList = m_device->GetCommandList();
@@ -553,6 +576,17 @@ void Application::Render() {
     m_device->WaitForGPU();
 
     m_frameCount++;
+
+    // Dump GPU buffers if requested (only executes when flag is set)
+    if (m_dumpBuffersNextFrame) {
+        DumpGPUBuffers();
+
+        // Exit if this was an auto-dump (one-shot capture)
+        if (m_dumpTargetFrame > 0) {
+            LOG_INFO("Auto-dump complete, exiting...");
+            m_isRunning = false;
+        }
+    }
 }
 
 bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
@@ -699,11 +733,18 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("Physics: {}", m_physicsEnabled ? "ENABLED" : "DISABLED");
         break;
 
-    // Debug: Readback particle data
+    // Debug: Readback particle data (Ctrl+D = buffer dump if enabled)
     case 'D':
-        LOG_INFO("=== DEBUG: Reading back first 10 particles from GPU ===");
-        if (m_particleSystem) {
-            m_particleSystem->DebugReadbackParticles(10);
+        if (m_enableBufferDump && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
+            // Ctrl+D: Schedule buffer dump for next frame
+            m_dumpBuffersNextFrame = true;
+            LOG_INFO("=== Buffer dump scheduled for frame {} ===", m_frameCount + 1);
+        } else {
+            // D alone: Original particle readback behavior
+            LOG_INFO("=== DEBUG: Reading back first 10 particles from GPU ===");
+            if (m_particleSystem) {
+                m_particleSystem->DebugReadbackParticles(10);
+            }
         }
         break;
 
@@ -945,6 +986,189 @@ void Application::OnMouseMove(int dx, int dy) {
 
     // Clamp pitch to avoid gimbal lock
     m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
+}
+
+void Application::DumpGPUBuffers() {
+    LOG_INFO("\n=== DUMPING GPU BUFFERS (Frame {}) ===", m_frameCount);
+
+    // Create output directory
+    std::filesystem::create_directories(m_dumpOutputDir);
+
+    // Dump buffers (only if they exist)
+    if (m_particleSystem) {
+        DumpBufferToFile(m_particleSystem->GetParticleBuffer(), "g_particles");
+    }
+
+    if (m_gaussianRenderer) {
+        // Gaussian renderer has ReSTIR reservoirs
+        auto reservoirs = m_gaussianRenderer->GetCurrentReservoirs();
+        if (reservoirs) {
+            DumpBufferToFile(reservoirs, "g_currentReservoirs");
+        }
+
+        auto prevReservoirs = m_gaussianRenderer->GetPrevReservoirs();
+        if (prevReservoirs) {
+            DumpBufferToFile(prevReservoirs, "g_prevReservoirs");
+        }
+    }
+
+    if (m_rtLighting) {
+        auto rtBuffer = m_rtLighting->GetLightingBuffer();
+        if (rtBuffer) {
+            DumpBufferToFile(rtBuffer, "g_rtLighting");
+        }
+    }
+
+    // Write metadata JSON
+    WriteMetadataJSON();
+
+    LOG_INFO("=== BUFFER DUMP COMPLETE ===\n");
+
+    // Reset flag
+    m_dumpBuffersNextFrame = false;
+}
+
+void Application::DumpBufferToFile(ID3D12Resource* buffer, const char* name) {
+    if (!buffer) {
+        LOG_WARN("Buffer {} is null, skipping", name);
+        return;
+    }
+
+    D3D12_RESOURCE_DESC desc = buffer->GetDesc();
+    UINT64 bufferSize = desc.Width;
+
+    LOG_INFO("  Dumping {} ({} bytes)...", name, bufferSize);
+
+    // Create readback buffer
+    D3D12_HEAP_PROPERTIES readbackHeapProps = {};
+    readbackHeapProps.Type = D3D12_HEAP_TYPE_READBACK;
+    readbackHeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    readbackHeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+    D3D12_RESOURCE_DESC readbackDesc = {};
+    readbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readbackDesc.Alignment = 0;
+    readbackDesc.Width = bufferSize;
+    readbackDesc.Height = 1;
+    readbackDesc.DepthOrArraySize = 1;
+    readbackDesc.MipLevels = 1;
+    readbackDesc.Format = DXGI_FORMAT_UNKNOWN;
+    readbackDesc.SampleDesc.Count = 1;
+    readbackDesc.SampleDesc.Quality = 0;
+    readbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    readbackDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    ID3D12Resource* readbackBuffer = nullptr;
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &readbackHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readbackBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("    FAILED to create readback buffer");
+        return;
+    }
+
+    // Reset command list for copy operation
+    m_device->ResetCommandList();
+    auto cmdList = m_device->GetCommandList();
+
+    // Transition source buffer to COPY_SOURCE
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = buffer;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;  // Most buffers are UAV
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Copy GPU buffer → Readback buffer
+    cmdList->CopyResource(readbackBuffer, buffer);
+
+    // Transition back to UAV
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Execute and wait
+    cmdList->Close();
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();
+
+    // Map readback buffer and write to file
+    void* mappedData = nullptr;
+    D3D12_RANGE readRange = { 0, bufferSize };
+    hr = readbackBuffer->Map(0, &readRange, &mappedData);
+
+    if (SUCCEEDED(hr)) {
+        std::string filepath = m_dumpOutputDir + "/" + name + ".bin";
+        FILE* file = fopen(filepath.c_str(), "wb");
+
+        if (file) {
+            size_t written = fwrite(mappedData, 1, bufferSize, file);
+            fclose(file);
+
+            if (written == bufferSize) {
+                LOG_INFO("    ✓ {} ({} bytes)", filepath, bufferSize);
+            } else {
+                LOG_ERROR("    FAILED (wrote {}/{} bytes)", written, bufferSize);
+            }
+        } else {
+            LOG_ERROR("    FAILED to open file: {}", filepath);
+        }
+
+        D3D12_RANGE writeRange = { 0, 0 };  // No writes from CPU
+        readbackBuffer->Unmap(0, &writeRange);
+    } else {
+        LOG_ERROR("    FAILED to map readback buffer");
+    }
+
+    // Cleanup
+    readbackBuffer->Release();
+}
+
+void Application::WriteMetadataJSON() {
+    std::string filepath = m_dumpOutputDir + "/metadata.json";
+    FILE* file = fopen(filepath.c_str(), "w");
+
+    if (file) {
+        // Get timestamp
+        auto now = std::chrono::system_clock::now();
+        auto timeT = std::chrono::system_clock::to_time_t(now);
+        char timestamp[100];
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&timeT));
+
+        // Calculate camera position
+        float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
+        float camY = m_cameraDistance * sinf(m_cameraPitch);
+        float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
+        float camDistance = sqrtf(camX * camX + (camY + m_cameraHeight) * (camY + m_cameraHeight) + camZ * camZ);
+
+        fprintf(file, "{\n");
+        fprintf(file, "  \"frame\": %u,\n", m_frameCount);
+        fprintf(file, "  \"timestamp\": \"%s\",\n", timestamp);
+        fprintf(file, "  \"camera_position\": [%.2f, %.2f, %.2f],\n", camX, camY + m_cameraHeight, camZ);
+        fprintf(file, "  \"camera_distance\": %.2f,\n", camDistance);
+        fprintf(file, "  \"restir_enabled\": %s,\n", m_useReSTIR ? "true" : "false");
+        fprintf(file, "  \"particle_count\": %u,\n", m_config.particleCount);
+        fprintf(file, "  \"particle_size\": %.2f,\n", m_particleSize);
+        fprintf(file, "  \"render_mode\": \"%s\",\n",
+                m_config.rendererType == RendererType::Gaussian ? "Gaussian" : "Billboard");
+        fprintf(file, "  \"restir_temporal_weight\": %.2f,\n", m_restirTemporalWeight);
+        fprintf(file, "  \"restir_initial_candidates\": %u,\n", m_restirInitialCandidates);
+        fprintf(file, "  \"use_shadow_rays\": %s,\n", m_useShadowRays ? "true" : "false");
+        fprintf(file, "  \"use_in_scattering\": %s,\n", m_useInScattering ? "true" : "false");
+        fprintf(file, "  \"use_phase_function\": %s\n", m_usePhaseFunction ? "true" : "false");
+        fprintf(file, "}\n");
+        fclose(file);
+
+        LOG_INFO("  Wrote metadata: {}", filepath);
+    }
 }
 
 void Application::UpdateFrameStats(float actualFrameTime) {

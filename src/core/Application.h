@@ -3,8 +3,10 @@
 #include <windows.h>
 #include <memory>
 #include <chrono>
+#include <string>
 
 // Forward declarations
+struct ID3D12Resource;
 class Device;
 class SwapChain;
 class FeatureDetector;
@@ -124,4 +126,15 @@ private:
     bool m_mouseLookActive = false;
     int m_lastMouseX = 0;
     int m_lastMouseY = 0;
+
+    // Buffer dump feature (zero overhead when disabled)
+    bool m_enableBufferDump = false;
+    bool m_dumpBuffersNextFrame = false;
+    int m_dumpTargetFrame = -1;
+    std::string m_dumpOutputDir = "pix/buffer_dumps/";
+
+    // Helper functions for buffer dumping
+    void DumpGPUBuffers();
+    void DumpBufferToFile(ID3D12Resource* buffer, const char* name);
+    void WriteMetadataJSON();
 };

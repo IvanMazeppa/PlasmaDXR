@@ -74,6 +74,14 @@ public:
     // Get output texture to copy to backbuffer
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
 
+    // Get ReSTIR reservoir buffers for debugging/analysis
+    ID3D12Resource* GetCurrentReservoirs() const {
+        return m_reservoirBuffer[m_currentReservoirIndex].Get();
+    }
+    ID3D12Resource* GetPrevReservoirs() const {
+        return m_reservoirBuffer[1 - m_currentReservoirIndex].Get();
+    }
+
 private:
     bool CreatePipeline();
     bool CreateOutputTexture(uint32_t width, uint32_t height);

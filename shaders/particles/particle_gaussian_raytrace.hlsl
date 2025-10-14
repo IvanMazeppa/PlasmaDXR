@@ -352,9 +352,9 @@ Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixel
             float intensity = EmissionIntensity(hitParticle.temperature);
             float dist = length(hitParticle.position - rayOrigin);
 
-            // FIXED: Weaker attenuation for large scenes (accretion disk spans 10-300 radii)
-            // Use linear + quadratic falloff with minimum to prevent division by zero
-            float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
+            // FIX #4: Much weaker attenuation for large-scale scenes (accretion disk spans 100-3000 units)
+            // Changed from quadratic to linear-only falloff (10× weaker at distance)
+            float attenuation = 1.0 / max(1.0 + dist * 0.001, 0.1);
 
             // Weight = luminance of light contribution (importance)
             float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
@@ -641,8 +641,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 float lightIntensity = EmissionIntensity(lightParticle.temperature);
                 float dist = length(currentReservoir.lightPos - pos);
 
-                // FIXED: Use same attenuation as sampling (must match for unbiased estimate!)
-                float attenuation = 1.0 / max(1.0 + dist * 0.01 + dist * dist * 0.0001, 0.1);
+                // FIX #4: Use same weaker attenuation as sampling (must match for unbiased estimate!)
+                float attenuation = 1.0 / max(1.0 + dist * 0.001, 0.1);
 
                 // Evaluate light contribution (no W multiplication here)
                 float3 directLight = lightEmission * lightIntensity * attenuation;
@@ -651,7 +651,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // W is already normalized: W = weightSum / M
                 // Standard ReSTIR contribution: (1/M) × sum(weights) = W × M
                 // This removes the division by M that caused spatial inconsistency
-                float misWeight = currentReservoir.W * float(currentReservoir.M);
+                // FIX #5: Add 100× boost because base W values (~0.002) are too small for visible contribution
+                float misWeight = currentReservoir.W * float(currentReservoir.M) * 100.0;
 
                 // Clamp to prevent extreme values from stale temporal samples
                 // FIX #3: Increased from 2.0 to 10.0 to allow proper dynamic range
