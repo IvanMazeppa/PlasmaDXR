@@ -209,6 +209,48 @@ msbuild build-vs2022/PlasmaDX-Clean.sln /p:Configuration=Release /p:Platform=x64
 
 ---
 
+## ⚙️ Configuration System
+
+### Quick Start
+
+```bash
+# Run with default config
+./build/Debug/PlasmaDX-Clean.exe
+
+# Run with custom config
+./build/Debug/PlasmaDX-Clean.exe --config=configs/scenarios/stress_test.json
+```
+
+### Directory Structure
+
+```
+configs/
+├── user/default.json          # Default user configuration
+├── builds/Debug.json           # Debug build defaults
+├── builds/DebugPIX.json        # PIX agent build defaults
+├── agents/pix_agent.json       # AI debugging agent config
+└── scenarios/                  # Test scenario configs
+    ├── close_distance.json
+    ├── medium_distance.json
+    └── far_distance.json
+```
+
+### For AI Agents (Autonomous Debugging)
+
+AI agents can modify their own config files for autonomous testing:
+
+```bash
+# PIX debugging agent uses dedicated config
+./build/DebugPIX/PlasmaDX-Clean.exe --config=configs/agents/pix_agent.json
+
+# Agent can modify: camera position, feature toggles, capture settings
+# Agent should NOT modify: user configs, build defaults
+```
+
+**See [configs/README.md](configs/README.md) for complete documentation.**
+
+---
+
 ## 🐛 Known Issues & Workarounds
 
 ### Mesh Shader Descriptor Access (NVIDIA Ada Lovelace)
