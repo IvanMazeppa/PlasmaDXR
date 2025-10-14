@@ -641,11 +641,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // Evaluate light contribution (no W multiplication here)
                 float3 directLight = lightEmission * lightIntensity * attenuation;
 
-                // CRITICAL FIX #2: W is the MIS weight, not a brightness multiplier
-                // ReSTIR W = (weightSum / M) represents the average importance weight
-                // The unbiased estimator is: (1 / M) * sum(f(x_i) * w_i / p(x_i))
-                // Since W already encodes this average, we normalize by the number of candidates:
-                float misWeight = currentReservoir.W * float(restirInitialCandidates) / max(float(currentReservoir.M), 1.0);
+                // CRITICAL FIX #3: Correct MIS weight formula (removes double normalization)
+                // W is already normalized: W = weightSum / M
+                // Standard ReSTIR contribution: (1/M) × sum(weights) = W × M
+                // This removes the division by M that caused spatial inconsistency
+                float misWeight = currentReservoir.W * float(currentReservoir.M);
 
                 // Clamp to prevent extreme values from stale temporal samples
                 misWeight = clamp(misWeight, 0.0, 2.0);
