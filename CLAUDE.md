@@ -1,0 +1,521 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+## Project Overview
+
+**PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, and ReSTIR global illumination. The project simulates a black hole accretion disk with 100,000 particles at 165 FPS on RTX 4060 Ti hardware.
+
+**Core Technology Stack:**
+- DirectX 12 with Agility SDK
+- DXR 1.1 (RayQuery API for inline ray tracing)
+- HLSL Shader Model 6.5+
+- ImGui for runtime controls
+- PIX for Windows (GPU debugging)
+
+---
+
+## Build System
+
+### Primary Build Method (Visual Studio)
+```bash
+# Open solution (primary workflow)
+start PlasmaDX-Clean.sln
+
+# Or build from command line
+MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
+MSBuild PlasmaDX-Clean.sln /p:Configuration=DebugPIX /p:Platform=x64
+```
+
+### Two Build Configurations
+
+**Debug** - Daily development (zero PIX overhead):
+- D3D12 debug layer enabled
+- Fast iteration
+- Output: `build/Debug/PlasmaDX-Clean.exe`
+
+**DebugPIX** - PIX GPU debugging (instrumented):
+- PIX capture support enabled
+- Auto-capture at specified frame
+- Output: `build/DebugPIX/PlasmaDX-Clean-PIX.exe`
+
+### Shader Compilation
+
+Shaders are compiled automatically during build via CMake custom commands. The build system uses `dxc.exe` to compile all `.hlsl` files to `.dxil` bytecode.
+
+**Manual shader compilation (if needed):**
+```bash
+dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo particle_physics.dxil
+```
+
+---
+
+## Configuration System
+
+The application uses a JSON-based configuration system with hierarchical loading:
+
+1. **Command-line:** `--config=<path>` (highest priority)
+2. **Environment:** `PLASMADX_CONFIG=<path>`
+3. **Build directory:** `./config.json`
+4. **User default:** `configs/user/default.json`
+5. **Hardcoded defaults** (fallback)
+
+**Key config directories:**
+- `configs/user/` - User/development configs
+- `configs/builds/` - Build-specific defaults (Debug.json, DebugPIX.json)
+- `configs/agents/` - AI agent configs (pix_agent.json for autonomous debugging)
+- `configs/scenarios/` - Test scenarios (close_distance.json, far_distance.json, etc.)
+
+**Common workflow:**
+```bash
+# Default run
+./build/Debug/PlasmaDX-Clean.exe
+
+# Custom config
+./build/Debug/PlasmaDX-Clean.exe --config=configs/scenarios/stress_test.json
+```
+
+See `configs/README.md` for complete documentation.
+
+---
+
+## Architecture
+
+### Clean Module Design
+
+The codebase follows strict separation of concerns with single-responsibility modules:
+
+**Core Systems** (`src/core/`):
+- `Application.h/cpp` - Window management and main loop ONLY
+- `Device.h/cpp` - D3D12 device initialization
+- `SwapChain.h/cpp` - Present queue management
+- `FeatureDetector.h/cpp` - RT tier and mesh shader capability detection
+
+**Particle Systems** (`src/particles/`):
+- `ParticleSystem.h/cpp` - Particle lifecycle, GPU physics compute shader, accretion disk simulation
+- `ParticleRenderer_Gaussian.h/cpp` - 3D Gaussian splatting volumetric renderer (RayQuery-based)
+- `ParticlePhysics.h/cpp` - Physics constants and initialization
+
+**Lighting Systems** (`src/lighting/`):
+- `RTLightingSystem_RayQuery.h/cpp` - DXR 1.1 inline ray tracing lighting pipeline
+- Builds BLAS/TLAS acceleration structures
+- Computes particle-to-particle illumination
+- **IMPORTANT:** The Gaussian renderer reuses the TLAS from this system (no duplicate infrastructure)
+
+**Utilities** (`src/utils/`):
+- `ShaderManager.h/cpp` - DXIL loading and reflection
+- `ResourceManager.h/cpp` - Buffer/texture/descriptor pool management
+- `Logger.h/cpp` - Timestamped logging to `logs/` directory
+
+### Key Architecture Principles
+
+1. **Feature Detection First** - Always test capabilities before using (RT tier, mesh shaders)
+2. **Single Responsibility** - No 4,000-line monoliths; max ~500 lines per file
+3. **Automatic Fallbacks** - Mesh shader failure → compute shader fallback
+4. **Data-Driven Configuration** - Runtime adjustable via JSON/ImGui, not recompilation
+5. **Defensive Programming** - Every resource creation has error handling and PIX event markers
+
+---
+
+## Shader Architecture
+
+### Key Shaders
+
+**Physics Simulation:**
+- `shaders/particles/particle_physics.hlsl` - GPU physics compute shader
+  - Schwarzschild black hole gravity
+  - Keplerian orbital dynamics
+  - Temperature-based blackbody emission
+  - Anisotropic Gaussian elongation
+
+**Volumetric Rendering:**
+- `shaders/particles/particle_gaussian_raytrace.hlsl` - Main volumetric renderer
+  - Uses RayQuery API (DXR 1.1 inline ray tracing)
+  - Analytic ray-ellipsoid intersection
+  - Beer-Lambert law for volumetric absorption
+  - Henyey-Greenstein phase function for anisotropic scattering
+
+**Ray Traced Lighting:**
+- `shaders/dxr/particle_raytraced_lighting_cs.hlsl` - RT lighting compute
+  - Particle-to-particle illumination via TLAS traversal
+  - Shadow rays for occlusion
+  - ReSTIR Phase 1 (temporal reuse - in active development)
+
+**Acceleration Structure:**
+- `shaders/dxr/generate_particle_aabbs.hlsl` - Procedural primitive AABB generation
+- `shaders/dxr/particle_intersection.hlsl` - Ray-ellipsoid intersection shader
+
+### Shader Constants Structure
+
+The physics shader uses a large constant buffer (`PhysicsConstants`) passed via root constants:
+- Particle count, delta time, total time
+- Black hole mass, gravity strength, turbulence
+- Constraint shape parameters (radius, thickness)
+- Alpha viscosity (Shakura-Sunyaev accretion parameter)
+
+**IMPORTANT:** Root constants are limited to 64 DWORDs. Large constant structures should use constant buffers instead.
+
+---
+
+## 3D Gaussian Splatting Implementation
+
+Unlike traditional 2D Gaussian splatting (NeRF/3DGS reconstruction), this engine uses **volumetric 3D Gaussians** for physically-based particle rendering:
+
+**Key differences from 2D splatting:**
+- Full 3D ellipsoid volume, not 2D splat
+- Ray marching with analytic ray-ellipsoid intersection
+- Beer-Lambert law for volumetric absorption
+- Temperature-based blackbody emission (not learned RGB)
+- Anisotropic elongation along velocity vectors (tidal tearing effects)
+
+**Ray-Ellipsoid Intersection:**
+The core algorithm transforms rays into ellipsoid space and solves the quadratic equation. See `RayGaussianIntersection()` in `gaussian_common.hlsl`.
+
+**Anisotropic Elongation:**
+Particles elongate along velocity vectors to simulate tidal forces:
+```hlsl
+scale.xyz = baseRadius * (1, 1, 1 + anisotropy * velocityMagnitude)
+```
+
+---
+
+## ReSTIR Implementation (Phase 1 - Active Development)
+
+**Current Status:** Temporal reuse only, debugging in progress
+
+**Algorithm:** Weighted Reservoir Sampling for many-light problems
+1. Candidate Sampling: Cast 16-32 random rays to find light-emitting particles
+2. Importance Weighting: `weight = luminance(emission * intensity * attenuation)`
+3. Reservoir Update: Probabilistic selection maintains 1 sample from M candidates
+4. Temporal Reuse: Previous frame's reservoir is validated and merged
+5. Unbiased Estimator: Correction weight `W = weightSum / M`
+
+**Ping-Pong Buffers:**
+- 2× reservoir buffers (63MB each @ 1080p)
+- Structure: `{ float3 lightPos, float weightSum, uint M, float W, uint particleIdx }`
+- Swap each frame via `m_currentReservoirIndex`
+
+**Known Issues:**
+- Debugging weight calculation edge cases
+- Testing attenuation formula for large-scale scenes
+- See `RESTIR_DEBUG_BRIEFING.md` for current debugging status
+
+**Roadmap:**
+- Phase 2: Spatial reuse (neighbor sharing)
+- Phase 3: Visibility reuse (cached shadow rays)
+
+---
+
+## DXR 1.1 Inline Ray Tracing
+
+**Why RayQuery API?**
+- Call `RayQuery::Proceed()` from any shader stage (compute, pixel, mesh)
+- No shader binding table (SBT) complexity
+- Simpler than TraceRay() with hit groups
+- Perfect for procedural primitives (AABB-based traversal)
+
+**Pipeline:**
+```
+GPU Physics → Generate AABBs → Build BLAS → Build TLAS →
+RayQuery (volumetric render) → RayQuery (shadow rays) → RayQuery (ReSTIR sampling)
+```
+
+**Three uses of RayQuery:**
+1. **Main Rendering** - Volume ray marching through sorted particles
+2. **Shadow Rays** - Occlusion testing to primary light source
+3. **ReSTIR Sampling** - Random rays to find light sources
+
+**Acceleration Structure Reuse:**
+The Gaussian renderer reuses the TLAS built by RTLightingSystem. Do NOT create duplicate BLAS/TLAS infrastructure.
+
+---
+
+## Physics Simulation
+
+### Accretion Disk Physics
+
+**Implemented:**
+- Schwarzschild black hole gravity (Newtonian approximation)
+- Keplerian orbital dynamics
+- Temperature-based blackbody radiation (800K-26000K)
+- Doppler shift and relativistic beaming
+- Anisotropic Gaussian elongation
+
+**In Progress (see PHYSICS_PORT_ANALYSIS.md):**
+- Constraint shapes system (SPHERE, DISC, TORUS, ACCRETION_DISK)
+- Black hole mass parameter (affects Keplerian velocity)
+- Alpha viscosity (Shakura-Sunyaev accretion - inward spiral)
+- Enhanced temperature models (velocity-based heating)
+
+**Not Implemented (intentionally skipped):**
+- SPH (Smoothed Particle Hydrodynamics) - too complex, different use case
+- Relativistic jets - will use RT-based volumetric approach instead
+- Dual galaxy collision - unstable in previous implementation
+
+### Runtime Physics Controls
+
+**Keyboard shortcuts:**
+- Up/Down: Gravity strength
+- Left/Right: Angular momentum
+- Ctrl+Up/Down: Turbulence
+- Shift+Up/Down: Damping
+- [/]: Particle size
+
+**ImGui controls:**
+All physics parameters are exposed in the ImGui interface with real-time adjustments.
+
+---
+
+## PIX GPU Debugging Workflow
+
+### Programmatic Capture System
+
+**DebugPIX build** includes PIX integration for autonomous debugging:
+
+1. Build DebugPIX configuration
+2. Run with PIX config: `./build/DebugPIX/PlasmaDX-Clean-PIX.exe --config=configs/agents/pix_agent.json`
+3. Automatic capture at specified frame (default: frame 120)
+4. Captures saved to `PIX/Captures/`
+
+**Buffer Dumps:**
+Add `--dump-buffers <frame>` to save GPU buffers to `PIX/buffer_dumps/`:
+- `g_particles.bin` - Particle positions, velocities, temperatures
+- `g_currentReservoirs.bin` - Current frame ReSTIR reservoirs
+- `g_prevReservoirs.bin` - Previous frame ReSTIR reservoirs
+- `g_rtLighting.bin` - Pre-computed RT lighting
+
+**Analysis Scripts:**
+See `PIX/scripts/analysis/` for Python scripts to analyze buffer dumps.
+
+### PIX Event Markers
+
+All draw calls and compute dispatches are wrapped with PIX event markers. Use PIX timeline view to navigate the frame.
+
+---
+
+## Common Development Tasks
+
+### Running Tests
+There are no automated unit tests. Testing is primarily visual and performance-based:
+1. Run Debug build
+2. Verify particle rendering is correct
+3. Check FPS counter (target: >100 FPS @ 100K particles)
+4. Test ReSTIR toggle (F7 key)
+5. Adjust physics parameters via ImGui
+
+### Debugging Rendering Issues
+
+**Black screen or missing particles:**
+1. Check logs in `logs/` directory
+2. Verify shaders compiled successfully (check `build/Debug/shaders/`)
+3. Enable D3D12 debug layer (builds/Debug.json: `enableDebugLayer: true`)
+4. Check for D3D12 errors in Visual Studio output
+
+**ReSTIR artifacts (dots, color issues):**
+1. Use PIX capture to inspect reservoir buffers
+2. Check `RESTIR_DEBUG_BRIEFING.md` for known issues
+3. Adjust camera distance (bugs appear at close range ~100-200 units)
+4. Compare with ReSTIR disabled (F7 key)
+
+### Adding New Features
+
+**Workflow:**
+1. Create feature branch from `main`
+2. Implement in appropriate module (`src/particles/`, `src/lighting/`, etc.)
+3. Add shader changes if needed
+4. Expose to ImGui for runtime control
+5. Test thoroughly at various particle counts and camera distances
+6. Commit with descriptive message
+7. Create PR to `main`
+
+**Commit message style:**
+```
+feat: Add ReSTIR spatial reuse (Phase 2)
+fix: Address buffer dump feature issues
+refactor: Separate RTLightingSystem into RayQuery variant
+```
+
+---
+
+## Critical Implementation Details
+
+### Descriptor Heap Management
+
+**IMPORTANT:** The ResourceManager maintains a central descriptor heap for all SRVs/UAVs/CBVs. Always allocate descriptors through ResourceManager, never create ad-hoc descriptor heaps.
+
+### Buffer Resource States
+
+**Common transition sequence:**
+```
+UNORDERED_ACCESS (compute write) →
+UAV Barrier →
+NON_PIXEL_SHADER_RESOURCE (compute read) →
+UNORDERED_ACCESS (next pass)
+```
+
+Always insert UAV barriers between dependent compute dispatches.
+
+### Root Signature Limitations
+
+- Root constants: 64 DWORD limit (256 bytes)
+- Root descriptors: Direct buffer pointers (best performance)
+- Descriptor tables: For large descriptor arrays or typed UAVs
+
+**When to use each:**
+- Small constants (<64 DWORDs): Root constants
+- Structured buffers: Root descriptors
+- Typed UAVs (R16G16B16A16_FLOAT): Descriptor tables (required)
+
+### Acceleration Structure Rebuilds
+
+**Current implementation:** Full BLAS/TLAS rebuild every frame (2.1ms @ 100K particles)
+
+**Optimization potential:**
+- BLAS update (no rebuild): +25% FPS
+- Instance culling: +50% FPS
+- Static BLAS with dynamic TLAS: Possible but requires careful particle management
+
+Do NOT attempt BLAS updates without thorough testing - easy to introduce crashes.
+
+---
+
+## Known Issues and Workarounds
+
+### Mesh Shader Descriptor Access (NVIDIA Ada Lovelace)
+**Issue:** RTX 40-series driver bug prevents mesh shaders from reading descriptor tables
+**Detection:** Automatic at startup via FeatureDetector
+**Workaround:** Falls back to compute shader vertex building (no performance loss)
+
+### ReSTIR Phase 1 Debugging
+**Status:** Active development
+**Known bugs:**
+- ✅ FIXED: Weight threshold too high for low-temp particles
+- ✅ FIXED: Temporal reuse allows M > 0 with weightSum = 0
+- 🔄 TESTING: Attenuation formula tuning
+
+See `RESTIR_DEBUG_BRIEFING.md` for current status.
+
+### ImGui Integration
+**Quirk:** ImGui requires a separate descriptor heap for fonts/textures. The Application class manages this automatically. Don't create additional ImGui descriptor heaps.
+
+---
+
+## Performance Targets
+
+**Test Configuration:** RTX 4060 Ti, 1920×1080, 100K particles
+
+| Feature Set | Target FPS | Current |
+|-------------|------------|---------|
+| Raster Only | 245 | 245 ✅ |
+| + RT Lighting | 165 | 165 ✅ |
+| + Shadow Rays | 142 | 142 ✅ |
+| + Phase Function | 138 | 138 ✅ |
+| + ReSTIR (active) | 120 | 120 ✅ |
+
+**Bottleneck:** RayQuery traversal of 100K procedural primitives (BLAS rebuild: 2.1ms/frame)
+
+**Optimization priorities:**
+1. BLAS update (not rebuild): +25% FPS
+2. Particle LOD culling: +50% FPS
+3. Release build optimization: +30% FPS
+
+---
+
+## File Naming Conventions
+
+- Headers: `.h` (not `.hpp`)
+- Implementation: `.cpp`
+- Shaders: `.hlsl`
+- Compiled shaders: `.dxil` (output directory)
+- Configs: `.json`
+
+**Naming style:**
+- Classes: PascalCase (`ParticleSystem`, `RTLightingSystem_RayQuery`)
+- Functions: PascalCase (`Initialize`, `Render`)
+- Variables: camelCase (`m_particleCount`, `particleBuffer`)
+- Constants: UPPER_SNAKE_CASE (`BLACK_HOLE_MASS`)
+
+---
+
+## Logging System
+
+All logs are written to timestamped files in `logs/` directory:
+```
+logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log
+```
+
+**Log levels:**
+- `LOG_INFO` - General information, startup messages
+- `LOG_WARN` - Non-critical issues, fallback activations
+- `LOG_ERROR` - Recoverable errors, resource creation failures
+- `LOG_CRITICAL` - Unrecoverable errors, immediate exit
+
+**Usage:**
+```cpp
+LOG_INFO("Initializing particle system with {} particles", particleCount);
+LOG_WARN("Mesh shaders failed, using compute fallback");
+LOG_ERROR("Failed to create BLAS: {}", errorMessage);
+```
+
+---
+
+## Dependencies and External Libraries
+
+**Included in repository:**
+- DirectX 12 Agility SDK (`external/D3D12/`)
+- ImGui (`external/imgui/`)
+- d3dx12.h helper library (`src/utils/d3dx12.h`)
+
+**System dependencies (must be installed):**
+- Visual Studio 2022 (C++17 required)
+- Windows SDK 10.0.26100.0 or higher
+- DXC shader compiler (part of Windows SDK)
+- PIX for Windows (optional, for GPU debugging)
+
+**Driver requirements:**
+- NVIDIA: 531.00+ (DXR 1.1 support)
+- AMD: Adrenalin 23.1.1+ (DXR 1.1 support)
+
+---
+
+## Reference Documentation
+
+**In-repo documentation:**
+- `README.md` - Project overview, features, controls
+- `BUILD_GUIDE.md` - Build configuration details
+- `configs/README.md` - Configuration system reference
+- `PHYSICS_PORT_ANALYSIS.md` - Physics feature porting plan
+- `RESTIR_DEBUG_BRIEFING.md` - ReSTIR debugging status
+- `PIX/docs/QUICK_REFERENCE.md` - PIX capture system guide
+
+**External references:**
+- [DirectX 12 Programming Guide](https://docs.microsoft.com/en-us/windows/win32/direct3d12/)
+- [DXR 1.1 Spec](https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html)
+- [ReSTIR Paper](https://research.nvidia.com/publication/2020-07_Spatiotemporal-reservoir-resampling) - Bitterli et al. (2020)
+- [3D Gaussian Splatting](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) - Kerbl et al. (2023)
+
+---
+
+## Immediate Next Steps for Development
+
+**Current sprint priorities:**
+1. ReSTIR Phase 1 validation (weight calculation fixes)
+2. Performance profiling with PIX timing capture
+3. Physics feature porting (see PHYSICS_PORT_ANALYSIS.md):
+   - Constraint shapes system (SPHERE, DISC, TORUS)
+   - Black hole mass parameter
+   - Alpha viscosity (Shakura-Sunyaev accretion)
+4. Expose all shader constants to ImGui runtime controls
+
+**Roadmap (see README.md for full details):**
+- Short-term: ReSTIR Phase 1 validation, ImGui controls
+- Medium-term: ReSTIR Phase 2 (spatial reuse), BLAS optimization
+- Long-term: Neural denoising, VR support
+
+---
+
+**Last Updated:** 2025-10-15
+**Project Version:** 0.5.7
+**Documentation maintained by:** Claude Code sessions

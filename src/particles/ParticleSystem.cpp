@@ -197,7 +197,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
 
     constants.deltaTime = deltaTime;
     constants.totalTime = totalTime;  // FIXED: Pass real totalTime so shader can GPU-init when < 0.01
-    constants.blackHoleMass = BLACK_HOLE_MASS;
+    constants.blackHoleMass = m_blackHoleMass;  // NOW RUNTIME ADJUSTABLE!
     constants.gravityStrength = m_gravityStrength;
     constants.blackHolePosition = m_blackHolePosition;
     constants.turbulenceStrength = m_turbulenceStrength;
@@ -206,7 +206,7 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     constants.innerRadius = INNER_STABLE_ORBIT;
     constants.outerRadius = OUTER_DISK_RADIUS;
     constants.diskThickness = DISK_THICKNESS;
-    constants.viscosity = m_viscosity;
+    constants.viscosity = m_alphaViscosity;  // NOW USES m_alphaViscosity (Shakura-Sunyaev α)
     constants.angularMomentumBoost = m_angularMomentumBoost;
     constants.constraintShape = m_constraintShape;
     constants.constraintRadius = 50.0f;

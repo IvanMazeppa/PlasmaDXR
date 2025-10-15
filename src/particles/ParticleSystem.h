@@ -58,6 +58,16 @@ public:
     void SetDamping(float value) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, value)); }
     void AdjustDamping(float delta) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, m_dampingFactor + delta)); }
 
+    // NEW: Black hole mass parameter (affects orbital velocity)
+    float GetBlackHoleMass() const { return m_blackHoleMass; }
+    void SetBlackHoleMass(float value) { m_blackHoleMass = (std::max)(1.0f, value); } // Min 1 solar mass
+    void AdjustBlackHoleMass(float delta) { m_blackHoleMass = (std::max)(1.0f, m_blackHoleMass + delta); }
+
+    // NEW: Alpha viscosity parameter (Shakura-Sunyaev accretion)
+    float GetAlphaViscosity() const { return m_alphaViscosity; }
+    void SetAlphaViscosity(float value) { m_alphaViscosity = (std::max)(0.0f, (std::min)(1.0f, value)); }
+    void AdjustAlphaViscosity(float delta) { m_alphaViscosity = (std::max)(0.0f, (std::min)(1.0f, m_alphaViscosity + delta)); }
+
     // Debug: Readback particle data from GPU
     void DebugReadbackParticles(int count = 5);
 
@@ -85,8 +95,12 @@ private:
     float m_turbulenceStrength = 15.0f;
     float m_dampingFactor = 0.99f;
     float m_angularMomentumBoost = 1.0f;
-    float m_viscosity = 0.01f;
+    float m_viscosity = 0.01f;  // Legacy - replaced by m_alphaViscosity
     uint32_t m_constraintShape = 0;  // 0=NONE, 1=SPHERE, 2=DISC, 3=TORUS, 4=ACCRETION_DISK
+
+    // NEW: Enhanced physics parameters
+    float m_blackHoleMass = BLACK_HOLE_MASS;  // Solar masses (default: Sgr A*)
+    float m_alphaViscosity = 0.1f;            // Shakura-Sunyaev α parameter (0.0-1.0)
 
     DirectX::XMFLOAT3 m_blackHolePosition = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
     DirectX::XMFLOAT3 m_diskAxis = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);

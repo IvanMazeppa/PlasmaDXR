@@ -123,8 +123,8 @@ void main(uint3 id : SV_DispatchThreadID) {
             orbitalDir = float3(1, 0, 0);  // Fallback
         }
 
-        // Keplerian speed with some randomization
-        float keplerianSpeed = sqrt(constants.gravityStrength / (distance + 0.1));
+        // Keplerian speed: v = sqrt(GM/r) - NOW USES BLACK HOLE MASS!
+        float keplerianSpeed = sqrt(constants.gravityStrength * constants.blackHoleMass / (distance + 0.1));
         uint seed4 = seed3 * 2654435761u;
         float speedVariation = (float((seed4 >> 16) & 0x7fff) / 32767.0 - 0.5) * 0.2;  // ±10%
         float initialSpeed = keplerianSpeed * (1.0 + speedVariation);
@@ -214,8 +214,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
         tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
 
-        // Calculate Keplerian orbital speed for this radius
-        float keplerianSpeed = sqrt(constants.gravityStrength / (distance + 0.1)) * constants.angularMomentumBoost;
+        // Calculate Keplerian orbital speed for this radius: v = sqrt(GM/r)
+        float keplerianSpeed = sqrt(constants.gravityStrength * constants.blackHoleMass / (distance + 0.1)) * constants.angularMomentumBoost;
 
         // Project current velocity onto orbital direction
         float currentOrbitalSpeed = dot(velocity, tangent);

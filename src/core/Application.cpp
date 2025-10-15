@@ -840,9 +840,23 @@ void Application::OnKeyPress(UINT8 key) {
         break;
 
     case 'S':
-        // TODO: Add rays-per-particle control for Gaussian renderer
-        LOG_INFO("'S' key: Rays-per-particle control not yet implemented for Gaussian renderer");
-        LOG_INFO("  (Will be added in Phase 3.1 enhanced physics/rendering features)");
+        // Cycle through ray counts: 2 → 4 → 8 → 16 → 2 ...
+        if (m_rtLighting) {
+            static const uint32_t rayCounts[] = {2, 4, 8, 16};
+            static int rayIndex = 3; // Start at 16 (current setting)
+
+            rayIndex = (rayIndex + 1) % 4;
+            uint32_t newRayCount = rayCounts[rayIndex];
+
+            m_rtLighting->SetRaysPerParticle(newRayCount);
+            LOG_INFO("Rays per particle: {} (S key cycles 2/4/8/16)", newRayCount);
+            LOG_INFO("  Quality: {} | Variance: {:.1f}% | Expected FPS: {}",
+                     newRayCount >= 16 ? "Ultra" : newRayCount >= 8 ? "High" : newRayCount >= 4 ? "Medium" : "Low",
+                     (100.0f / newRayCount) * (100.0f / newRayCount),
+                     newRayCount == 2 ? "300+" : newRayCount == 4 ? "250+" : newRayCount == 8 ? "180+" : "140+");
+        } else {
+            LOG_INFO("RT lighting not initialized");
+        }
         break;
 
     case VK_SPACE:
