@@ -545,7 +545,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Volume rendering: march through sorted Gaussians
     float3 accumulatedColor = float3(0, 0, 0);
-    float transmittance = 1.0;
+    float logTransmittance = 0.0;  // Log-space accumulation for numerical stability
 
     // Setup volumetric lighting
     VolumetricParams volParams;
@@ -555,7 +555,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     volParams.extinction = 1.0;             // Stronger extinction for more dramatic shadows
 
     for (uint i = 0; i < hitCount; i++) {
-        // Early exit if fully opaque
+        // Early exit if fully opaque (convert log-space to linear for check)
+        float transmittance = exp(logTransmittance);
         if (transmittance < 0.001) break;
 
         HitRecord hit = hits[i];
@@ -664,36 +665,49 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 rtLight = g_rtLighting[hit.particleIdx].rgb;
             }
 
-            // RT light acts as external illumination on the particle volume
-            // It modulates the emission based on received light
-            float3 illumination = float3(1, 1, 1); // Base self-illumination
+            // === CRITICAL FIX: Physical emission is self-emitting, not lit ===
+            // Physical emission (blackbody radiation) should NOT be modulated by external lighting
+            // Non-physical emission (temperature color) CAN be modulated by external lighting
 
-            // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
-            // Clamp to prevent over-brightness from extreme ReSTIR samples
-            illumination += clamp(rtLight * rtLightingStrength, 0.0, 10.0);
+            float3 totalEmission;
 
-            // === NEW: Cast shadow ray to primary light source (TOGGLEABLE) ===
-            float shadowTerm = 1.0;
-            if (useShadowRays != 0) {
-                float3 toLightDir = normalize(volParams.lightPos - pos);
-                float lightDist = length(volParams.lightPos - pos);
-                shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+            if (usePhysicalEmission != 0) {
+                // Physical emission: Self-emitting blackbody radiation (INDEPENDENT of external light)
+                totalEmission = emission * intensity;
+
+                // Optional: Add in-scattering as separate contribution
+                if (useInScattering != 0) {
+                    float3 inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
+                    totalEmission += inScatter * inScatterStrength;
+                }
+            } else {
+                // Non-physical emission: Temperature-based color that CAN be lit by external sources
+                float3 illumination = float3(1, 1, 1); // Base self-illumination
+
+                // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
+                // Clamp to prevent over-brightness from extreme ReSTIR samples
+                illumination += clamp(rtLight * rtLightingStrength, 0.0, 10.0);
+
+                // Cast shadow ray to primary light source (TOGGLEABLE)
+                float shadowTerm = 1.0;
+                if (useShadowRays != 0) {
+                    float3 toLightDir = normalize(volParams.lightPos - pos);
+                    float lightDist = length(volParams.lightPos - pos);
+                    shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+                }
+
+                // Apply shadow to external illumination
+                illumination *= lerp(0.1, 1.0, shadowTerm);
+
+                // Add in-scattering for volumetric depth (TOGGLEABLE)
+                float3 inScatter = float3(0, 0, 0);
+                if (useInScattering != 0) {
+                    inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
+                }
+
+                // Combine emission with external illumination and in-scattering
+                totalEmission = emission * intensity * illumination + inScatter * inScatterStrength;
             }
-
-            // Apply shadow to external illumination
-            illumination *= lerp(0.1, 1.0, shadowTerm); // Deeper shadows for contrast
-
-            // === NEW: Add in-scattering for volumetric depth (TOGGLEABLE) ===
-            float3 inScatter = float3(0, 0, 0);
-            if (useInScattering != 0) {
-                inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
-            }
-
-            // === FIXED: Combine emission with illumination properly ===
-            // Emission is the particle's intrinsic color
-            // Illumination modulates it based on external light
-            // In-scattering adds volumetric glow from nearby particles (RUNTIME ADJUSTABLE)
-            float3 totalEmission = emission * intensity * illumination + inScatter * inScatterStrength;
 
             // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
             if (usePhaseFunction != 0) {
@@ -707,10 +721,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
             // Volume rendering equation with proper absorption/emission
             float absorption = density * stepSize * volParams.extinction;
-            float3 emission_contribution = totalEmission * (1.0 - exp(-absorption));
 
+            // Log-space transmittance accumulation (eliminates precision loss)
+            logTransmittance -= absorption;
+            float transmittance = exp(logTransmittance);
+
+            // Emission contribution with stable transmittance
+            float3 emission_contribution = totalEmission * (1.0 - exp(-absorption));
             accumulatedColor += transmittance * emission_contribution;
-            transmittance *= exp(-absorption);
 
             // Early exit
             if (transmittance < 0.001) break;
@@ -719,7 +737,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Background color (pure black space - no blue tint)
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
-    float3 finalColor = accumulatedColor + transmittance * backgroundColor;
+    float finalTransmittance = exp(logTransmittance);
+    float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
 
     // Enhanced tone mapping for HDR
     // Use ACES tone mapping for better color preservation
