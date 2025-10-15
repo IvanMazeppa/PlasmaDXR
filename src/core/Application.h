@@ -158,4 +158,9 @@ private:
     void RenderImGui();
     bool m_showImGui = true;  // F1 to toggle
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_imguiDescriptorHeap;
+
+    // HDR→SDR blit pipeline
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_blitRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_blitPSO;
+    bool CreateBlitPipeline();
 };

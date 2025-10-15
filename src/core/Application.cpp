@@ -210,6 +210,14 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         }
     }
 
+    // Initialize blit pipeline (HDR→SDR conversion for Gaussian renderer)
+    if (m_gaussianRenderer) {
+        if (!CreateBlitPipeline()) {
+            LOG_ERROR("Failed to create blit pipeline");
+            return false;
+        }
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -516,43 +524,47 @@ void Application::Render() {
                                       m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
                                       gaussianConstants);
 
-            // Copy Gaussian output texture to backbuffer
-            D3D12_RESOURCE_BARRIER copyBarriers[2] = {};
+            // HDR→SDR blit pass (replaces CopyTextureRegion)
+            D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
 
-            // Transition Gaussian output to COPY_SOURCE
-            copyBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            copyBarriers[0].Transition.pResource = m_gaussianRenderer->GetOutputTexture();
-            copyBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            copyBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-            copyBarriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            // Transition Gaussian output (HDR) from UAV to SRV for sampling
+            blitBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            blitBarriers[0].Transition.pResource = m_gaussianRenderer->GetOutputTexture();
+            blitBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            blitBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            blitBarriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-            // Transition backbuffer to COPY_DEST
-            copyBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            copyBarriers[1].Transition.pResource = backBuffer;
-            copyBarriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            copyBarriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-            copyBarriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            cmdList->ResourceBarrier(2, copyBarriers);
+            // Backbuffer already in RENDER_TARGET state from earlier in Render()
+            cmdList->ResourceBarrier(1, &blitBarriers[0]);
 
-            // Copy texture to backbuffer
-            D3D12_TEXTURE_COPY_LOCATION src = {};
-            src.pResource = m_gaussianRenderer->GetOutputTexture();
-            src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            src.SubresourceIndex = 0;
+            // Set blit pipeline
+            cmdList->SetPipelineState(m_blitPSO.Get());
+            cmdList->SetGraphicsRootSignature(m_blitRootSignature.Get());
 
-            D3D12_TEXTURE_COPY_LOCATION dst = {};
-            dst.pResource = backBuffer;
-            dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            dst.SubresourceIndex = 0;
+            // Set render target (backbuffer already set earlier)
+            cmdList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-            cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+            // Set viewport and scissor
+            D3D12_VIEWPORT blitViewport = { 0, 0, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 1.0f };
+            D3D12_RECT blitScissor = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+            cmdList->RSSetViewports(1, &blitViewport);
+            cmdList->RSSetScissorRects(1, &blitScissor);
 
-            // Transition back
-            copyBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-            copyBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            copyBarriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-            copyBarriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            cmdList->ResourceBarrier(2, copyBarriers);
+            // Set descriptor heap for SRV
+            ID3D12DescriptorHeap* descriptorHeaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
+            cmdList->SetDescriptorHeaps(1, descriptorHeaps);
+
+            // Bind HDR texture SRV (t0)
+            cmdList->SetGraphicsRootDescriptorTable(0, m_gaussianRenderer->GetOutputSRV());
+
+            // Draw fullscreen triangle
+            cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmdList->DrawInstanced(3, 1, 0, 0);
+
+            // Transition Gaussian output back to UAV for next frame
+            blitBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            blitBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            cmdList->ResourceBarrier(1, &blitBarriers[0]);
 
         } else if (m_particleRenderer) {
             // Billboard path (current/stable)
@@ -1432,6 +1444,123 @@ void Application::InitializeImGui() {
     m_device->WaitForGPU();
 
     LOG_INFO("ImGui initialized successfully (Press F1 to toggle)");
+}
+
+bool Application::CreateBlitPipeline() {
+    LOG_INFO("Creating HDR→SDR blit pipeline...");
+
+    // Load precompiled shaders
+    std::vector<uint8_t> vsCode;
+    std::vector<uint8_t> psCode;
+
+    // Read vertex shader
+    FILE* vsFile = fopen("shaders/util/blit_hdr_to_sdr_vs.dxil", "rb");
+    if (!vsFile) {
+        LOG_ERROR("Failed to open blit_hdr_to_sdr_vs.dxil");
+        return false;
+    }
+    fseek(vsFile, 0, SEEK_END);
+    size_t vsSize = ftell(vsFile);
+    fseek(vsFile, 0, SEEK_SET);
+    vsCode.resize(vsSize);
+    fread(vsCode.data(), 1, vsSize, vsFile);
+    fclose(vsFile);
+
+    // Read pixel shader
+    FILE* psFile = fopen("shaders/util/blit_hdr_to_sdr_ps.dxil", "rb");
+    if (!psFile) {
+        LOG_ERROR("Failed to open blit_hdr_to_sdr_ps.dxil");
+        return false;
+    }
+    fseek(psFile, 0, SEEK_END);
+    size_t psSize = ftell(psFile);
+    fseek(psFile, 0, SEEK_SET);
+    psCode.resize(psSize);
+    fread(psCode.data(), 1, psSize, psFile);
+    fclose(psFile);
+
+    LOG_INFO("  Loaded VS: {} bytes, PS: {} bytes", vsSize, psSize);
+
+    // Create root signature
+    // 1 descriptor table (1 SRV: t0), 1 static sampler
+    D3D12_DESCRIPTOR_RANGE srvRange = {};
+    srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    srvRange.NumDescriptors = 1;
+    srvRange.BaseShaderRegister = 0;  // t0
+    srvRange.RegisterSpace = 0;
+    srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    D3D12_ROOT_PARAMETER rootParam = {};
+    rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParam.DescriptorTable.NumDescriptorRanges = 1;
+    rootParam.DescriptorTable.pDescriptorRanges = &srvRange;
+    rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    D3D12_STATIC_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.MipLODBias = 0.0f;
+    sampler.MaxAnisotropy = 1;
+    sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+    sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+    sampler.MinLOD = 0.0f;
+    sampler.MaxLOD = D3D12_FLOAT32_MAX;
+    sampler.ShaderRegister = 0;  // s0
+    sampler.RegisterSpace = 0;
+    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
+    rootSigDesc.NumParameters = 1;
+    rootSigDesc.pParameters = &rootParam;
+    rootSigDesc.NumStaticSamplers = 1;
+    rootSigDesc.pStaticSamplers = &sampler;
+    rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+    Microsoft::WRL::ComPtr<ID3DBlob> signature;
+    Microsoft::WRL::ComPtr<ID3DBlob> error;
+    HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Failed to serialize blit root signature: {}", (const char*)error->GetBufferPointer());
+        }
+        return false;
+    }
+
+    hr = m_device->GetDevice()->CreateRootSignature(0, signature->GetBufferPointer(),
+                                                     signature->GetBufferSize(),
+                                                     IID_PPV_ARGS(&m_blitRootSignature));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create blit root signature");
+        return false;
+    }
+
+    // Create graphics PSO
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_blitRootSignature.Get();
+    psoDesc.VS = { vsCode.data(), vsCode.size() };
+    psoDesc.PS = { psCode.data(), psCode.size() };
+    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;
+    psoDesc.DepthStencilState.DepthEnable = FALSE;
+    psoDesc.DepthStencilState.StencilEnable = FALSE;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.SampleDesc.Count = 1;
+
+    hr = m_device->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_blitPSO));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create blit PSO");
+        return false;
+    }
+
+    LOG_INFO("HDR→SDR blit pipeline created successfully");
+    return true;
 }
 
 void Application::ShutdownImGui() {

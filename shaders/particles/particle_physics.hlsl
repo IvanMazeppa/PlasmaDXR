@@ -243,7 +243,11 @@ void main(uint3 id : SV_DispatchThreadID) {
         // Update temperature based on distance (hotter near center)
         // Use inverse square law scaled for our radius range (10-300)
         float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
-        p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
+        float targetTemp = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
+
+        // Apply exponential smoothing to prevent abrupt color changes (flashing/blinking)
+        // 0.90 = 90% previous temperature, 10% new temperature = smooth transition over ~10 frames
+        p.temperature = lerp(targetTemp, p.temperature, 0.90);
 
         // Update density to match temperature/distance
         p.density = 0.2 + 2.8 * pow(tempFactor, 1.5);  // 0.2-3.0 range (denser near center)
