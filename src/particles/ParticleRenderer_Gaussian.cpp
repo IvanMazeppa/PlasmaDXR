@@ -131,6 +131,65 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
                  i, m_reservoirSRVGPU[i].ptr, m_reservoirUAVGPU[i].ptr);
     }
 
+    // Create light buffer (structured buffer for multi-light system)
+    // MAX_LIGHTS = 16, Light struct = 32 bytes (position=12, intensity=4, color=12, radius=4)
+    const uint32_t MAX_LIGHTS = 16;
+    const uint32_t lightStructSize = 32;  // Must match HLSL Light struct
+    const uint32_t lightBufferSize = MAX_LIGHTS * lightStructSize;
+
+    LOG_INFO("Creating light buffer...");
+    LOG_INFO("  Max lights: {}", MAX_LIGHTS);
+    LOG_INFO("  Light struct size: {} bytes", lightStructSize);
+    LOG_INFO("  Buffer size: {} bytes", lightBufferSize);
+
+    // Use UPLOAD heap so we can update lights from CPU each frame
+    D3D12_HEAP_PROPERTIES uploadHeapForLights = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    D3D12_RESOURCE_DESC lightBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(lightBufferSize);
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeapForLights,
+        D3D12_HEAP_FLAG_NONE,
+        &lightBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_lightBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create light buffer");
+        return false;
+    }
+
+    // Map light buffer for CPU writes
+    hr = m_lightBuffer->Map(0, nullptr, &m_lightBufferMapped);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to map light buffer");
+        return false;
+    }
+
+    // Create SRV for shader access (t4)
+    D3D12_SHADER_RESOURCE_VIEW_DESC lightSrvDesc = {};
+    lightSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    lightSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    lightSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    lightSrvDesc.Buffer.FirstElement = 0;
+    lightSrvDesc.Buffer.NumElements = MAX_LIGHTS;
+    lightSrvDesc.Buffer.StructureByteStride = lightStructSize;
+
+    m_lightSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_lightBuffer.Get(),
+        &lightSrvDesc,
+        m_lightSRV
+    );
+    m_lightSRVGPU = m_resources->GetGPUHandle(m_lightSRV);
+
+    LOG_INFO("Created light buffer: SRV=0x{:016X}", m_lightSRVGPU.ptr);
+
+    // Initialize with empty lights (caller will call UpdateLights())
+    std::vector<Light> emptyLights;
+    UpdateLights(emptyLights);
+
     if (!CreatePipeline()) {
         return false;
     }
@@ -237,6 +296,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t1: Buffer<float4> g_rtLighting
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
     // t3: StructuredBuffer<Reservoir> g_prevReservoirs (previous frame, descriptor table)
+    // t4: StructuredBuffer<Light> g_lights (multi-light system)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u1: RWStructuredBuffer<Reservoir> g_currentReservoirs (descriptor table)
     CD3DX12_DESCRIPTOR_RANGE1 srvRange;
@@ -246,17 +306,18 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // u1: RWStructuredBuffer
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[7];
+    CD3DX12_ROOT_PARAMETER1 rootParams[8];  // Increased from 7 to 8 for lights
     rootParams[0].InitAsConstantBufferView(0);             // b0 - CBV (no DWORD limit!)
     rootParams[1].InitAsShaderResourceView(0);             // t0 - particles (raw buffer is OK)
     rootParams[2].InitAsShaderResourceView(1);             // t1 - rtLighting (raw buffer is OK)
     rootParams[3].InitAsShaderResourceView(2);             // t2 - TLAS (raw is OK)
     rootParams[4].InitAsDescriptorTable(1, &srvRange);     // t3 - previous reservoirs (descriptor table!)
-    rootParams[5].InitAsDescriptorTable(1, &uavRanges[0]); // u0 - output texture
-    rootParams[6].InitAsDescriptorTable(1, &uavRanges[1]); // u1 - current reservoirs (UAV)
+    rootParams[5].InitAsShaderResourceView(4);             // t4 - lights (raw buffer is OK)
+    rootParams[6].InitAsDescriptorTable(1, &uavRanges[0]); // u0 - output texture
+    rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]); // u1 - current reservoirs (UAV)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(7, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(8, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -356,21 +417,26 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
     cmdList->SetComputeRootDescriptorTable(4, prevReservoirSRVHandle);
 
-    // Bind output texture (UAV descriptor table)
+    // Bind light buffer (t4 - multi-light system)
+    if (m_lightBuffer) {
+        cmdList->SetComputeRootShaderResourceView(5, m_lightBuffer->GetGPUVirtualAddress());
+    }
+
+    // Bind output texture (UAV descriptor table) - NOW at root param 6
     D3D12_GPU_DESCRIPTOR_HANDLE outputUAVHandle = m_resources->GetGPUHandle(m_outputUAV);
     if (outputUAVHandle.ptr == 0) {
         LOG_ERROR("GPU handle is ZERO!");
         return;
     }
-    cmdList->SetComputeRootDescriptorTable(5, outputUAVHandle);
+    cmdList->SetComputeRootDescriptorTable(6, outputUAVHandle);
 
-    // ReSTIR: Bind current frame's reservoir (write UAV descriptor table)
+    // ReSTIR: Bind current frame's reservoir (write UAV descriptor table) - NOW at root param 7
     D3D12_GPU_DESCRIPTOR_HANDLE currentReservoirUAVHandle = m_reservoirUAVGPU[m_currentReservoirIndex];
     if (currentReservoirUAVHandle.ptr == 0) {
         LOG_ERROR("Reservoir UAV handle is ZERO!");
         return;
     }
-    cmdList->SetComputeRootDescriptorTable(6, currentReservoirUAVHandle);
+    cmdList->SetComputeRootDescriptorTable(7, currentReservoirUAVHandle);
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
@@ -387,6 +453,36 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
     // ReSTIR: Swap reservoir buffers for next frame (ping-pong)
     m_currentReservoirIndex = 1 - m_currentReservoirIndex;
+}
+
+void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {
+    if (!m_lightBufferMapped) {
+        LOG_ERROR("Light buffer not mapped!");
+        return;
+    }
+
+    const uint32_t MAX_LIGHTS = 16;
+    uint32_t lightCount = static_cast<uint32_t>(lights.size());
+    if (lightCount > MAX_LIGHTS) {
+        LOG_WARN("Too many lights ({} provided, max is {}), truncating", lightCount, MAX_LIGHTS);
+        lightCount = MAX_LIGHTS;
+    }
+
+    // Copy lights to GPU buffer
+    if (lightCount > 0) {
+        memcpy(m_lightBufferMapped, lights.data(), lightCount * sizeof(Light));
+    }
+
+    // Clear remaining slots (optional, but good practice)
+    if (lightCount < MAX_LIGHTS) {
+        Light emptyLight = {};
+        char* bufferPtr = static_cast<char*>(m_lightBufferMapped);
+        for (uint32_t i = lightCount; i < MAX_LIGHTS; i++) {
+            memcpy(bufferPtr + i * sizeof(Light), &emptyLight, sizeof(Light));
+        }
+    }
+
+    LOG_INFO("Updated light buffer: {} lights", lightCount);
 }
 
 bool ParticleRenderer_Gaussian::Resize(uint32_t newWidth, uint32_t newHeight) {

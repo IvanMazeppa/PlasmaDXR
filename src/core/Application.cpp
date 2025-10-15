@@ -61,6 +61,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_width = appConfig.rendering.resolutionWidth;
     m_height = appConfig.rendering.resolutionHeight;
 
+    // Initialize active particle count (runtime adjustable)
+    m_activeParticleCount = m_config.particleCount;
+
     // Apply camera config
     m_cameraDistance = appConfig.camera.startDistance;
     m_cameraHeight = appConfig.camera.startHeight;
@@ -186,6 +189,10 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_ERROR("Failed to initialize Gaussian renderer");
             return false;
         }
+
+        // Initialize multi-light system (Phase 3.5)
+        InitializeLights();
+
         LOG_INFO("Render Path: 3D Gaussian Splatting");
     } else {
         LOG_INFO("Initializing Billboard renderer...");
@@ -493,6 +500,10 @@ void Application::Render() {
             gaussianConstants.restirInitialCandidates = m_restirInitialCandidates;
             gaussianConstants.frameIndex = static_cast<uint32_t>(m_frameCount);
             gaussianConstants.restirTemporalWeight = m_restirTemporalWeight;
+
+            // Multi-light system (Phase 3.5)
+            gaussianConstants.lightCount = static_cast<uint32_t>(m_lights.size());
+            m_gaussianRenderer->UpdateLights(m_lights);
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -1180,6 +1191,65 @@ void Application::OnKeyPress(UINT8 key) {
             LOG_INFO("Time Scale: {:.2f}x", m_particleSystem->GetTimeScale());
         }
         break;
+
+    // Multi-Light System Controls
+    case VK_OEM_6:  // ] key - Add light at camera position
+        if (m_lights.size() < 16) {
+            ParticleRenderer_Gaussian::Light newLight;
+            newLight.position = DirectX::XMFLOAT3(
+                m_cameraDistance * sinf(m_cameraAngle),
+                m_cameraHeight,
+                m_cameraDistance * cosf(m_cameraAngle)
+            );
+            newLight.color = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+            newLight.intensity = 5.0f;
+            newLight.radius = 10.0f;
+            m_lights.push_back(newLight);
+            m_selectedLightIndex = static_cast<int>(m_lights.size()) - 1;
+            LOG_INFO("Added light {} at camera position ({:.1f}, {:.1f}, {:.1f})",
+                     m_lights.size() - 1, newLight.position.x, newLight.position.y, newLight.position.z);
+        } else {
+            LOG_INFO("Maximum light count (16) reached");
+        }
+        break;
+
+    case VK_OEM_4:  // [ key - Remove selected light
+        if (!m_lights.empty()) {
+            int indexToRemove = m_selectedLightIndex >= 0 ? m_selectedLightIndex : static_cast<int>(m_lights.size()) - 1;
+            if (indexToRemove >= 0 && indexToRemove < static_cast<int>(m_lights.size())) {
+                m_lights.erase(m_lights.begin() + indexToRemove);
+                m_selectedLightIndex = -1;
+                LOG_INFO("Removed light {}, {} lights remaining", indexToRemove, m_lights.size());
+            }
+        } else {
+            LOG_INFO("No lights to remove");
+        }
+        break;
+
+    // Particle Count Controls (Ctrl+Alt modifiers to avoid conflicts)
+    case VK_OEM_PLUS: case VK_ADD:
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+            // Ctrl+Alt+= : Increase active particle count
+            m_activeParticleCount = (std::min)(m_config.particleCount, m_activeParticleCount + 1000);
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+        } else {
+            // Default: Increase particle size
+            m_particleSize += 2.0f;
+            LOG_INFO("Particle size: {}", m_particleSize);
+        }
+        break;
+
+    case VK_OEM_MINUS: case VK_SUBTRACT:
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+            // Ctrl+Alt+- : Decrease active particle count
+            m_activeParticleCount = (std::max)(100u, m_activeParticleCount - 1000);
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+        } else {
+            // Default: Decrease particle size
+            m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
+            LOG_INFO("Particle size: {}", m_particleSize);
+        }
+        break;
     }
 }
 
@@ -1799,12 +1869,28 @@ void Application::RenderImGui() {
         }
         ImGui::Separator();
         ImGui::Text("Simulation Info");
-        ImGui::Text("Particle Count: %u", m_config.particleCount);
+
+        // Runtime particle count control
+        int activeParticles = static_cast<int>(m_activeParticleCount);
+        if (ImGui::SliderInt("Active Particles (=/−)", &activeParticles, 100, static_cast<int>(m_config.particleCount), "%d")) {
+            m_activeParticleCount = static_cast<uint32_t>(activeParticles);
+        }
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Particle count is set at startup.\nUse --particles <count> command line arg to change.");
+            ImGui::SetTooltip("Runtime particle count control\nPress = to increase, - to decrease\nMax: %u (set at startup)", m_config.particleCount);
         }
+
+        // Quick presets
+        ImGui::SameLine();
+        if (ImGui::Button("1K")) { m_activeParticleCount = 1000; }
+        ImGui::SameLine();
+        if (ImGui::Button("5K")) { m_activeParticleCount = 5000; }
+        ImGui::SameLine();
+        if (ImGui::Button("10K")) { m_activeParticleCount = 10000; }
+        ImGui::SameLine();
+        if (ImGui::Button("Max")) { m_activeParticleCount = m_config.particleCount; }
+
         ImGui::Separator();
         ImGui::Text("Accretion Disk Parameters (Read-only)");
         ImGui::Text("Inner Radius: %.1f", m_innerRadius);
@@ -1813,8 +1899,170 @@ void Application::RenderImGui() {
         ImGui::Text("Physics Timestep: %.6f (120Hz)", m_physicsTimeStep);
     }
 
+    // Multi-Light System (Phase 3.5)
+    if (ImGui::CollapsingHeader("Multi-Light System (L)")) {
+        ImGui::Text("Active Lights: %d / 16", static_cast<int>(m_lights.size()));
+        ImGui::SameLine();
+        if (ImGui::Button("Add Light (+)") && m_lights.size() < 16) {
+            // Add new light at camera position
+            ParticleRenderer_Gaussian::Light newLight;
+            newLight.position = DirectX::XMFLOAT3(m_cameraDistance * sinf(m_cameraAngle), m_cameraHeight, m_cameraDistance * cosf(m_cameraAngle));
+            newLight.color = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+            newLight.intensity = 5.0f;
+            newLight.radius = 10.0f;
+            m_lights.push_back(newLight);
+            m_selectedLightIndex = static_cast<int>(m_lights.size()) - 1;
+            LOG_INFO("Added light {} at ({:.1f}, {:.1f}, {:.1f})", m_lights.size() - 1, newLight.position.x, newLight.position.y, newLight.position.z);
+        }
+
+        ImGui::Separator();
+
+        // Preset configurations
+        ImGui::Text("Presets:");
+        if (ImGui::Button("Disk (13)")) {
+            InitializeLights();
+            m_selectedLightIndex = -1;
+            LOG_INFO("Reset to default 13-light disk configuration");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Single")) {
+            m_lights.clear();
+            ParticleRenderer_Gaussian::Light single;
+            single.position = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+            single.color = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+            single.intensity = 10.0f;
+            single.radius = 5.0f;
+            m_lights.push_back(single);
+            m_selectedLightIndex = 0;
+            LOG_INFO("Reset to single light at origin");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Dome (8)")) {
+            m_lights.clear();
+            const float PI = 3.14159265f;
+            // 8 lights in hemisphere above disk
+            for (int i = 0; i < 8; i++) {
+                float angle = (i * 45.0f) * (PI / 180.0f);
+                float radius = 200.0f;
+                float height = 150.0f;
+                ParticleRenderer_Gaussian::Light light;
+                light.position = DirectX::XMFLOAT3(cos(angle) * radius, height, sin(angle) * radius);
+                light.color = DirectX::XMFLOAT3(1.0f, 0.95f, 0.9f);
+                light.intensity = 7.0f;
+                light.radius = 15.0f;
+                m_lights.push_back(light);
+            }
+            m_selectedLightIndex = 0;
+            LOG_INFO("Created dome configuration with 8 elevated lights");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear")) {
+            m_lights.clear();
+            m_selectedLightIndex = -1;
+            LOG_INFO("Cleared all lights");
+        }
+
+        ImGui::Separator();
+
+        // Individual light controls
+        for (int i = 0; i < static_cast<int>(m_lights.size()); i++) {
+            ImGui::PushID(i);
+
+            bool isSelected = (i == m_selectedLightIndex);
+            if (isSelected) {
+                ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.4f, 0.6f, 0.8f, 0.8f));
+            }
+
+            char label[64];
+            snprintf(label, sizeof(label), "Light %d###Light%d", i, i);
+            if (ImGui::TreeNode(label)) {
+                m_selectedLightIndex = i;
+
+                ImGui::DragFloat3("Position", &m_lights[i].position.x, 1.0f, -1000.0f, 1000.0f, "%.1f");
+                ImGui::ColorEdit3("Color", &m_lights[i].color.x);
+                ImGui::SliderFloat("Intensity", &m_lights[i].intensity, 0.0f, 20.0f, "%.1f");
+                ImGui::SliderFloat("Radius", &m_lights[i].radius, 1.0f, 50.0f, "%.1f");
+
+                ImGui::Separator();
+                ImGui::Text("Position: (%.1f, %.1f, %.1f)", m_lights[i].position.x, m_lights[i].position.y, m_lights[i].position.z);
+
+                if (ImGui::Button("Move to Camera")) {
+                    m_lights[i].position.x = m_cameraDistance * sinf(m_cameraAngle);
+                    m_lights[i].position.y = m_cameraHeight;
+                    m_lights[i].position.z = m_cameraDistance * cosf(m_cameraAngle);
+                    LOG_INFO("Moved light {} to camera position", i);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Delete (−)")) {
+                    m_lights.erase(m_lights.begin() + i);
+                    m_selectedLightIndex = -1;
+                    LOG_INFO("Deleted light {}", i);
+                    ImGui::TreePop();
+                    ImGui::PopID();
+                    if (isSelected) ImGui::PopStyleColor();
+                    break;  // Exit loop after deletion
+                }
+
+                ImGui::TreePop();
+            }
+
+            if (isSelected) {
+                ImGui::PopStyleColor();
+            }
+
+            ImGui::PopID();
+        }
+    }
+
     ImGui::End();
 
     // Rendering
     ImGui::Render();
+}
+
+// Initialize 13-light configuration for accretion disk
+void Application::InitializeLights() {
+    using DirectX::XMFLOAT3;
+    const float PI = 3.14159265f;
+
+    m_lights.clear();
+
+    // Primary: Hot inner edge at origin (blue-white 20000K)
+    ParticleRenderer_Gaussian::Light primaryLight;
+    primaryLight.position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    primaryLight.color = XMFLOAT3(1.0f, 0.9f, 0.8f);  // Blue-white
+    primaryLight.intensity = 10.0f;
+    primaryLight.radius = 5.0f;
+    m_lights.push_back(primaryLight);
+
+    // Secondary: 4 spiral arms at 50 unit radius (orange 12000K)
+    for (int i = 0; i < 4; i++) {
+        float angle = (i * 90.0f) * (PI / 180.0f);
+        float radius = 50.0f;
+
+        ParticleRenderer_Gaussian::Light armLight;
+        armLight.position = XMFLOAT3(cos(angle) * radius, 0.0f, sin(angle) * radius);
+        armLight.color = XMFLOAT3(1.0f, 0.8f, 0.6f);  // Orange
+        armLight.intensity = 5.0f;
+        armLight.radius = 10.0f;
+        m_lights.push_back(armLight);
+    }
+
+    // Tertiary: 8 mid-disk hot spots at 150 unit radius (yellow-orange 8000K)
+    for (int i = 0; i < 8; i++) {
+        float angle = (i * 45.0f) * (PI / 180.0f);
+        float radius = 150.0f;
+
+        ParticleRenderer_Gaussian::Light hotSpot;
+        hotSpot.position = XMFLOAT3(cos(angle) * radius, 0.0f, sin(angle) * radius);
+        hotSpot.color = XMFLOAT3(1.0f, 0.7f, 0.4f);  // Yellow-orange
+        hotSpot.intensity = 2.0f;
+        hotSpot.radius = 15.0f;
+        m_lights.push_back(hotSpot);
+    }
+
+    LOG_INFO("Initialized multi-light system: {} lights", m_lights.size());
+    LOG_INFO("  1 primary (origin, blue-white, 20000K equiv)");
+    LOG_INFO("  4 secondary (spiral arms @ 50 units, orange, 12000K equiv)");
+    LOG_INFO("  8 tertiary (hot spots @ 150 units, yellow-orange, 8000K equiv)");
 }

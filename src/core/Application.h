@@ -6,6 +6,7 @@
 #include <memory>
 #include <chrono>
 #include <string>
+#include <vector>
 
 // Forward declarations
 struct ID3D12Resource;
@@ -15,9 +16,11 @@ class SwapChain;
 class FeatureDetector;
 class ParticleSystem;
 class ParticleRenderer;
-class ParticleRenderer_Gaussian;
 class RTLightingSystem_RayQuery;
 class ResourceManager;
+
+// Need full include for ParticleRenderer_Gaussian::Light nested type
+#include "../particles/ParticleRenderer_Gaussian.h"
 
 class Application {
 public:
@@ -119,6 +122,10 @@ private:
     // Multi-light system (Phase 3.5)
     std::vector<ParticleRenderer_Gaussian::Light> m_lights;  // Active lights (max 16)
     void InitializeLights();  // Create default 13-light configuration
+    int m_selectedLightIndex = -1;  // For ImGui light selection
+
+    // Particle count control
+    uint32_t m_activeParticleCount = 10000;  // Runtime-adjustable particle count
 
     bool m_useDopplerShift = false;
     float m_dopplerStrength = 1.0f;        // 0.0-5.0 (multiplier)

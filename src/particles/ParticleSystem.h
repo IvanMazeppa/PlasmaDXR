@@ -41,6 +41,12 @@ public:
     ID3D12Resource* GetParticleBuffer() const { return m_particleBuffer.Get(); }
     uint32_t GetParticleCount() const { return m_particleCount; }
 
+    // Runtime active particle count control
+    uint32_t GetActiveParticleCount() const { return m_activeParticleCount; }
+    void SetActiveParticleCount(uint32_t count) {
+        m_activeParticleCount = (std::min)(count, m_particleCount);
+    }
+
     // Physics parameter accessors for runtime control
     float GetGravityStrength() const { return m_gravityStrength; }
     void SetGravityStrength(float value) { m_gravityStrength = value; }
@@ -85,7 +91,8 @@ private:
     ResourceManager* m_resources = nullptr;
 
     // Particle data
-    uint32_t m_particleCount = 0;
+    uint32_t m_particleCount = 0;           // Maximum particle count (buffer size)
+    uint32_t m_activeParticleCount = 0;     // Active particle count (runtime adjustable)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_particleBuffer;  // GPU-initialized by physics shader
 
     // Physics compute pipeline
