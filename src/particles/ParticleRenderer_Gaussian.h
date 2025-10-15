@@ -77,6 +77,9 @@ public:
     // Get output texture to copy to backbuffer
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
 
+    // Get output SRV for blit pass (HDR→SDR conversion)
+    D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const { return m_outputSRVGPU; }
+
     // Get ReSTIR reservoir buffers for debugging/analysis
     ID3D12Resource* GetCurrentReservoirs() const {
         return m_reservoirBuffer[m_currentReservoirIndex].Get();
@@ -106,6 +109,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_outputTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE m_outputUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_outputUAVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_outputSRV;      // SRV for blit pass (read HDR in pixel shader)
+    D3D12_GPU_DESCRIPTOR_HANDLE m_outputSRVGPU;
 
     // ReSTIR reservoir buffers (ping-pong between frames)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_reservoirBuffer[2];  // Double-buffered

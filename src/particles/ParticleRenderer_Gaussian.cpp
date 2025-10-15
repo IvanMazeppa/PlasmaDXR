@@ -148,7 +148,7 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
     texDesc.Height = height;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM; // 10-bit color (4x better than 8-bit, compatible with swap chain)
+    texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT; // 16-bit HDR (256x better precision, needs blit to SDR swap chain)
     texDesc.SampleDesc.Count = 1;
     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
@@ -169,7 +169,7 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
 
     // Create UAV descriptor (typed UAVs require descriptor table binding)
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM; // MUST match resource format!
+    uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT; // MUST match resource format!
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
@@ -184,11 +184,27 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
     // Get GPU handle for binding in Render()
     m_outputUAVGPU = m_resources->GetGPUHandle(m_outputUAV);
 
-    LOG_INFO("Created Gaussian output texture: {}x{} (R10G10B10A2_UNORM - 10-bit color)", width, height);
+    // Create SRV for blit pass (read HDR texture in pixel shader)
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    m_outputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_outputTexture.Get(),
+        &srvDesc,
+        m_outputSRV
+    );
+    m_outputSRVGPU = m_resources->GetGPUHandle(m_outputSRV);
+
+    LOG_INFO("Created Gaussian output texture: {}x{} (R16G16B16A16_FLOAT - 16-bit HDR)", width, height);
     LOG_INFO("  UAV CPU handle: 0x{:016X}", m_outputUAV.ptr);
     LOG_INFO("  UAV GPU handle: 0x{:016X}", m_outputUAVGPU.ptr);
+    LOG_INFO("  SRV GPU handle: 0x{:016X}", m_outputSRVGPU.ptr);
 
-    if (m_outputUAVGPU.ptr == 0) {
+    if (m_outputUAVGPU.ptr == 0 || m_outputSRVGPU.ptr == 0) {
         LOG_ERROR("CRITICAL: GPU handle is null!");
         return false;
     }
