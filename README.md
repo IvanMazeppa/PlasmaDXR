@@ -61,6 +61,14 @@
 | **CTRL+M / SHIFT+M** | Damping | 0.0 - 1.0 | Velocity damping factor |
 | **CTRL+H / SHIFT+H** | Black Hole Mass | 1 - 10^10 M☉ | Mass (logarithmic scale) |
 | **CTRL+X / SHIFT+X** | Alpha Viscosity | 0.0 - 1.0 | Shakura-Sunyaev α (accretion) |
+| **CTRL+T / SHIFT+T** | Time Scale | 0.0 - 10.0x | Simulation speed multiplier |
+
+### Ray Tracing Controls
+| Key | Parameter | Default |
+|-----|-----------|---------|
+| **S** | Rays Per Particle | 8 |
+
+Cycles through 2 → 4 → 8 → 16 rays per particle for RT lighting quality.
 
 ### Camera Controls
 - **Mouse Drag** - Rotate view

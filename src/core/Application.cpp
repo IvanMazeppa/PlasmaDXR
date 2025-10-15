@@ -475,6 +475,8 @@ void Application::Render() {
             gaussianConstants.dopplerStrength = renderConstants.dopplerStrength;
             gaussianConstants.useGravitationalRedshift = renderConstants.useGravitationalRedshift ? 1u : 0u;
             gaussianConstants.redshiftStrength = renderConstants.redshiftStrength;
+            gaussianConstants.emissionBlendFactor = m_emissionBlendFactor;
+            gaussianConstants.padding2 = 0.0f;
 
             // RT system toggles
             gaussianConstants.useShadowRays = m_useShadowRays ? 1u : 0u;
@@ -843,7 +845,7 @@ void Application::OnKeyPress(UINT8 key) {
         // Cycle through ray counts: 2 → 4 → 8 → 16 → 2 ...
         if (m_rtLighting) {
             static const uint32_t rayCounts[] = {2, 4, 8, 16};
-            static int rayIndex = 3; // Start at 16 (current setting)
+            static int rayIndex = 2; // Start at 8 (balanced quality/performance)
 
             rayIndex = (rayIndex + 1) % 4;
             uint32_t newRayCount = rayCounts[rayIndex];
@@ -941,14 +943,6 @@ void Application::OnKeyPress(UINT8 key) {
             m_rtLighting->SetMaxLightingDistance(m_rtMaxDistance);
         }
         LOG_INFO("RT Max Distance: {}", m_rtMaxDistance);
-        break;
-
-    // Temperature variation test
-    case 'T':
-        LOG_INFO("=== Temperature Variation Test ===");
-        if (m_particleSystem) {
-            m_particleSystem->DebugReadbackParticles(20);
-        }
         break;
 
     // Physical emission strength (E = toggle, Shift+E = decrease, Ctrl+E = increase)
@@ -1173,6 +1167,17 @@ void Application::OnKeyPress(UINT8 key) {
         } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
             m_particleSystem->AdjustAlphaViscosity(0.01f);
             LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+        }
+        break;
+
+    // Time Scale (T = time)
+    case 'T':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustTimeScale(-0.1f);
+            LOG_INFO("Time Scale: {:.2f}x", m_particleSystem->GetTimeScale());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustTimeScale(0.1f);
+            LOG_INFO("Time Scale: {:.2f}x", m_particleSystem->GetTimeScale());
         }
         break;
     }
@@ -1683,6 +1688,16 @@ void Application::RenderImGui() {
         ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
         if (m_usePhysicalEmission) {
             ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
+            ImGui::SliderFloat("Artistic ↔ Physical Blend", &m_emissionBlendFactor, 0.0f, 1.0f);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("0.0 = Pure artistic (warm colors)\n"
+                                 "1.0 = Pure physical (accurate blackbody)\n"
+                                 "Auto-blends based on temperature:\n"
+                                 "  Cool (<8000K): Stays artistic\n"
+                                 "  Hot (>18000K): Goes physical");
+            }
         }
         ImGui::Checkbox("Doppler Shift (R)", &m_useDopplerShift);
         if (m_useDopplerShift) {
@@ -1695,7 +1710,7 @@ void Application::RenderImGui() {
     }
 
     // Physics controls
-    if (ImGui::CollapsingHeader("Physics")) {
+    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Physics Enabled (P)", &m_physicsEnabled);
         if (m_particleSystem) {
             ImGui::Separator();
@@ -1758,6 +1773,37 @@ void Application::RenderImGui() {
                                 "Controls inward spiral (accretion)\n"
                                 "0.0 = no accretion, 0.1 = realistic, 1.0 = fast");
             }
+
+            // NEW: Timescale (simulation speed multiplier)
+            ImGui::Separator();
+            float timeScale = m_particleSystem->GetTimeScale();
+            if (ImGui::SliderFloat("Time Scale (Ctrl/Shift+T)", &timeScale, 0.0f, 10.0f, "%.2fx")) {
+                m_particleSystem->SetTimeScale(timeScale);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Simulation speed multiplier\n"
+                                "0.0 = paused, 0.5 = half speed\n"
+                                "1.0 = normal, 2.0 = double speed");
+            }
+            // Quick presets
+            ImGui::SameLine();
+            if (ImGui::Button("Pause")) { m_particleSystem->SetTimeScale(0.0f); }
+            ImGui::SameLine();
+            if (ImGui::Button("0.5x")) { m_particleSystem->SetTimeScale(0.5f); }
+            ImGui::SameLine();
+            if (ImGui::Button("1x")) { m_particleSystem->SetTimeScale(1.0f); }
+            ImGui::SameLine();
+            if (ImGui::Button("2x")) { m_particleSystem->SetTimeScale(2.0f); }
+        }
+        ImGui::Separator();
+        ImGui::Text("Simulation Info");
+        ImGui::Text("Particle Count: %u", m_config.particleCount);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Particle count is set at startup.\nUse --particles <count> command line arg to change.");
         }
         ImGui::Separator();
         ImGui::Text("Accretion Disk Parameters (Read-only)");

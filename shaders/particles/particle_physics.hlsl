@@ -124,7 +124,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
 
         // Keplerian speed: v = sqrt(GM/r) - NOW USES BLACK HOLE MASS!
-        float keplerianSpeed = sqrt(constants.gravityStrength * constants.blackHoleMass / (distance + 0.1));
+        // Use gravityStrength as a scaling factor (NOT multiplied by mass - that causes extreme speeds!)
+        float keplerianSpeed = sqrt(constants.blackHoleMass / (distance + 0.1)) * 0.01;
         uint seed4 = seed3 * 2654435761u;
         float speedVariation = (float((seed4 >> 16) & 0x7fff) / 32767.0 - 0.5) * 0.2;  // ±10%
         float initialSpeed = keplerianSpeed * (1.0 + speedVariation);
@@ -215,7 +216,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
 
         // Calculate Keplerian orbital speed for this radius: v = sqrt(GM/r)
-        float keplerianSpeed = sqrt(constants.gravityStrength * constants.blackHoleMass / (distance + 0.1)) * constants.angularMomentumBoost;
+        // Use 0.01 scaling factor to keep velocities reasonable with large mass values
+        float keplerianSpeed = sqrt(constants.blackHoleMass / (distance + 0.1)) * 0.01 * constants.angularMomentumBoost;
 
         // Project current velocity onto orbital direction
         float currentOrbitalSpeed = dot(velocity, tangent);

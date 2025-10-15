@@ -155,6 +155,9 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
         return;  // Physics not initialized
     }
 
+    // Apply timescale to deltaTime (allows slowing down/speeding up simulation)
+    deltaTime *= m_timeScale;
+
     m_totalTime = totalTime;
 
     // CRITICAL DEBUG: Log first few frames to verify GPU initialization

@@ -37,6 +37,8 @@ public:
         float dopplerStrength;
         uint32_t useGravitationalRedshift;
         float redshiftStrength;
+        float emissionBlendFactor;  // 0.0 = pure artistic, 1.0 = pure physical
+        float padding2;
 
         // RT system toggles for performance
         uint32_t useShadowRays;

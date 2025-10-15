@@ -68,6 +68,11 @@ public:
     void SetAlphaViscosity(float value) { m_alphaViscosity = (std::max)(0.0f, (std::min)(1.0f, value)); }
     void AdjustAlphaViscosity(float delta) { m_alphaViscosity = (std::max)(0.0f, (std::min)(1.0f, m_alphaViscosity + delta)); }
 
+    // NEW: Timescale parameter (simulation speed multiplier)
+    float GetTimeScale() const { return m_timeScale; }
+    void SetTimeScale(float value) { m_timeScale = (std::max)(0.0f, (std::min)(10.0f, value)); }
+    void AdjustTimeScale(float delta) { m_timeScale = (std::max)(0.0f, (std::min)(10.0f, m_timeScale + delta)); }
+
     // Debug: Readback particle data from GPU
     void DebugReadbackParticles(int count = 5);
 
@@ -101,6 +106,7 @@ private:
     // NEW: Enhanced physics parameters
     float m_blackHoleMass = BLACK_HOLE_MASS;  // Solar masses (default: Sgr A*)
     float m_alphaViscosity = 0.1f;            // Shakura-Sunyaev α parameter (0.0-1.0)
+    float m_timeScale = 1.0f;                 // Simulation speed multiplier (0.0-10.0, 1.0 = normal speed)
 
     DirectX::XMFLOAT3 m_blackHolePosition = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
     DirectX::XMFLOAT3 m_diskAxis = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);

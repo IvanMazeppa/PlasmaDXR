@@ -29,6 +29,8 @@ cbuffer GaussianConstants : register(b0)
     float dopplerStrength;
     uint useGravitationalRedshift;
     float redshiftStrength;
+    float emissionBlendFactor;  // 0.0 = pure artistic, 1.0 = pure physical
+    float padding2;
 
     uint useShadowRays;
     uint useInScattering;
@@ -595,13 +597,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Higher threshold to skip low-density regions that cause flickering
             if (density < 0.01) continue;
 
-            // Compute emission color (with optional physical emission)
+            // === HYBRID EMISSION MODEL: Blend artistic + physical ===
             float3 emission;
             float intensity;
 
             if (usePhysicalEmission != 0) {
-                // Physical blackbody emission
-                emission = ComputePlasmaEmission(
+                // Calculate BOTH artistic and physical colors
+                float3 artisticEmission = TemperatureToEmission(p.temperature);
+                float3 physicalEmission = ComputePlasmaEmission(
                     p.position,
                     p.velocity,
                     p.temperature,
@@ -609,25 +612,34 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     cameraPos
                 );
 
-                // Apply emission strength
-                emission = lerp(float3(0.5, 0.5, 0.5), emission, emissionStrength);
+                // Apply emission strength to physical emission
+                physicalEmission = lerp(float3(0.5, 0.5, 0.5), physicalEmission, emissionStrength);
 
-                // Optional Doppler shift
+                // Optional Doppler shift (only on physical component)
                 if (useDopplerShift != 0) {
                     float3 viewDir = normalize(cameraPos - p.position);
-                    emission = DopplerShift(emission, p.velocity, viewDir, dopplerStrength);
+                    physicalEmission = DopplerShift(physicalEmission, p.velocity, viewDir, dopplerStrength);
                 }
 
-                // Optional gravitational redshift
+                // Optional gravitational redshift (only on physical component)
                 if (useGravitationalRedshift != 0) {
                     float radius = length(p.position);
                     const float schwarzschildRadius = 2.0;
-                    emission = GravitationalRedshift(emission, radius, schwarzschildRadius, redshiftStrength);
+                    physicalEmission = GravitationalRedshift(physicalEmission, radius, schwarzschildRadius, redshiftStrength);
                 }
 
+                // Temperature-based auto-blend: Cool particles stay artistic, hot particles go physical
+                // This prevents the whole disk from going blue when physical emission is enabled
+                float tempBlend = saturate((p.temperature - 8000.0) / 10000.0);  // 0 below 8000K, 1 above 18000K
+
+                // Combine manual blend factor with temperature-based blend
+                float finalBlend = emissionBlendFactor * tempBlend;
+
+                // Blend: 0.0 = pure artistic (warm colors), 1.0 = pure physical (accurate blues)
+                emission = lerp(artisticEmission, physicalEmission, finalBlend);
                 intensity = EmissionIntensity(p.temperature);
             } else {
-                // Standard temperature-based color
+                // Standard temperature-based color (artistic)
                 emission = TemperatureToEmission(p.temperature);
                 intensity = EmissionIntensity(p.temperature);
             }

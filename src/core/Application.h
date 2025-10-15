@@ -114,6 +114,7 @@ private:
     // Enhancement toggles and strengths
     bool m_usePhysicalEmission = false;
     float m_emissionStrength = 1.0f;       // 0.0-5.0
+    float m_emissionBlendFactor = 1.0f;    // 0.0-1.0 (0=artistic, 1=physical)
 
     bool m_useDopplerShift = false;
     float m_dopplerStrength = 1.0f;        // 0.0-5.0 (multiplier)

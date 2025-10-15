@@ -1,0 +1,46 @@
+Agent: Anthropic BYO Agent Scaffold
+==================================
+
+Purpose
+-------
+Create a minimal, non-destructive BYO-Anthropic helper that lets us use Claude Sonnet models from the terminal within Cursor, while respecting the repo’s MCP guardrails and patch policy.
+
+What’s included
+---------------
+- tools/anthropic_agent/agent.py — CLI that:
+  - Reads recent repo docs (CLAUDE.md, NEXT_SESSION_START_HERE.md, etc.) for context
+  - Adds guardrails-aware system prompt
+  - Calls Anthropic with your API key
+  - Writes a versioned patch note under Versions/ (YYYYMMDD-HHMM_slug.patch)
+- tools/anthropic_agent/README.md — setup and usage
+- tools/anthropic_agent/__init__.py — package marker
+
+How to use
+----------
+1) Install dependency and set key:
+   pip install anthropic
+   export ANTHROPIC_API_KEY=sk-ant-...
+
+2) Run a prompt and write a patch note:
+   cd tools/anthropic_agent
+   python agent.py "propose blit pipeline edits for HDR->SDR path" \
+     --model claude-3-5-sonnet-20241022 \
+     --slug blit_hdr_sdr
+
+3) Preview only (no file write):
+   python agent.py "summarize NEXT_SESSION tasks" --no-write
+
+Notes
+-----
+- This tool does NOT apply code edits directly — it emits patch notes per project policy. Apply edits manually or via your chosen workflow.
+- Swap models or providers by changing --model and relevant env vars. Works with Sonnet 3.5/4.5 (when available via API) or proxies.
+- Keeps output concise and aligned with guardrails (no deletions/renames without APPROVE_DELETE token).
+
+Verification
+------------
+- Lint clean for added files.
+- Patch writing verified: creates timestamped file in Versions/.
+
+Author: Repo Assistant
+Date: 2025-10-15 12:00
+Branch: 0.5.7
