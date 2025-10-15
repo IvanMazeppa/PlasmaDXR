@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <DirectXMath.h>
+#include <vector>
 
 // Forward declarations
 class Device;
@@ -14,6 +15,14 @@ class ResourceManager;
 
 class ParticleRenderer_Gaussian {
 public:
+    // Light structure matching HLSL (32 bytes)
+    struct Light {
+        DirectX::XMFLOAT3 position;        // 12 bytes
+        float intensity;                   // 4 bytes
+        DirectX::XMFLOAT3 color;          // 12 bytes
+        float radius;                      // 4 bytes
+    };
+
     struct RenderConstants {
         DirectX::XMFLOAT4X4 viewProj;
         DirectX::XMFLOAT4X4 invViewProj;
@@ -55,6 +64,10 @@ public:
         uint32_t restirInitialCandidates;  // M = number of candidates to test (16-32)
         uint32_t frameIndex;               // For temporal validation
         float restirTemporalWeight;        // How much to trust previous frame (0-1)
+
+        // Multi-light system
+        uint32_t lightCount;               // Number of active lights (0-16)
+        DirectX::XMFLOAT3 padding3;        // Padding for alignment
     };
 
 public:
@@ -75,6 +88,9 @@ public:
 
     // Resize output textures and buffers when window size changes
     bool Resize(uint32_t newWidth, uint32_t newHeight);
+
+    // Update lights (call this before Render if lights changed)
+    void UpdateLights(const std::vector<Light>& lights);
 
     // Get output texture to copy to backbuffer
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
@@ -123,4 +139,10 @@ private:
     uint32_t m_currentReservoirIndex = 0;                         // Which buffer is current (0 or 1)
     uint32_t m_screenWidth = 0;
     uint32_t m_screenHeight = 0;
+
+    // Multi-light system
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_lightBuffer;         // Structured buffer for lights
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightSRV;                       // SRV for shader access (t4)
+    D3D12_GPU_DESCRIPTOR_HANDLE m_lightSRVGPU;
+    void* m_lightBufferMapped = nullptr;                          // CPU access for updates
 };

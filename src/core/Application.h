@@ -116,6 +116,10 @@ private:
     float m_emissionStrength = 1.0f;       // 0.0-5.0
     float m_emissionBlendFactor = 1.0f;    // 0.0-1.0 (0=artistic, 1=physical)
 
+    // Multi-light system (Phase 3.5)
+    std::vector<ParticleRenderer_Gaussian::Light> m_lights;  // Active lights (max 16)
+    void InitializeLights();  // Create default 13-light configuration
+
     bool m_useDopplerShift = false;
     float m_dopplerStrength = 1.0f;        // 0.0-5.0 (multiplier)
 

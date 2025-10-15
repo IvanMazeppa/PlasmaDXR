@@ -46,7 +46,22 @@ cbuffer GaussianConstants : register(b0)
     uint restirInitialCandidates;  // M = 16-32
     uint frameIndex;               // For temporal validation
     float restirTemporalWeight;    // 0-1, how much to trust previous frame
+
+    // Multi-light system
+    uint lightCount;               // Number of active lights (0-16)
+    float3 padding3;               // Padding for alignment
 };
+
+// Light structure for multi-light system
+struct Light {
+    float3 position;               // 12 bytes
+    float intensity;               // 4 bytes
+    float3 color;                  // 12 bytes
+    float radius;                  // 4 bytes (for soft shadows)
+};
+
+// Light array (after constant buffer to avoid size issues)
+StructuredBuffer<Light> g_lights : register(t4);
 
 // Derived values
 static const float2 resolution = float2(screenWidth, screenHeight);
@@ -549,12 +564,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 accumulatedColor = float3(0, 0, 0);
     float logTransmittance = 0.0;  // Log-space accumulation for numerical stability
 
-    // Setup volumetric lighting
-    VolumetricParams volParams;
-    volParams.lightPos = float3(0, 500, 200);  // Light OUTSIDE the disk for proper shadows
-    volParams.lightColor = float3(10, 10, 10); // Much brighter light for visible effects
-    volParams.scatteringG = 0.7;            // Stronger forward scattering for halos
-    volParams.extinction = 1.0;             // Stronger extinction for more dramatic shadows
+    // Volumetric lighting parameters (used in multi-light loop)
+    const float scatteringG = 0.7;      // Henyey-Greenstein g parameter for phase function
+    const float extinction = 1.0;       // Extinction coefficient for volume rendering
 
     for (uint i = 0; i < hitCount; i++) {
         // Early exit if fully opaque (convert log-space to linear for check)
@@ -700,16 +712,39 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // Clamp to prevent over-brightness from extreme ReSTIR samples
                 illumination += clamp(rtLight * rtLightingStrength, 0.0, 10.0);
 
-                // Cast shadow ray to primary light source (TOGGLEABLE)
-                float shadowTerm = 1.0;
-                if (useShadowRays != 0) {
-                    float3 toLightDir = normalize(volParams.lightPos - pos);
-                    float lightDist = length(volParams.lightPos - pos);
-                    shadowTerm = CastShadowRay(pos, toLightDir, lightDist);
+                // === MULTI-LIGHT SYSTEM: Accumulate lighting from all active lights ===
+                float3 totalLighting = float3(0, 0, 0);
+
+                for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
+                    Light light = g_lights[lightIdx];
+
+                    // Direction and distance to this light
+                    float3 lightDir = normalize(light.position - pos);
+                    float lightDist = length(light.position - pos);
+
+                    // Linear attenuation for large-scale accretion disk (avoids harsh falloff)
+                    float attenuation = 1.0 / (1.0 + lightDist * 0.01);
+
+                    // Cast shadow ray to this light (if enabled)
+                    float shadowTerm = 1.0;
+                    if (useShadowRays != 0) {
+                        shadowTerm = CastShadowRay(pos, lightDir, lightDist);
+                    }
+
+                    // Apply phase function for view-dependent scattering (if enabled)
+                    float phase = 1.0;
+                    if (usePhaseFunction != 0) {
+                        float cosTheta = dot(-ray.Direction, lightDir);
+                        phase = HenyeyGreenstein(cosTheta, scatteringG);
+                    }
+
+                    // Accumulate this light's contribution
+                    float3 lightContribution = light.color * light.intensity * attenuation * shadowTerm * phase;
+                    totalLighting += lightContribution;
                 }
 
-                // Apply shadow to external illumination
-                illumination *= lerp(0.1, 1.0, shadowTerm);
+                // Apply multi-light illumination to external lighting
+                illumination += totalLighting * lerp(0.1, 1.0, min(1.0, length(totalLighting)));
 
                 // Add in-scattering for volumetric depth (TOGGLEABLE)
                 float3 inScatter = float3(0, 0, 0);
@@ -721,18 +756,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 totalEmission = emission * intensity * illumination + inScatter * inScatterStrength;
             }
 
-            // Apply phase function for view-dependent scattering (TOGGLEABLE + ADJUSTABLE)
-            if (usePhaseFunction != 0) {
-                float3 lightDir = normalize(volParams.lightPos - pos);
-                float cosTheta = dot(-ray.Direction, lightDir); // Negative for forward scattering
-                float phase = HenyeyGreenstein(cosTheta, volParams.scatteringG);
-
-                // Boost the phase function effect dramatically
-                totalEmission *= (1.0 + phase * phaseStrength);
-            }
-
             // Volume rendering equation with proper absorption/emission
-            float absorption = density * stepSize * volParams.extinction;
+            float absorption = density * stepSize * extinction;
 
             // Log-space transmittance accumulation (eliminates precision loss)
             logTransmittance -= absorption;

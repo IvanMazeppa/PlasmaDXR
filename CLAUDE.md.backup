@@ -522,28 +522,5 @@ LOG_ERROR("Failed to create BLAS: {}", errorMessage);
 ---
 
 **Last Updated:** 2025-10-15
-**Project Version:** 0.6.0
+**Project Version:** 0.5.7
 **Documentation maintained by:** Claude Code sessions
-
----
-
-## Recent Major Milestones
-
-### RT Volumetric Lighting Breakthrough (2025-10-15)
-**Branch:** `0.6.0` (created to mark this achievement)
-
-**What was fixed:**
-Physical emission (blackbody self-emission) was being incorrectly modulated by external RT lighting, causing the entire volumetric RT system to produce incorrect results. The fix separated self-emission from external lighting contributions.
-
-**Result:**
-All RT systems now working correctly for the first time:
-- Volumetric depth with proper particle occlusion
-- Rim lighting halos from Henyey-Greenstein phase function
-- Perfect temperature gradients (800K-26000K)
-- Atmospheric scattering effects
-- Realistic multi-directional shadowing
-- 120+ FPS @ 1080p with 10K particles and 16 rays/particle
-
-**Current Task:** Phase 3.5 - Multi-Light System (see MASTER_ROADMAP_V2.md lines 603-785)
-**Next Major Milestone:** Phase 4 - RTXDI Integration (NVIDIA production-grade many-light sampling)
-
