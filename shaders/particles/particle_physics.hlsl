@@ -228,6 +228,14 @@ void main(uint3 id : SV_DispatchThreadID) {
         float3 acceleration = gravityForce + orbitalCorrection;
         velocity += acceleration * constants.deltaTime;
 
+        // NEW: Alpha viscosity - Shakura-Sunyaev accretion (inward spiral)
+        // Creates gradual radial drift toward black hole
+        if (constants.viscosity > 0.001) {
+            // Radial drift: particles slowly spiral inward while maintaining angular momentum
+            float3 radialDrift = -toCenterNorm * constants.viscosity * 0.01;
+            velocity += radialDrift * constants.deltaTime;
+        }
+
         // Update position
         position += velocity * constants.deltaTime;
 

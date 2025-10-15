@@ -32,7 +32,9 @@
     "outerRadius": 300.0,
     "diskThickness": 50.0,
     "timeStep": 0.008333,
-    "physicsEnabled": true
+    "physicsEnabled": true,
+    "blackHoleMass": 4300000.0,
+    "alphaViscosity": 0.1
   },
   "camera": {
     "startDistance": 800.0,

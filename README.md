@@ -52,10 +52,21 @@
 | **O / L** | Phase Function Strength | 0.0 - 2.0 |
 | **P / ;** | Anisotropy Strength | 0.0 - 1.0 |
 
+### Physics Controls
+| Key | Parameter | Range | Description |
+|-----|-----------|-------|-------------|
+| **CTRL+V / SHIFT+V** | Gravity Strength | 0.0 - 2000.0 | Strength of gravitational force |
+| **CTRL+N / SHIFT+N** | Angular Momentum | 0.0 - 5.0 | Orbital speed multiplier |
+| **CTRL+B / SHIFT+B** | Turbulence | 0.0 - 100.0 | Curl noise turbulence |
+| **CTRL+M / SHIFT+M** | Damping | 0.0 - 1.0 | Velocity damping factor |
+| **CTRL+H / SHIFT+H** | Black Hole Mass | 1 - 10^10 M☉ | Mass (logarithmic scale) |
+| **CTRL+X / SHIFT+X** | Alpha Viscosity | 0.0 - 1.0 | Shakura-Sunyaev α (accretion) |
+
 ### Camera Controls
 - **Mouse Drag** - Rotate view
 - **Mouse Wheel** - Zoom in/out
 - **ESC** - Exit application
+- **F1** - Toggle ImGui control panel
 
 ---
 

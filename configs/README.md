@@ -228,6 +228,22 @@ python PIX/scripts/analysis/analyze_5_captures.py analysis/*
 | `restirTemporalReuse` | bool | true | Use previous frame's samples |
 | `restirTemporalWeight` | float | 0.9 | Temporal reuse strength (0.0-1.0) |
 
+### Physics Section (NEW)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `innerRadius` | float | 10.0 | Inner disk radius (Schwarzschild radii) |
+| `outerRadius` | float | 300.0 | Outer disk radius |
+| `diskThickness` | float | 50.0 | Disk thickness (vertical extent) |
+| `timeStep` | float | 0.008333 | Physics timestep (120Hz) |
+| `physicsEnabled` | bool | true | Enable GPU physics simulation |
+| `blackHoleMass` | float | 4300000.0 | Black hole mass in solar masses (M☉) |
+| `alphaViscosity` | float | 0.1 | Shakura-Sunyaev α (accretion parameter, 0.0-1.0) |
+
+**New Parameters:**
+- **blackHoleMass**: Controls Keplerian orbital velocities. Higher mass = faster orbits. Realistic values: 10 (stellar), 4.3e6 (Sgr A*), 1e9 (quasar)
+- **alphaViscosity**: Controls inward spiral (accretion). 0.0 = no accretion, 0.1 = realistic, 1.0 = fast accretion
+
 ### Camera Section
 
 | Parameter | Type | Default | Description |

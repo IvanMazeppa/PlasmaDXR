@@ -1130,6 +1130,51 @@ void Application::OnKeyPress(UINT8 key) {
             LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
         }
         break;
+
+    // Black Hole Mass (H = black hole mass)
+    case 'H':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            // Decrease mass (logarithmic: divide by 10)
+            float currentMass = m_particleSystem->GetBlackHoleMass();
+            float newMass = currentMass / 10.0f;
+            m_particleSystem->SetBlackHoleMass(newMass);
+            if (newMass < 1e3f) {
+                LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
+            } else if (newMass < 1e6f) {
+                LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
+            } else if (newMass < 1e9f) {
+                LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
+            } else {
+                LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+            }
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            // Increase mass (logarithmic: multiply by 10)
+            float currentMass = m_particleSystem->GetBlackHoleMass();
+            float newMass = currentMass * 10.0f;
+            if (newMass > 1e10f) newMass = 1e10f;  // Cap at 10 billion solar masses
+            m_particleSystem->SetBlackHoleMass(newMass);
+            if (newMass < 1e3f) {
+                LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
+            } else if (newMass < 1e6f) {
+                LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
+            } else if (newMass < 1e9f) {
+                LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
+            } else {
+                LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+            }
+        }
+        break;
+
+    // Alpha Viscosity (X = viscosity)
+    case 'X':
+        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            m_particleSystem->AdjustAlphaViscosity(-0.01f);
+            LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            m_particleSystem->AdjustAlphaViscosity(0.01f);
+            LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+        }
+        break;
     }
 }
 
@@ -1670,6 +1715,48 @@ void Application::RenderImGui() {
             float damping = m_particleSystem->GetDamping();
             if (ImGui::SliderFloat("Damping (M)", &damping, 0.0f, 1.0f)) {
                 m_particleSystem->SetDamping(damping);
+            }
+
+            // NEW: Black hole mass (logarithmic slider)
+            ImGui::Separator();
+            ImGui::Text("Black Hole Physics");
+            float blackHoleMass = m_particleSystem->GetBlackHoleMass();
+            // Logarithmic slider: 1-1e10 solar masses (10^0 to 10^10)
+            float logMass = log10f(blackHoleMass);
+            if (ImGui::SliderFloat("Black Hole Mass (Ctrl/Shift+H)", &logMass, 0.0f, 10.0f, "10^%.1f")) {
+                float newMass = powf(10.0f, logMass);
+                m_particleSystem->SetBlackHoleMass(newMass);
+            }
+            // Display actual mass value
+            if (blackHoleMass < 1e3f) {
+                ImGui::Text("  = %.1f solar masses", blackHoleMass);
+            } else if (blackHoleMass < 1e6f) {
+                ImGui::Text("  = %.1f thousand M☉", blackHoleMass / 1e3f);
+            } else if (blackHoleMass < 1e9f) {
+                ImGui::Text("  = %.2f million M☉", blackHoleMass / 1e6f);
+            } else {
+                ImGui::Text("  = %.2f billion M☉", blackHoleMass / 1e9f);
+            }
+
+            // Quick presets
+            ImGui::SameLine();
+            if (ImGui::Button("Stellar")) { m_particleSystem->SetBlackHoleMass(10.0f); }
+            ImGui::SameLine();
+            if (ImGui::Button("Sgr A*")) { m_particleSystem->SetBlackHoleMass(4.3e6f); }
+            ImGui::SameLine();
+            if (ImGui::Button("Quasar")) { m_particleSystem->SetBlackHoleMass(1e9f); }
+
+            // NEW: Alpha viscosity (Shakura-Sunyaev accretion parameter)
+            float alphaViscosity = m_particleSystem->GetAlphaViscosity();
+            if (ImGui::SliderFloat("Alpha Viscosity (Ctrl/Shift+X)", &alphaViscosity, 0.0f, 1.0f, "%.3f")) {
+                m_particleSystem->SetAlphaViscosity(alphaViscosity);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Shakura-Sunyaev α parameter\n"
+                                "Controls inward spiral (accretion)\n"
+                                "0.0 = no accretion, 0.1 = realistic, 1.0 = fast");
             }
         }
         ImGui::Separator();
