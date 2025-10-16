@@ -190,8 +190,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             return false;
         }
 
-        // Initialize multi-light system (Phase 3.5)
-        InitializeLights();
+        // Initialize multi-light system (Phase 3.5) - start empty, user creates lights via UI
+        // Users can use presets: "Disk (13)", "Single", "Dome (8)", or add manually with ] key
+        m_lights.clear();  // Start with 0 lights
 
         LOG_INFO("Render Path: 3D Gaussian Splatting");
     } else {
@@ -1970,7 +1971,7 @@ void Application::RenderImGui() {
             if (ImGui::TreeNode(label)) {
                 m_selectedLightIndex = i;
 
-                ImGui::DragFloat3("Position", &m_lights[i].position.x, 1.0f, -1000.0f, 1000.0f, "%.1f");
+                ImGui::DragFloat3("Position", &m_lights[i].position.x, 5.0f, -2000.0f, 2000.0f, "%.1f");
                 ImGui::ColorEdit3("Color", &m_lights[i].color.x);
                 ImGui::SliderFloat("Intensity", &m_lights[i].intensity, 0.0f, 20.0f, "%.1f");
                 ImGui::SliderFloat("Radius", &m_lights[i].radius, 1.0f, 50.0f, "%.1f");

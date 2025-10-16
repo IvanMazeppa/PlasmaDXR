@@ -482,7 +482,12 @@ void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {
         }
     }
 
-    LOG_INFO("Updated light buffer: {} lights", lightCount);
+    // Only log when light count changes (prevent log spam at 120 FPS)
+    static uint32_t s_lastLightCount = UINT32_MAX;
+    if (lightCount != s_lastLightCount) {
+        LOG_INFO("Updated light buffer: {} lights", lightCount);
+        s_lastLightCount = lightCount;
+    }
 }
 
 bool ParticleRenderer_Gaussian::Resize(uint32_t newWidth, uint32_t newHeight) {
