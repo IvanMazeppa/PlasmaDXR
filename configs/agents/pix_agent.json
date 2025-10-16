@@ -35,13 +35,14 @@
     "physicsEnabled": true
   },
   "camera": {
-    "startDistance": 50.0,
-    "startHeight": 75.0,
+    "startDistance": 200.0,
+    "startHeight": 150.0,
     "startAngle": 0.0,
-    "startPitch": 0.0,
+    "startPitch": -0.5,
     "moveSpeed": 100.0,
     "rotateSpeed": 0.5,
-    "particleSize": 20.0
+    "particleSize": 20.0,
+    "_comment": "Elevated view to see multi-directional lighting from 13 lights at Y=0"
   },
   "debug": {
     "enableDebugLayer": false,
@@ -53,9 +54,20 @@
     "showParticleStats": true
   },
   "pix_analysis": {
-    "capturePrefix": "analysis_",
-    "enableReservoirLogging": true,
-    "enablePerformanceCounters": true,
-    "trackResourceUsage": true
+    "capturePrefix": "multilight_debug_",
+    "analysisType": "multi_light_shader_trace",
+    "bufferDumps": ["g_lights", "g_particles", "g_output"],
+    "shaderBreakpoints": [
+      "particle_gaussian_raytrace.hlsl:715",
+      "particle_gaussian_raytrace.hlsl:758"
+    ],
+    "testConditions": {
+      "verifyLightCount": 13,
+      "verifyLightIntensities": "non-zero",
+      "traceTotalLighting": true,
+      "compareWithLightCountZero": true
+    },
+    "timeBoxMinutes": 20,
+    "decisionCriteria": "If not quick fix (<30 min total), recommend skip to RTXDI"
   }
 }

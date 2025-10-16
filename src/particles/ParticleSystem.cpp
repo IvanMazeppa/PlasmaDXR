@@ -18,6 +18,7 @@ ParticleSystem::~ParticleSystem() {
 bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint32_t particleCount) {
     m_device = device;
     m_resources = resources;
+    m_activeParticleCount = particleCount;  // Initially all particles active
     m_particleCount = particleCount;
 
     LOG_INFO("Initializing ParticleSystem with {} particles...", particleCount);
@@ -214,13 +215,13 @@ void ParticleSystem::Update(float deltaTime, float totalTime) {
     constants.constraintShape = m_constraintShape;
     constants.constraintRadius = 50.0f;
     constants.constraintThickness = 5.0f;
-    constants.particleCount = static_cast<float>(m_particleCount);
+    constants.particleCount = static_cast<float>(m_activeParticleCount);  // Use active count for physics
 
     cmdList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
     cmdList->SetComputeRootUnorderedAccessView(1, m_particleBuffer->GetGPUVirtualAddress());
 
     // Dispatch compute shader
-    uint32_t threadGroupCount = (m_particleCount + 63) / 64;
+    uint32_t threadGroupCount = (m_activeParticleCount + 63) / 64;  // Use active count for dispatch
     cmdList->Dispatch(threadGroupCount, 1, 1);
 
     // Log every 60 frames

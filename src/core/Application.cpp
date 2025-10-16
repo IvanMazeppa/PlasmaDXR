@@ -336,6 +336,8 @@ void Application::Render() {
 
     // CRITICAL: Run physics update AFTER reset, so commands are recorded properly!
     if (m_physicsEnabled && m_particleSystem) {
+        // Sync runtime particle count control
+        m_particleSystem->SetActiveParticleCount(m_activeParticleCount);
         m_particleSystem->Update(m_deltaTime, m_totalTime);
     }
 
@@ -885,14 +887,28 @@ void Application::OnKeyPress(UINT8 key) {
     case 'W': m_cameraDistance -= 50.0f; break;
     case 'A': m_cameraDistance += 50.0f; break;
 
-    // Particle size
+    // Particle size / Particle count (Ctrl+Alt modifier for count)
     case VK_OEM_PLUS: case VK_ADD:
-        m_particleSize += 2.0f;
-        LOG_INFO("Particle size: {}", m_particleSize);
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+            // Ctrl+Alt+= : Increase active particle count
+            m_activeParticleCount = (std::min)(m_config.particleCount, m_activeParticleCount + 1000);
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+        } else {
+            // Default: Increase particle size
+            m_particleSize += 2.0f;
+            LOG_INFO("Particle size: {}", m_particleSize);
+        }
         break;
     case VK_OEM_MINUS: case VK_SUBTRACT:
-        m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
-        LOG_INFO("Particle size: {}", m_particleSize);
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
+            // Ctrl+Alt+- : Decrease active particle count
+            m_activeParticleCount = (std::max)(100u, m_activeParticleCount - 1000);
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+        } else {
+            // Default: Decrease particle size
+            m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
+            LOG_INFO("Particle size: {}", m_particleSize);
+        }
         break;
 
     // Toggle physics
@@ -1226,30 +1242,6 @@ void Application::OnKeyPress(UINT8 key) {
         }
         break;
 
-    // Particle Count Controls (Ctrl+Alt modifiers to avoid conflicts)
-    case VK_OEM_PLUS: case VK_ADD:
-        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
-            // Ctrl+Alt+= : Increase active particle count
-            m_activeParticleCount = (std::min)(m_config.particleCount, m_activeParticleCount + 1000);
-            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
-        } else {
-            // Default: Increase particle size
-            m_particleSize += 2.0f;
-            LOG_INFO("Particle size: {}", m_particleSize);
-        }
-        break;
-
-    case VK_OEM_MINUS: case VK_SUBTRACT:
-        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
-            // Ctrl+Alt+- : Decrease active particle count
-            m_activeParticleCount = (std::max)(100u, m_activeParticleCount - 1000);
-            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
-        } else {
-            // Default: Decrease particle size
-            m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
-            LOG_INFO("Particle size: {}", m_particleSize);
-        }
-        break;
     }
 }
 

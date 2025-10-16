@@ -744,7 +744,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 }
 
                 // Apply multi-light illumination to external lighting
-                illumination += totalLighting * lerp(0.1, 1.0, min(1.0, length(totalLighting)));
+                // FIX: Removed weak lerp(0.1, 1.0, ...) that capped contribution too low
+                // Multi-light should be comparable in strength to RT lighting (which is clamped to 10.0)
+                illumination += totalLighting * 10.0;
 
                 // Add in-scattering for volumetric depth (TOGGLEABLE)
                 float3 inScatter = float3(0, 0, 0);
