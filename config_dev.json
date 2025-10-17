@@ -29,7 +29,7 @@
   },
   "physics": {
     "innerRadius": 10.0,
-    "outerRadius": 300.0,
+    "outerRadius": 1000.0,
     "diskThickness": 50.0,
     "timeStep": 0.008333,
     "physicsEnabled": true

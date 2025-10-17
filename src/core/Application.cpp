@@ -494,7 +494,7 @@ void Application::Render() {
             gaussianConstants.usePhaseFunction = m_usePhaseFunction ? 1u : 0u;
             gaussianConstants.phaseStrength = m_phaseStrength;
             gaussianConstants.inScatterStrength = m_inScatterStrength;
-            gaussianConstants.rtLightingStrength = m_rtLightingStrength;
+            gaussianConstants.rtLightingStrength = m_enableRTLighting ? m_rtLightingStrength : 0.0f;
             gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
             gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 
@@ -1739,7 +1739,16 @@ void Application::RenderImGui() {
         if (m_usePhaseFunction) {
             ImGui::SliderFloat("Phase Strength (Ctrl/Shift+F8)", &m_phaseStrength, 0.0f, 20.0f);
         }
-        ImGui::SliderFloat("RT Lighting Strength (F10)", &m_rtLightingStrength, 0.0f, 10.0f);
+        ImGui::Checkbox("RT Particle-Particle Lighting", &m_enableRTLighting);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Toggle the particle-to-particle RT lighting system.\n"
+                             "When OFF, only multi-light system illuminates particles.");
+        }
+        if (m_enableRTLighting) {
+            ImGui::SliderFloat("RT Lighting Strength (F10)", &m_rtLightingStrength, 0.0f, 10.0f);
+        }
         ImGui::Checkbox("Anisotropic Gaussians (F11)", &m_useAnisotropicGaussians);
         if (m_useAnisotropicGaussians) {
             ImGui::SliderFloat("Anisotropy Strength (F12)", &m_anisotropyStrength, 0.0f, 3.0f);

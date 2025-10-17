@@ -110,6 +110,7 @@ private:
     float m_physicsTimeStep = 0.008333f; // Physics timestep (fixed at 120Hz)
 
     // RT Lighting runtime controls
+    bool m_enableRTLighting = true;  // Toggle for particle-to-particle RT lighting
     float m_rtLightingIntensity = 1.0f;
     float m_rtMaxDistance = 100.0f;  // Updated to match shader
     float m_rtParticleRadius = 5.0f;   // Updated to match shader

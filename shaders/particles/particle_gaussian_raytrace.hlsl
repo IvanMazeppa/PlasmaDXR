@@ -722,8 +722,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     float3 lightDir = normalize(light.position - pos);
                     float lightDist = length(light.position - pos);
 
-                    // Linear attenuation for large-scale accretion disk (avoids harsh falloff)
-                    float attenuation = 1.0 / (1.0 + lightDist * 0.01);
+                    // Use light.radius for soft falloff (makes radius slider functional)
+                    float normalizedDist = lightDist / max(light.radius, 1.0);  // Normalize by radius
+                    float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);  // Quadratic for soft edge
 
                     // Cast shadow ray to this light (if enabled)
                     float shadowTerm = 1.0;
