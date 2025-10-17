@@ -1,0 +1,72 @@
+{
+  "profile": "sphere_boundary_test_100u",
+  "rendering": {
+    "particleCount": 10000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080
+  },
+  "features": {
+    "enableReSTIR": false,
+    "restirCandidates": 16,
+    "restirTemporalReuse": false,
+    "restirSpatialReuse": false,
+    "restirTemporalWeight": 0.0,
+    "enableInScattering": false,
+    "inScatterStrength": 0.0,
+    "enableShadowRays": true,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "anisotropyStrength": 1.0,
+    "rtLightingStrength": 2.0,
+    "usePhysicalEmission": false,
+    "emissionStrength": 0.1,
+    "useDopplerShift": false,
+    "dopplerStrength": 1.0,
+    "useGravitationalRedshift": false,
+    "redshiftStrength": 1.0
+  },
+  "physics": {
+    "innerRadius": 10.0,
+    "outerRadius": 300.0,
+    "diskThickness": 50.0,
+    "timeStep": 0.008333,
+    "physicsEnabled": false,
+    "blackHoleMass": 4300000.0,
+    "alphaViscosity": 0.0
+  },
+  "camera": {
+    "startDistance": 250.0,
+    "startHeight": 150.0,
+    "startAngle": 0.785398,
+    "startPitch": -0.35,
+    "moveSpeed": 100.0,
+    "rotateSpeed": 0.5,
+    "particleSize": 20.0,
+    "_comment": "Camera positioned to see light at (100,0,0) and particles at origin"
+  },
+  "lights": [
+    {
+      "position": [100.0, 0.0, 0.0],
+      "intensity": 10.0,
+      "color": [1.0, 0.5, 0.0],
+      "radius": 300.0,
+      "_comment": "ORANGE light at 100 units - SHOULD WORK"
+    }
+  ],
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": true,
+    "pixAutoCapture": true,
+    "pixCaptureFrame": 120,
+    "showFPS": true,
+    "showParticleStats": true
+  },
+  "pix_analysis": {
+    "capturePrefix": "sphere_100u_",
+    "testDistance": 100,
+    "expectedResult": "PASS - Light should fully illuminate particles"
+  }
+}

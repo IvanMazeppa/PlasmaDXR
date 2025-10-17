@@ -143,8 +143,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         p.velocity += randomPerturbation;
 
         // Temperature falls off with distance (hotter near center, distance already calculated above)
-        // Use inverse square law scaled for our radius range (10-300)
-        float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
+        // Use dynamic radius range from constants (not hardcoded)
+        float tempFactor = saturate(1.0 - (distance - constants.innerRadius) /
+                                    (constants.outerRadius - constants.innerRadius));  // 0=outer, 1=inner
         p.temperature = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
 
         // Density varies with distance - denser near black hole (accretion disk physics)
@@ -251,8 +252,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         }
 
         // Update temperature based on distance (hotter near center)
-        // Use inverse square law scaled for our radius range (10-300)
-        float tempFactor = saturate(1.0 - (distance - 10.0) / 290.0);  // 0=outer, 1=inner
+        // Use dynamic radius range from constants (not hardcoded)
+        float tempFactor = saturate(1.0 - (distance - constants.innerRadius) /
+                                    (constants.outerRadius - constants.innerRadius));  // 0=outer, 1=inner
         float targetTemp = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
 
         // Apply exponential smoothing to prevent abrupt color changes (flashing/blinking)
