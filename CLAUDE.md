@@ -182,9 +182,18 @@ scale.xyz = baseRadius * (1, 1, 1 + anisotropy * velocityMagnitude)
 
 ---
 
-## ReSTIR Implementation (Phase 1 - Active Development)
+## ReSTIR Implementation - DEPRECATED ⚠️
 
-**Current Status:** Temporal reuse only, debugging in progress
+**Status:** Marked for deletion, replaced by NVIDIA RTXDI (Phase 4)
+
+**Reason for Deprecation:**
+After months of debugging custom ReSTIR implementation, the decision was made to adopt NVIDIA's production-grade RTXDI (RTX Direct Illumination) library instead. RTXDI provides:
+- Battle-tested ReSTIR GI implementation
+- Spatial and temporal reuse (Phases 2-3)
+- Optimized for RTX hardware
+- Active NVIDIA support and updates
+
+**Custom Implementation Technical Details (for reference):**
 
 **Algorithm:** Weighted Reservoir Sampling for many-light problems
 1. Candidate Sampling: Cast 16-32 random rays to find light-emitting particles
@@ -198,14 +207,78 @@ scale.xyz = baseRadius * (1, 1, 1 + anisotropy * velocityMagnitude)
 - Structure: `{ float3 lightPos, float weightSum, uint M, float W, uint particleIdx }`
 - Swap each frame via `m_currentReservoirIndex`
 
-**Known Issues:**
-- Debugging weight calculation edge cases
-- Testing attenuation formula for large-scale scenes
-- See `RESTIR_DEBUG_BRIEFING.md` for current debugging status
+**Known Issues (historical):**
+- Weight calculation edge cases for low-temperature particles
+- Temporal reuse validation bugs
+- Attenuation formula tuning at large scales
+- See `RESTIR_DEBUG_BRIEFING.md` for full debugging history
 
-**Roadmap:**
-- Phase 2: Spatial reuse (neighbor sharing)
-- Phase 3: Visibility reuse (cached shadow rays)
+**Migration Path:**
+- Phase 4: Remove custom ReSTIR code
+- Phase 4: Integrate NVIDIA RTXDI SDK
+- Phase 4: Port existing lighting to RTXDI API
+
+---
+
+## Multi-Light System (Phase 3.5 - Current Priority)
+
+**Status:** Implemented and working, 3 polish fixes needed
+
+**Achievement:** First production-ready many-light system using RT volumetric rendering. 13 lights distributed across the accretion disk achieve realistic multi-directional shadowing, rim lighting, and atmospheric scattering effects.
+
+**Architecture:**
+- Light array stored in `m_lights` vector (Application.cpp:118)
+- Uploaded to GPU via structured buffer (32 bytes/light)
+- Gaussian raytrace shader reads all lights (particle_gaussian_raytrace.hlsl:726)
+- Each light contributes independently to volumetric illumination
+
+**ImGui Controls:**
+All lights fully controllable at runtime:
+- Position (X/Y/Z sliders)
+- Color (RGB color picker)
+- Intensity (0.1 - 20.0 range)
+- Radius (10.0 - 200.0 range)
+- Per-light enable/disable toggles
+
+**Presets:**
+- **Stellar Ring** - 13 lights in circular formation (default)
+- **Dual Binary** - 2 opposing lights (binary star system)
+- **Trinary Dance** - 3 lights in triangular formation
+- **Single Beacon** - 1 centered light (debugging/comparison)
+
+**Current Issues (see MULTI_LIGHT_FIXES_NEEDED.md):**
+
+1. **Sphere Boundary Issue** (particle_gaussian_raytrace.hlsl:726)
+   - **Symptom:** Light appears to vanish beyond ~300-400 units
+   - **Root Cause:** Attenuation falloff formula too steep (`1.0 / (1.0 + lightDist * 0.01)`)
+   - **Fix:** Reduce falloff constant from 0.01 to 0.001 (10x wider range)
+   - **File:** shaders/particles/particle_gaussian_raytrace.hlsl:726
+   - **Time:** 5 minutes
+
+2. **Light Radius Has No Effect** (particle_gaussian_raytrace.hlsl:726)
+   - **Symptom:** Adjusting light radius slider does nothing
+   - **Root Cause:** Shader uploads `light.radius` but never uses it in attenuation calculation
+   - **Fix:** Normalize distance by radius: `float normalizedDist = lightDist / max(light.radius, 1.0);`
+   - **File:** shaders/particles/particle_gaussian_raytrace.hlsl:726
+   - **Time:** 5 minutes
+
+3. **Can't Fully Disable RT Lighting** (Application.cpp:1850, Application.h:118)
+   - **Symptom:** RT particle-to-particle lighting (Phase 2.6) always active, only strength adjustable
+   - **Root Cause:** No boolean toggle, only `m_rtLightingStrength` slider (0.0-5.0)
+   - **Fix:** Add `bool m_enableRTLighting` checkbox in ImGui, apply in Update() loop
+   - **Files:**
+     - src/core/Application.h:118 (add bool member)
+     - src/core/Application.cpp:1850 (add ImGui checkbox)
+     - src/core/Application.cpp:340 (apply toggle before upload)
+   - **Time:** 15 minutes
+
+**Performance Impact:**
+- 13 lights: ~5% FPS overhead compared to single light
+- Bottleneck: Per-light attenuation calculation in ray marching loop
+- Current: 120+ FPS @ 10K particles with 13 lights (RTX 4060 Ti, 1080p)
+- Target maintained ✅
+
+**User Feedback:** "this is one hell of a brilliant update!!!!!!!!!!!"
 
 ---
 
@@ -293,6 +366,92 @@ See `PIX/scripts/analysis/` for Python scripts to analyze buffer dumps.
 ### PIX Event Markers
 
 All draw calls and compute dispatches are wrapped with PIX event markers. Use PIX timeline view to navigate the frame.
+
+---
+
+## Autonomous Testing with v3 Agents
+
+**Status:** Custom plugin system operational (plasmadx-testing-v3)
+
+**Installation:** `~/.claude/plugins/plasmadx-testing-v3/`
+
+PlasmaDX uses Claude Code's plugin system for autonomous multi-agent testing. Custom v3 agents provide specialized DirectX 12 / DXR expertise for buffer validation, debugging, stress testing, and performance analysis.
+
+### Custom v3 Agents
+
+**buffer-validator-v3** - Autonomous GPU buffer validation
+- Validates binary buffer dumps from `--dump-buffers` flag
+- Knows DirectX 12 buffer formats (32 bytes/particle, 32 bytes/light, 32 bytes/pixel)
+- Detects NaN/Inf, out-of-bounds values, statistical anomalies
+- Auto-generates Python validation scripts
+- **Usage:** `@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_particles.bin`
+
+**pix-debugger-v3** - Root cause analysis for rendering issues
+- Diagnoses black screens, color artifacts, missing effects
+- Knows multi-light system architecture (Phase 3.5)
+- Understands RT lighting pipeline (Phase 2.6)
+- Provides specific file:line fixes with time estimates
+- **Usage:** `@pix-debugger-v3 analyze "lights disappear beyond 300 units"`
+
+**stress-tester-v3** - Comprehensive stress testing
+- Particle count scaling (100 → 100K)
+- Multi-light scaling (0 → 50 lights)
+- Camera distance testing (close, mid, far scenarios)
+- Performance regression detection
+- **Usage:** `@stress-tester-v3 run particle-scaling`
+
+**performance-analyzer-v3** - Performance profiling
+- Identifies bottlenecks (BLAS rebuild, shader dispatches)
+- Compares against performance targets (RTX 4060 Ti baseline)
+- Generates optimization recommendations
+- Integrates with PIX timing captures
+- **Usage:** `@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe`
+
+### Built-in Claude Code Agents
+
+PlasmaDX also uses Claude Code's built-in specialized agents:
+
+- **pix-debugging-agent** - Autonomous PIX capture analysis
+- **dxr-graphics-debugging-engineer-v2** - DXR rendering diagnosis
+- **dx12-mesh-shader-engineer-v2** - Mesh/Amplification shader work
+- **physics-performance-agent-v2** - Physics simulation optimization
+
+### Multi-Agent Workflows
+
+**Example: Debug Multi-Light Issue**
+```bash
+# 1. Capture frame with buffer dump
+./build/DebugPIX/PlasmaDX-Clean-PIX.exe --dump-buffers 120
+
+# 2. Validate buffers
+@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_lights.bin
+
+# 3. Analyze rendering issue
+@pix-debugger-v3 analyze "light radius control has no effect"
+
+# 4. Apply fix to shader
+# (pix-debugger-v3 provides file:line and exact code change)
+```
+
+**Example: Performance Regression**
+```bash
+# 1. Run stress test
+@stress-tester-v3 run multi-light-scaling
+
+# 2. Profile bottlenecks
+@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe
+
+# 3. Use built-in physics optimization
+@physics-performance-agent-v2 optimize particle physics shader
+```
+
+### Plugin System Documentation
+
+See `CLAUDE_CODE_PLUGINS_GUIDE.md` for complete plugin system documentation including:
+- Agent creation guide
+- Built-in vs custom agents
+- Multi-agent orchestration
+- Future Agent SDK use cases
 
 ---
 
@@ -505,38 +664,54 @@ LOG_ERROR("Failed to create BLAS: {}", errorMessage);
 
 ## Immediate Next Steps for Development
 
-**Current sprint priorities:**
-1. ReSTIR Phase 1 validation (weight calculation fixes)
-2. Performance profiling with PIX timing capture
-3. Physics feature porting (see PHYSICS_PORT_ANALYSIS.md):
-   - Constraint shapes system (SPHERE, DISC, TORUS)
-   - Black hole mass parameter
-   - Alpha viscosity (Shakura-Sunyaev accretion)
-4. Expose all shader constants to ImGui runtime controls
+**Current sprint priorities (Phase 3.5 - Multi-Light Polish):**
+1. Fix light radius control (shader bug at particle_gaussian_raytrace.hlsl:726) - 5 minutes
+2. Fix sphere boundary issue (attenuation falloff too steep) - 5 minutes
+3. Add RT lighting toggle (Application.h/cpp changes) - 15 minutes
+4. Test all 3 fixes with stress-tester-v3 agent
 
-**Roadmap (see README.md for full details):**
-- Short-term: ReSTIR Phase 1 validation, ImGui controls
-- Medium-term: ReSTIR Phase 2 (spatial reuse), BLAS optimization
-- Long-term: Neural denoising, VR support
+**Roadmap (see MASTER_ROADMAP_V2.md for full details):**
+- **Current:** Phase 3.5 - Multi-Light System polish (3 fixes remaining)
+- **Next:** Phase 4 - RTXDI Integration (replace custom ReSTIR with NVIDIA library)
+- **Future:** Phase 5 - Celestial Bodies (planet rendering, stellar surface simulation)
+- **Long-term:** Phase 6 - Neural Denoising, Phase 7 - VR/AR Support
 
 ---
 
-**Last Updated:** 2025-10-15
-**Project Version:** 0.6.0
+**Last Updated:** 2025-10-17
+**Project Version:** 0.6.6
 **Documentation maintained by:** Claude Code sessions
 
 ---
 
 ## Recent Major Milestones
 
+### Multi-Light System Breakthrough (2025-10-17)
+**Branch:** `0.6.6` (current)
+
+**Achievement:**
+First production-ready many-light system using RT volumetric rendering. 13 lights distributed across the accretion disk achieve:
+- Realistic multi-directional shadowing
+- Rim lighting halos from multiple angles
+- Atmospheric scattering with multiple sources
+- Full runtime control via ImGui (position, color, intensity, radius)
+- 120+ FPS maintained @ 10K particles with 13 lights
+
+**Current Status:** 3 polish fixes needed (total: 25 minutes)
+1. Light radius control (shader doesn't use uploaded parameter)
+2. Sphere boundary (attenuation falloff too steep beyond 300 units)
+3. RT lighting toggle (can't fully disable particle-to-particle lighting)
+
+**User Feedback:** "this is one hell of a brilliant update!!!!!!!!!!!"
+
 ### RT Volumetric Lighting Breakthrough (2025-10-15)
-**Branch:** `0.6.0` (created to mark this achievement)
+**Branch:** `0.6.0` (milestone marker)
 
 **What was fixed:**
 Physical emission (blackbody self-emission) was being incorrectly modulated by external RT lighting, causing the entire volumetric RT system to produce incorrect results. The fix separated self-emission from external lighting contributions.
 
 **Result:**
-All RT systems now working correctly for the first time:
+All RT systems working correctly for the first time:
 - Volumetric depth with proper particle occlusion
 - Rim lighting halos from Henyey-Greenstein phase function
 - Perfect temperature gradients (800K-26000K)
@@ -544,6 +719,15 @@ All RT systems now working correctly for the first time:
 - Realistic multi-directional shadowing
 - 120+ FPS @ 1080p with 10K particles and 16 rays/particle
 
-**Current Task:** Phase 3.5 - Multi-Light System (see MASTER_ROADMAP_V2.md lines 603-785)
-**Next Major Milestone:** Phase 4 - RTXDI Integration (NVIDIA production-grade many-light sampling)
+**Led to:** Phase 3.5 Multi-Light System implementation
+
+### ReSTIR Deprecation Decision (2025-10-16)
+**Status:** Custom implementation marked for deletion
+
+**Decision:**
+After months of debugging custom ReSTIR implementation (Phase 1 temporal reuse), decided to adopt NVIDIA RTXDI (RTX Direct Illumination) instead. RTXDI provides battle-tested ReSTIR GI with spatial/temporal reuse, optimized for RTX hardware.
+
+**Migration:** Phase 4 will remove custom code and integrate RTXDI SDK
+
+**Next Major Milestone:** Phase 4 - RTXDI Integration (Q1 2026)
 

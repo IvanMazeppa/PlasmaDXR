@@ -38,7 +38,7 @@
     "startDistance": 800.0,
     "startHeight": 400.0,
     "startAngle": 0.0,
-    "startPitch": -0.3,
+    "startPitch": 90.0,
     "moveSpeed": 100.0,
     "rotateSpeed": 0.5,
     "particleSize": 20.0
