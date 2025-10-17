@@ -125,25 +125,45 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
 
     float transmittance = 1.0;
 
-    // Use RayQuery to accumulate optical depth along shadow ray
-    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> shadowQuery;
+    // Use RayQuery to accumulate optical depth through all Gaussians along shadow ray
+    // RAY_FLAG_NONE allows processing all intersecting AABBs
+    RayQuery<RAY_FLAG_NONE> shadowQuery;
     shadowQuery.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, shadowRay);
 
     while (shadowQuery.Proceed()) {
         if (shadowQuery.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
             uint particleIdx = shadowQuery.CandidatePrimitiveIndex();
+            Particle p = g_particles[particleIdx];
 
-            // Simple occlusion test - if we hit any particle, we're in shadow
-            shadowQuery.CommitProceduralPrimitiveHit(0.5);
-            transmittance *= 0.3; // Partial occlusion
+            // Compute Gaussian parameters for this particle
+            float3 scale = ComputeGaussianScale(p, baseParticleRadius,
+                                                useAnisotropicGaussians != 0,
+                                                anisotropyStrength);
+            float3x3 rotation = ComputeGaussianRotation(p.velocity);
+
+            // Test actual ray-ellipsoid intersection (not just AABB)
+            float2 t = RayGaussianIntersection(shadowRay.Origin, shadowRay.Direction,
+                                               p.position, scale, rotation);
+
+            // Valid intersection within shadow ray range?
+            if (t.x > shadowRay.TMin && t.x < shadowRay.TMax && t.y > t.x) {
+                // Commit this hit so BVH traversal knows we processed it
+                shadowQuery.CommitProceduralPrimitiveHit(t.x);
+
+                // Accumulate optical depth through this Gaussian
+                float pathLength = t.y - t.x;
+                float opticalDepth = p.density * pathLength * 0.5; // Reduced for softer shadows
+                transmittance *= exp(-opticalDepth);
+
+                // Early exit if heavily occluded
+                if (transmittance < 0.01) {
+                    return 0.0;
+                }
+            }
         }
     }
 
-    if (shadowQuery.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
-        return transmittance;
-    }
-
-    return 1.0; // No occlusion
+    return transmittance; // Return accumulated transmittance (1.0 = no occlusion, 0.0 = full shadow)
 }
 
 // Compute in-scattering from nearby particles (OPTIMIZED + RUNTIME CONTROLLED)
