@@ -373,3 +373,130 @@ void RTXDILightingSystem::ComputeLighting(ID3D12GraphicsCommandList* commandList
 
     // For now, this is a no-op (Milestones 3-4 not yet implemented)
 }
+
+void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
+                                      const std::string& outputDir,
+                                      uint32_t frameNum) {
+    if (!m_initialized) {
+        LOG_WARN("RTXDI not initialized, skipping buffer dump");
+        return;
+    }
+
+    LOG_INFO("Dumping RTXDI buffers to: {}", outputDir);
+
+    auto d3dDevice = m_device->GetDevice();
+
+    // Create readback resources
+    D3D12_RESOURCE_DESC gridDesc = m_lightGridBuffer->GetDesc();
+    D3D12_RESOURCE_DESC lightDesc = m_lightBuffer->GetDesc();
+
+    D3D12_HEAP_PROPERTIES readbackHeap = {};
+    readbackHeap.Type = D3D12_HEAP_TYPE_READBACK;
+
+    // Light grid readback buffer
+    ComPtr<ID3D12Resource> gridReadback;
+    D3D12_RESOURCE_DESC gridReadbackDesc = {};
+    gridReadbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    gridReadbackDesc.Width = gridDesc.Width;
+    gridReadbackDesc.Height = 1;
+    gridReadbackDesc.DepthOrArraySize = 1;
+    gridReadbackDesc.MipLevels = 1;
+    gridReadbackDesc.Format = DXGI_FORMAT_UNKNOWN;
+    gridReadbackDesc.SampleDesc.Count = 1;
+    gridReadbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    gridReadbackDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    HRESULT hr = d3dDevice->CreateCommittedResource(
+        &readbackHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &gridReadbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&gridReadback)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create grid readback buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return;
+    }
+
+    // Light buffer readback buffer
+    ComPtr<ID3D12Resource> lightReadback;
+    D3D12_RESOURCE_DESC lightReadbackDesc = {};
+    lightReadbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    lightReadbackDesc.Width = lightDesc.Width;
+    lightReadbackDesc.Height = 1;
+    lightReadbackDesc.DepthOrArraySize = 1;
+    lightReadbackDesc.MipLevels = 1;
+    lightReadbackDesc.Format = DXGI_FORMAT_UNKNOWN;
+    lightReadbackDesc.SampleDesc.Count = 1;
+    lightReadbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    lightReadbackDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hr = d3dDevice->CreateCommittedResource(
+        &readbackHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &lightReadbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&lightReadback)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create light readback buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return;
+    }
+
+    // Copy GPU buffers to readback buffers
+    {
+        D3D12_RESOURCE_BARRIER barriers[2] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_lightGridBuffer.Get(),
+                D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_lightBuffer.Get(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE)
+        };
+        commandList->ResourceBarrier(2, barriers);
+
+        commandList->CopyBufferRegion(gridReadback.Get(), 0, m_lightGridBuffer.Get(), 0, gridDesc.Width);
+        commandList->CopyBufferRegion(lightReadback.Get(), 0, m_lightBuffer.Get(), 0, lightDesc.Width);
+
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(m_lightGridBuffer.Get(),
+            D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(m_lightBuffer.Get(),
+            D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(2, barriers);
+    }
+
+    // Execute and wait for completion
+    m_device->WaitForGPU();
+
+    // Map and write to files
+    void* gridData = nullptr;
+    void* lightData = nullptr;
+
+    hr = gridReadback->Map(0, nullptr, &gridData);
+    if (SUCCEEDED(hr)) {
+        std::string gridPath = outputDir + "/g_lightGrid.bin";
+        std::ofstream gridFile(gridPath, std::ios::binary);
+        if (gridFile.is_open()) {
+            gridFile.write(static_cast<const char*>(gridData), gridDesc.Width);
+            gridFile.close();
+            LOG_INFO("Dumped light grid: {} ({:.2f} MB)", gridPath, gridDesc.Width / (1024.0f * 1024.0f));
+        }
+        gridReadback->Unmap(0, nullptr);
+    }
+
+    hr = lightReadback->Map(0, nullptr, &lightData);
+    if (SUCCEEDED(hr)) {
+        std::string lightPath = outputDir + "/g_lights.bin";
+        std::ofstream lightFile(lightPath, std::ios::binary);
+        if (lightFile.is_open()) {
+            lightFile.write(static_cast<const char*>(lightData), lightDesc.Width);
+            lightFile.close();
+            LOG_INFO("Dumped lights: {} ({} bytes)", lightPath, lightDesc.Width);
+        }
+        lightReadback->Unmap(0, nullptr);
+    }
+
+    LOG_INFO("RTXDI buffer dump complete");
+}

@@ -4,6 +4,7 @@
 #include <wrl/client.h>
 #include <memory>
 #include <vector>
+#include <string>
 
 // Forward declarations
 class Device;
@@ -74,6 +75,17 @@ public:
      * Check if RTXDI is ready for use
      */
     bool IsReady() const { return m_initialized; }
+
+    /**
+     * Dump RTXDI buffers for analysis
+     *
+     * @param commandList Command list for GPU readback
+     * @param outputDir Output directory for buffer files
+     * @param frameNum Frame number for filename
+     */
+    void DumpBuffers(ID3D12GraphicsCommandList* commandList,
+                    const std::string& outputDir,
+                    uint32_t frameNum);
 
 private:
     // Initialization state

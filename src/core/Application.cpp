@@ -1329,6 +1329,17 @@ void Application::DumpGPUBuffers() {
         }
     }
 
+    // Dump RTXDI buffers if using RTXDI path
+    if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem) {
+        LOG_INFO("  Dumping RTXDI buffers...");
+        auto cmdList = m_device->GetCommandList();
+        m_device->ResetCommandList();
+        m_rtxdiLightingSystem->DumpBuffers(cmdList, m_dumpOutputDir, m_frameCount);
+        cmdList->Close();
+        m_device->ExecuteCommandList();
+        m_device->WaitForGPU();
+    }
+
     // Write metadata JSON
     WriteMetadataJSON();
 
