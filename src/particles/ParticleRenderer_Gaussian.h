@@ -59,12 +59,6 @@ public:
         uint32_t useAnisotropicGaussians;
         float anisotropyStrength;
 
-        // ReSTIR toggles and parameters
-        uint32_t useReSTIR;
-        uint32_t restirInitialCandidates;  // M = number of candidates to test (16-32)
-        uint32_t frameIndex;               // For temporal validation
-        float restirTemporalWeight;        // How much to trust previous frame (0-1)
-
         // Multi-light system
         uint32_t lightCount;               // Number of active lights (0-16)
         DirectX::XMFLOAT3 padding3;        // Padding for alignment
@@ -104,14 +98,6 @@ public:
     // Get output SRV for blit pass (HDR→SDR conversion)
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const { return m_outputSRVGPU; }
 
-    // Get ReSTIR reservoir buffers for debugging/analysis
-    ID3D12Resource* GetCurrentReservoirs() const {
-        return m_reservoirBuffer[m_currentReservoirIndex].Get();
-    }
-    ID3D12Resource* GetPrevReservoirs() const {
-        return m_reservoirBuffer[1 - m_currentReservoirIndex].Get();
-    }
-
 private:
     bool CreatePipeline();
     bool CreateOutputTexture(uint32_t width, uint32_t height);
@@ -136,13 +122,6 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_outputSRV;      // SRV for blit pass (read HDR in pixel shader)
     D3D12_GPU_DESCRIPTOR_HANDLE m_outputSRVGPU;
 
-    // ReSTIR reservoir buffers (ping-pong between frames)
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_reservoirBuffer[2];  // Double-buffered
-    D3D12_CPU_DESCRIPTOR_HANDLE m_reservoirSRV[2];                // SRV for reading previous frame
-    D3D12_GPU_DESCRIPTOR_HANDLE m_reservoirSRVGPU[2];
-    D3D12_CPU_DESCRIPTOR_HANDLE m_reservoirUAV[2];                // UAV for writing current frame
-    D3D12_GPU_DESCRIPTOR_HANDLE m_reservoirUAVGPU[2];
-    uint32_t m_currentReservoirIndex = 0;                         // Which buffer is current (0 or 1)
     uint32_t m_screenWidth = 0;
     uint32_t m_screenHeight = 0;
 

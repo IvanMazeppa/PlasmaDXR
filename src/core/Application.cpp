@@ -87,9 +87,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_dopplerStrength = appConfig.features.dopplerStrength;
     m_useGravitationalRedshift = appConfig.features.useGravitationalRedshift;
     m_redshiftStrength = appConfig.features.redshiftStrength;
-    m_useReSTIR = appConfig.features.enableReSTIR;
-    m_restirInitialCandidates = appConfig.features.restirCandidates;
-    m_restirTemporalWeight = appConfig.features.restirTemporalWeight;
 
     // Parse command-line argument overrides (these override config file)
     for (int i = 1; i < argc; i++) {
@@ -100,10 +97,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_config.rendererType = RendererType::Billboard;
         } else if (arg == "--particles" && i + 1 < argc) {
             m_config.particleCount = std::atoi(argv[++i]);
-        } else if (arg == "--no-restir") {
-            m_useReSTIR = false;
-        } else if (arg == "--restir") {
-            m_useReSTIR = true;
         } else if (arg == "--rtxdi") {
             m_lightingSystem = LightingSystem::RTXDI;
             LOG_INFO("Lighting system: RTXDI (NVIDIA RTX Direct Illumination)");
@@ -132,8 +125,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --particles <count>  : Set particle count");
             LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
             LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
-            LOG_INFO("  --restir             : Enable ReSTIR");
-            LOG_INFO("  --no-restir          : Disable ReSTIR");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
         }
@@ -549,12 +540,6 @@ void Application::Render() {
             gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
             gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 
-            // ReSTIR parameters
-            gaussianConstants.useReSTIR = m_useReSTIR ? 1u : 0u;
-            gaussianConstants.restirInitialCandidates = m_restirInitialCandidates;
-            gaussianConstants.frameIndex = static_cast<uint32_t>(m_frameCount);
-            gaussianConstants.restirTemporalWeight = m_restirTemporalWeight;
-
             // Multi-light system (Phase 3.5)
             gaussianConstants.lightCount = static_cast<uint32_t>(m_lights.size());
             m_gaussianRenderer->UpdateLights(m_lights);
@@ -567,27 +552,14 @@ void Application::Render() {
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
-            static bool lastReSTIRState = false;
             if (!loggedToggles) {
                 LOG_INFO("=== DEBUG: Gaussian Constants ===");
                 LOG_INFO("  useShadowRays: {}", gaussianConstants.useShadowRays);
                 LOG_INFO("  useInScattering: {}", gaussianConstants.useInScattering);
                 LOG_INFO("  usePhaseFunction: {}", gaussianConstants.usePhaseFunction);
                 LOG_INFO("  phaseStrength: {}", gaussianConstants.phaseStrength);
-                LOG_INFO("  useReSTIR: {}", gaussianConstants.useReSTIR);
-                LOG_INFO("  restirInitialCandidates: {}", gaussianConstants.restirInitialCandidates);
                 LOG_INFO("================================");
                 loggedToggles = true;
-                lastReSTIRState = m_useReSTIR;
-            }
-
-            // Log when ReSTIR state changes
-            if (m_useReSTIR != lastReSTIRState) {
-                LOG_INFO("ReSTIR state changed: {} -> {}", lastReSTIRState, m_useReSTIR);
-                LOG_INFO("  gaussianConstants.useReSTIR = {}", gaussianConstants.useReSTIR);
-                LOG_INFO("  restirInitialCandidates = {}", gaussianConstants.restirInitialCandidates);
-                LOG_INFO("  frameIndex = {}", gaussianConstants.frameIndex);
-                lastReSTIRState = m_useReSTIR;
             }
 
             // Render to UAV texture
@@ -1101,22 +1073,6 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
         break;
 
-    // F7: Toggle ReSTIR (Ctrl+F7/Shift+F7 adjust temporal weight)
-    case VK_F7:
-        if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-            m_restirTemporalWeight = (std::min)(1.0f, m_restirTemporalWeight + 0.1f);
-            LOG_INFO("ReSTIR Temporal Weight: {:.1f}", m_restirTemporalWeight);
-        } else if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            m_restirTemporalWeight = (std::max)(0.0f, m_restirTemporalWeight - 0.1f);
-            LOG_INFO("ReSTIR Temporal Weight: {:.1f}", m_restirTemporalWeight);
-        } else {
-            m_useReSTIR = !m_useReSTIR;
-            LOG_INFO("ReSTIR: {} (temporal resampling for {} faster convergence)",
-                     m_useReSTIR ? "ON" : "OFF",
-                     m_useReSTIR ? "10-60x" : "");
-        }
-        break;
-
     // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)
     case VK_F8:
         if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
@@ -1327,18 +1283,6 @@ void Application::DumpGPUBuffers() {
         DumpBufferToFile(m_particleSystem->GetParticleBuffer(), "g_particles");
     }
 
-    if (m_gaussianRenderer) {
-        // Gaussian renderer has ReSTIR reservoirs
-        auto reservoirs = m_gaussianRenderer->GetCurrentReservoirs();
-        if (reservoirs) {
-            DumpBufferToFile(reservoirs, "g_currentReservoirs");
-        }
-
-        auto prevReservoirs = m_gaussianRenderer->GetPrevReservoirs();
-        if (prevReservoirs) {
-            DumpBufferToFile(prevReservoirs, "g_prevReservoirs");
-        }
-    }
 
     if (m_rtLighting) {
         auto rtBuffer = m_rtLighting->GetLightingBuffer();
@@ -1493,13 +1437,10 @@ void Application::WriteMetadataJSON() {
         fprintf(file, "  \"timestamp\": \"%s\",\n", timestamp);
         fprintf(file, "  \"camera_position\": [%.2f, %.2f, %.2f],\n", camX, camY + m_cameraHeight, camZ);
         fprintf(file, "  \"camera_distance\": %.2f,\n", camDistance);
-        fprintf(file, "  \"restir_enabled\": %s,\n", m_useReSTIR ? "true" : "false");
         fprintf(file, "  \"particle_count\": %u,\n", m_config.particleCount);
         fprintf(file, "  \"particle_size\": %.2f,\n", m_particleSize);
         fprintf(file, "  \"render_mode\": \"%s\",\n",
                 m_config.rendererType == RendererType::Gaussian ? "Gaussian" : "Billboard");
-        fprintf(file, "  \"restir_temporal_weight\": %.2f,\n", m_restirTemporalWeight);
-        fprintf(file, "  \"restir_initial_candidates\": %u,\n", m_restirInitialCandidates);
         fprintf(file, "  \"use_shadow_rays\": %s,\n", m_useShadowRays ? "true" : "false");
         fprintf(file, "  \"use_in_scattering\": %s,\n", m_useInScattering ? "true" : "false");
         fprintf(file, "  \"use_phase_function\": %s\n", m_usePhaseFunction ? "true" : "false");
@@ -1546,11 +1487,6 @@ void Application::UpdateFrameStats(float actualFrameTime) {
         if (m_useInScattering) {
             wchar_t buf[32];
             swprintf_s(buf, L"[F6:InScat:%.1f] ", m_inScatterStrength);
-            features += buf;
-        }
-        if (m_useReSTIR) {
-            wchar_t buf[32];
-            swprintf_s(buf, L"[F7:ReSTIR:%.1f] ", m_restirTemporalWeight);
             features += buf;
         }
         if (m_usePhaseFunction) {
@@ -1867,11 +1803,6 @@ void Application::RenderImGui() {
         ImGui::Checkbox("In-Scattering (F6)", &m_useInScattering);
         if (m_useInScattering) {
             ImGui::SliderFloat("In-Scatter Strength (F9)", &m_inScatterStrength, 0.0f, 10.0f);
-        }
-        ImGui::Checkbox("ReSTIR (F7)", &m_useReSTIR);
-        if (m_useReSTIR) {
-            ImGui::SliderFloat("Temporal Weight (Ctrl/Shift+F7)", &m_restirTemporalWeight, 0.0f, 1.0f);
-            ImGui::SliderInt("Initial Candidates", reinterpret_cast<int*>(&m_restirInitialCandidates), 8, 32);
         }
         ImGui::Checkbox("Phase Function (F8)", &m_usePhaseFunction);
         if (m_usePhaseFunction) {

@@ -41,11 +41,6 @@ cbuffer GaussianConstants : register(b0)
     uint useAnisotropicGaussians;
     float anisotropyStrength;
 
-    // ReSTIR parameters
-    uint useReSTIR;
-    uint restirInitialCandidates;  // M = 16-32
-    uint frameIndex;               // For temporal validation
-    float restirTemporalWeight;    // 0-1, how much to trust previous frame
 
     // Multi-light system
     uint lightCount;               // Number of active lights (0-16)
@@ -89,24 +84,8 @@ StructuredBuffer<float4> g_rtLighting : register(t1);
 // Input: Ray tracing acceleration structure
 RaytracingAccelerationStructure g_particleBVH : register(t2);
 
-// ReSTIR: Reservoir structure (matches C++ side: 32 bytes for cache alignment)
-struct Reservoir {
-    float3 lightPos;       // 12 bytes - position of selected light source
-    float weightSum;       // 4 bytes  - sum of weights (W)
-    uint M;                // 4 bytes  - number of samples seen
-    float W;               // 4 bytes  - final weight for this sample
-    uint particleIdx;      // 4 bytes  - which particle is providing light
-    float pad;             // 4 bytes  - padding to 32 bytes
-};
-
-// ReSTIR: Previous frame's reservoirs (read-only)
-StructuredBuffer<Reservoir> g_prevReservoirs : register(t3);
-
 // Output: Final rendered image
 RWTexture2D<float4> g_output : register(u0);
-
-// ReSTIR: Current frame's reservoirs (write-only)
-RWStructuredBuffer<Reservoir> g_currentReservoirs : register(u1);
 
 // PCSS: Current frame shadow buffer (write-only)
 RWTexture2D<float> g_currShadow : register(u2);
@@ -296,169 +275,6 @@ float Hash(uint seed) {
     seed = ((seed >> 16) ^ seed);
     return float(seed) / 4294967295.0;
 }
-
-// Update reservoir with new sample using weighted reservoir sampling
-void UpdateReservoir(inout Reservoir r, float3 lightPos, uint particleIdx, float weight, float random) {
-    r.weightSum += weight;
-    r.M += 1;
-
-    // Probabilistically replace current sample
-    float probability = weight / max(r.weightSum, 0.0001);
-    if (random < probability) {
-        r.lightPos = lightPos;
-        r.particleIdx = particleIdx;
-    }
-}
-
-// Validate previous frame's reservoir (check if light source still visible)
-bool ValidateReservoir(Reservoir prevReservoir, float3 viewPos) {
-    if (prevReservoir.M == 0) return false;
-
-    // Cast shadow ray to previous light source
-    float3 toLightDir = normalize(prevReservoir.lightPos - viewPos);
-    float lightDist = length(prevReservoir.lightPos - viewPos);
-
-    RayDesc ray;
-    ray.Origin = viewPos + toLightDir * 0.01;
-    ray.Direction = toLightDir;
-    ray.TMin = 0.001;
-    ray.TMax = lightDist - 0.01;
-
-    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
-    query.TraceRayInline(g_particleBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, ray);
-    query.Proceed();
-
-    if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
-        uint hitIdx = query.CommittedPrimitiveIndex();
-        // Valid if we hit the same particle (or within tolerance)
-        return (hitIdx == prevReservoir.particleIdx);
-    }
-
-    // Valid if unoccluded
-    return (query.CommittedStatus() == COMMITTED_NOTHING);
-}
-
-// Sample light particles using importance sampling
-// Note: rayDirection is the CAMERA ray direction (not used for sampling, just for phase function later)
-Reservoir SampleLightParticles(float3 rayOrigin, float3 rayDirection, uint pixelIndex, uint numCandidates) {
-    Reservoir reservoir;
-    reservoir.lightPos = float3(0, 0, 0);
-    reservoir.weightSum = 0;
-    reservoir.M = 0;
-    reservoir.W = 0;
-    reservoir.particleIdx = 0;
-    reservoir.pad = 0;
-
-    // DEBUG: Track how many rays we trace and how many hit
-    uint raysTraced = 0;
-    uint raysHit = 0;
-
-    for (uint i = 0; i < numCandidates; i++) {
-        raysTraced++;
-        // Generate random direction (uniform sphere)
-        float rand1 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000);
-        float rand2 = Hash(pixelIndex * numCandidates + i + frameIndex * 1000 + 1);
-
-        // Uniform sphere sampling (not hemisphere - we want all directions)
-        float cosTheta = 2.0 * rand1 - 1.0;  // -1 to 1
-        float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-        float phi = 2.0 * 3.14159265 * rand2;
-
-        float3 sampleDir;
-        sampleDir.x = sinTheta * cos(phi);
-        sampleDir.y = sinTheta * sin(phi);
-        sampleDir.z = cosTheta;
-
-        // Trace ray to find light source
-        RayDesc ray;
-        ray.Origin = rayOrigin;
-        ray.Direction = normalize(sampleDir);
-        ray.TMin = 0.01;
-        ray.TMax = 500.0;  // Longer range to find more particles
-
-        // Use RayQuery to find ANY procedural primitive hit
-        RayQuery<RAY_FLAG_NONE> query;
-        query.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
-
-        // Process candidates - for procedural primitives we need to loop!
-        while (query.Proceed()) {
-            if (query.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
-                // Get the primitive index to find actual particle position
-                uint candidateIdx = query.CandidatePrimitiveIndex();
-                Particle candidateParticle = g_particles[candidateIdx];
-
-                // FIX: Compute proper Gaussian parameters (same as main rendering loop)
-                float3 scale = ComputeGaussianScale(candidateParticle, baseParticleRadius,
-                                                    useAnisotropicGaussians != 0,
-                                                    anisotropyStrength);
-                float3x3 rotation = ComputeGaussianRotation(candidateParticle.velocity);
-
-                // FIX: Compute actual ray-ellipsoid intersection (not just distance to center)
-                float2 t = RayGaussianIntersection(ray.Origin, ray.Direction,
-                                                   candidateParticle.position,
-                                                   scale, rotation);
-
-                // FIX: Proper validation (entry < exit, within ray range)
-                if (t.x > ray.TMin && t.x < ray.TMax && t.y > t.x) {
-                    // Commit the entry point (t.x), not the center distance
-                    query.CommitProceduralPrimitiveHit(t.x);
-                    // Let BVH traversal complete naturally (no break)
-                }
-            }
-        }
-
-        // Check if we got a hit
-        if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
-            raysHit++;  // DEBUG: Count successful hits
-            uint hitParticleIdx = query.CommittedPrimitiveIndex();
-            Particle hitParticle = g_particles[hitParticleIdx];
-
-            // Compute light contribution
-            float3 emission = TemperatureToEmission(hitParticle.temperature);
-            float intensity = EmissionIntensity(hitParticle.temperature);
-            float dist = length(hitParticle.position - rayOrigin);
-
-            // FIX #4: Much weaker attenuation for large-scale scenes (accretion disk spans 100-3000 units)
-            // Changed from quadratic to linear-only falloff (10× weaker at distance)
-            float attenuation = 1.0 / max(1.0 + dist * 0.001, 0.1);
-
-            // Weight = luminance of light contribution (importance)
-            float weight = dot(emission * intensity * attenuation, float3(0.299, 0.587, 0.114));
-
-            // DEBUG: For first pixel, store weight info in reservoir for debugging
-            if (pixelIndex == 0 && raysHit == 1) {
-                // Store debug info: temperature, intensity, weight in first hit
-                reservoir.lightPos = float3(hitParticle.temperature, intensity, weight);
-            }
-
-            // FIXED: Lower threshold to capture low-temp particles at distance (10x more sensitive)
-            // Agent analysis: 800K particles at 500+ units need this lower threshold
-            if (weight > 0.000001) {
-                // Random value for reservoir update
-                float random = Hash(pixelIndex * numCandidates + i + frameIndex * 2000);
-
-                // Update reservoir
-                UpdateReservoir(reservoir, hitParticle.position, hitParticleIdx, weight, random);
-            }
-        }
-    }
-
-    // Compute final weight
-    if (reservoir.M > 0) {
-        reservoir.W = reservoir.weightSum / float(reservoir.M);
-    }
-
-    // DEBUG: Always encode hit stats for debugging
-    if (reservoir.M == 0) {
-        // No hits found - encode debug info to understand why
-        // X = rays traced, Y = rays hit, Z = special marker
-        reservoir.lightPos = float3(float(raysTraced), float(raysHit), 8888.0);
-        reservoir.M = 88888;  // Special debug marker for "no hits"
-    }
-
-    return reservoir;
-}
-
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -513,102 +329,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     uint pixelIndex = pixelPos.y * screenWidth + pixelPos.x;
 
     // Initialize reservoir (always, even if ReSTIR is off)
-    Reservoir currentReservoir;
-    currentReservoir.lightPos = float3(0, 0, 0);
-    currentReservoir.weightSum = 0;
-    currentReservoir.M = 0;
-    currentReservoir.W = 0;
-    currentReservoir.particleIdx = 0;
-    currentReservoir.pad = 0;
-
-    if (useReSTIR != 0) {
-        // Load previous frame's reservoir
-        Reservoir prevReservoir = g_prevReservoirs[pixelIndex];
-
-        // Validate temporal sample (check if still visible from current CAMERA position)
-        bool temporalValid = ValidateReservoir(prevReservoir, cameraPos);
-
-        // Initialize current reservoir
-        currentReservoir.lightPos = float3(0, 0, 0);
-        currentReservoir.weightSum = 0;
-        currentReservoir.M = 0;
-        currentReservoir.W = 0;
-        currentReservoir.particleIdx = 0;
-        currentReservoir.pad = 0;
-
-        // Reuse temporal sample if valid AND has non-zero weight (BUG FIX!)
-        // CRITICAL: Without weightSum check, M persists while weightSum decays to 0
-        if (temporalValid && prevReservoir.M > 0 && prevReservoir.weightSum > 0.000001) {
-            // CRITICAL FIX #1: Clamp M to prevent unbounded accumulation
-            // ReSTIR best practice: max M = 20x initial candidates (NVIDIA 2020 paper)
-            const uint maxTemporalM = restirInitialCandidates * 20;  // 16 * 20 = 320
-
-            if (prevReservoir.M > maxTemporalM) {
-                // Scale weight proportionally to maintain unbiased estimator
-                prevReservoir.weightSum *= float(maxTemporalM) / float(prevReservoir.M);
-                prevReservoir.M = maxTemporalM;
-            }
-
-            // FIX #2: Distance-adaptive temporal weight
-            // When close to particles, they move significantly → reduce temporal weight
-            float distToLight = length(prevReservoir.lightPos - cameraPos);
-            float adaptiveTemporalWeight = lerp(0.3, restirTemporalWeight,
-                                                saturate(distToLight / 200.0));
-
-            // Decay M to prevent infinite accumulation (using adaptive weight)
-            float temporalM = prevReservoir.M * adaptiveTemporalWeight;
-            currentReservoir = prevReservoir;
-            currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
-
-            // CRITICAL: Also decay weightSum proportionally to maintain W = weightSum/M balance
-            currentReservoir.weightSum = prevReservoir.weightSum * adaptiveTemporalWeight;
-        }
-
-        // Generate new candidate samples for this frame
-        // Use CAMERA position, not near plane position!
-        Reservoir newSamples = SampleLightParticles(cameraPos, ray.Direction,
-                                                     pixelIndex, restirInitialCandidates);
-
-        // Combine temporal + new samples using reservoir merging
-        // IMPORTANT: Skip if M is our debug marker (88888) which means no real hits
-        if (newSamples.M > 0 && newSamples.M != 88888) {
-            // Update with new samples
-            float combinedWeight = currentReservoir.weightSum + newSamples.weightSum;
-            currentReservoir.M += newSamples.M;
-
-            // Probabilistically select between temporal and new
-            float random = Hash(pixelIndex + frameIndex * 3000);
-            float newProbability = newSamples.weightSum / max(combinedWeight, 0.0001);
-
-            if (random < newProbability) {
-                currentReservoir.lightPos = newSamples.lightPos;
-                currentReservoir.particleIdx = newSamples.particleIdx;
-            }
-
-            currentReservoir.weightSum = combinedWeight;
-
-            // CRITICAL FIX #1 (continued): Clamp combined M after merging
-            const uint maxCombinedM = restirInitialCandidates * 20;
-            if (currentReservoir.M > maxCombinedM) {
-                currentReservoir.weightSum *= float(maxCombinedM) / float(currentReservoir.M);
-                currentReservoir.M = maxCombinedM;
-            }
-        }
-
-        // Compute final weight
-        if (currentReservoir.M > 0) {
-            currentReservoir.W = currentReservoir.weightSum / float(currentReservoir.M);
-        }
-
-        // Store for next frame
-        g_currentReservoirs[pixelIndex] = currentReservoir;
-    } else {
-        // DEBUG: Even when ReSTIR is OFF, write a test value to verify buffer binding works
-        currentReservoir.lightPos = float3(pixelPos.x, pixelPos.y, 999.0);
-        currentReservoir.M = 12345;  // Magic number to verify writes work
-        g_currentReservoirs[pixelIndex] = currentReservoir;
-    }
-
     // Volume rendering: march through sorted Gaussians
     float3 accumulatedColor = float3(0, 0, 0);
     float logTransmittance = 0.0;  // Log-space accumulation for numerical stability
@@ -712,35 +432,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // === FIXED: RT lighting as illumination, not replacement ===
             float3 rtLight;
 
-            if (useReSTIR != 0 && currentReservoir.M > 0 && currentReservoir.M != 88888) {
-                // ReSTIR: Use the intelligently sampled light source
-                Particle lightParticle = g_particles[currentReservoir.particleIdx];
-                float3 lightEmission = TemperatureToEmission(lightParticle.temperature);
-                float lightIntensity = EmissionIntensity(lightParticle.temperature);
-                float dist = length(currentReservoir.lightPos - pos);
-
-                // FIX #4: Use same weaker attenuation as sampling (must match for unbiased estimate!)
-                float attenuation = 1.0 / max(1.0 + dist * 0.001, 0.1);
-
-                // Evaluate light contribution (no W multiplication here)
-                float3 directLight = lightEmission * lightIntensity * attenuation;
-
-                // CRITICAL FIX #3: Correct MIS weight formula (removes double normalization)
-                // W is already normalized: W = weightSum / M
-                // Standard ReSTIR contribution: (1/M) × sum(weights) = W × M
-                // This removes the division by M that caused spatial inconsistency
-                // FIX #5: Add 100× boost because base W values (~0.002) are too small for visible contribution
-                float misWeight = currentReservoir.W * float(currentReservoir.M) * 100.0;
-
-                // Clamp to prevent extreme values from stale temporal samples
-                // FIX #3: Increased from 2.0 to 10.0 to allow proper dynamic range
-                misWeight = clamp(misWeight, 0.0, 10.0);
-
-                rtLight = directLight * misWeight;
-            } else {
-                // Fallback: Use pre-computed RT lighting
-                rtLight = g_rtLighting[hit.particleIdx].rgb;
-            }
+            // Use pre-computed RT lighting
+            rtLight = g_rtLighting[hit.particleIdx].rgb;
 
             // === CRITICAL FIX: Physical emission is self-emitting, not lit ===
             // Physical emission (blackbody radiation) should NOT be modulated by external lighting
@@ -891,23 +584,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // Bottom-right corner: ReSTIR status (complex debug info)
     if (pixelPos.x > resolution.x - 200 && pixelPos.y > resolution.y - 40) {
         // Show different colors based on ReSTIR state
-        if (useReSTIR != 0) {
-            // ReSTIR is ON - show reservoir quality
-            if (currentReservoir.M == 0) {
-                // No samples found - RED alert!
-                finalColor = float3(1, 0, 0);
-            } else if (currentReservoir.M < restirInitialCandidates / 2) {
-                // Few samples - Orange warning
-                finalColor = float3(1, 0.5, 0);
-            } else {
-                // Good samples - Green success with brightness showing quality
-                float quality = saturate(float(currentReservoir.M) / float(restirInitialCandidates));
-                finalColor = float3(0, quality, 0);
-            }
-        } else {
-            // ReSTIR is OFF - show gray
-            finalColor = float3(0.3, 0.3, 0.3);
-        }
+        // Show gray (legacy ReSTIR removed)
+        finalColor = float3(0.3, 0.3, 0.3);
     }
 
     g_output[pixelPos] = float4(finalColor, 1.0);
