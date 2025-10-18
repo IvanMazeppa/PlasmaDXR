@@ -87,7 +87,20 @@ public:
                     const std::string& outputDir,
                     uint32_t frameNum);
 
+    /**
+     * Dispatch DXR rays for light grid sampling (Milestone 3)
+     *
+     * @param commandList Command list for GPU work
+     * @param width Screen width
+     * @param height Screen height
+     */
+    void DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height);
+
 private:
+    // === DXR Pipeline Creation (Milestone 3) ===
+    bool CreateDXRPipeline();
+    bool CreateShaderBindingTable();
+    bool CreateDebugOutputBuffer();
     // Initialization state
     bool m_initialized = false;
 
@@ -132,9 +145,18 @@ private:
     ComPtr<ID3D12RootSignature> m_lightGridBuildRS;
 
     // === Milestone 3: DXR Pipeline ===
-    // TODO: Add state object
-    // TODO: Add shader binding table (SBT)
-    // TODO: Add raygen/miss/closesthit shader resources
+    ComPtr<ID3D12StateObject> m_dxrStateObject;
+    ComPtr<ID3D12RootSignature> m_dxrGlobalRS;
+
+    // Shader binding table (SBT)
+    ComPtr<ID3D12Resource> m_sbtBuffer;
+    uint64_t m_raygenRecordSize = 0;
+    uint64_t m_missRecordSize = 0;
+    uint64_t m_hitRecordSize = 0;
+
+    // Debug output buffer (for visualization)
+    ComPtr<ID3D12Resource> m_debugOutputBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_debugOutputUAV;
 
     // === Milestone 4: Reservoir Sampling ===
     // TODO: Add reservoir buffers (ping-pong)

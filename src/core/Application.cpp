@@ -401,6 +401,21 @@ void Application::Render() {
         if (gridUpdateCount <= 5) {
             LOG_INFO("RTXDI Light Grid updated (frame {}, {} lights)", m_frameCount, m_lights.size());
         }
+
+        // === Milestone 3: DXR Light Sampling ===
+        // Dispatch rays to sample light grid (debug visualization)
+        ComPtr<ID3D12GraphicsCommandList4> cmdList4;
+        if (SUCCEEDED(cmdList->QueryInterface(IID_PPV_ARGS(&cmdList4)))) {
+            m_rtxdiLightingSystem->DispatchRays(cmdList4.Get(), m_width, m_height);
+
+            if (gridUpdateCount <= 5) {
+                LOG_INFO("RTXDI DispatchRays executed ({}x{})", m_width, m_height);
+            }
+        } else {
+            if (gridUpdateCount == 1) {
+                LOG_ERROR("Failed to query ID3D12GraphicsCommandList4 for RTXDI DispatchRays");
+            }
+        }
     }
 
     // RT Lighting Pass (if enabled)
@@ -2156,8 +2171,8 @@ void Application::InitializeLights() {
     ParticleRenderer_Gaussian::Light primaryLight;
     primaryLight.position = XMFLOAT3(0.0f, 0.0f, 0.0f);
     primaryLight.color = XMFLOAT3(1.0f, 0.9f, 0.8f);  // Blue-white
-    primaryLight.intensity = 10.0f;
-    primaryLight.radius = 5.0f;
+    primaryLight.intensity = 15.0f;  // Boosted from 10.0 for visibility
+    primaryLight.radius = 80.0f;     // Boosted from 5.0 for wider coverage
     m_lights.push_back(primaryLight);
 
     // Secondary: 4 spiral arms at 50 unit radius (orange 12000K)
@@ -2168,8 +2183,8 @@ void Application::InitializeLights() {
         ParticleRenderer_Gaussian::Light armLight;
         armLight.position = XMFLOAT3(cos(angle) * radius, 0.0f, sin(angle) * radius);
         armLight.color = XMFLOAT3(1.0f, 0.8f, 0.6f);  // Orange
-        armLight.intensity = 5.0f;
-        armLight.radius = 10.0f;
+        armLight.intensity = 12.0f;  // Boosted from 5.0 for visibility
+        armLight.radius = 100.0f;    // Boosted from 10.0 for wider coverage
         m_lights.push_back(armLight);
     }
 
@@ -2181,8 +2196,8 @@ void Application::InitializeLights() {
         ParticleRenderer_Gaussian::Light hotSpot;
         hotSpot.position = XMFLOAT3(cos(angle) * radius, 0.0f, sin(angle) * radius);
         hotSpot.color = XMFLOAT3(1.0f, 0.7f, 0.4f);  // Yellow-orange
-        hotSpot.intensity = 2.0f;
-        hotSpot.radius = 15.0f;
+        hotSpot.intensity = 8.0f;   // Boosted from 2.0 for visibility
+        hotSpot.radius = 120.0f;    // Boosted from 15.0 for wider coverage
         m_lights.push_back(hotSpot);
     }
 

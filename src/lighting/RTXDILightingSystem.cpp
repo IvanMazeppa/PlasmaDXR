@@ -202,8 +202,24 @@ bool RTXDILightingSystem::Initialize(Device* device, ResourceManager* resources,
     }
 
     // === Milestone 3: DXR Pipeline Setup ===
-    // TODO: Create state object (raygen + miss + closesthit + callable)
-    // TODO: Build shader binding table (SBT)
+    LOG_INFO("Creating DXR pipeline...");
+
+    if (!CreateDebugOutputBuffer()) {
+        LOG_ERROR("Failed to create debug output buffer");
+        return false;
+    }
+
+    if (!CreateDXRPipeline()) {
+        LOG_ERROR("Failed to create DXR pipeline");
+        return false;
+    }
+
+    if (!CreateShaderBindingTable()) {
+        LOG_ERROR("Failed to create shader binding table");
+        return false;
+    }
+
+    LOG_INFO("DXR pipeline created successfully!");
 
     // === Milestone 4: Reservoir Buffers ===
     // TODO: Create reservoir buffers (2× for ping-pong)
@@ -214,7 +230,8 @@ bool RTXDILightingSystem::Initialize(Device* device, ResourceManager* resources,
     LOG_INFO("RTXDI Lighting System initialized successfully!");
     LOG_INFO("  Milestone 2.1: Buffers created ✅");
     LOG_INFO("  Milestone 2.2: Light grid build shader ready ✅");
-    LOG_INFO("  Next: Milestone 2.3 - PIX validation");
+    LOG_INFO("  Milestone 3: DXR pipeline ready ✅");
+    LOG_INFO("  Next: Milestone 4 - First visual test");
 
     return true;
 }
@@ -250,6 +267,26 @@ void RTXDILightingSystem::UpdateLightGrid(const void* lights, uint32_t lightCoun
 
         // Copy light data to upload heap
         memcpy(uploadAllocation.cpuAddress, lights, lightDataSize);
+
+        // === DEBUG: Validate source and uploaded data ===
+        static bool logged = false;
+        if (!logged) {
+            // Check source data
+            const float* sourceData = reinterpret_cast<const float*>(lights);
+            LOG_INFO("  [VALIDATION] Source light 0: pos=({:.2f},{:.2f},{:.2f}), intensity={:.2f}",
+                     sourceData[0], sourceData[1], sourceData[2], sourceData[3]);
+
+            // Check uploaded data
+            const float* uploadedData = reinterpret_cast<const float*>(uploadAllocation.cpuAddress);
+            LOG_INFO("  [VALIDATION] Uploaded light 0: pos=({:.2f},{:.2f},{:.2f}), intensity={:.2f}",
+                     uploadedData[0], uploadedData[1], uploadedData[2], uploadedData[3]);
+
+            LOG_INFO("  [VALIDATION] Upload heap: resource={:p}, offset={}, cpuAddr={:p}",
+                     static_cast<void*>(uploadAllocation.resource), uploadAllocation.offset,
+                     uploadAllocation.cpuAddress);
+
+            logged = true;
+        }
 
         // Transition light buffer to COPY_DEST
         D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -310,13 +347,32 @@ void RTXDILightingSystem::UpdateLightGrid(const void* lights, uint32_t lightCoun
     constants.cellSize = CELL_SIZE;
     constants.maxLightsPerCell = MAX_LIGHTS_PER_CELL;
 
+    // === DEBUG: Log compute dispatch parameters ===
+    static bool dispatchLogged = false;
+    if (!dispatchLogged) {
+        LOG_INFO("  [VALIDATION] Compute constants: gridCells=({},{},{}), lightCount={}, cellSize={:.1f}",
+                 constants.gridCellsX, constants.gridCellsY, constants.gridCellsZ,
+                 constants.lightCount, constants.cellSize);
+        dispatchLogged = true;
+    }
+
     commandList->SetComputeRoot32BitConstants(0, 8, &constants, 0);
 
     // 5. Bind light buffer SRV (t0)
-    commandList->SetComputeRootShaderResourceView(1, m_lightBuffer->GetGPUVirtualAddress());
+    D3D12_GPU_VIRTUAL_ADDRESS lightBufferGPU = m_lightBuffer->GetGPUVirtualAddress();
+    commandList->SetComputeRootShaderResourceView(1, lightBufferGPU);
 
     // 6. Bind light grid UAV (u0)
-    commandList->SetComputeRootUnorderedAccessView(2, m_lightGridBuffer->GetGPUVirtualAddress());
+    D3D12_GPU_VIRTUAL_ADDRESS lightGridGPU = m_lightGridBuffer->GetGPUVirtualAddress();
+    commandList->SetComputeRootUnorderedAccessView(2, lightGridGPU);
+
+    // === DEBUG: Log GPU addresses ===
+    static bool addressesLogged = false;
+    if (!addressesLogged) {
+        LOG_INFO("  [VALIDATION] Light buffer GPU address: 0x{:016X}", lightBufferGPU);
+        LOG_INFO("  [VALIDATION] Light grid GPU address: 0x{:016X}", lightGridGPU);
+        addressesLogged = true;
+    }
 
     // 7. Dispatch compute shader
     // Grid: 30×30×30 cells
@@ -359,6 +415,404 @@ void RTXDILightingSystem::ComputeLighting(ID3D12GraphicsCommandList* commandList
     // TODO: Write output light samples
 
     // For now, this is a no-op (Milestones 3-4 not yet implemented)
+}
+
+// === Milestone 3 Implementation ===
+
+bool RTXDILightingSystem::CreateDebugOutputBuffer() {
+    auto d3dDevice = m_device->GetDevice();
+
+    // Create debug output texture (R32G32B32A32_FLOAT, screen resolution)
+    D3D12_RESOURCE_DESC outputDesc = {};
+    outputDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    outputDesc.Width = m_width;
+    outputDesc.Height = m_height;
+    outputDesc.DepthOrArraySize = 1;
+    outputDesc.MipLevels = 1;
+    outputDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    outputDesc.SampleDesc.Count = 1;
+    outputDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    outputDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    HRESULT hr = d3dDevice->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &outputDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_debugOutputBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create debug output buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_debugOutputBuffer->SetName(L"RTXDI Debug Output");
+
+    // Create UAV
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    uavDesc.Texture2D.MipSlice = 0;
+
+    m_debugOutputUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    d3dDevice->CreateUnorderedAccessView(m_debugOutputBuffer.Get(), nullptr, &uavDesc, m_debugOutputUAV);
+
+    LOG_INFO("Debug output buffer created: {}x{} (R32G32B32A32_FLOAT)", m_width, m_height);
+
+    return true;
+}
+
+bool RTXDILightingSystem::CreateDXRPipeline() {
+    auto d3dDevice = m_device->GetDevice();
+
+    // Query for ID3D12Device5 (required for DXR 1.1)
+    ComPtr<ID3D12Device5> device5;
+    HRESULT hr = d3dDevice->QueryInterface(IID_PPV_ARGS(&device5));
+    if (FAILED(hr)) {
+        LOG_ERROR("ID3D12Device5 not available (DXR 1.1 required)");
+        return false;
+    }
+
+    // Load shader libraries
+    std::ifstream raygenFile("shaders/rtxdi/rtxdi_raygen.dxil", std::ios::binary);
+    if (!raygenFile) {
+        LOG_ERROR("Failed to open rtxdi_raygen.dxil");
+        return false;
+    }
+
+    std::ifstream missFile("shaders/rtxdi/rtxdi_miss.dxil", std::ios::binary);
+    if (!missFile) {
+        LOG_ERROR("Failed to open rtxdi_miss.dxil");
+        return false;
+    }
+
+    std::vector<char> raygenData((std::istreambuf_iterator<char>(raygenFile)), std::istreambuf_iterator<char>());
+    std::vector<char> missData((std::istreambuf_iterator<char>(missFile)), std::istreambuf_iterator<char>());
+
+    ComPtr<ID3DBlob> raygenBlob, missBlob;
+    hr = D3DCreateBlob(raygenData.size(), &raygenBlob);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create raygen blob");
+        return false;
+    }
+    memcpy(raygenBlob->GetBufferPointer(), raygenData.data(), raygenData.size());
+
+    hr = D3DCreateBlob(missData.size(), &missBlob);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create miss blob");
+        return false;
+    }
+    memcpy(missBlob->GetBufferPointer(), missData.data(), missData.size());
+
+    LOG_INFO("Loaded shaders: raygen={} bytes, miss={} bytes", raygenData.size(), missData.size());
+
+    // Create global root signature
+    // b0: GridConstants (8 DWORDs)
+    // t0: StructuredBuffer<LightGridCell> g_lightGrid
+    // t1: StructuredBuffer<Light> g_lights
+    // u0: RWTexture2D<float4> g_output
+    {
+        CD3DX12_ROOT_PARAMETER1 rootParams[4];
+        rootParams[0].InitAsConstants(8, 0);  // b0: GridConstants
+        rootParams[1].InitAsShaderResourceView(0);  // t0: light grid
+        rootParams[2].InitAsShaderResourceView(1);  // t1: lights
+
+        CD3DX12_DESCRIPTOR_RANGE1 uavRange;
+        uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: output
+        rootParams[3].InitAsDescriptorTable(1, &uavRange);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+        rootSigDesc.Init_1_1(4, rootParams, 0, nullptr,
+            D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED);
+
+        ComPtr<ID3DBlob> signature, error;
+        hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
+        if (FAILED(hr)) {
+            if (error) {
+                LOG_ERROR("DXR root signature serialization failed: {}", (char*)error->GetBufferPointer());
+            }
+            return false;
+        }
+
+        hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                            IID_PPV_ARGS(&m_dxrGlobalRS));
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create DXR root signature");
+            return false;
+        }
+
+        LOG_INFO("DXR global root signature created");
+    }
+
+    // Build state object
+    std::vector<D3D12_STATE_SUBOBJECT> subobjects;
+
+    // DXIL library for raygen
+    D3D12_EXPORT_DESC raygenExport = {};
+    raygenExport.Name = L"RayGen";
+    raygenExport.ExportToRename = nullptr;
+    raygenExport.Flags = D3D12_EXPORT_FLAG_NONE;
+
+    D3D12_DXIL_LIBRARY_DESC raygenLibDesc = {};
+    raygenLibDesc.DXILLibrary.pShaderBytecode = raygenBlob->GetBufferPointer();
+    raygenLibDesc.DXILLibrary.BytecodeLength = raygenBlob->GetBufferSize();
+    raygenLibDesc.NumExports = 1;
+    raygenLibDesc.pExports = &raygenExport;
+
+    D3D12_STATE_SUBOBJECT raygenSubobj = {};
+    raygenSubobj.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    raygenSubobj.pDesc = &raygenLibDesc;
+    subobjects.push_back(raygenSubobj);
+
+    // DXIL library for miss
+    D3D12_EXPORT_DESC missExport = {};
+    missExport.Name = L"Miss";
+    missExport.ExportToRename = nullptr;
+    missExport.Flags = D3D12_EXPORT_FLAG_NONE;
+
+    D3D12_DXIL_LIBRARY_DESC missLibDesc = {};
+    missLibDesc.DXILLibrary.pShaderBytecode = missBlob->GetBufferPointer();
+    missLibDesc.DXILLibrary.BytecodeLength = missBlob->GetBufferSize();
+    missLibDesc.NumExports = 1;
+    missLibDesc.pExports = &missExport;
+
+    D3D12_STATE_SUBOBJECT missSubobj = {};
+    missSubobj.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    missSubobj.pDesc = &missLibDesc;
+    subobjects.push_back(missSubobj);
+
+    // Shader config (payload size = 16 bytes, attributes = 8 bytes)
+    D3D12_RAYTRACING_SHADER_CONFIG shaderConfig = {};
+    shaderConfig.MaxPayloadSizeInBytes = 16;
+    shaderConfig.MaxAttributeSizeInBytes = 8;
+
+    D3D12_STATE_SUBOBJECT shaderConfigSubobj = {};
+    shaderConfigSubobj.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG;
+    shaderConfigSubobj.pDesc = &shaderConfig;
+    subobjects.push_back(shaderConfigSubobj);
+
+    // Pipeline config (max recursion depth = 1)
+    D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
+    pipelineConfig.MaxTraceRecursionDepth = 1;
+
+    D3D12_STATE_SUBOBJECT pipelineConfigSubobj = {};
+    pipelineConfigSubobj.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG;
+    pipelineConfigSubobj.pDesc = &pipelineConfig;
+    subobjects.push_back(pipelineConfigSubobj);
+
+    // Global root signature
+    D3D12_STATE_SUBOBJECT globalRSSubobj = {};
+    globalRSSubobj.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE;
+    globalRSSubobj.pDesc = m_dxrGlobalRS.GetAddressOf();
+    subobjects.push_back(globalRSSubobj);
+
+    // Create state object
+    D3D12_STATE_OBJECT_DESC stateObjectDesc = {};
+    stateObjectDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+    stateObjectDesc.NumSubobjects = static_cast<UINT>(subobjects.size());
+    stateObjectDesc.pSubobjects = subobjects.data();
+
+    hr = device5->CreateStateObject(&stateObjectDesc, IID_PPV_ARGS(&m_dxrStateObject));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create DXR state object: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    LOG_INFO("DXR state object created ({} subobjects)", subobjects.size());
+
+    return true;
+}
+
+bool RTXDILightingSystem::CreateShaderBindingTable() {
+    auto d3dDevice = m_device->GetDevice();
+
+    // Query state object properties
+    ComPtr<ID3D12StateObjectProperties> stateObjectProps;
+    HRESULT hr = m_dxrStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to query state object properties");
+        return false;
+    }
+
+    // Get shader identifiers
+    void* raygenID = stateObjectProps->GetShaderIdentifier(L"RayGen");
+    void* missID = stateObjectProps->GetShaderIdentifier(L"Miss");
+
+    if (!raygenID || !missID) {
+        LOG_ERROR("Failed to get shader identifiers");
+        return false;
+    }
+
+    const uint32_t shaderIDSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+    // Calculate record sizes (aligned to D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT)
+    m_raygenRecordSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+    m_raygenRecordSize = (m_raygenRecordSize + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1) &
+                         ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
+
+    m_missRecordSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+    m_missRecordSize = (m_missRecordSize + D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1) &
+                       ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
+
+    m_hitRecordSize = 0;  // No hit group for Milestone 3
+
+    // Calculate SBT size (aligned to D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT)
+    uint64_t raygenTableSize = m_raygenRecordSize;
+    uint64_t missTableSize = m_missRecordSize;
+    uint64_t hitTableSize = 0;
+
+    raygenTableSize = (raygenTableSize + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1) &
+                      ~(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1);
+    missTableSize = (missTableSize + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1) &
+                    ~(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1);
+
+    uint64_t sbtSize = raygenTableSize + missTableSize;
+
+    // Create upload buffer for SBT
+    D3D12_RESOURCE_DESC sbtDesc = {};
+    sbtDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    sbtDesc.Width = sbtSize;
+    sbtDesc.Height = 1;
+    sbtDesc.DepthOrArraySize = 1;
+    sbtDesc.MipLevels = 1;
+    sbtDesc.Format = DXGI_FORMAT_UNKNOWN;
+    sbtDesc.SampleDesc.Count = 1;
+    sbtDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    sbtDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    D3D12_HEAP_PROPERTIES uploadHeap = {};
+    uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+    hr = d3dDevice->CreateCommittedResource(
+        &uploadHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &sbtDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_sbtBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create SBT buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_sbtBuffer->SetName(L"RTXDI Shader Binding Table");
+
+    // Map and fill SBT
+    uint8_t* sbtData = nullptr;
+    hr = m_sbtBuffer->Map(0, nullptr, reinterpret_cast<void**>(&sbtData));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to map SBT buffer");
+        return false;
+    }
+
+    // Raygen record
+    memcpy(sbtData, raygenID, shaderIDSize);
+
+    // Miss record
+    memcpy(sbtData + raygenTableSize, missID, shaderIDSize);
+
+    m_sbtBuffer->Unmap(0, nullptr);
+
+    LOG_INFO("Shader binding table created: {} bytes (raygen={}, miss={})",
+             sbtSize, raygenTableSize, missTableSize);
+
+    return true;
+}
+
+void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height) {
+    if (!m_initialized || !m_dxrStateObject || !m_sbtBuffer) {
+        LOG_ERROR("DXR pipeline not initialized");
+        return;
+    }
+
+    // Set pipeline state
+    commandList->SetPipelineState1(m_dxrStateObject.Get());
+
+    // Set compute root signature
+    commandList->SetComputeRootSignature(m_dxrGlobalRS.Get());
+
+    // Set grid constants (b0)
+    struct GridConstants {
+        uint32_t screenWidth;
+        uint32_t screenHeight;
+        uint32_t gridCellsX;
+        uint32_t gridCellsY;
+        uint32_t gridCellsZ;
+        float worldMin;
+        float cellSize;
+        uint32_t padding;
+    } constants;
+
+    constants.screenWidth = width;
+    constants.screenHeight = height;
+    constants.gridCellsX = GRID_CELLS_X;
+    constants.gridCellsY = GRID_CELLS_Y;
+    constants.gridCellsZ = GRID_CELLS_Z;
+    constants.worldMin = WORLD_MIN;
+    constants.cellSize = CELL_SIZE;
+    constants.padding = 0;
+
+    commandList->SetComputeRoot32BitConstants(0, 8, &constants, 0);
+
+    // Bind light grid (t0)
+    commandList->SetComputeRootShaderResourceView(1, m_lightGridBuffer->GetGPUVirtualAddress());
+
+    // Bind lights (t1)
+    commandList->SetComputeRootShaderResourceView(2, m_lightBuffer->GetGPUVirtualAddress());
+
+    // Bind debug output (u0) - requires descriptor heap
+    auto descriptorHeap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    ID3D12DescriptorHeap* heaps[] = { descriptorHeap };
+    commandList->SetDescriptorHeaps(1, heaps);
+
+    // Get GPU handle for debug output UAV
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = descriptorHeap->GetGPUDescriptorHandleForHeapStart();
+    uint32_t descriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    // Calculate offset to our UAV descriptor (from CPU handle)
+    SIZE_T cpuOffset = m_debugOutputUAV.ptr - descriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
+    uint32_t descriptorIndex = static_cast<uint32_t>(cpuOffset / descriptorSize);
+
+    gpuHandle.ptr += descriptorIndex * descriptorSize;
+    commandList->SetComputeRootDescriptorTable(3, gpuHandle);
+
+    // Build dispatch rays descriptor
+    D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
+
+    // Raygen shader table
+    dispatchDesc.RayGenerationShaderRecord.StartAddress = m_sbtBuffer->GetGPUVirtualAddress();
+    dispatchDesc.RayGenerationShaderRecord.SizeInBytes = m_raygenRecordSize;
+
+    // Miss shader table
+    uint64_t raygenTableSize = (m_raygenRecordSize + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1) &
+                               ~(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT - 1);
+    dispatchDesc.MissShaderTable.StartAddress = m_sbtBuffer->GetGPUVirtualAddress() + raygenTableSize;
+    dispatchDesc.MissShaderTable.SizeInBytes = m_missRecordSize;
+    dispatchDesc.MissShaderTable.StrideInBytes = m_missRecordSize;
+
+    // Hit group table (empty for Milestone 3)
+    dispatchDesc.HitGroupTable.StartAddress = 0;
+    dispatchDesc.HitGroupTable.SizeInBytes = 0;
+    dispatchDesc.HitGroupTable.StrideInBytes = 0;
+
+    // Dispatch dimensions
+    dispatchDesc.Width = width;
+    dispatchDesc.Height = height;
+    dispatchDesc.Depth = 1;
+
+    // Dispatch rays
+    commandList->DispatchRays(&dispatchDesc);
+
+    // UAV barrier on debug output
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_debugOutputBuffer.Get());
+    commandList->ResourceBarrier(1, &barrier);
 }
 
 void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
