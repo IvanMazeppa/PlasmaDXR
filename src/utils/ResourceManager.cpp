@@ -263,6 +263,42 @@ void ResourceManager::UploadBufferData(ID3D12Resource* buffer, const void* data,
     LOG_WARN("UploadBufferData needs command list integration - data copied to upload buffer only");
 }
 
+ResourceManager::UploadAllocation ResourceManager::AllocateUpload(size_t size, size_t alignment) {
+    UploadAllocation result;
+
+    // Align offset
+    m_uploadHeapOffset = (m_uploadHeapOffset + alignment - 1) & ~(alignment - 1);
+
+    // Check space
+    if (m_uploadHeapOffset + size > m_uploadBufferSize) {
+        LOG_ERROR("Upload heap full! Requested {} bytes, {} available",
+                  size, m_uploadBufferSize - m_uploadHeapOffset);
+        return result;
+    }
+
+    // Map upload buffer (persistent mapping)
+    if (!m_uploadBufferMapped) {
+        D3D12_RANGE readRange = { 0, 0 };
+        HRESULT hr = m_uploadBuffer->Map(0, &readRange, &m_uploadBufferMapped);
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to map upload buffer");
+            return result;
+        }
+    }
+
+    // Return allocation
+    result.resource = m_uploadBuffer.Get();
+    result.cpuAddress = static_cast<uint8_t*>(m_uploadBufferMapped) + m_uploadHeapOffset;
+    result.offset = m_uploadHeapOffset;
+
+    m_uploadHeapOffset += size;
+    return result;
+}
+
+void ResourceManager::ResetUploadHeap() {
+    m_uploadHeapOffset = 0;
+}
+
 void ResourceManager::TransitionResource(ID3D12GraphicsCommandList* cmdList,
                                         ID3D12Resource* resource,
                                         D3D12_RESOURCE_STATES from,

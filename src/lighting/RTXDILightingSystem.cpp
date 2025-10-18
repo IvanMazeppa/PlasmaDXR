@@ -237,10 +237,19 @@ void RTXDILightingSystem::UpdateLightGrid(const void* lights, uint32_t lightCoun
 
     // === Milestone 2.2 Implementation: Light Grid Build ===
 
-    // 1. Upload lights to GPU buffer (CPU → GPU)
+    // 1. Upload lights to GPU buffer (CPU → GPU) using ResourceManager
     {
-        D3D12_RANGE readRange = { 0, 0 };  // Not reading
-        void* mappedData = nullptr;
+        // Use ResourceManager's upload heap instead of creating a new buffer every frame
+        uint32_t lightDataSize = lightCount * 32;
+        auto uploadAllocation = m_resources->AllocateUpload(lightDataSize, 256);
+
+        if (!uploadAllocation.cpuAddress) {
+            LOG_ERROR("Failed to allocate upload memory for lights");
+            return;
+        }
+
+        // Copy light data to upload heap
+        memcpy(uploadAllocation.cpuAddress, lights, lightDataSize);
 
         // Transition light buffer to COPY_DEST
         D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -250,34 +259,12 @@ void RTXDILightingSystem::UpdateLightGrid(const void* lights, uint32_t lightCoun
         );
         commandList->ResourceBarrier(1, &barrier);
 
-        // Create upload buffer for lights
-        D3D12_HEAP_PROPERTIES uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(16 * 32);  // Max 16 lights × 32 bytes
-
-        ComPtr<ID3D12Resource> uploadBuffer;
-        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
-            &uploadHeapProps,
-            D3D12_HEAP_FLAG_NONE,
-            &uploadDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&uploadBuffer)
+        // Copy from upload heap to GPU buffer
+        commandList->CopyBufferRegion(
+            m_lightBuffer.Get(), 0,
+            uploadAllocation.resource, uploadAllocation.offset,
+            lightDataSize
         );
-
-        if (FAILED(hr)) {
-            LOG_ERROR("Failed to create light upload buffer");
-            return;
-        }
-
-        // Map and copy
-        hr = uploadBuffer->Map(0, &readRange, &mappedData);
-        if (SUCCEEDED(hr)) {
-            memcpy(mappedData, lights, lightCount * 32);
-            uploadBuffer->Unmap(0, nullptr);
-        }
-
-        // Copy to GPU buffer
-        commandList->CopyBufferRegion(m_lightBuffer.Get(), 0, uploadBuffer.Get(), 0, lightCount * 32);
 
         // Transition to NON_PIXEL_SHADER_RESOURCE for compute shader read
         barrier = CD3DX12_RESOURCE_BARRIER::Transition(

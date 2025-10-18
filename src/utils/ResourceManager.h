@@ -50,8 +50,17 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t index);
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
 
+    // Upload allocation result
+    struct UploadAllocation {
+        ID3D12Resource* resource = nullptr;
+        void* cpuAddress = nullptr;
+        uint64_t offset = 0;
+    };
+
     // Upload helpers
     void UploadBufferData(ID3D12Resource* buffer, const void* data, size_t size);
+    UploadAllocation AllocateUpload(size_t size, size_t alignment);
+    void ResetUploadHeap();
 
     // Resource barriers
     void TransitionResource(
@@ -80,4 +89,6 @@ private:
     // Upload buffer for staging
     Microsoft::WRL::ComPtr<ID3D12Resource> m_uploadBuffer;
     size_t m_uploadBufferSize = 64 * 1024 * 1024; // 64MB upload buffer
+    void* m_uploadBufferMapped = nullptr;
+    size_t m_uploadHeapOffset = 0;
 };

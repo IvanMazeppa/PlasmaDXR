@@ -667,6 +667,9 @@ void Application::Render() {
     // Present
     m_swapChain->Present(0);
 
+    // Reset upload heap for next frame (MUST be called before WaitForGPU)
+    m_resources->ResetUploadHeap();
+
     // Wait for frame completion (simple sync for now)
     m_device->WaitForGPU();
 
