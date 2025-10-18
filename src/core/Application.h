@@ -17,6 +17,7 @@ class FeatureDetector;
 class ParticleSystem;
 class ParticleRenderer;
 class RTLightingSystem_RayQuery;
+class RTXDILightingSystem;
 class ResourceManager;
 
 // Need full include for ParticleRenderer_Gaussian::Light nested type
@@ -69,6 +70,7 @@ private:
     std::unique_ptr<ParticleRenderer> m_particleRenderer;           // Billboard renderer (stable)
     std::unique_ptr<ParticleRenderer_Gaussian> m_gaussianRenderer;  // Gaussian Splatting (optional)
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
+    std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;  // RTXDI parallel lighting path
 
     // Timing
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
@@ -83,6 +85,11 @@ private:
     enum class RendererType {
         Billboard,      // Traditional billboard particles (current/stable)
         Gaussian        // 3D Gaussian Splatting (volumetric)
+    };
+
+    enum class LightingSystem {
+        MultiLight,     // Multi-light brute force (Phase 3.5, good for <20 lights)
+        RTXDI           // NVIDIA RTXDI with ReSTIR (Phase 4, scales to 100+ lights)
     };
 
     struct Config {
@@ -139,6 +146,7 @@ private:
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     bool m_useReSTIR = false;              // F7 to toggle (ReSTIR temporal resampling)
     float m_restirTemporalWeight = 0.9f;   // Ctrl+F7/Shift+F7 to adjust (0.0-1.0, temporal trust)
+    LightingSystem m_lightingSystem = LightingSystem::MultiLight;  // --multi-light (default) or --rtxdi
     bool m_usePhaseFunction = true;        // F8 to toggle
     float m_phaseStrength = 5.0f;          // Ctrl+F8/Shift+F8 to adjust (0.0-20.0)
     float m_inScatterStrength = 1.0f;      // F9/Shift+F9 to adjust (0.0-10.0)

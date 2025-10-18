@@ -7,6 +7,7 @@
 #include "../particles/ParticleRenderer.h"
 #include "../particles/ParticleRenderer_Gaussian.h"
 #include "../lighting/RTLightingSystem_RayQuery.h"
+#include "../lighting/RTXDILightingSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #ifdef USE_PIX
@@ -103,6 +104,12 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_useReSTIR = false;
         } else if (arg == "--restir") {
             m_useReSTIR = true;
+        } else if (arg == "--rtxdi") {
+            m_lightingSystem = LightingSystem::RTXDI;
+            LOG_INFO("Lighting system: RTXDI (NVIDIA RTX Direct Illumination)");
+        } else if (arg == "--multi-light") {
+            m_lightingSystem = LightingSystem::MultiLight;
+            LOG_INFO("Lighting system: Multi-Light (brute force)");
         } else if (arg == "--dump-buffers") {
             m_enableBufferDump = true;
             // Check if next arg is a frame number (optional)
@@ -123,6 +130,8 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --gaussian, -g       : Use 3D Gaussian Splatting renderer");
             LOG_INFO("  --billboard, -b      : Use Billboard renderer");
             LOG_INFO("  --particles <count>  : Set particle count");
+            LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
+            LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
             LOG_INFO("  --restir             : Enable ReSTIR");
             LOG_INFO("  --no-restir          : Disable ReSTIR");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
@@ -215,6 +224,21 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_rtLighting.reset();
         } else {
             LOG_INFO("RT Lighting (RayQuery) initialized - looking for GREEN particles!");
+        }
+    }
+
+    // Initialize RTXDI lighting (if --rtxdi flag is active)
+    if (m_lightingSystem == LightingSystem::RTXDI) {
+        m_rtxdiLightingSystem = std::make_unique<RTXDILightingSystem>();
+        if (!m_rtxdiLightingSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
+            LOG_ERROR("Failed to initialize RTXDI lighting system");
+            LOG_ERROR("  Falling back to multi-light system");
+            m_rtxdiLightingSystem.reset();
+            m_lightingSystem = LightingSystem::MultiLight;  // Fallback
+        } else {
+            LOG_INFO("RTXDI Lighting System initialized successfully!");
+            LOG_INFO("  Light grid: 30x30x30 cells (27,000 total)");
+            LOG_INFO("  Ready for 100+ light scaling");
         }
     }
 
@@ -366,6 +390,18 @@ void Application::Render() {
     D3D12_RECT scissor = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
     cmdList->RSSetViewports(1, &viewport);
     cmdList->RSSetScissorRects(1, &scissor);
+
+    // RTXDI Light Grid Update (if RTXDI lighting system is active)
+    if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem && !m_lights.empty()) {
+        m_rtxdiLightingSystem->UpdateLightGrid(m_lights.data(), static_cast<uint32_t>(m_lights.size()), cmdList);
+
+        // Log first few frames for verification
+        static int gridUpdateCount = 0;
+        gridUpdateCount++;
+        if (gridUpdateCount <= 5) {
+            LOG_INFO("RTXDI Light Grid updated (frame {}, {} lights)", m_frameCount, m_lights.size());
+        }
+    }
 
     // RT Lighting Pass (if enabled)
     ID3D12Resource* rtLightingBuffer = nullptr;

@@ -4,17 +4,36 @@ Consolidated agent repository with version tracking and specialization hierarchy
 
 ## Agent Versions
 
-### v3 - Production Agents (Latest)
-**Status:** Active development, current production use
+### v4 - RTXDI & Advanced RT (Latest)
+**Status:** Active development, Phase 4 RTXDI integration
+**Created:** 2025-10-18
+**Expertise:** NVIDIA RTXDI, ReGIR, soft shadows, PCSS, volumetric ray tracing
+
+| Agent | Purpose | Key Capabilities |
+|-------|---------|------------------|
+| `rtxdi-integration-specialist-v4.md` | RTXDI integration | ReSTIR → RTXDI migration, light grid, ReGIR, volumetric adaptation |
+| `dxr-rt-shadow-engineer-v4.md` | Advanced shadows | PCSS, soft shadows, RTXDI visibility reuse, temporal filtering |
+
+**Note:** These agents are globally registered in `~/.claude/agents/` for use across all projects.
+
+### v3 - Production Agents
+**Status:** Active, current production use
 **Created:** 2025-10-17
 **Expertise:** DirectX 12, DXR 1.1, buffer validation, debugging, stress testing, performance analysis
 
 | Agent | Purpose | Key Capabilities |
 |-------|---------|------------------|
 | `buffer-validator-v3.md` | GPU buffer validation | Binary format validation, NaN/Inf detection, statistical analysis |
-| `pix-debugger-v3.md` | Root cause analysis | Multi-light debugging, RT pipeline expertise, file:line fixes |
+| `pix-debugger-v3.md` | Root cause analysis (DEPRECATED) | **⚠️ Superseded by PIX MCP Server** (see below) |
 | `stress-tester-v3.md` | Comprehensive testing | Particle/light scaling, distance scenarios, regression detection |
 | `performance-analyzer-v3.md` | Performance profiling | Bottleneck identification, PIX integration, optimization recommendations |
+
+**⚠️ PIX Debugger v3 → MCP Server Migration:**
+- The PIX debugging capabilities have been migrated to a **standalone MCP server**
+- Location: `/mnt/d/Users/dilli/AndroidStudioProjects/Agility_SDI_DXR_MCP/pix-debugging-agent-v4/`
+- MCP Server: `pix-debug` (registered in Claude Code)
+- Tools: `capture_buffers`, `analyze_restir_reservoirs`, `analyze_particle_buffers`, `pix_capture`, `pix_list_captures`, `diagnose_visual_artifact`
+- Advantage: No API key needed, uses Claude.ai Max subscription directly
 
 ### v2 - Specialized Agents (Active)
 **Status:** Active, specialized for specific tasks
@@ -47,42 +66,76 @@ Consolidated agent repository with version tracking and specialization hierarchy
 ### Invoking Agents (Claude Code)
 
 ```bash
+# v4 RTXDI & Advanced RT Agents
+/rtxdi-integration-specialist-v4
+/dxr-rt-shadow-engineer-v4
+
 # v3 Production Agents
-@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_particles.bin
-@pix-debugger-v3 analyze "light radius control has no effect"
-@stress-tester-v3 run particle-scaling
-@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe
+/buffer-validator-v3
+/stress-tester-v3
+/performance-analyzer-v3
+
+# PIX MCP Server (replaces pix-debugger-v3)
+# These tools are automatically available in any Claude Code session:
+# - mcp__pix-debug__capture_buffers
+# - mcp__pix-debug__analyze_restir_reservoirs
+# - mcp__pix-debug__analyze_particle_buffers
+# - mcp__pix-debug__pix_capture
+# - mcp__pix-debug__pix_list_captures
+# - mcp__pix-debug__diagnose_visual_artifact
 
 # v2 Specialized Agents
-@rt-ml-technique-researcher-v2 research "NVIDIA RTXDI integration guide"
-@physics-performance-agent-v2 optimize particle physics shader
-@dxr-systems-engineer-v2 implement BLAS update optimization
+/rt-ml-technique-researcher-v2
+/physics-performance-agent-v2
+/dxr-systems-engineer-v2
 ```
 
 ### Multi-Agent Workflows
 
-**Example 1: Debug Multi-Light Issue**
+**Example 1: RTXDI Integration (Phase 4)**
 ```bash
-# 1. Capture + validate
-./build/DebugPIX/PlasmaDX-Clean-PIX.exe --dump-buffers 120
-@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_lights.bin
+# 1. Start RTXDI integration specialist
+/rtxdi-integration-specialist-v4
 
-# 2. Root cause analysis
-@pix-debugger-v3 analyze "lights disappear beyond 300 units"
+# Agent guides through:
+# - Week 1: SDK setup + light grid construction
+# - Week 2: Reservoir buffers + RTXDI sampling
+# - Week 3: Temporal/spatial reuse + performance validation
+# - Week 4: Cleanup + documentation
 
-# 3. Apply fix (pix-debugger-v3 provides file:line and exact code)
+# 2. Test shadow integration
+/dxr-rt-shadow-engineer-v4
+
+# 3. Validate performance
+/performance-analyzer-v3
 ```
 
-**Example 2: Research + Implement New Feature**
+**Example 2: Debug ReSTIR Issues with MCP Tools**
+```bash
+# Just ask Claude naturally - MCP tools are automatically available:
+You: "Capture buffers at frame 120 and analyze the ReSTIR reservoirs"
+
+# Claude automatically uses:
+# - mcp__pix-debug__capture_buffers
+# - mcp__pix-debug__analyze_restir_reservoirs
+
+You: "I'm seeing black dots at far distances"
+
+# Claude automatically uses:
+# - mcp__pix-debug__diagnose_visual_artifact
+# - Provides HLSL fix with sqrt(M) visibility scaling
+```
+
+**Example 3: Research + Implement New Feature**
 ```bash
 # 1. Research phase
-@rt-ml-technique-researcher-v2 research "DXR denoising NRD integration"
+/rt-ml-technique-researcher-v2
 
 # 2. Implementation phase
-@dxr-systems-engineer-v2 implement NRD denoiser integration
+/dxr-systems-engineer-v2
 
 # 3. Validation phase
-@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe
+/performance-analyzer-v3
 ```
 
 ## Agent Development Guidelines
@@ -100,10 +153,15 @@ When creating next-generation agents:
 ### Specialization Hierarchy
 
 ```
+v4 RTXDI & Advanced RT (2)
+├── RTXDI integration specialist
+└── Advanced shadow systems
+
 v3 Production Agents (4)
 ├── General-purpose debugging/testing
 ├── Buffer validation expertise
-└── Multi-light system knowledge
+├── Multi-light system knowledge
+└── PIX debugger (→ migrated to MCP server)
 
 v2 Specialized Agents (6)
 ├── Mesh shader specialists
@@ -144,6 +202,7 @@ v1 Original Agents (3)
 
 ---
 
-**Last Updated:** 2025-10-17
-**Plugin Version:** 3.0.0
-**Active Agents:** 10 (4 v3 + 6 v2)
+**Last Updated:** 2025-10-18
+**Plugin Version:** 4.0.0
+**Active Agents:** 12 (2 v4 + 4 v3 + 6 v2)
+**MCP Servers:** 1 (pix-debug with 6 tools)

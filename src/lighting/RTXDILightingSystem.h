@@ -88,9 +88,36 @@ private:
     uint32_t m_height = 0;
 
     // === Milestone 2: Light Grid (ReGIR) ===
-    // TODO: Add light grid buffer
-    // TODO: Add light grid parameters (cell size, world bounds)
-    // TODO: Add compute shader for grid construction
+
+    // Light grid parameters
+    static constexpr uint32_t GRID_CELLS_X = 30;     // 600 units / 20 = 30 cells
+    static constexpr uint32_t GRID_CELLS_Y = 30;
+    static constexpr uint32_t GRID_CELLS_Z = 30;
+    static constexpr uint32_t TOTAL_GRID_CELLS = GRID_CELLS_X * GRID_CELLS_Y * GRID_CELLS_Z;  // 27,000 cells
+
+    static constexpr float WORLD_MIN = -300.0f;      // World bounds (accretion disk)
+    static constexpr float WORLD_MAX = 300.0f;
+    static constexpr float CELL_SIZE = 20.0f;        // 20 units per cell
+    static constexpr uint32_t MAX_LIGHTS_PER_CELL = 16;
+
+    // Light grid cell structure (128 bytes)
+    struct LightGridCell {
+        uint32_t lightIndices[16];  // Indices into light array (64 bytes)
+        float lightWeights[16];     // Importance weights (64 bytes)
+    };
+
+    // Light grid GPU resources
+    ComPtr<ID3D12Resource> m_lightGridBuffer;           // Light grid cells
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightGridSRV;         // For shader reads
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightGridUAV;         // For compute shader writes
+
+    // Light buffer (uploaded from multi-light system)
+    ComPtr<ID3D12Resource> m_lightBuffer;               // Current frame lights
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightBufferSRV;       // For light grid build shader
+
+    // Light grid build compute shader
+    ComPtr<ID3D12PipelineState> m_lightGridBuildPSO;
+    ComPtr<ID3D12RootSignature> m_lightGridBuildRS;
 
     // === Milestone 3: DXR Pipeline ===
     // TODO: Add state object
