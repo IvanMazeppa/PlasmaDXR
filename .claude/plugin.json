@@ -1,0 +1,32 @@
+{
+  "name": "plasmadx-production",
+  "version": "3.0.0",
+  "description": "Production DirectX 12 DXR autonomous agent suite for PlasmaDX - consolidated v1/v2/v3 agents with research library",
+  "agents": [
+    ".claude/agents/v3/buffer-validator-v3.md",
+    ".claude/agents/v3/pix-debugger-v3.md",
+    ".claude/agents/v3/stress-tester-v3.md",
+    ".claude/agents/v3/performance-analyzer-v3.md",
+    ".claude/agents/v2/dx12-mesh-shader-engineer-v2.md",
+    ".claude/agents/v2/dxr-graphics-debugging-engineer-v2.md",
+    ".claude/agents/v2/dxr-systems-engineer-v2.md",
+    ".claude/agents/v2/hlsl-volumetric-implementation-engineer-v2.md",
+    ".claude/agents/v2/physics-performance-agent-v2.md",
+    ".claude/agents/v2/rt-ml-technique-researcher-v2.md"
+  ],
+  "resources": {
+    "research_docs": "docs/research/AdvancedTechniqueWebSearches/",
+    "project_docs": [
+      "CLAUDE.md",
+      "MASTER_ROADMAP_V2.md",
+      "MULTI_LIGHT_FIXES_NEEDED.md",
+      "CLAUDE_CODE_PLUGINS_GUIDE.md"
+    ],
+    "archive": "docs/archive/"
+  },
+  "notes": {
+    "agent_versions": "v3 = production (latest), v2 = specialized (active), v1 = archived (reference)",
+    "research_library": "53 DXR/ML/optimization research documents from rt-ml-technique-researcher-v2 work",
+    "mcp_integration": "Future: Watched folder automation for new research docs"
+  }
+}
