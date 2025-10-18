@@ -1,0 +1,14 @@
+diff --git a/.gitignore b/.gitignore
+index 7d39a53..2245258 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -64,3 +64,8 @@ screenshots/image copy 19.png
+ screenshots/image copy 20.png
+ screenshots/image copy 21.png
+ PIX/
++ 
++# Vendor SDKs (ignored)
++# Ensure RTXDI SDK is not accidentally committed when vendored under external/
++external/RTXDI/
++external/RTXDI/**
+\ No newline at end of file

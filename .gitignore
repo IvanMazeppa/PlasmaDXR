@@ -25,6 +25,7 @@ cmake_install.cmake
 *.cmake
 CMakeLists.txt.user
 CMakeScripts
+external
 Testing
 Makefile
 install_manifest.txt
@@ -63,3 +64,8 @@ screenshots/image copy 19.png
 screenshots/image copy 20.png
 screenshots/image copy 21.png
 PIX/
+ 
+# Vendor SDKs (ignored)
+# Ensure RTXDI SDK is not accidentally committed when vendored under external/
+external/RTXDI/
+external/RTXDI/**
