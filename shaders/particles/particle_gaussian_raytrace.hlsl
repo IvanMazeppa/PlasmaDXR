@@ -50,6 +50,12 @@ cbuffer GaussianConstants : register(b0)
     // Multi-light system
     uint lightCount;               // Number of active lights (0-16)
     float3 padding3;               // Padding for alignment
+
+    // PCSS soft shadow system
+    uint shadowRaysPerLight;       // 1 (performance), 4 (balanced), 8 (quality)
+    uint enableTemporalFiltering;  // Temporal accumulation for soft shadows
+    float temporalBlend;           // Blend factor for temporal filtering (0.0-1.0)
+    float padding4;                // Alignment
 };
 
 // Light structure for multi-light system
@@ -62,6 +68,9 @@ struct Light {
 
 // Light array (after constant buffer to avoid size issues)
 StructuredBuffer<Light> g_lights : register(t4);
+
+// PCSS shadow buffers (temporal filtering for soft shadows)
+Texture2D<float> g_prevShadow : register(t5);  // Previous frame shadow (read-only)
 
 // Derived values
 static const float2 resolution = float2(screenWidth, screenHeight);
@@ -99,6 +108,9 @@ RWTexture2D<float4> g_output : register(u0);
 // ReSTIR: Current frame's reservoirs (write-only)
 RWStructuredBuffer<Reservoir> g_currentReservoirs : register(u1);
 
+// PCSS: Current frame shadow buffer (write-only)
+RWTexture2D<float> g_currShadow : register(u2);
+
 // Hit record for batch processing
 struct HitRecord {
     uint particleIdx;
@@ -115,8 +127,8 @@ struct VolumetricParams {
     float extinction;      // Extinction coefficient for shadows
 };
 
-// Cast shadow ray to check occlusion (returns transmittance 0-1)
-float CastShadowRay(float3 origin, float3 direction, float maxDist) {
+// Cast single shadow ray to check occlusion (returns transmittance 0-1)
+float CastSingleShadowRay(float3 origin, float3 direction, float maxDist) {
     RayDesc shadowRay;
     shadowRay.Origin = origin + direction * shadowBias;
     shadowRay.Direction = direction;
@@ -144,6 +156,43 @@ float CastShadowRay(float3 origin, float3 direction, float maxDist) {
     }
 
     return 1.0; // No occlusion
+}
+
+// PCSS soft shadow ray (multi-sample with Poisson disk)
+float CastPCSSShadowRay(float3 origin, float3 lightPos, float lightRadius, uint2 pixelPos, uint numSamples) {
+    float3 toLight = lightPos - origin;
+    float lightDist = length(toLight);
+    float3 lightDir = toLight / lightDist;
+
+    // Single ray for performance mode
+    if (numSamples == 1) {
+        return CastSingleShadowRay(origin, lightDir, lightDist);
+    }
+
+    // Multi-ray PCSS for balanced/quality modes
+    float shadowAccum = 0.0;
+    float randomAngle = Hash12(float2(pixelPos)) * 6.28318; // Random rotation per pixel
+
+    // Build tangent space for light disk sampling
+    float3 tangent = abs(lightDir.y) < 0.9 ? float3(0, 1, 0) : float3(1, 0, 0);
+    tangent = normalize(cross(tangent, lightDir));
+    float3 bitangent = cross(lightDir, tangent);
+
+    for (uint i = 0; i < numSamples; i++) {
+        // Get Poisson disk sample (rotate for temporal stability)
+        float2 diskSample = Rotate2D(PoissonDisk16[i % 16], randomAngle);
+
+        // Scale by light radius and map to 3D disk perpendicular to light direction
+        float3 offset = (diskSample.x * tangent + diskSample.y * bitangent) * lightRadius;
+        float3 sampleLightPos = lightPos + offset;
+
+        // Cast shadow ray to this sample position
+        float3 sampleDir = normalize(sampleLightPos - origin);
+        float sampleDist = length(sampleLightPos - origin);
+        shadowAccum += CastSingleShadowRay(origin, sampleDir, sampleDist);
+    }
+
+    return shadowAccum / float(numSamples);
 }
 
 // Compute in-scattering from nearby particles (OPTIMIZED + RUNTIME CONTROLLED)
@@ -568,6 +617,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     const float scatteringG = 0.7;      // Henyey-Greenstein g parameter for phase function
     const float extinction = 1.0;       // Extinction coefficient for volume rendering
 
+    // PCSS temporal filtering: Accumulate shadows across all volume march steps
+    float currentShadowAccum = 0.0;
+    float shadowSampleCount = 0.0;
+
     for (uint i = 0; i < hitCount; i++) {
         // Early exit if fully opaque (convert log-space to linear for check)
         float transmittance = exp(logTransmittance);
@@ -729,7 +782,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     // Cast shadow ray to this light (if enabled)
                     float shadowTerm = 1.0;
                     if (useShadowRays != 0) {
-                        shadowTerm = CastShadowRay(pos, lightDir, lightDist);
+                        shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
                     }
 
                     // Apply phase function for view-dependent scattering (if enabled)
@@ -737,6 +790,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     if (usePhaseFunction != 0) {
                         float cosTheta = dot(-ray.Direction, lightDir);
                         phase = HenyeyGreenstein(cosTheta, scatteringG);
+                    }
+
+                    // PCSS temporal filtering: Accumulate shadow values for temporal filter
+                    if (enableTemporalFiltering != 0) {
+                        currentShadowAccum += shadowTerm;
+                        shadowSampleCount += 1.0;
                     }
 
                     // Accumulate this light's contribution
@@ -772,6 +831,28 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
             // Early exit
             if (transmittance < 0.001) break;
+        }
+    }
+
+    // PCSS temporal filtering: Blend current and previous shadow values
+    if (enableTemporalFiltering != 0 && shadowSampleCount > 0.0) {
+        // Calculate average shadow value for this pixel
+        float currentShadow = currentShadowAccum / shadowSampleCount;
+
+        // Read previous frame's shadow value
+        float prevShadow = g_prevShadow[pixelPos];
+
+        // Temporal blend: low blend value = more history (smoother but slower convergence)
+        float finalShadow = lerp(prevShadow, currentShadow, temporalBlend);
+
+        // Write to current shadow buffer for next frame
+        g_currShadow[pixelPos] = finalShadow;
+    } else {
+        // No temporal filtering - write current shadow directly
+        if (shadowSampleCount > 0.0) {
+            g_currShadow[pixelPos] = currentShadowAccum / shadowSampleCount;
+        } else {
+            g_currShadow[pixelPos] = 1.0; // Fully lit (no shadow data)
         }
     }
 

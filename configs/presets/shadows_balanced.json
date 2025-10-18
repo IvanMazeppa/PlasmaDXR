@@ -1,0 +1,39 @@
+{
+  "profile": "shadows_balanced",
+  "description": "PCSS Balanced Preset - 4-ray PCSS (90-100 FPS target @ 10K particles, RTX 4060 Ti)",
+  "rendering": {
+    "particleCount": 10000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080
+  },
+  "shadows": {
+    "preset": "balanced",
+    "raysPerLight": 4,
+    "enableTemporalFiltering": false,
+    "temporalBlend": 0.1
+  },
+  "features": {
+    "enableShadowRays": true,
+    "enableReSTIR": false,
+    "enableInScattering": false,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "anisotropyStrength": 1.0,
+    "rtLightingStrength": 2.0,
+    "usePhysicalEmission": false,
+    "emissionStrength": 1.0,
+    "useDopplerShift": false,
+    "useGravitationalRedshift": false
+  },
+  "camera": {
+    "startDistance": 800.0,
+    "startHeight": 400.0,
+    "startAngle": 0.0,
+    "startPitch": -0.3,
+    "moveSpeed": 100.0,
+    "rotateSpeed": 0.5,
+    "particleSize": 20.0
+  }
+}

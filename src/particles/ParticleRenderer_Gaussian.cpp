@@ -190,6 +190,73 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     std::vector<Light> emptyLights;
     UpdateLights(emptyLights);
 
+    // Create PCSS temporal shadow buffers (ping-pong for temporal filtering)
+    // R16_FLOAT format: 16-bit float per pixel (2MB @ 1080p per buffer)
+    LOG_INFO("Creating PCSS temporal shadow buffers...");
+    LOG_INFO("  Resolution: {}x{} pixels", screenWidth, screenHeight);
+    LOG_INFO("  Format: R16_FLOAT (16-bit per pixel)");
+    LOG_INFO("  Buffer size: {} MB per buffer", (screenWidth * screenHeight * 2) / (1024 * 1024));
+    LOG_INFO("  Total memory: {} MB (2x buffers)", (screenWidth * screenHeight * 4) / (1024 * 1024));
+
+    D3D12_RESOURCE_DESC shadowTexDesc = {};
+    shadowTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    shadowTexDesc.Width = screenWidth;
+    shadowTexDesc.Height = screenHeight;
+    shadowTexDesc.DepthOrArraySize = 1;
+    shadowTexDesc.MipLevels = 1;
+    shadowTexDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    shadowTexDesc.SampleDesc.Count = 1;
+    shadowTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    for (int i = 0; i < 2; i++) {
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &shadowTexDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_shadowBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create shadow buffer {}", i);
+            return false;
+        }
+
+        // Create SRV (for reading previous frame shadow)
+        D3D12_SHADER_RESOURCE_VIEW_DESC shadowSrvDesc = {};
+        shadowSrvDesc.Format = DXGI_FORMAT_R16_FLOAT;
+        shadowSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        shadowSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        shadowSrvDesc.Texture2D.MipLevels = 1;
+
+        m_shadowSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_shadowBuffer[i].Get(),
+            &shadowSrvDesc,
+            m_shadowSRV[i]
+        );
+        m_shadowSRVGPU[i] = m_resources->GetGPUHandle(m_shadowSRV[i]);
+
+        // Create UAV (for writing current frame shadow)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC shadowUavDesc = {};
+        shadowUavDesc.Format = DXGI_FORMAT_R16_FLOAT;
+        shadowUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        shadowUavDesc.Texture2D.MipSlice = 0;
+
+        m_shadowUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_shadowBuffer[i].Get(),
+            nullptr,
+            &shadowUavDesc,
+            m_shadowUAV[i]
+        );
+        m_shadowUAVGPU[i] = m_resources->GetGPUHandle(m_shadowUAV[i]);
+
+        LOG_INFO("Created shadow buffer {}: SRV=0x{:016X}, UAV=0x{:016X}",
+                 i, m_shadowSRVGPU[i].ptr, m_shadowUAVGPU[i].ptr);
+    }
+
     if (!CreatePipeline()) {
         return false;
     }
@@ -297,27 +364,33 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
     // t3: StructuredBuffer<Reservoir> g_prevReservoirs (previous frame, descriptor table)
     // t4: StructuredBuffer<Light> g_lights (multi-light system)
+    // t5: Texture2D<float> g_prevShadow (PCSS temporal shadow - previous frame, descriptor table)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u1: RWStructuredBuffer<Reservoir> g_currentReservoirs (descriptor table)
-    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // t3: StructuredBuffer (prev reservoirs)
+    // u2: RWTexture2D<float> g_currShadow (PCSS temporal shadow - current frame, descriptor table)
+    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[2];
+    srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // t3: StructuredBuffer (prev reservoirs)
+    srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // t5: Texture2D (prev shadow)
 
-    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
-    uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
-    uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // u1: RWStructuredBuffer
+    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[3];
+    uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
+    uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // u1: RWStructuredBuffer (current reservoirs)
+    uavRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[8];  // Increased from 7 to 8 for lights
-    rootParams[0].InitAsConstantBufferView(0);             // b0 - CBV (no DWORD limit!)
-    rootParams[1].InitAsShaderResourceView(0);             // t0 - particles (raw buffer is OK)
-    rootParams[2].InitAsShaderResourceView(1);             // t1 - rtLighting (raw buffer is OK)
-    rootParams[3].InitAsShaderResourceView(2);             // t2 - TLAS (raw is OK)
-    rootParams[4].InitAsDescriptorTable(1, &srvRange);     // t3 - previous reservoirs (descriptor table!)
-    rootParams[5].InitAsShaderResourceView(4);             // t4 - lights (raw buffer is OK)
-    rootParams[6].InitAsDescriptorTable(1, &uavRanges[0]); // u0 - output texture
-    rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]); // u1 - current reservoirs (UAV)
+    CD3DX12_ROOT_PARAMETER1 rootParams[10];  // Increased from 8 to 10 for shadow buffers
+    rootParams[0].InitAsConstantBufferView(0);              // b0 - CBV (no DWORD limit!)
+    rootParams[1].InitAsShaderResourceView(0);              // t0 - particles (raw buffer is OK)
+    rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting (raw buffer is OK)
+    rootParams[3].InitAsShaderResourceView(2);              // t2 - TLAS (raw is OK)
+    rootParams[4].InitAsDescriptorTable(1, &srvRanges[0]);  // t3 - previous reservoirs (descriptor table!)
+    rootParams[5].InitAsShaderResourceView(4);              // t4 - lights (raw buffer is OK)
+    rootParams[6].InitAsDescriptorTable(1, &uavRanges[0]);  // u0 - output texture
+    rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]);  // u1 - current reservoirs (UAV)
+    rootParams[8].InitAsDescriptorTable(1, &srvRanges[1]);  // t5 - previous shadow (SRV)
+    rootParams[9].InitAsDescriptorTable(1, &uavRanges[2]);  // u2 - current shadow (UAV)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(8, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(10, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -438,21 +511,43 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
     cmdList->SetComputeRootDescriptorTable(7, currentReservoirUAVHandle);
 
+    // PCSS: Bind previous frame's shadow buffer (SRV descriptor table) - root param 8
+    uint32_t prevShadowIndex = 1 - m_currentShadowIndex;  // Ping-pong
+    D3D12_GPU_DESCRIPTOR_HANDLE prevShadowSRVHandle = m_shadowSRVGPU[prevShadowIndex];
+    if (prevShadowSRVHandle.ptr == 0) {
+        LOG_ERROR("Previous shadow SRV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(8, prevShadowSRVHandle);
+
+    // PCSS: Bind current frame's shadow buffer (UAV descriptor table) - root param 9
+    D3D12_GPU_DESCRIPTOR_HANDLE currentShadowUAVHandle = m_shadowUAVGPU[m_currentShadowIndex];
+    if (currentShadowUAVHandle.ptr == 0) {
+        LOG_ERROR("Current shadow UAV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(9, currentShadowUAVHandle);
+
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
     uint32_t dispatchY = (constants.screenHeight + 7) / 8;
     cmdList->Dispatch(dispatchX, dispatchY, 1);
 
     // Add UAV barriers to ensure compute shader completes before next frame
-    D3D12_RESOURCE_BARRIER uavBarriers[2] = {};
+    D3D12_RESOURCE_BARRIER uavBarriers[3] = {};
     uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarriers[0].UAV.pResource = m_outputTexture.Get();
     uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarriers[1].UAV.pResource = m_reservoirBuffer[m_currentReservoirIndex].Get();
-    cmdList->ResourceBarrier(2, uavBarriers);
+    uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarriers[2].UAV.pResource = m_shadowBuffer[m_currentShadowIndex].Get();
+    cmdList->ResourceBarrier(3, uavBarriers);
 
     // ReSTIR: Swap reservoir buffers for next frame (ping-pong)
     m_currentReservoirIndex = 1 - m_currentReservoirIndex;
+
+    // PCSS: Swap shadow buffers for next frame (ping-pong)
+    m_currentShadowIndex = 1 - m_currentShadowIndex;
 }
 
 void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {

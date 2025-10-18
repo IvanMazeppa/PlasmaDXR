@@ -147,6 +147,18 @@ private:
     float m_anisotropyStrength = 1.0f;     // F12/Shift+F12 to adjust (0.0-3.0, how stretched)
     uint32_t m_restirInitialCandidates = 16; // Number of light candidates to test (16-32)
 
+    // PCSS soft shadow system
+    enum class ShadowPreset {
+        Performance,  // 1-ray + temporal filtering (default)
+        Balanced,     // 4-ray PCSS
+        Quality,      // 8-ray PCSS
+        Custom        // User-defined settings
+    };
+    ShadowPreset m_shadowPreset = ShadowPreset::Performance;
+    uint32_t m_shadowRaysPerLight = 1;           // Shadow rays per light (1-16)
+    bool m_enableTemporalFiltering = true;       // Temporal shadow accumulation
+    float m_temporalBlend = 0.1f;                // Temporal blend factor (0.0-1.0)
+
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 
     // Mouse look state

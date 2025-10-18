@@ -508,6 +508,12 @@ void Application::Render() {
             gaussianConstants.lightCount = static_cast<uint32_t>(m_lights.size());
             m_gaussianRenderer->UpdateLights(m_lights);
 
+            // PCSS soft shadow system
+            gaussianConstants.shadowRaysPerLight = m_shadowRaysPerLight;
+            gaussianConstants.enableTemporalFiltering = m_enableTemporalFiltering ? 1u : 0u;
+            gaussianConstants.temporalBlend = m_temporalBlend;
+            gaussianConstants.padding4 = 0.0f;
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             static bool lastReSTIRState = false;
@@ -1726,6 +1732,73 @@ void Application::RenderImGui() {
     // Rendering features
     if (ImGui::CollapsingHeader("Rendering Features", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Shadow Rays (F5)", &m_useShadowRays);
+
+        // PCSS shadow quality controls (indented under Shadow Rays)
+        if (m_useShadowRays) {
+            ImGui::Indent();
+            ImGui::Text("Shadow Quality");
+
+            // Preset dropdown
+            const char* presetNames[] = { "Performance", "Balanced", "Quality", "Custom" };
+            int currentPreset = static_cast<int>(m_shadowPreset);
+            if (ImGui::Combo("Preset", &currentPreset, presetNames, 4)) {
+                m_shadowPreset = static_cast<ShadowPreset>(currentPreset);
+
+                // Apply preset settings
+                switch (m_shadowPreset) {
+                    case ShadowPreset::Performance:
+                        m_shadowRaysPerLight = 1;
+                        m_enableTemporalFiltering = true;
+                        m_temporalBlend = 0.1f;
+                        break;
+                    case ShadowPreset::Balanced:
+                        m_shadowRaysPerLight = 4;
+                        m_enableTemporalFiltering = false;
+                        m_temporalBlend = 0.1f;
+                        break;
+                    case ShadowPreset::Quality:
+                        m_shadowRaysPerLight = 8;
+                        m_enableTemporalFiltering = false;
+                        m_temporalBlend = 0.1f;
+                        break;
+                    case ShadowPreset::Custom:
+                        // Keep current settings
+                        break;
+                }
+            }
+
+            // Show info for current preset
+            if (m_shadowPreset == ShadowPreset::Performance) {
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "1-ray + temporal (120 FPS target)");
+            } else if (m_shadowPreset == ShadowPreset::Balanced) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "4-ray PCSS (90-100 FPS target)");
+            } else if (m_shadowPreset == ShadowPreset::Quality) {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "8-ray PCSS (60-75 FPS target)");
+            }
+
+            // Custom controls (only show if Custom preset selected)
+            if (m_shadowPreset == ShadowPreset::Custom) {
+                int raysPerLight = static_cast<int>(m_shadowRaysPerLight);
+                if (ImGui::SliderInt("Rays Per Light", &raysPerLight, 1, 16)) {
+                    m_shadowRaysPerLight = static_cast<uint32_t>(raysPerLight);
+                }
+
+                ImGui::Checkbox("Temporal Filtering", &m_enableTemporalFiltering);
+                if (m_enableTemporalFiltering) {
+                    ImGui::SliderFloat("Temporal Blend", &m_temporalBlend, 0.0f, 1.0f);
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Lower = smoother (slower convergence)\n"
+                                         "Higher = faster convergence (more noise)\n"
+                                         "Default: 0.1 (~67ms convergence)");
+                    }
+                }
+            }
+
+            ImGui::Unindent();
+        }
+
         ImGui::Checkbox("In-Scattering (F6)", &m_useInScattering);
         if (m_useInScattering) {
             ImGui::SliderFloat("In-Scatter Strength (F9)", &m_inScatterStrength, 0.0f, 10.0f);

@@ -68,6 +68,12 @@ public:
         // Multi-light system
         uint32_t lightCount;               // Number of active lights (0-16)
         DirectX::XMFLOAT3 padding3;        // Padding for alignment
+
+        // PCSS soft shadow system
+        uint32_t shadowRaysPerLight;       // 1 (performance), 4 (balanced), 8 (quality)
+        uint32_t enableTemporalFiltering;  // Temporal accumulation for soft shadows
+        float temporalBlend;               // Blend factor for temporal filtering (0.0-1.0)
+        float padding4;                    // Alignment
     };
 
 public:
@@ -145,4 +151,12 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_lightSRV;                       // SRV for shader access (t4)
     D3D12_GPU_DESCRIPTOR_HANDLE m_lightSRVGPU;
     void* m_lightBufferMapped = nullptr;                          // CPU access for updates
+
+    // PCSS soft shadow system (temporal filtering)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowBuffer[2];     // Ping-pong shadow buffers (R16_FLOAT)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_shadowSRV[2];                   // SRV for reading previous shadow
+    D3D12_GPU_DESCRIPTOR_HANDLE m_shadowSRVGPU[2];
+    D3D12_CPU_DESCRIPTOR_HANDLE m_shadowUAV[2];                   // UAV for writing current shadow
+    D3D12_GPU_DESCRIPTOR_HANDLE m_shadowUAVGPU[2];
+    uint32_t m_currentShadowIndex = 0;                            // Which buffer is current (0 or 1)
 };
