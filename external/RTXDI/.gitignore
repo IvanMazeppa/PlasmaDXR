@@ -1,0 +1,11 @@
+/media*
+/dxc
+/donut-*
+/build*
+.vs
+.vscode
+*.sublime-project
+*.sublime-workspace
+compile-shaders.bat
+/tests
+/external/dxc

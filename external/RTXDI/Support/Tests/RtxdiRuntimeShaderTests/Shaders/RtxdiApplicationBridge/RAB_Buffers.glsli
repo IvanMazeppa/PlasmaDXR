@@ -1,0 +1,31 @@
+#ifndef RAB_BUFFERS_GLSLI
+#define RAB_BUFFERS_GLSLI
+
+layout(set = 0, binding = 0) buffer RIS_BUFFER
+{
+    uvec2 u_RisBuffer[];
+};
+
+layout(set = 0, binding = 1) buffer LIGHT_RESERVOIR_BUFFER
+{
+    RTXDI_PackedDIReservoir u_LightReservoirs[];
+};
+
+layout(set = 0, binding = 2) readonly buffer NEIGHBOR_OFFSET_BUFFER
+{
+    vec2 t_NeighborOffsets[];
+};
+
+layout(set = 0, binding = 3) buffer GI_RESERVOIR_BUFFER
+{
+    RTXDI_PackedGIReservoir u_GIReservoirs[];
+};
+
+#define IES_SAMPLER s_EnvironmentSampler
+
+int RAB_TranslateLightIndex(uint lightIndex, bool currentToPrevious)
+{
+    return 0;
+}
+
+#endif // RAB_BUFFERS_GLSLI

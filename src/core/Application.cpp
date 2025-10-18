@@ -190,9 +190,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             return false;
         }
 
-        // Initialize multi-light system (Phase 3.5) - start empty, user creates lights via UI
-        // Users can use presets: "Disk (13)", "Single", "Dome (8)", or add manually with ] key
-        m_lights.clear();  // Start with 0 lights
+        // Initialize multi-light system (Phase 3.5) with default 13-light configuration
+        // Users can switch presets: "Disk (13)", "Single", "Dome (8)", or add manually with ] key
+        InitializeLights();  // Start with default 13-light disk configuration
 
         LOG_INFO("Render Path: 3D Gaussian Splatting");
     } else {
