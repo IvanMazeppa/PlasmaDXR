@@ -51,6 +51,8 @@ cbuffer GaussianConstants : register(b0)
     uint enableTemporalFiltering;  // Temporal accumulation for soft shadows
     float temporalBlend;           // Blend factor for temporal filtering (0.0-1.0)
     uint useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
+    uint debugRTXDISelection;      // DEBUG: Visualize selected light index (0=off, 1=on)
+    float3 debugPadding;           // Padding for alignment
 };
 
 // Light structure for multi-light system
@@ -472,42 +474,59 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     float4 rtxdiData = g_rtxdiOutput[pixelPos];
                     uint selectedLightIndex = asuint(rtxdiData.r);
 
-                    // Validate light index (0xFFFFFFFF = no light in cell)
-                    if (selectedLightIndex != 0xFFFFFFFF && selectedLightIndex < lightCount) {
-                        // Use ONLY the RTXDI-selected light
-                        Light light = g_lights[selectedLightIndex];
-
-                        // Direction and distance to this light
-                        float3 lightDir = normalize(light.position - pos);
-                        float lightDist = length(light.position - pos);
-
-                        // Use light.radius for soft falloff
-                        float normalizedDist = lightDist / max(light.radius, 1.0);
-                        float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
-
-                        // Cast shadow ray to this light (if enabled)
-                        float shadowTerm = 1.0;
-                        if (useShadowRays != 0) {
-                            shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
+                    // DEBUG: Visualize selected light index
+                    if (debugRTXDISelection != 0) {
+                        if (selectedLightIndex == 0xFFFFFFFF) {
+                            // No light: Black
+                            totalLighting = float3(0, 0, 0);
+                        } else {
+                            // Color-code by light index (0-12 = rainbow colors)
+                            float hue = float(selectedLightIndex) / 13.0;  // 0.0-1.0
+                            // Simple hue to RGB (red → green → blue)
+                            totalLighting = float3(
+                                saturate(abs(hue * 6.0 - 3.0) - 1.0),
+                                saturate(2.0 - abs(hue * 6.0 - 2.0)),
+                                saturate(2.0 - abs(hue * 6.0 - 4.0))
+                            ) * 5.0;  // Boost for visibility
                         }
+                    } else {
+                        // NORMAL MODE: Validate light index (0xFFFFFFFF = no light in cell)
+                        if (selectedLightIndex != 0xFFFFFFFF && selectedLightIndex < lightCount) {
+                            // Use ONLY the RTXDI-selected light
+                            Light light = g_lights[selectedLightIndex];
 
-                        // Apply phase function for view-dependent scattering (if enabled)
-                        float phase = 1.0;
-                        if (usePhaseFunction != 0) {
-                            float cosTheta = dot(-ray.Direction, lightDir);
-                            phase = HenyeyGreenstein(cosTheta, scatteringG);
+                            // Direction and distance to this light
+                            float3 lightDir = normalize(light.position - pos);
+                            float lightDist = length(light.position - pos);
+
+                            // Use light.radius for soft falloff
+                            float normalizedDist = lightDist / max(light.radius, 1.0);
+                            float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
+
+                            // Cast shadow ray to this light (if enabled)
+                            float shadowTerm = 1.0;
+                            if (useShadowRays != 0) {
+                                shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
+                            }
+
+                            // Apply phase function for view-dependent scattering (if enabled)
+                            float phase = 1.0;
+                            if (usePhaseFunction != 0) {
+                                float cosTheta = dot(-ray.Direction, lightDir);
+                                phase = HenyeyGreenstein(cosTheta, scatteringG);
+                            }
+
+                            // PCSS temporal filtering: Accumulate shadow values
+                            if (enableTemporalFiltering != 0) {
+                                currentShadowAccum += shadowTerm;
+                                shadowSampleCount += 1.0;
+                            }
+
+                            // RTXDI-selected light contribution
+                            totalLighting = light.color * light.intensity * attenuation * shadowTerm * phase;
                         }
-
-                        // PCSS temporal filtering: Accumulate shadow values
-                        if (enableTemporalFiltering != 0) {
-                            currentShadowAccum += shadowTerm;
-                            shadowSampleCount += 1.0;
-                        }
-
-                        // RTXDI-selected light contribution
-                        totalLighting = light.color * light.intensity * attenuation * shadowTerm * phase;
+                        // else: No light selected for this pixel - use ambient only (totalLighting = 0)
                     }
-                    // else: No light selected for this pixel - use ambient only (totalLighting = 0)
 
                 } else {
                     // === MULTI-LIGHT MODE: Loop all lights (original 13-light brute force) ===
@@ -548,9 +567,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 }
 
                 // Apply multi-light illumination to external lighting
-                // FIX: Removed weak lerp(0.1, 1.0, ...) that capped contribution too low
-                // Multi-light should be comparable in strength to RT lighting (which is clamped to 10.0)
-                illumination += totalLighting * 10.0;
+                // CRITICAL FIX (2025-10-19): RTXDI uses 1 selected light, multi-light uses 13 lights
+                // The 10× multiplier was designed for multi-light to match RT lighting strength,
+                // but RTXDI should NOT get this boost (it would hide the visual difference)
+                if (useRTXDI != 0) {
+                    // RTXDI: NO multiplier (1 importance-sampled light)
+                    // Expected: Dimmer than multi-light (this is CORRECT)
+                    // Future: Add unbiased weight W from ReSTIR reservoir
+                    illumination += totalLighting;
+                } else {
+                    // Multi-light: 10× multiplier to match RT lighting strength
+                    // This boosts 13 accumulated lights to comparable brightness
+                    illumination += totalLighting * 10.0;
+                }
 
                 // Add in-scattering for volumetric depth (TOGGLEABLE)
                 float3 inScatter = float3(0, 0, 0);

@@ -551,6 +551,8 @@ void Application::Render() {
 
             // RTXDI lighting system (Phase 4)
             gaussianConstants.useRTXDI = (m_lightingSystem == LightingSystem::RTXDI) ? 1u : 0u;
+            gaussianConstants.debugRTXDISelection = m_debugRTXDISelection ? 1u : 0u;
+            gaussianConstants.debugPadding = DirectX::XMFLOAT3(0, 0, 0);
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -1865,6 +1867,16 @@ void Application::RenderImGui() {
                 ImGui::SetTooltip("RTXDI selects 1 optimal light per pixel using\n"
                                  "importance-weighted random sampling from light grid.\n"
                                  "Phase 4 Milestone 4 - First Visual Test!");
+            }
+
+            // DEBUG: Visualize selected light index
+            ImGui::Separator();
+            if (ImGui::Checkbox("DEBUG: Visualize Light Selection", &m_debugRTXDISelection)) {
+                LOG_INFO("RTXDI Debug Visualization: {}", m_debugRTXDISelection ? "ON" : "OFF");
+            }
+            if (m_debugRTXDISelection) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Rainbow colors = different lights selected");
+                ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "Black = no lights in grid cell");
             }
         } else {
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Multi-Light: All 13 lights evaluated");

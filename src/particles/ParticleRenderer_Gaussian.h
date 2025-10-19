@@ -68,6 +68,8 @@ public:
         uint32_t enableTemporalFiltering;  // Temporal accumulation for soft shadows
         float temporalBlend;               // Blend factor for temporal filtering (0.0-1.0)
         uint32_t useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
+        uint32_t debugRTXDISelection;      // DEBUG: Visualize selected light index (0=off, 1=on)
+        DirectX::XMFLOAT3 debugPadding;    // Padding for alignment
     };
 
 public:

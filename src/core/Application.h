@@ -145,6 +145,7 @@ private:
     bool m_useShadowRays = true;           // F5 to toggle
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     LightingSystem m_lightingSystem = LightingSystem::MultiLight;  // --multi-light (default) or --rtxdi
+    bool m_debugRTXDISelection = false;    // DEBUG: Visualize RTXDI light selection (rainbow colors)
     bool m_usePhaseFunction = true;        // F8 to toggle
     float m_phaseStrength = 5.0f;          // Ctrl+F8/Shift+F8 to adjust (0.0-20.0)
     float m_inScatterStrength = 1.0f;      // F9/Shift+F9 to adjust (0.0-10.0)
