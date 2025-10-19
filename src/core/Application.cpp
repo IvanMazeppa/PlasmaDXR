@@ -536,7 +536,11 @@ void Application::Render() {
             gaussianConstants.usePhaseFunction = m_usePhaseFunction ? 1u : 0u;
             gaussianConstants.phaseStrength = m_phaseStrength;
             gaussianConstants.inScatterStrength = m_inScatterStrength;
-            gaussianConstants.rtLightingStrength = m_enableRTLighting ? m_rtLightingStrength : 0.0f;
+
+            // CRITICAL FIX: Disable RT particle-to-particle lighting when RTXDI is active
+            // RTXDI provides external lighting, so RT lighting would be redundant and incorrect
+            bool useRTLighting = m_enableRTLighting && (m_lightingSystem != LightingSystem::RTXDI);
+            gaussianConstants.rtLightingStrength = useRTLighting ? m_rtLightingStrength : 0.0f;
             gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
             gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 

@@ -459,7 +459,10 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 }
             } else {
                 // Non-physical emission: Temperature-based color that CAN be lit by external sources
-                float3 illumination = float3(1, 1, 1); // Base self-illumination
+
+                // CRITICAL FIX: Base self-illumination should scale with emission strength
+                // When emission strength = 0, particles should be truly dark (only lit by external lights)
+                float3 illumination = float3(emissionStrength, emissionStrength, emissionStrength);
 
                 // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
                 // Clamp to prevent over-brightness from extreme ReSTIR samples
