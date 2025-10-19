@@ -50,7 +50,7 @@ cbuffer GaussianConstants : register(b0)
     uint shadowRaysPerLight;       // 1 (performance), 4 (balanced), 8 (quality)
     uint enableTemporalFiltering;  // Temporal accumulation for soft shadows
     float temporalBlend;           // Blend factor for temporal filtering (0.0-1.0)
-    float padding4;                // Alignment
+    uint useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
 };
 
 // Light structure for multi-light system
@@ -66,6 +66,11 @@ StructuredBuffer<Light> g_lights : register(t4);
 
 // PCSS shadow buffers (temporal filtering for soft shadows)
 Texture2D<float> g_prevShadow : register(t5);  // Previous frame shadow (read-only)
+
+// RTXDI: Selected light indices per pixel (optional - only when RTXDI enabled)
+// R channel: asfloat(lightIndex) - 0-15 or 0xFFFFFFFF if no lights
+// G/B channels: debug data (cell index, light count)
+Texture2D<float4> g_rtxdiOutput : register(t6);
 
 // Derived values
 static const float2 resolution = float2(screenWidth, screenHeight);
@@ -461,39 +466,85 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // === MULTI-LIGHT SYSTEM: Accumulate lighting from all active lights ===
                 float3 totalLighting = float3(0, 0, 0);
 
-                for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
-                    Light light = g_lights[lightIdx];
+                if (useRTXDI != 0) {
+                    // === RTXDI MODE: Use single RTXDI-selected light ===
+                    // Read selected light index from RTXDI output buffer
+                    float4 rtxdiData = g_rtxdiOutput[pixelPos];
+                    uint selectedLightIndex = asuint(rtxdiData.r);
 
-                    // Direction and distance to this light
-                    float3 lightDir = normalize(light.position - pos);
-                    float lightDist = length(light.position - pos);
+                    // Validate light index (0xFFFFFFFF = no light in cell)
+                    if (selectedLightIndex != 0xFFFFFFFF && selectedLightIndex < lightCount) {
+                        // Use ONLY the RTXDI-selected light
+                        Light light = g_lights[selectedLightIndex];
 
-                    // Use light.radius for soft falloff (makes radius slider functional)
-                    float normalizedDist = lightDist / max(light.radius, 1.0);  // Normalize by radius
-                    float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);  // Quadratic for soft edge
+                        // Direction and distance to this light
+                        float3 lightDir = normalize(light.position - pos);
+                        float lightDist = length(light.position - pos);
 
-                    // Cast shadow ray to this light (if enabled)
-                    float shadowTerm = 1.0;
-                    if (useShadowRays != 0) {
-                        shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
+                        // Use light.radius for soft falloff
+                        float normalizedDist = lightDist / max(light.radius, 1.0);
+                        float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
+
+                        // Cast shadow ray to this light (if enabled)
+                        float shadowTerm = 1.0;
+                        if (useShadowRays != 0) {
+                            shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
+                        }
+
+                        // Apply phase function for view-dependent scattering (if enabled)
+                        float phase = 1.0;
+                        if (usePhaseFunction != 0) {
+                            float cosTheta = dot(-ray.Direction, lightDir);
+                            phase = HenyeyGreenstein(cosTheta, scatteringG);
+                        }
+
+                        // PCSS temporal filtering: Accumulate shadow values
+                        if (enableTemporalFiltering != 0) {
+                            currentShadowAccum += shadowTerm;
+                            shadowSampleCount += 1.0;
+                        }
+
+                        // RTXDI-selected light contribution
+                        totalLighting = light.color * light.intensity * attenuation * shadowTerm * phase;
                     }
+                    // else: No light selected for this pixel - use ambient only (totalLighting = 0)
 
-                    // Apply phase function for view-dependent scattering (if enabled)
-                    float phase = 1.0;
-                    if (usePhaseFunction != 0) {
-                        float cosTheta = dot(-ray.Direction, lightDir);
-                        phase = HenyeyGreenstein(cosTheta, scatteringG);
+                } else {
+                    // === MULTI-LIGHT MODE: Loop all lights (original 13-light brute force) ===
+                    for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
+                        Light light = g_lights[lightIdx];
+
+                        // Direction and distance to this light
+                        float3 lightDir = normalize(light.position - pos);
+                        float lightDist = length(light.position - pos);
+
+                        // Use light.radius for soft falloff (makes radius slider functional)
+                        float normalizedDist = lightDist / max(light.radius, 1.0);  // Normalize by radius
+                        float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);  // Quadratic for soft edge
+
+                        // Cast shadow ray to this light (if enabled)
+                        float shadowTerm = 1.0;
+                        if (useShadowRays != 0) {
+                            shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
+                        }
+
+                        // Apply phase function for view-dependent scattering (if enabled)
+                        float phase = 1.0;
+                        if (usePhaseFunction != 0) {
+                            float cosTheta = dot(-ray.Direction, lightDir);
+                            phase = HenyeyGreenstein(cosTheta, scatteringG);
+                        }
+
+                        // PCSS temporal filtering: Accumulate shadow values for temporal filter
+                        if (enableTemporalFiltering != 0) {
+                            currentShadowAccum += shadowTerm;
+                            shadowSampleCount += 1.0;
+                        }
+
+                        // Accumulate this light's contribution
+                        float3 lightContribution = light.color * light.intensity * attenuation * shadowTerm * phase;
+                        totalLighting += lightContribution;
                     }
-
-                    // PCSS temporal filtering: Accumulate shadow values for temporal filter
-                    if (enableTemporalFiltering != 0) {
-                        currentShadowAccum += shadowTerm;
-                        shadowSampleCount += 1.0;
-                    }
-
-                    // Accumulate this light's contribution
-                    float3 lightContribution = light.color * light.intensity * attenuation * shadowTerm * phase;
-                    totalLighting += lightContribution;
                 }
 
                 // Apply multi-light illumination to external lighting

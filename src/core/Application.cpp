@@ -548,7 +548,9 @@ void Application::Render() {
             gaussianConstants.shadowRaysPerLight = m_shadowRaysPerLight;
             gaussianConstants.enableTemporalFiltering = m_enableTemporalFiltering ? 1u : 0u;
             gaussianConstants.temporalBlend = m_temporalBlend;
-            gaussianConstants.padding4 = 0.0f;
+
+            // RTXDI lighting system (Phase 4)
+            gaussianConstants.useRTXDI = (m_lightingSystem == LightingSystem::RTXDI) ? 1u : 0u;
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -558,8 +560,15 @@ void Application::Render() {
                 LOG_INFO("  useInScattering: {}", gaussianConstants.useInScattering);
                 LOG_INFO("  usePhaseFunction: {}", gaussianConstants.usePhaseFunction);
                 LOG_INFO("  phaseStrength: {}", gaussianConstants.phaseStrength);
+                LOG_INFO("  useRTXDI: {}", gaussianConstants.useRTXDI);
                 LOG_INFO("================================");
                 loggedToggles = true;
+            }
+
+            // Get RTXDI output buffer (if RTXDI mode is enabled)
+            ID3D12Resource* rtxdiOutput = nullptr;
+            if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem) {
+                rtxdiOutput = m_rtxdiLightingSystem->GetDebugOutputBuffer();
             }
 
             // Render to UAV texture
@@ -567,7 +576,8 @@ void Application::Render() {
                                       m_particleSystem->GetParticleBuffer(),
                                       rtLightingBuffer,
                                       m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
-                                      gaussianConstants);
+                                      gaussianConstants,
+                                      rtxdiOutput);  // Pass RTXDI output buffer
 
             // HDR→SDR blit pass (replaces CopyTextureRegion)
             D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
@@ -1060,6 +1070,14 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("RT Quality Mode: {}", modes[m_rtQualityMode]);
         break;
     }
+
+    // F3: Toggle RTXDI vs Multi-Light (Phase 4 M4 Phase 2)
+    case VK_F3:
+        m_lightingSystem = (m_lightingSystem == LightingSystem::RTXDI)
+            ? LightingSystem::MultiLight
+            : LightingSystem::RTXDI;
+        LOG_INFO("Lighting System: {}", m_lightingSystem == LightingSystem::RTXDI ? "RTXDI" : "Multi-Light");
+        break;
 
     // F5: Toggle shadow rays
     case VK_F5:
@@ -1822,6 +1840,37 @@ void Application::RenderImGui() {
         if (m_useAnisotropicGaussians) {
             ImGui::SliderFloat("Anisotropy Strength (F12)", &m_anisotropyStrength, 0.0f, 3.0f);
         }
+
+        // RTXDI Lighting System (Phase 4 - M4 Phase 2 Integration)
+        ImGui::Separator();
+        ImGui::Text("Lighting System (F3 to toggle)");
+        int currentSystem = static_cast<int>(m_lightingSystem);
+        if (ImGui::RadioButton("Multi-Light (13 lights, brute force)", currentSystem == 0)) {
+            m_lightingSystem = LightingSystem::MultiLight;
+            LOG_INFO("Switched to Multi-Light system");
+        }
+        if (ImGui::RadioButton("RTXDI (1 sampled light per pixel)", currentSystem == 1)) {
+            m_lightingSystem = LightingSystem::RTXDI;
+            LOG_INFO("Switched to RTXDI system");
+        }
+
+        // Display current mode info
+        ImGui::Indent();
+        if (m_lightingSystem == LightingSystem::RTXDI) {
+            ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "RTXDI: Weighted reservoir sampling");
+            ImGui::Text("Expected FPS: Similar or better than multi-light");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("RTXDI selects 1 optimal light per pixel using\n"
+                                 "importance-weighted random sampling from light grid.\n"
+                                 "Phase 4 Milestone 4 - First Visual Test!");
+            }
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Multi-Light: All 13 lights evaluated");
+            ImGui::Text("Expected FPS: Baseline (20 FPS @ 10K particles)");
+        }
+        ImGui::Unindent();
     }
 
     // Physical effects

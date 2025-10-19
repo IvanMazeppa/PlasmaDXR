@@ -97,6 +97,15 @@ public:
      */
     void DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height, uint32_t frameIndex);
 
+    /**
+     * Get RTXDI debug output buffer (selected light indices per pixel)
+     * R channel: asfloat(lightIndex) - 0-15 or 0xFFFFFFFF if no lights
+     * G/B channels: debug data (cell index, light count)
+     *
+     * @return Debug output buffer resource
+     */
+    ID3D12Resource* GetDebugOutputBuffer() const { return m_debugOutputBuffer.Get(); }
+
 private:
     // === DXR Pipeline Creation (Milestone 3) ===
     bool CreateDXRPipeline();

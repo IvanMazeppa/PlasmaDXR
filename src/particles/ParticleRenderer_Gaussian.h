@@ -67,7 +67,7 @@ public:
         uint32_t shadowRaysPerLight;       // 1 (performance), 4 (balanced), 8 (quality)
         uint32_t enableTemporalFiltering;  // Temporal accumulation for soft shadows
         float temporalBlend;               // Blend factor for temporal filtering (0.0-1.0)
-        float padding4;                    // Alignment
+        uint32_t useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
     };
 
 public:
@@ -84,7 +84,8 @@ public:
                ID3D12Resource* particleBuffer,
                ID3D12Resource* rtLightingBuffer,
                ID3D12Resource* tlas,  // From RTLightingSystem!
-               const RenderConstants& constants);
+               const RenderConstants& constants,
+               ID3D12Resource* rtxdiOutputBuffer = nullptr);  // RTXDI selected lights (optional)
 
     // Resize output textures and buffers when window size changes
     bool Resize(uint32_t newWidth, uint32_t newHeight);

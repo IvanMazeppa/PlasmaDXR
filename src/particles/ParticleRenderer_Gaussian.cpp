@@ -294,16 +294,18 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t2: RaytracingAccelerationStructure g_particleBVH (TLAS from RTLightingSystem!)
     // t4: StructuredBuffer<Light> g_lights (multi-light system)
     // t5: Texture2D<float> g_prevShadow (PCSS temporal shadow - previous frame, descriptor table)
+    // t6: Texture2D<float4> g_rtxdiOutput (RTXDI selected lights - optional, descriptor table)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u2: RWTexture2D<float> g_currShadow (PCSS temporal shadow - current frame, descriptor table)
-    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[1];
+    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[2];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // t5: Texture2D (prev shadow)
+    srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // t6: Texture2D (RTXDI output)
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[8];
+    CD3DX12_ROOT_PARAMETER1 rootParams[9];  // +1 for RTXDI output
     rootParams[0].InitAsConstantBufferView(0);              // b0 - CBV (no DWORD limit!)
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles (raw buffer is OK)
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting (raw buffer is OK)
@@ -312,9 +314,10 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[5].InitAsDescriptorTable(1, &uavRanges[0]);  // u0 - output texture
     rootParams[6].InitAsDescriptorTable(1, &srvRanges[0]);  // t5 - previous shadow (SRV)
     rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]);  // u2 - current shadow (UAV)
+    rootParams[8].InitAsDescriptorTable(1, &srvRanges[1]);  // t6 - RTXDI output (SRV)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(8, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(9, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -370,7 +373,8 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        ID3D12Resource* particleBuffer,
                                        ID3D12Resource* rtLightingBuffer,
                                        ID3D12Resource* tlas,
-                                       const RenderConstants& constants) {
+                                       const RenderConstants& constants,
+                                       ID3D12Resource* rtxdiOutputBuffer) {
     if (!cmdList || !particleBuffer || !rtLightingBuffer || !m_resources) {
         LOG_ERROR("Gaussian Render: null resource!");
         return;
@@ -434,6 +438,34 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         return;
     }
     cmdList->SetComputeRootDescriptorTable(7, currentShadowUAVHandle);
+
+    // RTXDI: Bind RTXDI output buffer (SRV descriptor table) - root param 8 (optional)
+    if (rtxdiOutputBuffer && constants.useRTXDI != 0) {
+        // Create SRV for RTXDI output texture (R32G32B32A32_FLOAT)
+        D3D12_SHADER_RESOURCE_VIEW_DESC rtxdiSrvDesc = {};
+        rtxdiSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        rtxdiSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        rtxdiSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        rtxdiSrvDesc.Texture2D.MipLevels = 1;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE rtxdiSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            rtxdiOutputBuffer,
+            &rtxdiSrvDesc,
+            rtxdiSRV
+        );
+        D3D12_GPU_DESCRIPTOR_HANDLE rtxdiSRVGPU = m_resources->GetGPUHandle(rtxdiSRV);
+
+        if (rtxdiSRVGPU.ptr == 0) {
+            LOG_ERROR("RTXDI output SRV handle is ZERO!");
+            return;
+        }
+        cmdList->SetComputeRootDescriptorTable(8, rtxdiSRVGPU);
+    } else {
+        // Bind dummy descriptor (use previous shadow buffer as placeholder)
+        // This is safe since shader won't read t6 when useRTXDI=0
+        cmdList->SetComputeRootDescriptorTable(8, prevShadowSRVHandle);
+    }
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
