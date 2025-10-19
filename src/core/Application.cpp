@@ -218,19 +218,22 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         }
     }
 
-    // Initialize RTXDI lighting (if --rtxdi flag is active)
-    if (m_lightingSystem == LightingSystem::RTXDI) {
-        m_rtxdiLightingSystem = std::make_unique<RTXDILightingSystem>();
-        if (!m_rtxdiLightingSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
-            LOG_ERROR("Failed to initialize RTXDI lighting system");
-            LOG_ERROR("  Falling back to multi-light system");
-            m_rtxdiLightingSystem.reset();
-            m_lightingSystem = LightingSystem::MultiLight;  // Fallback
-        } else {
-            LOG_INFO("RTXDI Lighting System initialized successfully!");
-            LOG_INFO("  Light grid: 30x30x30 cells (27,000 total)");
-            LOG_INFO("  Ready for 100+ light scaling");
+    // Initialize RTXDI lighting (always, since user can switch via ImGui/F3)
+    LOG_INFO("Initializing RTXDI Lighting System...");
+    m_rtxdiLightingSystem = std::make_unique<RTXDILightingSystem>();
+    if (!m_rtxdiLightingSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
+        LOG_ERROR("Failed to initialize RTXDI lighting system");
+        LOG_ERROR("  RTXDI will not be available (F3 toggle disabled)");
+        m_rtxdiLightingSystem.reset();
+        // Don't force fallback - user can still use multi-light
+        if (m_lightingSystem == LightingSystem::RTXDI) {
+            LOG_ERROR("  Startup mode was RTXDI - falling back to Multi-Light");
+            m_lightingSystem = LightingSystem::MultiLight;
         }
+    } else {
+        LOG_INFO("RTXDI Lighting System initialized successfully!");
+        LOG_INFO("  Light grid: 30x30x30 cells (27,000 total)");
+        LOG_INFO("  Ready for runtime switching (F3 key)");
     }
 
     // Initialize blit pipeline (HDR→SDR conversion for Gaussian renderer)
@@ -402,6 +405,19 @@ void Application::Render() {
             if (gridUpdateCount <= 5) {
                 LOG_INFO("RTXDI DispatchRays executed ({}x{}, frame {})", m_width, m_height, m_frameCount);
             }
+
+            // === Milestone 5: Temporal Accumulation ===
+            // Smooth patchwork pattern by accumulating samples over time
+            DirectX::XMFLOAT3 cameraPos = {
+                m_cameraDistance * cosf(m_cameraAngle),
+                m_cameraHeight,
+                m_cameraDistance * sinf(m_cameraAngle)
+            };
+            m_rtxdiLightingSystem->DispatchTemporalAccumulation(cmdList, cameraPos, static_cast<uint32_t>(m_frameCount));
+
+            if (gridUpdateCount <= 5) {
+                LOG_INFO("RTXDI M5 Temporal Accumulation dispatched (frame {})", m_frameCount);
+            }
         } else {
             if (gridUpdateCount == 1) {
                 LOG_ERROR("Failed to query ID3D12GraphicsCommandList4 for RTXDI DispatchRays");
@@ -572,9 +588,10 @@ void Application::Render() {
             }
 
             // Get RTXDI output buffer (if RTXDI mode is enabled)
+            // Use M5 accumulated buffer (temporally smoothed) instead of raw M4 debug output
             ID3D12Resource* rtxdiOutput = nullptr;
             if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem) {
-                rtxdiOutput = m_rtxdiLightingSystem->GetDebugOutputBuffer();
+                rtxdiOutput = m_rtxdiLightingSystem->GetAccumulatedBuffer();  // M5 temporal accumulation output
             }
 
             // Render to UAV texture
@@ -1887,6 +1904,51 @@ void Application::RenderImGui() {
             ImGui::Text("Expected FPS: Baseline (20 FPS @ 10K particles)");
         }
         ImGui::Unindent();
+
+        // === Milestone 5: Temporal Accumulation Controls ===
+        if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem) {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "M5: Temporal Accumulation");
+
+            // Max samples slider
+            int maxSamples = static_cast<int>(m_rtxdiLightingSystem->GetMaxSamples());
+            if (ImGui::SliderInt("Max Samples", &maxSamples, 1, 32)) {
+                m_rtxdiLightingSystem->SetMaxSamples(static_cast<uint32_t>(maxSamples));
+                LOG_INFO("M5 Max Samples: {}", maxSamples);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Temporal sample accumulation target\n"
+                                  "8 = Performance (67ms convergence @ 120 FPS)\n"
+                                  "16 = Quality (133ms convergence @ 120 FPS)\n"
+                                  "Higher = smoother but slower convergence");
+            }
+
+            // Reset threshold slider
+            float resetThreshold = m_rtxdiLightingSystem->GetResetThreshold();
+            if (ImGui::SliderFloat("Reset Threshold", &resetThreshold, 1.0f, 100.0f, "%.1f units")) {
+                m_rtxdiLightingSystem->SetResetThreshold(resetThreshold);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Camera movement distance to reset accumulation\n"
+                                  "Lower = more responsive to movement\n"
+                                  "Higher = smoother during slow camera pans");
+            }
+
+            // Manual reset button
+            if (ImGui::Button("Reset Accumulation")) {
+                m_rtxdiLightingSystem->ForceReset();
+                LOG_INFO("M5 Temporal accumulation reset");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Manually reset accumulated samples\n"
+                                  "Use after changing lights or presets");
+            }
+
+            // Display convergence info
+            int convergenceMs = maxSamples * 8;  // ~8ms per sample @ 120 FPS
+            ImGui::Text("Convergence: ~%d ms @ 120 FPS", convergenceMs);
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Patchwork smooths over time");
+        }
     }
 
     // Physical effects

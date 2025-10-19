@@ -8,6 +8,12 @@
 #include <fstream>
 #include <vector>
 
+// PIX event markers (conditionally compiled)
+#ifdef USE_PIX
+#define USE_PIX_SUPPORTED_ARCHITECTURE
+#include "debug/pix3.h"
+#endif
+
 // RTXDI SDK headers (Milestone 1 complete - we can now include these!)
 // #include <Rtxdi/DI/ReSTIRDI.h>
 // #include <Rtxdi/RtxdiParameters.h>
@@ -454,6 +460,17 @@ bool RTXDILightingSystem::CreateDebugOutputBuffer() {
     m_debugOutputBuffer->SetName(L"RTXDI Debug Output");
 
     // Create UAV
+    // Create SRV (for reading in temporal accumulation shader)
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    m_debugOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    d3dDevice->CreateShaderResourceView(m_debugOutputBuffer.Get(), &srvDesc, m_debugOutputSRV);
+
+    // Create UAV (for raygen shader writes)
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
@@ -463,6 +480,66 @@ bool RTXDILightingSystem::CreateDebugOutputBuffer() {
     d3dDevice->CreateUnorderedAccessView(m_debugOutputBuffer.Get(), nullptr, &uavDesc, m_debugOutputUAV);
 
     LOG_INFO("Debug output buffer created: {}x{} (R32G32B32A32_FLOAT)", m_width, m_height);
+
+    // === M5: Create temporal accumulation buffer ===
+    LOG_INFO("Creating RTXDI temporal accumulation buffer...");
+
+    // Same format as debug output (R32G32B32A32_FLOAT)
+    // R: accumulated light index, G: sample count, B: reserved, A: frame ID
+    D3D12_RESOURCE_DESC accumDesc = {};
+    accumDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    accumDesc.Width = m_width;
+    accumDesc.Height = m_height;
+    accumDesc.DepthOrArraySize = 1;
+    accumDesc.MipLevels = 1;
+    accumDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    accumDesc.SampleDesc.Count = 1;
+    accumDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    accumDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = d3dDevice->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &accumDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,  // Start as UAV
+        nullptr,
+        IID_PPV_ARGS(&m_accumulatedBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create accumulated buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_accumulatedBuffer->SetName(L"RTXDI Accumulated Samples");
+
+    // Create SRV (for Gaussian renderer reads)
+    D3D12_SHADER_RESOURCE_VIEW_DESC accumSrvDesc = {};
+    accumSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    accumSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    accumSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    accumSrvDesc.Texture2D.MipLevels = 1;
+
+    m_accumulatedSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    d3dDevice->CreateShaderResourceView(m_accumulatedBuffer.Get(), &accumSrvDesc, m_accumulatedSRV);
+
+    // Create UAV (for accumulation shader writes)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC accumUavDesc = {};
+    accumUavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    accumUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    accumUavDesc.Texture2D.MipSlice = 0;
+
+    m_accumulatedUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    d3dDevice->CreateUnorderedAccessView(m_accumulatedBuffer.Get(), nullptr, &accumUavDesc, m_accumulatedUAV);
+
+    uint64_t accumBufferSize = m_width * m_height * 16;  // 16 bytes per pixel
+    LOG_INFO("Accumulated buffer created: {:.2f} MB", accumBufferSize / (1024.0f * 1024.0f));
+
+    // Create M5 temporal accumulation pipeline
+    if (!CreateTemporalAccumulationPipeline()) {
+        LOG_ERROR("Failed to create temporal accumulation pipeline");
+        return false;
+    }
 
     return true;
 }
@@ -726,6 +803,99 @@ bool RTXDILightingSystem::CreateShaderBindingTable() {
     return true;
 }
 
+bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
+    LOG_INFO("Creating RTXDI temporal accumulation pipeline...");
+
+    auto d3dDevice = m_device->GetDevice();
+
+    // Root signature:
+    // [0] b0 - Accumulation constants (16 DWORDs = 64 bytes)
+    // [1] t0 - RTXDI output (Texture2D - requires descriptor table!)
+    // [2] t1 - Previous accumulated (Texture2D - requires descriptor table!)
+    // [3] u0 - Current accumulated (RWTexture2D - requires descriptor table!)
+
+    CD3DX12_DESCRIPTOR_RANGE srvRanges[2];
+    srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0: Texture2D<float4>
+    srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1: Texture2D<float4>
+
+    CD3DX12_DESCRIPTOR_RANGE uavRange;
+    uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<float4>
+
+    CD3DX12_ROOT_PARAMETER rootParams[4];
+    rootParams[0].InitAsConstants(16, 0);  // b0: AccumulationConstants
+    rootParams[1].InitAsDescriptorTable(1, &srvRanges[0]);  // t0: RTXDI output
+    rootParams[2].InitAsDescriptorTable(1, &srvRanges[1]);  // t1: Prev accumulated
+    rootParams[3].InitAsDescriptorTable(1, &uavRange);  // u0: Curr accumulated
+
+    CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
+    rootSigDesc.Init(_countof(rootParams), rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    ComPtr<ID3DBlob> signature;
+    ComPtr<ID3DBlob> error;
+    HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Failed to serialize temporal accumulation root signature: {}",
+                     static_cast<const char*>(error->GetBufferPointer()));
+        }
+        return false;
+    }
+
+    hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                        IID_PPV_ARGS(&m_temporalAccumulateRS));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create temporal accumulation root signature: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_temporalAccumulateRS->SetName(L"RTXDI Temporal Accumulation RS");
+
+    // Load shader bytecode
+    std::ifstream shaderFile("shaders/rtxdi/rtxdi_temporal_accumulate.dxil", std::ios::binary);
+    if (!shaderFile.is_open()) {
+        LOG_ERROR("Failed to load rtxdi_temporal_accumulate.dxil");
+        LOG_ERROR("  Make sure shader is compiled!");
+        return false;
+    }
+
+    std::vector<uint8_t> shaderBytecode((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
+    shaderFile.close();
+    LOG_INFO("Loaded temporal accumulation shader: {} bytes", shaderBytecode.size());
+
+    // Create PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_temporalAccumulateRS.Get();
+    psoDesc.CS.pShaderBytecode = shaderBytecode.data();
+    psoDesc.CS.BytecodeLength = shaderBytecode.size();
+    psoDesc.NodeMask = 0;  // Single GPU
+    psoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+
+    LOG_INFO("Creating PSO with:");
+    LOG_INFO("  Root signature: {}", (void*)psoDesc.pRootSignature);
+    LOG_INFO("  Shader size: {} bytes", psoDesc.CS.BytecodeLength);
+
+    hr = d3dDevice->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_temporalAccumulatePSO));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create temporal accumulation PSO: HRESULT = 0x{:08X}", static_cast<uint32_t>(hr));
+
+        // Check for common D3D12 errors
+        if (hr == E_INVALIDARG) {
+            LOG_ERROR("  E_INVALIDARG - Invalid argument (likely root signature mismatch)");
+        } else if (hr == E_OUTOFMEMORY) {
+            LOG_ERROR("  E_OUTOFMEMORY - Out of memory");
+        } else if (hr == 0x887A0005) {  // DXGI_ERROR_DEVICE_REMOVED
+            LOG_ERROR("  DXGI_ERROR_DEVICE_REMOVED - GPU device removed");
+        }
+
+        return false;
+    }
+
+    m_temporalAccumulatePSO->SetName(L"RTXDI Temporal Accumulation PSO");
+
+    LOG_INFO("Temporal accumulation pipeline created");
+    return true;
+}
+
 void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height, uint32_t frameIndex) {
     if (!m_initialized || !m_dxrStateObject || !m_sbtBuffer) {
         LOG_ERROR("DXR pipeline not initialized");
@@ -965,4 +1135,104 @@ void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
     }
 
     LOG_INFO("RTXDI buffer dump complete");
+}
+
+// === M5: Temporal Accumulation Dispatch ===
+void RTXDILightingSystem::DispatchTemporalAccumulation(
+    ID3D12GraphicsCommandList* commandList,
+    const DirectX::XMFLOAT3& cameraPos,
+    uint32_t frameIndex
+) {
+    if (!m_temporalAccumulatePSO || !m_temporalAccumulateRS) {
+        LOG_ERROR("Temporal accumulation pipeline not initialized");
+        return;
+    }
+
+    // PIX marker for debugging
+#ifdef USE_PIX
+    PIXBeginEvent(commandList, PIX_COLOR_INDEX(4), "RTXDI M5 Temporal Accumulation");
+#endif
+
+    // === 1. Transition resources ===
+    std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+    // Debug output (RTXDI raygen output) → SRV for read
+    if (!m_debugOutputInSRVState) {
+        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+            m_debugOutputBuffer.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        ));
+        m_debugOutputInSRVState = true;
+    }
+
+    // Accumulated buffer stays in UAV state (it's both input and output)
+    // No transition needed
+
+    if (!barriers.empty()) {
+        commandList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+    }
+
+    // === 2. Set pipeline ===
+    commandList->SetPipelineState(m_temporalAccumulatePSO.Get());
+    commandList->SetComputeRootSignature(m_temporalAccumulateRS.Get());
+
+    // === 3. Set constants ===
+    struct AccumulationConstants {
+        uint32_t screenWidth;
+        uint32_t screenHeight;
+        uint32_t frameIndex;
+        uint32_t maxSamples;
+        float resetThreshold;
+        float padding1;
+        float padding2;
+        float padding3;
+        DirectX::XMFLOAT3 cameraPos;
+        uint32_t padding4;
+        DirectX::XMFLOAT3 prevCameraPos;
+        uint32_t forceReset;
+    } constants;
+
+    constants.screenWidth = m_width;
+    constants.screenHeight = m_height;
+    constants.frameIndex = frameIndex;
+    constants.maxSamples = m_maxSamples;
+    constants.resetThreshold = m_resetThreshold;
+    constants.padding1 = 0.0f;
+    constants.padding2 = 0.0f;
+    constants.padding3 = 0.0f;
+    constants.cameraPos = cameraPos;
+    constants.padding4 = 0;
+    constants.prevCameraPos = m_prevCameraPos;
+    constants.forceReset = m_forceReset ? 1 : 0;
+
+    commandList->SetComputeRoot32BitConstants(0, 16, &constants, 0);
+
+    // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
+    // Convert CPU descriptor handles to GPU handles
+    D3D12_GPU_DESCRIPTOR_HANDLE debugOutputGPU = m_resources->GetGPUHandle(m_debugOutputSRV);
+    D3D12_GPU_DESCRIPTOR_HANDLE accumSrvGPU = m_resources->GetGPUHandle(m_accumulatedSRV);
+    D3D12_GPU_DESCRIPTOR_HANDLE accumUavGPU = m_resources->GetGPUHandle(m_accumulatedUAV);
+
+    commandList->SetComputeRootDescriptorTable(1, debugOutputGPU);  // t0: Current RTXDI
+    commandList->SetComputeRootDescriptorTable(2, accumSrvGPU);     // t1: Prev accumulated
+    commandList->SetComputeRootDescriptorTable(3, accumUavGPU);     // u0: Curr accumulated
+
+    // === 5. Dispatch compute shader ===
+    uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
+    uint32_t dispatchY = (m_height + 7) / 8;
+    commandList->Dispatch(dispatchX, dispatchY, 1);
+
+    // === 6. UAV barrier (ensure writes complete) ===
+    D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_accumulatedBuffer.Get());
+    commandList->ResourceBarrier(1, &uavBarrier);
+
+    // === 7. Update camera state for next frame ===
+    m_prevCameraPos = cameraPos;
+    m_prevFrameIndex = frameIndex;
+    m_forceReset = false;  // Clear reset flag
+
+#ifdef USE_PIX
+    PIXEndEvent(commandList);
+#endif
 }

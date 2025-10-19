@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <DirectXMath.h>
 
 // Forward declarations
 class Device;
@@ -102,15 +103,27 @@ public:
      * R channel: asfloat(lightIndex) - 0-15 or 0xFFFFFFFF if no lights
      * G/B channels: debug data (cell index, light count)
      *
-     * @return Debug output buffer resource
+     * @return Debug output buffer resource (raw M4 output)
      */
     ID3D12Resource* GetDebugOutputBuffer() const { return m_debugOutputBuffer.Get(); }
+
+    /**
+     * Get M5 accumulated buffer (temporally smoothed light selection)
+     * This is the buffer that should be used for rendering after M5 temporal accumulation
+     *
+     * @return Accumulated buffer resource (M5 output)
+     */
+    ID3D12Resource* GetAccumulatedBuffer() const { return m_accumulatedBuffer.Get(); }
 
 private:
     // === DXR Pipeline Creation (Milestone 3) ===
     bool CreateDXRPipeline();
     bool CreateShaderBindingTable();
     bool CreateDebugOutputBuffer();
+
+    // === M5 Pipeline Creation ===
+    bool CreateTemporalAccumulationPipeline();
+
     // Initialization state
     bool m_initialized = false;
 
@@ -166,15 +179,46 @@ private:
 
     // Debug output buffer (for visualization)
     ComPtr<ID3D12Resource> m_debugOutputBuffer;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_debugOutputUAV;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_debugOutputSRV;  // For reading in M5 temporal accumulation
+    D3D12_CPU_DESCRIPTOR_HANDLE m_debugOutputUAV;  // For writing from raygen shader
     bool m_debugOutputInSRVState = false;  // Track resource state for proper transitions
 
-    // === Milestone 4: Reservoir Sampling ===
-    // TODO: Add reservoir buffers (ping-pong)
-    // TODO: Add RTXDI context parameters
-    // TODO: Add temporal reuse logic
+    // === Milestone 5: Temporal Accumulation ===
+    ComPtr<ID3D12Resource> m_accumulatedBuffer;           // Temporal accumulation buffer
+    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedSRV;         // SRV for Gaussian renderer reads
+    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedUAV;         // UAV for accumulation writes
 
-    // === Future: Spatial Reuse ===
+    ComPtr<ID3D12PipelineState> m_temporalAccumulatePSO;  // Temporal accumulation compute PSO
+    ComPtr<ID3D12RootSignature> m_temporalAccumulateRS;   // Root signature
+
+    // Camera state for reset detection
+    DirectX::XMFLOAT3 m_prevCameraPos = {0, 0, 0};
+    uint32_t m_prevFrameIndex = 0;
+    bool m_forceReset = false;                            // Manual reset trigger
+
+    // Accumulation parameters
+    uint32_t m_maxSamples = 8;                            // Default: 8 samples (Performance mode)
+    float m_resetThreshold = 10.0f;                       // Camera movement threshold (units)
+
+    // === Future: Spatial Reuse (M6) ===
     // TODO: Add spatial resampling passes
     // TODO: Add visibility reuse cache
+
+public:
+    // M5 Temporal Accumulation API
+    void DispatchTemporalAccumulation(ID3D12GraphicsCommandList* commandList,
+                                      const DirectX::XMFLOAT3& cameraPos,
+                                      uint32_t frameIndex);
+
+    // Getters/setters for M5 parameters
+    uint32_t GetMaxSamples() const { return m_maxSamples; }
+    void SetMaxSamples(uint32_t maxSamples) { m_maxSamples = maxSamples; m_forceReset = true; }
+
+    float GetResetThreshold() const { return m_resetThreshold; }
+    void SetResetThreshold(float threshold) { m_resetThreshold = threshold; }
+
+    void ForceReset() { m_forceReset = true; }
+
+    // Get accumulated buffer SRV for Gaussian renderer binding
+    D3D12_CPU_DESCRIPTOR_HANDLE GetAccumulatedBufferSRV() const { return m_accumulatedSRV; }
 };

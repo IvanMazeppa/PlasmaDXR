@@ -599,8 +599,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // Self-emission: Particle's blackbody glow (controlled by emissionStrength)
                 float3 selfEmission = emission * intensity * emissionStrength;
 
-                // External lighting: RT + multi-light applied to particle color
-                float3 externalLight = emission * illumination;
+                // External lighting: Much more conservative scaling
+                // illumination can be 0.05 (ambient) + 10 (RT) + 50+ (multi-light) = very high!
+                // Scale down to 0.01-0.02 range for reasonable brightness
+                float3 externalLight = illumination * 0.02;
+
+                // Apply subtle particle color (but keep it mostly white/neutral)
+                // This prevents complete color wash-out while avoiding blown-out emission colors
+                float3 particleAlbedo = lerp(float3(1, 1, 1), emission, 0.15);  // Only 15% emission tint
+                externalLight *= particleAlbedo;
 
                 // Combine: glow + external lighting + in-scattering (all additive)
                 totalEmission = selfEmission + externalLight + inScatter * inScatterStrength;
