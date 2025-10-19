@@ -393,14 +393,14 @@ void Application::Render() {
             LOG_INFO("RTXDI Light Grid updated (frame {}, {} lights)", m_frameCount, m_lights.size());
         }
 
-        // === Milestone 3: DXR Light Sampling ===
-        // Dispatch rays to sample light grid (debug visualization)
+        // === Milestone 4: RTXDI Reservoir Sampling ===
+        // Dispatch rays to sample light grid and select optimal light per pixel
         ComPtr<ID3D12GraphicsCommandList4> cmdList4;
         if (SUCCEEDED(cmdList->QueryInterface(IID_PPV_ARGS(&cmdList4)))) {
-            m_rtxdiLightingSystem->DispatchRays(cmdList4.Get(), m_width, m_height);
+            m_rtxdiLightingSystem->DispatchRays(cmdList4.Get(), m_width, m_height, static_cast<uint32_t>(m_frameCount));
 
             if (gridUpdateCount <= 5) {
-                LOG_INFO("RTXDI DispatchRays executed ({}x{})", m_width, m_height);
+                LOG_INFO("RTXDI DispatchRays executed ({}x{}, frame {})", m_width, m_height, m_frameCount);
             }
         } else {
             if (gridUpdateCount == 1) {

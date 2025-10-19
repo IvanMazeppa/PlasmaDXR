@@ -726,7 +726,7 @@ bool RTXDILightingSystem::CreateShaderBindingTable() {
     return true;
 }
 
-void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height) {
+void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height, uint32_t frameIndex) {
     if (!m_initialized || !m_dxrStateObject || !m_sbtBuffer) {
         LOG_ERROR("DXR pipeline not initialized");
         return;
@@ -738,7 +738,7 @@ void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, 
     // Set compute root signature
     commandList->SetComputeRootSignature(m_dxrGlobalRS.Get());
 
-    // Set grid constants (b0)
+    // Set grid constants (b0) - Milestone 4: Added frameIndex for temporal random variation
     struct GridConstants {
         uint32_t screenWidth;
         uint32_t screenHeight;
@@ -747,7 +747,7 @@ void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, 
         uint32_t gridCellsZ;
         float worldMin;
         float cellSize;
-        uint32_t padding;
+        uint32_t frameIndex;      // NEW M4: For random number generation
     } constants;
 
     constants.screenWidth = width;
@@ -757,7 +757,7 @@ void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, 
     constants.gridCellsZ = GRID_CELLS_Z;
     constants.worldMin = WORLD_MIN;
     constants.cellSize = CELL_SIZE;
-    constants.padding = 0;
+    constants.frameIndex = frameIndex;  // NEW M4: Pass frame counter for temporal variation
 
     commandList->SetComputeRoot32BitConstants(0, 8, &constants, 0);
 

@@ -88,13 +88,14 @@ public:
                     uint32_t frameNum);
 
     /**
-     * Dispatch DXR rays for light grid sampling (Milestone 3)
+     * Dispatch DXR rays for light grid sampling (Milestone 4: Reservoir Sampling)
      *
      * @param commandList Command list for GPU work
      * @param width Screen width
      * @param height Screen height
+     * @param frameIndex Frame counter for temporal random variation
      */
-    void DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height);
+    void DispatchRays(ID3D12GraphicsCommandList4* commandList, uint32_t width, uint32_t height, uint32_t frameIndex);
 
 private:
     // === DXR Pipeline Creation (Milestone 3) ===
