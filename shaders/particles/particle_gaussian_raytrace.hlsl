@@ -433,8 +433,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             } else {
                 // Standard temperature-based color (artistic)
                 emission = TemperatureToEmission(p.temperature);
-                // CRITICAL FIX: Scale intensity by emissionStrength (0.0 = truly dark)
-                intensity = EmissionIntensity(p.temperature) * emissionStrength;
+                // Intensity based on temperature (emissionStrength applied separately at final composition)
+                intensity = EmissionIntensity(p.temperature);
             }
 
             // === FIXED: RT lighting as illumination, not replacement ===
@@ -461,9 +461,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             } else {
                 // Non-physical emission: Temperature-based color that CAN be lit by external sources
 
-                // CRITICAL FIX: Base self-illumination should scale with emission strength
-                // When emission strength = 0, particles should be truly dark (only lit by external lights)
-                float3 illumination = float3(emissionStrength, emissionStrength, emissionStrength);
+                // Base ambient level (allows particles to be visible even with no self-emission)
+                // External lighting (RT + multi-light) will be added to this base
+                float3 illumination = float3(0.05, 0.05, 0.05);  // Very dark ambient base
 
                 // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
                 // Clamp to prevent over-brightness from extreme ReSTIR samples
@@ -595,8 +595,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     inScatter = ComputeInScattering(pos, ray.Direction, hit.particleIdx);
                 }
 
-                // Combine emission with external illumination and in-scattering
-                totalEmission = emission * intensity * illumination + inScatter * inScatterStrength;
+                // FIXED: Separate self-emission glow from external lighting
+                // Self-emission: Particle's blackbody glow (controlled by emissionStrength)
+                float3 selfEmission = emission * intensity * emissionStrength;
+
+                // External lighting: RT + multi-light applied to particle color
+                float3 externalLight = emission * illumination;
+
+                // Combine: glow + external lighting + in-scattering (all additive)
+                totalEmission = selfEmission + externalLight + inScatter * inScatterStrength;
             }
 
             // Volume rendering equation with proper absorption/emission
