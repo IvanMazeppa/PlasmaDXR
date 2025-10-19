@@ -139,4 +139,8 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_shadowUAV[2];                   // UAV for writing current shadow
     D3D12_GPU_DESCRIPTOR_HANDLE m_shadowUAVGPU[2];
     uint32_t m_currentShadowIndex = 0;                            // Which buffer is current (0 or 1)
+
+    // RTXDI output buffer cache (to prevent descriptor leak)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_rtxdiSRV = {};                  // Cached SRV for RTXDI output
+    D3D12_GPU_DESCRIPTOR_HANDLE m_rtxdiSRVGPU = {};               // Cached GPU handle
 };

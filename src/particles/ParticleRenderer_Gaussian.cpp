@@ -441,26 +441,31 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
     // RTXDI: Bind RTXDI output buffer (SRV descriptor table) - root param 8 (optional)
     if (rtxdiOutputBuffer && constants.useRTXDI != 0) {
-        // Create SRV for RTXDI output texture (R32G32B32A32_FLOAT)
-        D3D12_SHADER_RESOURCE_VIEW_DESC rtxdiSrvDesc = {};
-        rtxdiSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-        rtxdiSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        rtxdiSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        rtxdiSrvDesc.Texture2D.MipLevels = 1;
+        // Create SRV for RTXDI output texture (R32G32B32A32_FLOAT) - CACHED to prevent descriptor leak
+        if (m_rtxdiSRVGPU.ptr == 0) {
+            // First time: Allocate descriptor and cache it
+            D3D12_SHADER_RESOURCE_VIEW_DESC rtxdiSrvDesc = {};
+            rtxdiSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+            rtxdiSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            rtxdiSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            rtxdiSrvDesc.Texture2D.MipLevels = 1;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE rtxdiSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        m_device->GetDevice()->CreateShaderResourceView(
-            rtxdiOutputBuffer,
-            &rtxdiSrvDesc,
-            rtxdiSRV
-        );
-        D3D12_GPU_DESCRIPTOR_HANDLE rtxdiSRVGPU = m_resources->GetGPUHandle(rtxdiSRV);
+            m_rtxdiSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            m_device->GetDevice()->CreateShaderResourceView(
+                rtxdiOutputBuffer,
+                &rtxdiSrvDesc,
+                m_rtxdiSRV
+            );
+            m_rtxdiSRVGPU = m_resources->GetGPUHandle(m_rtxdiSRV);
 
-        if (rtxdiSRVGPU.ptr == 0) {
+            LOG_INFO("Created RTXDI output SRV (cached): GPU=0x{:016X}", m_rtxdiSRVGPU.ptr);
+        }
+
+        if (m_rtxdiSRVGPU.ptr == 0) {
             LOG_ERROR("RTXDI output SRV handle is ZERO!");
             return;
         }
-        cmdList->SetComputeRootDescriptorTable(8, rtxdiSRVGPU);
+        cmdList->SetComputeRootDescriptorTable(8, m_rtxdiSRVGPU);
     } else {
         // Bind dummy descriptor (use previous shadow buffer as placeholder)
         // This is safe since shader won't read t6 when useRTXDI=0
