@@ -433,7 +433,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             } else {
                 // Standard temperature-based color (artistic)
                 emission = TemperatureToEmission(p.temperature);
-                intensity = EmissionIntensity(p.temperature);
+                // CRITICAL FIX: Scale intensity by emissionStrength (0.0 = truly dark)
+                intensity = EmissionIntensity(p.temperature) * emissionStrength;
             }
 
             // === FIXED: RT lighting as illumination, not replacement ===
@@ -482,15 +483,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                         if (selectedLightIndex == 0xFFFFFFFF) {
                             // No light: Black
                             totalLighting = float3(0, 0, 0);
-                        } else {
+                        } else if (selectedLightIndex < lightCount) {
+                            // BOUNDS CHECK: Valid light index
                             // Color-code by light index (0-12 = rainbow colors)
-                            float hue = float(selectedLightIndex) / 13.0;  // 0.0-1.0
+                            float hue = float(selectedLightIndex) / max(float(lightCount), 1.0);  // 0.0-1.0
                             // Simple hue to RGB (red → green → blue)
                             totalLighting = float3(
                                 saturate(abs(hue * 6.0 - 3.0) - 1.0),
                                 saturate(2.0 - abs(hue * 6.0 - 2.0)),
                                 saturate(2.0 - abs(hue * 6.0 - 4.0))
                             ) * 5.0;  // Boost for visibility
+                        } else {
+                            // OUT OF BOUNDS: Magenta warning (should never happen!)
+                            totalLighting = float3(1, 0, 1) * 5.0;
                         }
                     } else {
                         // NORMAL MODE: Validate light index (0xFFFFFFFF = no light in cell)
