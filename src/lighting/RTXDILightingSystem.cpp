@@ -441,7 +441,7 @@ bool RTXDILightingSystem::CreateDebugOutputBuffer() {
         &heapProps,
         D3D12_HEAP_FLAG_NONE,
         &outputDesc,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_COMMON,  // Start in COMMON, transition on first use
         nullptr,
         IID_PPV_ARGS(&m_debugOutputBuffer)
     );
@@ -732,6 +732,19 @@ void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, 
         return;
     }
 
+    // Transition debug output buffer to UAV for raygen shader write
+    // Track state explicitly to ensure correct transitions
+    D3D12_RESOURCE_STATES beforeState = m_debugOutputInSRVState
+        ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE  // Previous frame ended with SRV read
+        : D3D12_RESOURCE_STATE_COMMON;                     // First frame (initial creation state)
+
+    D3D12_RESOURCE_BARRIER preBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_debugOutputBuffer.Get(),
+        beforeState,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    );
+    commandList->ResourceBarrier(1, &preBarrier);
+
     // Set pipeline state
     commandList->SetPipelineState1(m_dxrStateObject.Get());
 
@@ -810,9 +823,21 @@ void RTXDILightingSystem::DispatchRays(ID3D12GraphicsCommandList4* commandList, 
     // Dispatch rays
     commandList->DispatchRays(&dispatchDesc);
 
-    // UAV barrier on debug output
+    // UAV barrier on debug output (ensure writes complete)
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_debugOutputBuffer.Get());
     commandList->ResourceBarrier(1, &barrier);
+
+    // CRITICAL FIX: Transition debug output from UAV to SRV for Gaussian renderer read
+    // Without this transition, the Gaussian renderer cannot read the RTXDI output (resource state violation)
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_debugOutputBuffer.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
+    commandList->ResourceBarrier(1, &barrier);
+
+    // Track state for next frame
+    m_debugOutputInSRVState = true;
 }
 
 void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,

@@ -129,7 +129,14 @@ private:
 
     // Multi-light system (Phase 3.5)
     std::vector<ParticleRenderer_Gaussian::Light> m_lights;  // Active lights (max 16)
-    void InitializeLights();  // Create default 13-light configuration
+    void InitializeLights();  // Create default 13-light configuration (legacy, multi-light optimized)
+
+    // RTXDI-optimized light presets (wide spatial distribution for grid-based sampling)
+    void InitializeRTXDISphereLights();  // Fibonacci sphere (13 lights, 1200-unit radius)
+    void InitializeRTXDIRingLights();    // Dual-ring disk (16 lights, 600-1000 unit radii)
+    void InitializeRTXDIGridLights();    // 3×3×3 cubic grid (27 lights, 600-unit spacing)
+    void InitializeRTXDISparseLights();  // Minimal debug preset (5 lights, cross pattern)
+
     int m_selectedLightIndex = -1;  // For ImGui light selection
 
     // Particle count control

@@ -130,9 +130,9 @@ private:
     static constexpr uint32_t GRID_CELLS_Z = 30;
     static constexpr uint32_t TOTAL_GRID_CELLS = GRID_CELLS_X * GRID_CELLS_Y * GRID_CELLS_Z;  // 27,000 cells
 
-    static constexpr float WORLD_MIN = -300.0f;      // World bounds (accretion disk)
-    static constexpr float WORLD_MAX = 300.0f;
-    static constexpr float CELL_SIZE = 20.0f;        // 20 units per cell
+    static constexpr float WORLD_MIN = -1500.0f;     // World bounds (expanded for RTXDI presets)
+    static constexpr float WORLD_MAX = 1500.0f;
+    static constexpr float CELL_SIZE = 100.0f;       // 100 units per cell (3000 / 30)
     static constexpr uint32_t MAX_LIGHTS_PER_CELL = 16;
 
     // Light grid cell structure (128 bytes)
@@ -167,6 +167,7 @@ private:
     // Debug output buffer (for visualization)
     ComPtr<ID3D12Resource> m_debugOutputBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_debugOutputUAV;
+    bool m_debugOutputInSRVState = false;  // Track resource state for proper transitions
 
     // === Milestone 4: Reservoir Sampling ===
     // TODO: Add reservoir buffers (ping-pong)

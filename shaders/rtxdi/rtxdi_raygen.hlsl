@@ -35,8 +35,8 @@ cbuffer GridConstants : register(b0) {
     uint g_gridCellsX;      // 30
     uint g_gridCellsY;      // 30
     uint g_gridCellsZ;      // 30
-    float g_worldMin;       // -300.0f
-    float g_cellSize;       // 20.0f
+    float g_worldMin;       // -1500.0f (actual grid bounds)
+    float g_cellSize;       // 100.0f (actual cell size)
     uint g_frameIndex;      // For temporal random variation
 };
 
@@ -118,18 +118,28 @@ uint FlattenCellID(uint3 cellID) {
 }
 
 // Calculate world position from pixel coordinates
-// For now, use simple mapping to disk plane (z = 0)
-// TODO Milestone 4: Use camera matrices for proper 3D projection
+// SIMPLIFIED FIX (2025-10-19): Map to accretion disk plane at z=0
+// This approximation works because:
+// 1. Particles are in -300 to +300 range (disk)
+// 2. Lights are in -300 to +300 range (RTXDI presets scaled down)
+// 3. Grid cells at z=0 contain the relevant lights
 float3 PixelToWorldPosition(uint2 pixelCoord) {
     // Normalize pixel to [0, 1]
     float2 uv = float2(pixelCoord) / float2(g_screenWidth, g_screenHeight);
 
-    // Map to world space disk plane (-300 to +300)
-    float worldRange = 600.0f; // g_worldMax - g_worldMin
+    // Map to accretion disk plane at z=0 (-300 to +300)
+    // This matches the particle distribution and RTXDI light positions
+    float diskRange = 600.0f;  // Accretion disk spans 600 units (-300 to +300)
     float3 worldPos;
-    worldPos.x = g_worldMin + uv.x * worldRange;
-    worldPos.y = g_worldMin + (1.0 - uv.y) * worldRange; // Flip Y
-    worldPos.z = 0.0f; // Disk plane
+    worldPos.x = -300.0f + uv.x * diskRange;  // -300 to +300
+    worldPos.y = -300.0f + (1.0 - uv.y) * diskRange;  // -300 to +300 (flip Y)
+    worldPos.z = 0.0f;  // Disk plane
+
+    // NOTE: This simple mapping ignores camera perspective, but works for our use case:
+    // - Camera looks down at disk from above
+    // - Pixels roughly map to disk positions in X/Y
+    // - All relevant lights are in the -300 to +300 range at various Z heights
+    // - Grid cells containing lights will be found via WorldToGridCell()
 
     return worldPos;
 }

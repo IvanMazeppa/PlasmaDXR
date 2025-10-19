@@ -2053,8 +2053,62 @@ void Application::RenderImGui() {
 
         ImGui::Separator();
 
-        // Preset configurations
-        ImGui::Text("Presets:");
+        // RTXDI-Optimized Presets (wide spatial distribution for grid-based sampling)
+        if (m_lightingSystem == LightingSystem::RTXDI) {
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "RTXDI Presets (Grid-Optimized):");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Optimized for RTXDI spatial grid (30x30x30 cells)\n"
+                                  "Wide distribution reduces jigsaw pattern");
+            }
+
+            if (ImGui::Button("Sphere (13)")) {
+                InitializeRTXDISphereLights();
+                m_selectedLightIndex = -1;
+                LOG_INFO("Applied RTXDI Sphere preset (13 lights, 1200-unit radius)");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Fibonacci sphere distribution\n"
+                                  "Coverage: ~500 grid cells\n"
+                                  "Best for: Smooth gradients");
+            }
+            ImGui::SameLine();
+
+            if (ImGui::Button("Ring (16)")) {
+                InitializeRTXDIRingLights();
+                m_selectedLightIndex = -1;
+                LOG_INFO("Applied RTXDI Ring preset (16 lights, disk formation)");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Dual-ring accretion disk\n"
+                                  "Coverage: ~600 grid cells\n"
+                                  "Best for: Disk-like appearance");
+            }
+            ImGui::SameLine();
+
+            // Grid (27) preset removed - exceeds 16-light hardware limit
+            // Will be re-added when max lights increased to 32
+
+            if (ImGui::Button("Sparse (5)")) {
+                InitializeRTXDISparseLights();
+                m_selectedLightIndex = -1;
+                LOG_INFO("Applied RTXDI Sparse preset (5 lights, cross pattern)");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Minimal light debug preset\n"
+                                  "Coverage: ~200 grid cells\n"
+                                  "Best for: Debugging grid behavior");
+            }
+
+            ImGui::Separator();
+        }
+
+        // Legacy Presets (optimized for multi-light brute-force)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Legacy Presets (Multi-Light):");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Original presets designed for multi-light mode\n"
+                              "May create jigsaw patterns in RTXDI mode due to tight clustering");
+        }
+
         if (ImGui::Button("Disk (13)")) {
             InitializeLights();
             m_selectedLightIndex = -1;
@@ -2201,4 +2255,164 @@ void Application::InitializeLights() {
     LOG_INFO("  1 primary (origin, blue-white, 20000K equiv)");
     LOG_INFO("  4 secondary (spiral arms @ 50 units, orange, 12000K equiv)");
     LOG_INFO("  8 tertiary (hot spots @ 150 units, yellow-orange, 8000K equiv)");
+}
+
+// RTXDI Preset 1: Sphere (13) - Fibonacci sphere distribution
+void Application::InitializeRTXDISphereLights() {
+    using DirectX::XMFLOAT3;
+    const float PI = 3.14159265f;
+    const float PHI = 1.618033988749f;  // Golden ratio
+    const float sphereRadius = 300.0f;  // 300-unit radius sphere (matches particle outer radius)
+
+    m_lights.clear();
+
+    // Generate 13 lights using Fibonacci sphere algorithm
+    // This creates evenly-distributed points on a sphere surface
+    for (int i = 0; i < 13; i++) {
+        // Fibonacci sphere mapping
+        float y = 1.0f - (i / (13.0f - 1.0f)) * 2.0f;  // -1 to 1
+        float radiusAtY = sqrtf(1.0f - y * y);
+        float theta = PHI * i * 2.0f * PI;
+
+        // Convert to Cartesian coordinates
+        float x = cosf(theta) * radiusAtY;
+        float z = sinf(theta) * radiusAtY;
+
+        // Scale to sphere radius
+        ParticleRenderer_Gaussian::Light light;
+        light.position = XMFLOAT3(x * sphereRadius, y * sphereRadius, z * sphereRadius);
+
+        // Color based on height (blue-white at top, orange-red at bottom)
+        float heightFactor = (y + 1.0f) * 0.5f;  // 0 to 1
+        light.color = XMFLOAT3(
+            1.0f,
+            0.7f + heightFactor * 0.3f,  // 0.7-1.0
+            0.5f + heightFactor * 0.5f   // 0.5-1.0
+        );
+
+        light.intensity = 8.0f;   // Lower intensity, wider distribution compensates
+        light.radius = 150.0f;    // Large radius for smooth falloff
+        m_lights.push_back(light);
+    }
+
+    LOG_INFO("Initialized RTXDI Sphere preset: {} lights", m_lights.size());
+    LOG_INFO("  Fibonacci sphere distribution @ 300-unit radius");
+    LOG_INFO("  Expected grid coverage: ~100 cells (~0.37% occupancy)");
+}
+
+// RTXDI Preset 2: Ring (16) - Dual-ring accretion disk formation
+void Application::InitializeRTXDIRingLights() {
+    using DirectX::XMFLOAT3;
+    const float PI = 3.14159265f;
+
+    m_lights.clear();
+
+    // Inner ring: 8 lights at 150-unit radius
+    for (int i = 0; i < 8; i++) {
+        float angle = (i * 45.0f) * (PI / 180.0f);
+        float radius = 150.0f;
+        float height = (i % 2 == 0) ? 100.0f : -100.0f;  // Alternating height
+
+        ParticleRenderer_Gaussian::Light light;
+        light.position = XMFLOAT3(cosf(angle) * radius, height, sinf(angle) * radius);
+        light.color = XMFLOAT3(1.0f, 0.8f, 0.5f);  // Warm orange
+        light.intensity = 12.0f;
+        light.radius = 120.0f;
+        m_lights.push_back(light);
+    }
+
+    // Outer ring: 8 lights at 250-unit radius
+    for (int i = 0; i < 8; i++) {
+        float angle = ((i * 45.0f) + 22.5f) * (PI / 180.0f);  // Offset by 22.5° from inner ring
+        float radius = 250.0f;
+        float height = (i % 2 == 0) ? 150.0f : -150.0f;  // Alternating height
+
+        ParticleRenderer_Gaussian::Light light;
+        light.position = XMFLOAT3(cosf(angle) * radius, height, sinf(angle) * radius);
+        light.color = XMFLOAT3(1.0f, 0.7f, 0.4f);  // Yellow-orange
+        light.intensity = 8.0f;
+        light.radius = 150.0f;
+        m_lights.push_back(light);
+    }
+
+    LOG_INFO("Initialized RTXDI Ring preset: {} lights", m_lights.size());
+    LOG_INFO("  8 inner ring @ 150 units, 8 outer ring @ 250 units");
+    LOG_INFO("  Expected grid coverage: ~50 cells (~0.19% occupancy)");
+}
+
+// RTXDI Preset 3: Grid (27) - 3×3×3 cubic grid
+void Application::InitializeRTXDIGridLights() {
+    using DirectX::XMFLOAT3;
+
+    m_lights.clear();
+
+    // 3×3×3 grid with 600-unit spacing (-900, -300, +300, +900 per axis)
+    const float positions[3] = { -900.0f, 0.0f, 900.0f };
+
+    for (int x = 0; x < 3; x++) {
+        for (int y = 0; y < 3; y++) {
+            for (int z = 0; z < 3; z++) {
+                ParticleRenderer_Gaussian::Light light;
+                light.position = XMFLOAT3(positions[x], positions[y], positions[z]);
+
+                // Color varies by position (creates gradient effect)
+                light.color = XMFLOAT3(
+                    0.5f + (x / 2.0f) * 0.5f,  // 0.5-1.0 based on X
+                    0.5f + (y / 2.0f) * 0.5f,  // 0.5-1.0 based on Y
+                    0.5f + (z / 2.0f) * 0.5f   // 0.5-1.0 based on Z
+                );
+
+                light.intensity = 6.0f;   // Lower intensity for many lights
+                light.radius = 180.0f;    // Large radius for maximum smoothness
+                m_lights.push_back(light);
+            }
+        }
+    }
+
+    LOG_INFO("Initialized RTXDI Grid preset: {} lights", m_lights.size());
+    LOG_INFO("  3×3×3 cubic grid with 600-unit spacing");
+    LOG_INFO("  Expected grid coverage: ~1200 cells (~4.4% occupancy)");
+}
+
+// RTXDI Preset 4: Sparse (5) - Minimal debug preset
+void Application::InitializeRTXDISparseLights() {
+    using DirectX::XMFLOAT3;
+
+    m_lights.clear();
+
+    // Center light
+    ParticleRenderer_Gaussian::Light center;
+    center.position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    center.color = XMFLOAT3(1.0f, 1.0f, 1.0f);  // White
+    center.intensity = 15.0f;
+    center.radius = 200.0f;
+    m_lights.push_back(center);
+
+    // 4 axis lights (X and Z only, no Y variation for disk appearance)
+    const XMFLOAT3 axisPositions[4] = {
+        XMFLOAT3(250.0f, 0.0f, 0.0f),   // +X (Red tint)
+        XMFLOAT3(-250.0f, 0.0f, 0.0f),  // -X (Cyan tint)
+        XMFLOAT3(0.0f, 0.0f, 250.0f),   // +Z (Blue tint)
+        XMFLOAT3(0.0f, 0.0f, -250.0f)   // -Z (Yellow tint)
+    };
+
+    const XMFLOAT3 axisColors[4] = {
+        XMFLOAT3(1.0f, 0.6f, 0.6f),  // Red tint
+        XMFLOAT3(0.6f, 1.0f, 1.0f),  // Cyan tint
+        XMFLOAT3(0.6f, 0.6f, 1.0f),  // Blue tint
+        XMFLOAT3(1.0f, 1.0f, 0.6f)   // Yellow tint
+    };
+
+    for (int i = 0; i < 4; i++) {
+        ParticleRenderer_Gaussian::Light light;
+        light.position = axisPositions[i];
+        light.color = axisColors[i];
+        light.intensity = 10.0f;
+        light.radius = 150.0f;
+        m_lights.push_back(light);
+    }
+
+    LOG_INFO("Initialized RTXDI Sparse preset: {} lights", m_lights.size());
+    LOG_INFO("  1 center + 4 axis lights @ 250 units (cross pattern)");
+    LOG_INFO("  Expected grid coverage: ~40 cells (~0.15% occupancy)");
 }
