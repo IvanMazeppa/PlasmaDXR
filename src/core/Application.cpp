@@ -574,6 +574,11 @@ void Application::Render() {
             gaussianConstants.debugRTXDISelection = m_debugRTXDISelection ? 1u : 0u;
             gaussianConstants.debugPadding = DirectX::XMFLOAT3(0, 0, 0);
 
+            // God ray system (Phase 5 Milestone 5.3c)
+            gaussianConstants.godRayDensity = m_godRayDensity;
+            gaussianConstants.godRayStepMultiplier = m_godRayStepMultiplier;
+            gaussianConstants.godRayPadding = DirectX::XMFLOAT2(0, 0);
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -2265,6 +2270,166 @@ void Application::RenderImGui() {
             ImGui::PopID();
         }
 
+        // === GOD RAY SYSTEM (Phase 5 Milestone 5.3c) ===
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::TreeNode("God Ray System")) {
+            ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.4f, 1.0f), "Volumetric light beams (static in world space)");
+
+            // Global controls
+            ImGui::Separator();
+            ImGui::Text("Global God Ray Settings:");
+            ImGui::SliderFloat("God Ray Density", &m_godRayDensity, 0.0f, 1.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Global multiplier for all god ray brightness\n0.0 = disabled, 1.0 = full intensity");
+            }
+
+            ImGui::SliderFloat("Step Multiplier", &m_godRayStepMultiplier, 0.5f, 2.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Ray marching step size for god rays\n<1.0 = higher quality (slower)\n>1.0 = lower quality (faster)");
+            }
+
+            // Presets
+            ImGui::Separator();
+            ImGui::Text("God Ray Presets:");
+
+            if (ImGui::Button("Static Downward Beams")) {
+                m_godRayDensity = 0.5f;
+                for (auto& light : m_lights) {
+                    light.enableGodRays = 1.0f;
+                    light.godRayIntensity = 2.0f;
+                    light.godRayLength = 1500.0f;
+                    light.godRayConeAngle = 0.3f;  // ~17 degrees
+                    light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+                    light.godRayFalloff = 2.0f;
+                    light.godRayRotationSpeed = 0.0f;
+                }
+                LOG_INFO("Applied god ray preset: Static Downward Beams");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("All lights point straight down with moderate spread");
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Rotating Searchlights")) {
+                m_godRayDensity = 0.7f;
+                for (auto& light : m_lights) {
+                    light.enableGodRays = 1.0f;
+                    light.godRayIntensity = 4.0f;
+                    light.godRayLength = 2000.0f;
+                    light.godRayConeAngle = 0.2f;  // ~11 degrees (narrow)
+                    light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+                    light.godRayFalloff = 5.0f;  // Sharp edges
+                    light.godRayRotationSpeed = 0.5f;  // Slow rotation
+                }
+                LOG_INFO("Applied god ray preset: Rotating Searchlights");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Narrow rotating beams (cinematic searchlight effect)");
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Radial Burst")) {
+                m_godRayDensity = 0.3f;
+                for (size_t i = 0; i < m_lights.size(); i++) {
+                    auto& light = m_lights[i];
+                    light.enableGodRays = 1.0f;
+                    light.godRayIntensity = 3.0f;
+                    light.godRayLength = 3000.0f;
+                    light.godRayConeAngle = 0.5f;  // ~28 degrees (wide)
+
+                    // Radial outward from light position
+                    DirectX::XMVECTOR pos = DirectX::XMLoadFloat3(&light.position);
+                    DirectX::XMVECTOR dir = DirectX::XMVector3Normalize(pos);
+                    DirectX::XMStoreFloat3(&light.godRayDirection, dir);
+
+                    light.godRayFalloff = 1.5f;  // Soft edges
+                    light.godRayRotationSpeed = 0.0f;
+                }
+                LOG_INFO("Applied god ray preset: Radial Burst");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Beams radiate outward from each light (stellar nursery effect)");
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Disable All")) {
+                m_godRayDensity = 0.0f;
+                for (auto& light : m_lights) {
+                    light.enableGodRays = 0.0f;
+                }
+                LOG_INFO("Disabled all god rays");
+            }
+
+            // Per-light controls
+            ImGui::Separator();
+            ImGui::Text("Per-Light God Ray Controls:");
+
+            for (size_t i = 0; i < m_lights.size(); i++) {
+                ImGui::PushID(static_cast<int>(i) + 1000);  // Unique ID for god ray controls
+
+                char label[64];
+                snprintf(label, sizeof(label), "Light %zu God Rays###GodRay%zu", i, i);
+
+                if (ImGui::TreeNode(label)) {
+                    bool enabled = (m_lights[i].enableGodRays > 0.5f);
+                    if (ImGui::Checkbox("Enable God Rays", &enabled)) {
+                        m_lights[i].enableGodRays = enabled ? 1.0f : 0.0f;
+                    }
+
+                    if (enabled) {
+                        ImGui::SliderFloat("Intensity##godray", &m_lights[i].godRayIntensity, 0.0f, 10.0f, "%.1f");
+                        ImGui::SliderFloat("Length##godray", &m_lights[i].godRayLength, 100.0f, 5000.0f, "%.0f");
+
+                        // Cone angle in degrees for user-friendliness
+                        float coneAngleDegrees = m_lights[i].godRayConeAngle * 180.0f / 3.14159f;
+                        if (ImGui::SliderFloat("Cone Angle (degrees)", &coneAngleDegrees, 1.0f, 90.0f, "%.1f")) {
+                            m_lights[i].godRayConeAngle = coneAngleDegrees * 3.14159f / 180.0f;
+                        }
+
+                        ImGui::SliderFloat("Falloff##godray", &m_lights[i].godRayFalloff, 0.1f, 10.0f, "%.1f");
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Higher = sharper beam edges\nLower = softer, wider beam");
+                        }
+
+                        ImGui::Text("Direction:");
+                        ImGui::DragFloat3("Dir##godray", &m_lights[i].godRayDirection.x, 0.01f, -1.0f, 1.0f, "%.2f");
+
+                        if (ImGui::Button("Normalize Direction")) {
+                            DirectX::XMVECTOR dir = DirectX::XMLoadFloat3(&m_lights[i].godRayDirection);
+                            dir = DirectX::XMVector3Normalize(dir);
+                            DirectX::XMStoreFloat3(&m_lights[i].godRayDirection, dir);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Downward")) {
+                            m_lights[i].godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Radial Out")) {
+                            DirectX::XMVECTOR pos = DirectX::XMLoadFloat3(&m_lights[i].position);
+                            DirectX::XMVECTOR dir = DirectX::XMVector3Normalize(pos);
+                            DirectX::XMStoreFloat3(&m_lights[i].godRayDirection, dir);
+                        }
+
+                        ImGui::SliderFloat("Rotation Speed (rad/s)", &m_lights[i].godRayRotationSpeed, -3.14f, 3.14f, "%.2f");
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("0.0 = static beam\n>0.0 = rotate counterclockwise\n<0.0 = rotate clockwise");
+                        }
+                    }
+
+                    ImGui::TreePop();
+                }
+
+                ImGui::PopID();
+            }
+
+            ImGui::TreePop();
+        }
+
         // === Bulk Light Color Controls (Phase 5 Milestone 5.3b) ===
         ImGui::Separator();
         ImGui::Separator();
@@ -2504,10 +2669,23 @@ void Application::InitializeLights() {
         m_lights.push_back(hotSpot);
     }
 
+    // Initialize god ray parameters (all disabled by default)
+    for (auto& light : m_lights) {
+        light.enableGodRays = 0.0f;                                  // Disabled
+        light.godRayIntensity = 2.0f;                                // Moderate brightness
+        light.godRayLength = 1500.0f;                                // Medium-range beam
+        light.godRayFalloff = 2.0f;                                  // Moderate sharpness
+        light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f); // Downward
+        light.godRayConeAngle = 0.3f;                                // ~17 degrees
+        light.godRayRotationSpeed = 0.0f;                            // Static
+        light._padding = 0.0f;                                       // Zero padding
+    }
+
     LOG_INFO("Initialized multi-light system: {} lights", m_lights.size());
     LOG_INFO("  1 primary (origin, blue-white, 20000K equiv)");
     LOG_INFO("  4 secondary (spiral arms @ 50 units, orange, 12000K equiv)");
     LOG_INFO("  8 tertiary (hot spots @ 150 units, yellow-orange, 8000K equiv)");
+    LOG_INFO("  God ray parameters initialized (all disabled by default)");
 }
 
 // RTXDI Preset 1: Sphere (13) - Fibonacci sphere distribution
@@ -2546,6 +2724,18 @@ void Application::InitializeRTXDISphereLights() {
         light.intensity = 8.0f;   // Lower intensity, wider distribution compensates
         light.radius = 150.0f;    // Large radius for smooth falloff
         m_lights.push_back(light);
+    }
+
+    // Initialize god ray parameters
+    for (auto& light : m_lights) {
+        light.enableGodRays = 0.0f;
+        light.godRayIntensity = 2.0f;
+        light.godRayLength = 1500.0f;
+        light.godRayFalloff = 2.0f;
+        light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+        light.godRayConeAngle = 0.3f;
+        light.godRayRotationSpeed = 0.0f;
+        light._padding = 0.0f;
     }
 
     LOG_INFO("Initialized RTXDI Sphere preset: {} lights", m_lights.size());
@@ -2588,6 +2778,18 @@ void Application::InitializeRTXDIRingLights() {
         m_lights.push_back(light);
     }
 
+    // Initialize god ray parameters
+    for (auto& light : m_lights) {
+        light.enableGodRays = 0.0f;
+        light.godRayIntensity = 2.0f;
+        light.godRayLength = 1500.0f;
+        light.godRayFalloff = 2.0f;
+        light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+        light.godRayConeAngle = 0.3f;
+        light.godRayRotationSpeed = 0.0f;
+        light._padding = 0.0f;
+    }
+
     LOG_INFO("Initialized RTXDI Ring preset: {} lights", m_lights.size());
     LOG_INFO("  8 inner ring @ 150 units, 8 outer ring @ 250 units");
     LOG_INFO("  Expected grid coverage: ~50 cells (~0.19% occupancy)");
@@ -2620,6 +2822,18 @@ void Application::InitializeRTXDIGridLights() {
                 m_lights.push_back(light);
             }
         }
+    }
+
+    // Initialize god ray parameters
+    for (auto& light : m_lights) {
+        light.enableGodRays = 0.0f;
+        light.godRayIntensity = 2.0f;
+        light.godRayLength = 1500.0f;
+        light.godRayFalloff = 2.0f;
+        light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+        light.godRayConeAngle = 0.3f;
+        light.godRayRotationSpeed = 0.0f;
+        light._padding = 0.0f;
     }
 
     LOG_INFO("Initialized RTXDI Grid preset: {} lights", m_lights.size());
@@ -2663,6 +2877,18 @@ void Application::InitializeRTXDISparseLights() {
         light.intensity = 10.0f;
         light.radius = 150.0f;
         m_lights.push_back(light);
+    }
+
+    // Initialize god ray parameters
+    for (auto& light : m_lights) {
+        light.enableGodRays = 0.0f;
+        light.godRayIntensity = 2.0f;
+        light.godRayLength = 1500.0f;
+        light.godRayFalloff = 2.0f;
+        light.godRayDirection = DirectX::XMFLOAT3(0.0f, -1.0f, 0.0f);
+        light.godRayConeAngle = 0.3f;
+        light.godRayRotationSpeed = 0.0f;
+        light._padding = 0.0f;
     }
 
     LOG_INFO("Initialized RTXDI Sparse preset: {} lights", m_lights.size());

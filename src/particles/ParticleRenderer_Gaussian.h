@@ -15,12 +15,24 @@ class ResourceManager;
 
 class ParticleRenderer_Gaussian {
 public:
-    // Light structure matching HLSL (32 bytes)
+    // Light structure matching HLSL (64 bytes with god ray parameters)
     struct Light {
+        // === Base Light Properties (32 bytes) ===
         DirectX::XMFLOAT3 position;        // 12 bytes
         float intensity;                   // 4 bytes
         DirectX::XMFLOAT3 color;          // 12 bytes
         float radius;                      // 4 bytes
+
+        // === God Ray Parameters (32 bytes) ===
+        float enableGodRays;              // 4 bytes (0.0=disabled, 1.0=enabled)
+        float godRayIntensity;            // 4 bytes (brightness 0.0-10.0)
+        float godRayLength;               // 4 bytes (beam length 100.0-5000.0 units)
+        float godRayFalloff;              // 4 bytes (radial falloff 0.1-10.0, higher=sharper)
+        DirectX::XMFLOAT3 godRayDirection; // 12 bytes (normalized beam direction)
+        float godRayConeAngle;            // 4 bytes (half-angle in radians 0.0-1.57)
+        float godRayRotationSpeed;        // 4 bytes (rotation rad/s, 0=static)
+        float _padding;                   // 4 bytes (GPU alignment)
+        // Total: 64 bytes (GPU-aligned)
     };
 
     struct RenderConstants {
@@ -70,6 +82,11 @@ public:
         uint32_t useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
         uint32_t debugRTXDISelection;      // DEBUG: Visualize selected light index (0=off, 1=on)
         DirectX::XMFLOAT3 debugPadding;    // Padding for alignment
+
+        // === God Ray System (Phase 5 Milestone 5.3c) ===
+        float godRayDensity;               // Global god ray density (0.0-1.0, ambient medium)
+        float godRayStepMultiplier;        // Ray march step multiplier (0.5-2.0, quality vs speed)
+        DirectX::XMFLOAT2 godRayPadding;   // Padding for alignment
     };
 
 public:

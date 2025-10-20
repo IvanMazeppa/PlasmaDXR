@@ -4,6 +4,7 @@
 
 #include "gaussian_common.hlsl"
 #include "plasma_emission.hlsl"
+#include "god_rays.hlsl"
 
 // Match C++ ParticleRenderer_Gaussian::RenderConstants structure
 cbuffer GaussianConstants : register(b0)
@@ -53,14 +54,31 @@ cbuffer GaussianConstants : register(b0)
     uint useRTXDI;                 // 0=multi-light (13 lights), 1=RTXDI (1 sampled light)
     uint debugRTXDISelection;      // DEBUG: Visualize selected light index (0=off, 1=on)
     float3 debugPadding;           // Padding for alignment
+
+    // God ray system (Phase 5 Milestone 5.3c)
+    float godRayDensity;           // Global god ray density (0.0-1.0)
+    float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0)
+    float2 godRayPadding;          // Padding for alignment
 };
 
-// Light structure for multi-light system
+// Light structure for multi-light system (64 bytes with god ray parameters)
 struct Light {
+    // Base properties (32 bytes)
     float3 position;               // 12 bytes
     float intensity;               // 4 bytes
     float3 color;                  // 12 bytes
     float radius;                  // 4 bytes (for soft shadows)
+
+    // God ray parameters (32 bytes)
+    float enableGodRays;          // 4 bytes (0.0=disabled, 1.0=enabled)
+    float godRayIntensity;        // 4 bytes
+    float godRayLength;           // 4 bytes
+    float godRayFalloff;          // 4 bytes
+    float3 godRayDirection;       // 12 bytes (normalized)
+    float godRayConeAngle;        // 4 bytes (half-angle in radians)
+    float godRayRotationSpeed;    // 4 bytes (rad/s)
+    float _padding;               // 4 bytes (GPU alignment)
+    // Total: 64 bytes
 };
 
 // Light array (after constant buffer to avoid size issues)
@@ -611,6 +629,30 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
                 // Combine: glow + external lighting + in-scattering (all additive)
                 totalEmission = selfEmission + externalLight + inScatter * inScatterStrength;
+            }
+
+            // === GOD RAY CONTRIBUTION (Phase 5 Milestone 5.3c) ===
+            // Volumetric scattering from ambient medium (independent of particles)
+            // Accumulated at each ray march step for all lights with god rays enabled
+            if (godRayDensity > 0.001) {
+                float3 godRayTotal = float3(0, 0, 0);
+
+                for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
+                    Light light = g_lights[lightIdx];
+
+                    // Calculate god ray contribution from this light
+                    godRayTotal += CalculateGodRayContribution(
+                        pos,                // Current position along ray
+                        light,              // Light with god ray parameters
+                        time,               // For rotation animation
+                        godRayDensity,      // Global density multiplier
+                        g_particleBVH       // TLAS for shadow rays
+                    );
+                }
+
+                // Add god ray contribution (volumetric integral)
+                // Multiply by step size to convert from density to accumulated radiance
+                totalEmission += godRayTotal * stepSize * godRayStepMultiplier;
             }
 
             // Volume rendering equation with proper absorption/emission

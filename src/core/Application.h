@@ -122,6 +122,10 @@ private:
     float m_rtMaxDistance = 100.0f;  // Updated to match shader
     float m_rtParticleRadius = 5.0f;   // Updated to match shader
 
+    // === God Ray System (Phase 5 Milestone 5.3c) ===
+    float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
+    float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
+
     // Enhancement toggles and strengths
     bool m_usePhysicalEmission = false;
     float m_emissionStrength = 1.0f;       // 0.0-5.0
