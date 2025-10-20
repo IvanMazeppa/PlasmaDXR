@@ -139,6 +139,77 @@ private:
 
     int m_selectedLightIndex = -1;  // For ImGui light selection
 
+    // === Bulk Light Color Control System (Phase 5 Milestone 5.3b) ===
+    enum class ColorPreset {
+        Custom,
+        CoolBlue,
+        White,
+        WarmWhite,
+        WarmSunset,
+        DeepRed,
+        Rainbow,
+        Complementary,
+        MonochromeBlue,
+        MonochromeRed,
+        MonochromeGreen,
+        Neon,
+        Pastel,
+        StellarNursery,
+        RedGiant,
+        AccretionDisk,
+        BinarySystem,
+        DustTorus
+    };
+
+    enum class GradientType {
+        Radial,       // Distance from center
+        LinearX,      // Position along X
+        LinearY,      // Position along Y
+        LinearZ,      // Position along Z
+        Circular      // Angle around Y-axis
+    };
+
+    enum class LightSelection {
+        All,
+        InnerRing,
+        OuterRing,
+        TopHalf,
+        BottomHalf,
+        EvenIndices,
+        OddIndices,
+        CustomRange
+    };
+
+    // Bulk color control state
+    ColorPreset m_currentColorPreset = ColorPreset::Custom;
+    LightSelection m_lightSelection = LightSelection::All;
+    int m_customRangeStart = 0;
+    int m_customRangeEnd = 15;
+    float m_radialThreshold = 800.0f;  // Distance threshold for inner/outer ring
+
+    // Gradient application state
+    GradientType m_gradientType = GradientType::Radial;
+    DirectX::XMFLOAT3 m_gradientColorStart = {1.0f, 1.0f, 1.0f};
+    DirectX::XMFLOAT3 m_gradientColorEnd = {1.0f, 0.0f, 0.0f};
+
+    // Global color operations
+    float m_hueShift = 0.0f;            // -180 to +180 degrees
+    float m_saturationAdjust = 1.0f;    // 0.0 to 2.0 (multiplier)
+    float m_valueAdjust = 1.0f;         // 0.0 to 2.0 (multiplier)
+    float m_temperatureShift = 0.0f;    // -1.0 (cooler) to +1.0 (warmer)
+
+    // Helper functions for bulk color control
+    void ApplyColorPreset(ColorPreset preset);
+    void ApplyGradient(GradientType type, DirectX::XMFLOAT3 startColor, DirectX::XMFLOAT3 endColor);
+    void ApplyGlobalHueShift(float degrees);
+    void ApplyGlobalSaturationAdjust(float multiplier);
+    void ApplyGlobalValueAdjust(float multiplier);
+    void ApplyTemperatureShift(float amount);
+    std::vector<int> GetSelectedLightIndices();
+    DirectX::XMFLOAT3 RGBtoHSV(DirectX::XMFLOAT3 rgb);
+    DirectX::XMFLOAT3 HSVtoRGB(DirectX::XMFLOAT3 hsv);
+    DirectX::XMFLOAT3 BlackbodyColor(float temperature);
+
     // Particle count control
     uint32_t m_activeParticleCount = 10000;  // Runtime-adjustable particle count
 

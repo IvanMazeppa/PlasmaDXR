@@ -2264,6 +2264,197 @@ void Application::RenderImGui() {
 
             ImGui::PopID();
         }
+
+        // === Bulk Light Color Controls (Phase 5 Milestone 5.3b) ===
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::TreeNode("Bulk Light Color Controls")) {
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.6f, 1.0f), "Quick color changes for all lights!");
+
+            // === SECTION 1: Selection ===
+            if (ImGui::TreeNode("Light Selection")) {
+                const char* selectionModes[] = {
+                    "All Lights", "Inner Ring", "Outer Ring", "Top Half",
+                    "Bottom Half", "Even Indices", "Odd Indices", "Custom Range"
+                };
+
+                int currentSelection = (int)m_lightSelection;
+                if (ImGui::Combo("Select Lights", &currentSelection, selectionModes, 8)) {
+                    m_lightSelection = (LightSelection)currentSelection;
+                }
+
+                // Custom range controls
+                if (m_lightSelection == LightSelection::CustomRange) {
+                    ImGui::SliderInt("Range Start", &m_customRangeStart, 0, (int)m_lights.size() - 1);
+                    ImGui::SliderInt("Range End", &m_customRangeEnd, 0, (int)m_lights.size() - 1);
+                }
+
+                // Radial threshold
+                if (m_lightSelection == LightSelection::InnerRing || m_lightSelection == LightSelection::OuterRing) {
+                    ImGui::SliderFloat("Radial Threshold", &m_radialThreshold, 100.0f, 2000.0f);
+                }
+
+                // Show selected count
+                auto selectedIndices = GetSelectedLightIndices();
+                ImGui::Text("Selected: %d lights", (int)selectedIndices.size());
+
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+
+            // === SECTION 2: Color Presets ===
+            if (ImGui::TreeNode("Color Presets")) {
+
+                ImGui::Text("Temperature Presets:");
+                if (ImGui::Button("Cool Blue (10000K)")) ApplyColorPreset(ColorPreset::CoolBlue);
+                ImGui::SameLine();
+                if (ImGui::Button("White (6500K)")) ApplyColorPreset(ColorPreset::White);
+
+                if (ImGui::Button("Warm White (4000K)")) ApplyColorPreset(ColorPreset::WarmWhite);
+                ImGui::SameLine();
+                if (ImGui::Button("Warm Sunset (2500K)")) ApplyColorPreset(ColorPreset::WarmSunset);
+
+                if (ImGui::Button("Deep Red (1800K)")) ApplyColorPreset(ColorPreset::DeepRed);
+
+                ImGui::Separator();
+
+                ImGui::Text("Artistic Presets:");
+                if (ImGui::Button("Rainbow")) ApplyColorPreset(ColorPreset::Rainbow);
+                ImGui::SameLine();
+                if (ImGui::Button("Complementary")) ApplyColorPreset(ColorPreset::Complementary);
+
+                if (ImGui::Button("Monochrome Blue")) ApplyColorPreset(ColorPreset::MonochromeBlue);
+                ImGui::SameLine();
+                if (ImGui::Button("Monochrome Red")) ApplyColorPreset(ColorPreset::MonochromeRed);
+
+                if (ImGui::Button("Monochrome Green")) ApplyColorPreset(ColorPreset::MonochromeGreen);
+                ImGui::SameLine();
+                if (ImGui::Button("Neon")) ApplyColorPreset(ColorPreset::Neon);
+
+                if (ImGui::Button("Pastel")) ApplyColorPreset(ColorPreset::Pastel);
+
+                ImGui::Separator();
+
+                ImGui::Text("Scenario Presets:");
+                if (ImGui::Button("Stellar Nursery")) ApplyColorPreset(ColorPreset::StellarNursery);
+                ImGui::SameLine();
+                if (ImGui::Button("Red Giant")) ApplyColorPreset(ColorPreset::RedGiant);
+
+                if (ImGui::Button("Accretion Disk")) ApplyColorPreset(ColorPreset::AccretionDisk);
+                ImGui::SameLine();
+                if (ImGui::Button("Binary System")) ApplyColorPreset(ColorPreset::BinarySystem);
+
+                if (ImGui::Button("Dust Torus")) ApplyColorPreset(ColorPreset::DustTorus);
+
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+
+            // === SECTION 3: Gradient Application ===
+            if (ImGui::TreeNode("Gradient Application")) {
+
+                const char* gradientTypes[] = {
+                    "Radial (Distance)", "Linear X", "Linear Y", "Linear Z", "Circular (Angle)"
+                };
+
+                int currentGradient = (int)m_gradientType;
+                if (ImGui::Combo("Gradient Type", &currentGradient, gradientTypes, 5)) {
+                    m_gradientType = (GradientType)currentGradient;
+                }
+
+                ImGui::ColorEdit3("Start Color", &m_gradientColorStart.x);
+                ImGui::ColorEdit3("End Color", &m_gradientColorEnd.x);
+
+                if (ImGui::Button("Apply Gradient")) {
+                    ApplyGradient(m_gradientType, m_gradientColorStart, m_gradientColorEnd);
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+
+            // === SECTION 4: Global Color Operations ===
+            if (ImGui::TreeNode("Global Color Operations")) {
+
+                // Hue shift
+                ImGui::SliderFloat("Hue Shift (degrees)", &m_hueShift, -180.0f, 180.0f);
+                if (ImGui::Button("Apply Hue Shift")) {
+                    ApplyGlobalHueShift(m_hueShift);
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##hue")) {
+                    m_hueShift = 0.0f;
+                }
+
+                // Saturation adjust
+                ImGui::SliderFloat("Saturation Multiplier", &m_saturationAdjust, 0.0f, 2.0f);
+                if (ImGui::Button("Apply Saturation")) {
+                    ApplyGlobalSaturationAdjust(m_saturationAdjust);
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##sat")) {
+                    m_saturationAdjust = 1.0f;
+                }
+
+                // Value adjust
+                ImGui::SliderFloat("Brightness Multiplier", &m_valueAdjust, 0.0f, 2.0f);
+                if (ImGui::Button("Apply Brightness")) {
+                    ApplyGlobalValueAdjust(m_valueAdjust);
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##val")) {
+                    m_valueAdjust = 1.0f;
+                }
+
+                // Temperature shift
+                ImGui::SliderFloat("Temperature Shift", &m_temperatureShift, -1.0f, 1.0f);
+                if (ImGui::Button("Apply Temperature Shift")) {
+                    ApplyTemperatureShift(m_temperatureShift);
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset##temp")) {
+                    m_temperatureShift = 0.0f;
+                }
+
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+
+            // === SECTION 5: Quick Actions ===
+            if (ImGui::Button("Copy Light 0 Color to All")) {
+                if (m_lights.size() > 0) {
+                    DirectX::XMFLOAT3 color = m_lights[0].color;
+                    auto indices = GetSelectedLightIndices();
+                    for (int idx : indices) {
+                        m_lights[idx].color = color;
+                    }
+                    m_currentColorPreset = ColorPreset::Custom;
+                }
+            }
+
+            if (ImGui::Button("Randomize Colors")) {
+                auto indices = GetSelectedLightIndices();
+                for (int idx : indices) {
+                    float h = (float)(rand() % 360);
+                    float s = 0.8f + (float)(rand() % 20) / 100.0f;  // 0.8-1.0
+                    float v = 0.9f + (float)(rand() % 10) / 100.0f;  // 0.9-1.0
+                    m_lights[idx].color = HSVtoRGB(DirectX::XMFLOAT3(h, s, v));
+                }
+                m_currentColorPreset = ColorPreset::Custom;
+            }
+
+            ImGui::TreePop();
+        }
     }
 
     ImGui::End();
@@ -2477,4 +2668,424 @@ void Application::InitializeRTXDISparseLights() {
     LOG_INFO("Initialized RTXDI Sparse preset: {} lights", m_lights.size());
     LOG_INFO("  1 center + 4 axis lights @ 250 units (cross pattern)");
     LOG_INFO("  Expected grid coverage: ~40 cells (~0.15% occupancy)");
+}
+
+// ============================================================================
+// Bulk Light Color Control System (Phase 5 Milestone 5.3b)
+// ============================================================================
+
+DirectX::XMFLOAT3 Application::RGBtoHSV(DirectX::XMFLOAT3 rgb) {
+    float r = rgb.x, g = rgb.y, b = rgb.z;
+    float max = (std::max)({r, g, b});
+    float min = (std::min)({r, g, b});
+    float delta = max - min;
+
+    // Hue
+    float h = 0.0f;
+    if (delta > 0.001f) {
+        if (max == r) {
+            h = 60.0f * fmod((g - b) / delta, 6.0f);
+        } else if (max == g) {
+            h = 60.0f * ((b - r) / delta + 2.0f);
+        } else {
+            h = 60.0f * ((r - g) / delta + 4.0f);
+        }
+    }
+    if (h < 0.0f) h += 360.0f;
+
+    // Saturation
+    float s = (max < 0.001f) ? 0.0f : (delta / max);
+
+    // Value
+    float v = max;
+
+    return DirectX::XMFLOAT3(h, s, v);
+}
+
+DirectX::XMFLOAT3 Application::HSVtoRGB(DirectX::XMFLOAT3 hsv) {
+    float h = hsv.x, s = hsv.y, v = hsv.z;
+
+    float c = v * s;
+    float x = c * (1.0f - fabs(fmod(h / 60.0f, 2.0f) - 1.0f));
+    float m = v - c;
+
+    float r, g, b;
+    if (h < 60.0f) {
+        r = c; g = x; b = 0.0f;
+    } else if (h < 120.0f) {
+        r = x; g = c; b = 0.0f;
+    } else if (h < 180.0f) {
+        r = 0.0f; g = c; b = x;
+    } else if (h < 240.0f) {
+        r = 0.0f; g = x; b = c;
+    } else if (h < 300.0f) {
+        r = x; g = 0.0f; b = c;
+    } else {
+        r = c; g = 0.0f; b = x;
+    }
+
+    return DirectX::XMFLOAT3(r + m, g + m, b + m);
+}
+
+DirectX::XMFLOAT3 Application::BlackbodyColor(float temperature) {
+    // Simplified Planck blackbody approximation
+    // Temperature in Kelvin → RGB color
+
+    float t = temperature / 100.0f;
+    float r, g, b;
+
+    // Red
+    if (t <= 66.0f) {
+        r = 1.0f;
+    } else {
+        r = 1.292936186f * pow(t - 60.0f, -0.1332047592f);
+        r = (std::min)(1.0f, (std::max)(0.0f, r));
+    }
+
+    // Green
+    if (t <= 66.0f) {
+        g = 0.39008157876f * log(t) - 0.631841444f;
+    } else {
+        g = 1.129890861f * pow(t - 60.0f, -0.0755148492f);
+    }
+    g = (std::min)(1.0f, (std::max)(0.0f, g));
+
+    // Blue
+    if (t >= 66.0f) {
+        b = 1.0f;
+    } else if (t <= 19.0f) {
+        b = 0.0f;
+    } else {
+        b = 0.543206789f * log(t - 10.0f) - 1.196254089f;
+        b = (std::min)(1.0f, (std::max)(0.0f, b));
+    }
+
+    return DirectX::XMFLOAT3(r, g, b);
+}
+
+std::vector<int> Application::GetSelectedLightIndices() {
+    std::vector<int> indices;
+
+    switch (m_lightSelection) {
+    case LightSelection::All:
+        for (int i = 0; i < (int)m_lights.size(); i++) {
+            indices.push_back(i);
+        }
+        break;
+
+    case LightSelection::InnerRing:
+        for (int i = 0; i < (int)m_lights.size(); i++) {
+            float dist = sqrt(m_lights[i].position.x * m_lights[i].position.x +
+                            m_lights[i].position.y * m_lights[i].position.y +
+                            m_lights[i].position.z * m_lights[i].position.z);
+            if (dist < m_radialThreshold) {
+                indices.push_back(i);
+            }
+        }
+        break;
+
+    case LightSelection::OuterRing:
+        for (int i = 0; i < (int)m_lights.size(); i++) {
+            float dist = sqrt(m_lights[i].position.x * m_lights[i].position.x +
+                            m_lights[i].position.y * m_lights[i].position.y +
+                            m_lights[i].position.z * m_lights[i].position.z);
+            if (dist >= m_radialThreshold) {
+                indices.push_back(i);
+            }
+        }
+        break;
+
+    case LightSelection::TopHalf:
+        for (int i = 0; i < (int)m_lights.size(); i++) {
+            if (m_lights[i].position.y > 0.0f) {
+                indices.push_back(i);
+            }
+        }
+        break;
+
+    case LightSelection::BottomHalf:
+        for (int i = 0; i < (int)m_lights.size(); i++) {
+            if (m_lights[i].position.y <= 0.0f) {
+                indices.push_back(i);
+            }
+        }
+        break;
+
+    case LightSelection::EvenIndices:
+        for (int i = 0; i < (int)m_lights.size(); i += 2) {
+            indices.push_back(i);
+        }
+        break;
+
+    case LightSelection::OddIndices:
+        for (int i = 1; i < (int)m_lights.size(); i += 2) {
+            indices.push_back(i);
+        }
+        break;
+
+    case LightSelection::CustomRange:
+        for (int i = m_customRangeStart; i <= m_customRangeEnd && i < (int)m_lights.size(); i++) {
+            indices.push_back(i);
+        }
+        break;
+    }
+
+    return indices;
+}
+
+void Application::ApplyGradient(GradientType type, DirectX::XMFLOAT3 startColor, DirectX::XMFLOAT3 endColor) {
+    auto indices = GetSelectedLightIndices();
+
+    // Calculate gradient parameter for each light
+    std::vector<float> gradientParams;
+    float minParam = FLT_MAX, maxParam = -FLT_MAX;
+
+    for (int idx : indices) {
+        float param = 0.0f;
+
+        switch (type) {
+        case GradientType::Radial:
+            // Distance from origin
+            param = sqrt(m_lights[idx].position.x * m_lights[idx].position.x +
+                        m_lights[idx].position.y * m_lights[idx].position.y +
+                        m_lights[idx].position.z * m_lights[idx].position.z);
+            break;
+
+        case GradientType::LinearX:
+            param = m_lights[idx].position.x;
+            break;
+
+        case GradientType::LinearY:
+            param = m_lights[idx].position.y;
+            break;
+
+        case GradientType::LinearZ:
+            param = m_lights[idx].position.z;
+            break;
+
+        case GradientType::Circular:
+            // Angle around Y-axis
+            param = atan2(m_lights[idx].position.z, m_lights[idx].position.x);
+            param = (param + 3.14159f) / (2.0f * 3.14159f);  // Normalize to 0-1
+            break;
+        }
+
+        gradientParams.push_back(param);
+        minParam = (std::min)(minParam, param);
+        maxParam = (std::max)(maxParam, param);
+    }
+
+    // Apply gradient
+    for (size_t i = 0; i < indices.size(); i++) {
+        int idx = indices[i];
+
+        // Normalize parameter to 0-1 range
+        float t = (maxParam - minParam < 0.001f) ? 0.5f : (gradientParams[i] - minParam) / (maxParam - minParam);
+
+        // Lerp between start and end color
+        m_lights[idx].color.x = startColor.x * (1.0f - t) + endColor.x * t;
+        m_lights[idx].color.y = startColor.y * (1.0f - t) + endColor.y * t;
+        m_lights[idx].color.z = startColor.z * (1.0f - t) + endColor.z * t;
+    }
+}
+
+void Application::ApplyGlobalHueShift(float degrees) {
+    auto indices = GetSelectedLightIndices();
+
+    for (int idx : indices) {
+        // Convert RGB → HSV
+        DirectX::XMFLOAT3 hsv = RGBtoHSV(m_lights[idx].color);
+
+        // Shift hue
+        hsv.x += degrees;
+        while (hsv.x < 0.0f) hsv.x += 360.0f;
+        while (hsv.x >= 360.0f) hsv.x -= 360.0f;
+
+        // Convert back to RGB
+        m_lights[idx].color = HSVtoRGB(hsv);
+    }
+}
+
+void Application::ApplyGlobalSaturationAdjust(float multiplier) {
+    auto indices = GetSelectedLightIndices();
+
+    for (int idx : indices) {
+        DirectX::XMFLOAT3 hsv = RGBtoHSV(m_lights[idx].color);
+        hsv.y *= multiplier;
+        hsv.y = (std::min)(1.0f, (std::max)(0.0f, hsv.y));
+        m_lights[idx].color = HSVtoRGB(hsv);
+    }
+}
+
+void Application::ApplyGlobalValueAdjust(float multiplier) {
+    auto indices = GetSelectedLightIndices();
+
+    for (int idx : indices) {
+        DirectX::XMFLOAT3 hsv = RGBtoHSV(m_lights[idx].color);
+        hsv.z *= multiplier;
+        hsv.z = (std::min)(1.0f, (std::max)(0.0f, hsv.z));
+        m_lights[idx].color = HSVtoRGB(hsv);
+    }
+}
+
+void Application::ApplyTemperatureShift(float amount) {
+    auto indices = GetSelectedLightIndices();
+
+    for (int idx : indices) {
+        // Temperature shift: interpolate toward warmer (red) or cooler (blue)
+        DirectX::XMFLOAT3 warm = DirectX::XMFLOAT3(1.0f, 0.7f, 0.4f);
+        DirectX::XMFLOAT3 cool = DirectX::XMFLOAT3(0.4f, 0.7f, 1.0f);
+
+        float t = (amount + 1.0f) / 2.0f;  // Map -1..+1 to 0..1
+        DirectX::XMFLOAT3 shift = DirectX::XMFLOAT3(
+            cool.x * (1.0f - t) + warm.x * t,
+            cool.y * (1.0f - t) + warm.y * t,
+            cool.z * (1.0f - t) + warm.z * t
+        );
+
+        // Blend current color with shift color
+        float blendAmount = abs(amount) * 0.3f;  // 30% max influence
+        m_lights[idx].color.x = m_lights[idx].color.x * (1.0f - blendAmount) + shift.x * blendAmount;
+        m_lights[idx].color.y = m_lights[idx].color.y * (1.0f - blendAmount) + shift.y * blendAmount;
+        m_lights[idx].color.z = m_lights[idx].color.z * (1.0f - blendAmount) + shift.z * blendAmount;
+    }
+}
+
+void Application::ApplyColorPreset(ColorPreset preset) {
+    m_currentColorPreset = preset;
+    auto indices = GetSelectedLightIndices();
+
+    switch (preset) {
+    case ColorPreset::CoolBlue:
+        for (int idx : indices) {
+            m_lights[idx].color = BlackbodyColor(10000.0f);  // Cool blue
+        }
+        break;
+
+    case ColorPreset::White:
+        for (int idx : indices) {
+            m_lights[idx].color = BlackbodyColor(6500.0f);  // Daylight white
+        }
+        break;
+
+    case ColorPreset::WarmWhite:
+        for (int idx : indices) {
+            m_lights[idx].color = BlackbodyColor(4000.0f);  // Warm white
+        }
+        break;
+
+    case ColorPreset::WarmSunset:
+        for (int idx : indices) {
+            m_lights[idx].color = BlackbodyColor(2500.0f);  // Orange sunset
+        }
+        break;
+
+    case ColorPreset::DeepRed:
+        for (int idx : indices) {
+            m_lights[idx].color = BlackbodyColor(1800.0f);  // Deep red
+        }
+        break;
+
+    case ColorPreset::Rainbow:
+        for (size_t i = 0; i < indices.size(); i++) {
+            int idx = indices[i];
+            float hue = (i * 360.0f) / indices.size();  // Distribute evenly
+            DirectX::XMFLOAT3 hsv(hue, 1.0f, 1.0f);
+            m_lights[idx].color = HSVtoRGB(hsv);
+        }
+        break;
+
+    case ColorPreset::Complementary:
+        for (size_t i = 0; i < indices.size(); i++) {
+            int idx = indices[i];
+            float hue = (i % 2 == 0) ? 30.0f : 210.0f;  // Orange vs Blue
+            DirectX::XMFLOAT3 hsv(hue, 1.0f, 1.0f);
+            m_lights[idx].color = HSVtoRGB(hsv);
+        }
+        break;
+
+    case ColorPreset::MonochromeBlue:
+        for (int idx : indices) {
+            m_lights[idx].color = DirectX::XMFLOAT3(0.2f, 0.4f, 1.0f);
+        }
+        break;
+
+    case ColorPreset::MonochromeRed:
+        for (int idx : indices) {
+            m_lights[idx].color = DirectX::XMFLOAT3(1.0f, 0.2f, 0.2f);
+        }
+        break;
+
+    case ColorPreset::MonochromeGreen:
+        for (int idx : indices) {
+            m_lights[idx].color = DirectX::XMFLOAT3(0.2f, 1.0f, 0.3f);
+        }
+        break;
+
+    case ColorPreset::Neon:
+        for (size_t i = 0; i < indices.size(); i++) {
+            int idx = indices[i];
+            float hue = (i * 360.0f) / indices.size();
+            DirectX::XMFLOAT3 hsv(hue, 1.0f, 1.0f);  // Fully saturated
+            m_lights[idx].color = HSVtoRGB(hsv);
+        }
+        break;
+
+    case ColorPreset::Pastel:
+        for (size_t i = 0; i < indices.size(); i++) {
+            int idx = indices[i];
+            float hue = (i * 360.0f) / indices.size();
+            DirectX::XMFLOAT3 hsv(hue, 0.3f, 1.0f);  // Low saturation
+            m_lights[idx].color = HSVtoRGB(hsv);
+        }
+        break;
+
+    case ColorPreset::StellarNursery:
+        // Blue/white for hot young stars
+        for (int idx : indices) {
+            float temp = 15000.0f + (rand() % 10000);  // 15000-25000K variation
+            m_lights[idx].color = BlackbodyColor(temp);
+        }
+        break;
+
+    case ColorPreset::RedGiant:
+        // Red/orange for cool giant stars
+        for (int idx : indices) {
+            float temp = 2800.0f + (rand() % 1000);  // 2800-3800K variation
+            m_lights[idx].color = BlackbodyColor(temp);
+        }
+        break;
+
+    case ColorPreset::AccretionDisk:
+        // Radial gradient: blue (inner) → red (outer)
+        ApplyGradient(GradientType::Radial,
+                     BlackbodyColor(25000.0f),  // Blue/white
+                     BlackbodyColor(2000.0f));   // Red
+        break;
+
+    case ColorPreset::BinarySystem:
+        // Two-tone: first half blue, second half red
+        for (size_t i = 0; i < indices.size(); i++) {
+            int idx = indices[i];
+            if (i < indices.size() / 2) {
+                m_lights[idx].color = BlackbodyColor(30000.0f);  // Blue star
+            } else {
+                m_lights[idx].color = BlackbodyColor(3000.0f);   // Red star
+            }
+        }
+        break;
+
+    case ColorPreset::DustTorus:
+        // Earth tones: brown/orange
+        for (int idx : indices) {
+            m_lights[idx].color = DirectX::XMFLOAT3(0.6f, 0.4f, 0.2f);
+        }
+        break;
+
+    case ColorPreset::Custom:
+        // No-op, leave colors as-is
+        break;
+    }
+
+    LOG_INFO("Applied color preset: {} to {} lights", (int)preset, (int)indices.size());
 }
