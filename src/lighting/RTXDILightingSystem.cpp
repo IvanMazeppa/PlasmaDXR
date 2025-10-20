@@ -481,8 +481,8 @@ bool RTXDILightingSystem::CreateDebugOutputBuffer() {
 
     LOG_INFO("Debug output buffer created: {}x{} (R32G32B32A32_FLOAT)", m_width, m_height);
 
-    // === M5: Create temporal accumulation buffer ===
-    LOG_INFO("Creating RTXDI temporal accumulation buffer...");
+    // === M5: Create temporal accumulation buffers (PING-PONG) ===
+    LOG_INFO("Creating RTXDI temporal accumulation buffers (ping-pong)...");
 
     // Same format as debug output (R32G32B32A32_FLOAT)
     // R: accumulated light index, G: sample count, B: reserved, A: frame ID
@@ -497,43 +497,47 @@ bool RTXDILightingSystem::CreateDebugOutputBuffer() {
     accumDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     accumDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
-    hr = d3dDevice->CreateCommittedResource(
-        &heapProps,
-        D3D12_HEAP_FLAG_NONE,
-        &accumDesc,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,  // Start as UAV
-        nullptr,
-        IID_PPV_ARGS(&m_accumulatedBuffer)
-    );
+    // Create TWO buffers to avoid read-write hazards (ping-pong technique)
+    for (int i = 0; i < 2; i++) {
+        hr = d3dDevice->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &accumDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,  // Start as UAV
+            nullptr,
+            IID_PPV_ARGS(&m_accumulatedBuffer[i])
+        );
 
-    if (FAILED(hr)) {
-        LOG_ERROR("Failed to create accumulated buffer: 0x{:08X}", static_cast<uint32_t>(hr));
-        return false;
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create accumulated buffer {}: 0x{:08X}", i, static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        std::wstring name = L"RTXDI Accumulated Samples " + std::to_wstring(i);
+        m_accumulatedBuffer[i]->SetName(name.c_str());
+
+        // Create SRV (for reading as previous frame)
+        D3D12_SHADER_RESOURCE_VIEW_DESC accumSrvDesc = {};
+        accumSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        accumSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        accumSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        accumSrvDesc.Texture2D.MipLevels = 1;
+
+        m_accumulatedSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        d3dDevice->CreateShaderResourceView(m_accumulatedBuffer[i].Get(), &accumSrvDesc, m_accumulatedSRV[i]);
+
+        // Create UAV (for writing as current frame)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC accumUavDesc = {};
+        accumUavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        accumUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        accumUavDesc.Texture2D.MipSlice = 0;
+
+        m_accumulatedUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        d3dDevice->CreateUnorderedAccessView(m_accumulatedBuffer[i].Get(), nullptr, &accumUavDesc, m_accumulatedUAV[i]);
     }
 
-    m_accumulatedBuffer->SetName(L"RTXDI Accumulated Samples");
-
-    // Create SRV (for Gaussian renderer reads)
-    D3D12_SHADER_RESOURCE_VIEW_DESC accumSrvDesc = {};
-    accumSrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    accumSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    accumSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    accumSrvDesc.Texture2D.MipLevels = 1;
-
-    m_accumulatedSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    d3dDevice->CreateShaderResourceView(m_accumulatedBuffer.Get(), &accumSrvDesc, m_accumulatedSRV);
-
-    // Create UAV (for accumulation shader writes)
-    D3D12_UNORDERED_ACCESS_VIEW_DESC accumUavDesc = {};
-    accumUavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    accumUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-    accumUavDesc.Texture2D.MipSlice = 0;
-
-    m_accumulatedUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    d3dDevice->CreateUnorderedAccessView(m_accumulatedBuffer.Get(), nullptr, &accumUavDesc, m_accumulatedUAV);
-
-    uint64_t accumBufferSize = m_width * m_height * 16;  // 16 bytes per pixel
-    LOG_INFO("Accumulated buffer created: {:.2f} MB", accumBufferSize / (1024.0f * 1024.0f));
+    uint64_t accumBufferSize = m_width * m_height * 16 * 2;  // 16 bytes per pixel × 2 buffers
+    LOG_INFO("Accumulated buffers created (ping-pong): {:.2f} MB total", accumBufferSize / (1024.0f * 1024.0f));
 
     // Create M5 temporal accumulation pipeline
     if (!CreateTemporalAccumulationPipeline()) {
@@ -1209,25 +1213,32 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     commandList->SetComputeRoot32BitConstants(0, 16, &constants, 0);
 
     // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
+    // PING-PONG BUFFERS: Read from previous frame, write to current frame
+    uint32_t prevIndex = 1 - m_currentAccumIndex;  // Previous frame's buffer
+    uint32_t currIndex = m_currentAccumIndex;      // Current frame's buffer
+
     // Convert CPU descriptor handles to GPU handles
     D3D12_GPU_DESCRIPTOR_HANDLE debugOutputGPU = m_resources->GetGPUHandle(m_debugOutputSRV);
-    D3D12_GPU_DESCRIPTOR_HANDLE accumSrvGPU = m_resources->GetGPUHandle(m_accumulatedSRV);
-    D3D12_GPU_DESCRIPTOR_HANDLE accumUavGPU = m_resources->GetGPUHandle(m_accumulatedUAV);
+    D3D12_GPU_DESCRIPTOR_HANDLE prevAccumGPU = m_resources->GetGPUHandle(m_accumulatedSRV[prevIndex]);  // Read from prev
+    D3D12_GPU_DESCRIPTOR_HANDLE currAccumGPU = m_resources->GetGPUHandle(m_accumulatedUAV[currIndex]);  // Write to curr
 
-    commandList->SetComputeRootDescriptorTable(1, debugOutputGPU);  // t0: Current RTXDI
-    commandList->SetComputeRootDescriptorTable(2, accumSrvGPU);     // t1: Prev accumulated
-    commandList->SetComputeRootDescriptorTable(3, accumUavGPU);     // u0: Curr accumulated
+    commandList->SetComputeRootDescriptorTable(1, debugOutputGPU);  // t0: Current RTXDI output
+    commandList->SetComputeRootDescriptorTable(2, prevAccumGPU);     // t1: PREVIOUS frame's accumulated (SRV)
+    commandList->SetComputeRootDescriptorTable(3, currAccumGPU);     // u0: CURRENT frame's accumulated (UAV)
 
     // === 5. Dispatch compute shader ===
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
     uint32_t dispatchY = (m_height + 7) / 8;
     commandList->Dispatch(dispatchX, dispatchY, 1);
 
-    // === 6. UAV barrier (ensure writes complete) ===
-    D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_accumulatedBuffer.Get());
+    // === 6. UAV barrier (ensure writes complete on current frame's buffer) ===
+    D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_accumulatedBuffer[currIndex].Get());
     commandList->ResourceBarrier(1, &uavBarrier);
 
-    // === 7. Update camera state for next frame ===
+    // === 7. SWAP BUFFERS (ping-pong for next frame) ===
+    m_currentAccumIndex = 1 - m_currentAccumIndex;  // Toggle 0↔1
+
+    // === 8. Update camera state for next frame ===
     m_prevCameraPos = cameraPos;
     m_prevFrameIndex = frameIndex;
     m_forceReset = false;  // Clear reset flag

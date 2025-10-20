@@ -110,10 +110,11 @@ public:
     /**
      * Get M5 accumulated buffer (temporally smoothed light selection)
      * This is the buffer that should be used for rendering after M5 temporal accumulation
+     * Returns the current frame's output buffer
      *
      * @return Accumulated buffer resource (M5 output)
      */
-    ID3D12Resource* GetAccumulatedBuffer() const { return m_accumulatedBuffer.Get(); }
+    ID3D12Resource* GetAccumulatedBuffer() const { return m_accumulatedBuffer[m_currentAccumIndex].Get(); }
 
 private:
     // === DXR Pipeline Creation (Milestone 3) ===
@@ -184,9 +185,11 @@ private:
     bool m_debugOutputInSRVState = false;  // Track resource state for proper transitions
 
     // === Milestone 5: Temporal Accumulation ===
-    ComPtr<ID3D12Resource> m_accumulatedBuffer;           // Temporal accumulation buffer
-    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedSRV;         // SRV for Gaussian renderer reads
-    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedUAV;         // UAV for accumulation writes
+    // Ping-pong buffers to avoid read-write hazards
+    ComPtr<ID3D12Resource> m_accumulatedBuffer[2];        // Dual temporal accumulation buffers
+    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedSRV[2];      // SRVs for both buffers
+    D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedUAV[2];      // UAVs for both buffers
+    uint32_t m_currentAccumIndex = 0;                     // Ping-pong index (swaps 0↔1 each frame)
 
     ComPtr<ID3D12PipelineState> m_temporalAccumulatePSO;  // Temporal accumulation compute PSO
     ComPtr<ID3D12RootSignature> m_temporalAccumulateRS;   // Root signature
@@ -219,6 +222,6 @@ public:
 
     void ForceReset() { m_forceReset = true; }
 
-    // Get accumulated buffer SRV for Gaussian renderer binding
-    D3D12_CPU_DESCRIPTOR_HANDLE GetAccumulatedBufferSRV() const { return m_accumulatedSRV; }
+    // Get accumulated buffer SRV for Gaussian renderer binding (current frame's output)
+    D3D12_CPU_DESCRIPTOR_HANDLE GetAccumulatedBufferSRV() const { return m_accumulatedSRV[m_currentAccumIndex]; }
 };
