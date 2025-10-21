@@ -61,9 +61,9 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     }
 
     // Create light buffer (structured buffer for multi-light system)
-    // MAX_LIGHTS = 16, Light struct = 32 bytes (position=12, intensity=4, color=12, radius=4)
+    // MAX_LIGHTS = 16, Light struct = 64 bytes (32 base + 32 god ray parameters)
     const uint32_t MAX_LIGHTS = 16;
-    const uint32_t lightStructSize = 32;  // Must match HLSL Light struct
+    const uint32_t lightStructSize = 64;  // Must match HLSL Light struct (extended for god rays)
     const uint32_t lightBufferSize = MAX_LIGHTS * lightStructSize;
 
     LOG_INFO("Creating light buffer...");

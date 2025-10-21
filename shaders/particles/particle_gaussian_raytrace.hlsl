@@ -4,7 +4,7 @@
 
 #include "gaussian_common.hlsl"
 #include "plasma_emission.hlsl"
-#include "god_rays.hlsl"
+// NOTE: god_rays.hlsl removed - atmospheric fog function defined inline below for Light struct access
 
 // Match C++ ParticleRenderer_Gaussian::RenderConstants structure
 cbuffer GaussianConstants : register(b0)
@@ -114,6 +114,140 @@ RWTexture2D<float4> g_output : register(u0);
 
 // PCSS: Current frame shadow buffer (write-only)
 RWTexture2D<float> g_currShadow : register(u2);
+
+// ============================================================================
+// ATMOSPHERIC FOG RAY MARCHING - Volumetric God Rays
+// ============================================================================
+// Marches through UNIFORM ATMOSPHERIC FOG at regular intervals,
+// independent of particle positions. This creates visible light shafts
+// even in empty space, just like real fog/dust scattering sunlight.
+float3 RayMarchAtmosphericFog(
+    float3 cameraPos,
+    float3 rayDir,
+    float maxDistance,
+    StructuredBuffer<Light> lights,
+    uint lightCount,
+    float totalTime,
+    float godRayDensity,
+    RaytracingAccelerationStructure accelStructure
+) {
+    // Early exit if god rays globally disabled
+    if (godRayDensity < 0.001) {
+        return float3(0, 0, 0);
+    }
+
+    // Configuration
+    const uint NUM_STEPS = 32;  // 32 steps = good quality/performance balance
+    const float stepSize = maxDistance / float(NUM_STEPS);
+
+    float3 totalFogColor = float3(0, 0, 0);
+
+    // Ray March Loop
+    for (uint step = 0; step < NUM_STEPS; step++) {
+        // Current position along ray (sample at step center for better accuracy)
+        float t = (float(step) + 0.5) * stepSize;
+        float3 samplePos = cameraPos + rayDir * t;
+
+        // Sample all lights at this fog position
+        for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
+            Light light = lights[lightIdx];
+
+            // Skip if this light has god rays disabled
+            if (light.enableGodRays < 0.5) {
+                continue;
+            }
+
+            // Calculate direction and distance to light
+            float3 toLight = light.position - samplePos;
+            float distToLight = length(toLight);
+
+            // Skip if outside light's god ray range
+            if (distToLight < 0.001 || distToLight > light.godRayLength) {
+                continue;
+            }
+
+            float3 lightDir = toLight / distToLight;
+
+            // Beam Direction (with optional rotation)
+            float3 beamDir = light.godRayDirection;
+            if (abs(light.godRayRotationSpeed) > 0.001) {
+                float rotationAngle = light.godRayRotationSpeed * totalTime;
+                // Rotate around Y-axis
+                float c = cos(rotationAngle);
+                float s = sin(rotationAngle);
+                beamDir = float3(
+                    beamDir.x * c - beamDir.z * s,
+                    beamDir.y,
+                    beamDir.x * s + beamDir.z * c
+                );
+            }
+
+            // Cone Volume Test
+            float alignment = dot(lightDir, beamDir);
+            float coneThreshold = cos(light.godRayConeAngle);
+
+            if (alignment < coneThreshold) {
+                continue;  // Outside cone, skip this light
+            }
+
+            // Radial Falloff (Gaussian beam shape)
+            float axisDistance = distToLight * sqrt(max(0.0, 1.0 - alignment * alignment));
+            float radialFalloff = exp(-axisDistance * light.godRayFalloff);
+
+            // Distance Attenuation
+            float distanceFalloff = 1.0 / (1.0 + distToLight * distToLight * 0.0001);
+
+            // Shadow Ray (particles attenuate fog based on opacity)
+            // This allows god rays to penetrate through the particle cloud!
+            RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
+
+            RayDesc shadowRay;
+            shadowRay.Origin = samplePos + lightDir * 0.1;
+            shadowRay.Direction = lightDir;
+            shadowRay.TMin = 0.0;
+            shadowRay.TMax = distToLight - 0.1;
+
+            q.TraceRayInline(accelStructure, RAY_FLAG_NONE, 0xFF, shadowRay);
+            q.Proceed();
+
+            // Calculate light transmission through particles
+            // Instead of completely blocking, particles attenuate based on their density
+            float transmission = 1.0; // Start with full light transmission
+
+            if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+                // Read the particle that was hit by shadow ray
+                uint hitParticleIdx = q.CommittedPrimitiveIndex();
+                Particle hitParticle = g_particles[hitParticleIdx];
+
+                // Calculate particle opacity based on density
+                // Density ranges from ~0.01 to ~2.0 in accretion disk
+                // Scale to reasonable opacity: low density = transparent, high density = opaque
+                float particleOpacity = saturate(hitParticle.density * 0.3);
+
+                // Transmission = how much light passes through
+                // Low opacity → high transmission (light shines through!)
+                // High opacity → low transmission (light dimmed but not blocked)
+                transmission = 1.0 - particleOpacity;
+
+                // CRITICAL: Add minimum transmission so god rays always penetrate somewhat
+                // This ensures light shafts are visible even through dense regions
+                transmission = max(transmission, 0.2); // At least 20% light gets through
+            }
+
+            // Calculate Scattering Contribution (now modulated by transmission)
+            // Transmission of 1.0 = full brightness (empty space or transparent particle)
+            // Transmission of 0.2 = 20% brightness (dense particle but still visible!)
+            float scatteringStrength = light.godRayIntensity * radialFalloff * distanceFalloff * godRayDensity * transmission;
+            float3 scatteringColor = light.color * scatteringStrength;
+
+            // Accumulate fog color (volumetric integral)
+            // Now god rays will be visible THROUGH the particle cloud!
+            totalFogColor += scatteringColor * stepSize;
+        }
+    }
+
+    return totalFogColor;
+}
 
 // Hit record for batch processing
 struct HitRecord {
@@ -631,29 +765,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 totalEmission = selfEmission + externalLight + inScatter * inScatterStrength;
             }
 
-            // === GOD RAY CONTRIBUTION (Phase 5 Milestone 5.3c) ===
-            // Volumetric scattering from ambient medium (independent of particles)
-            // Accumulated at each ray march step for all lights with god rays enabled
-            if (godRayDensity > 0.001) {
-                float3 godRayTotal = float3(0, 0, 0);
-
-                for (uint lightIdx = 0; lightIdx < lightCount; lightIdx++) {
-                    Light light = g_lights[lightIdx];
-
-                    // Calculate god ray contribution from this light
-                    godRayTotal += CalculateGodRayContribution(
-                        pos,                // Current position along ray
-                        light,              // Light with god ray parameters
-                        time,               // For rotation animation
-                        godRayDensity,      // Global density multiplier
-                        g_particleBVH       // TLAS for shadow rays
-                    );
-                }
-
-                // Add god ray contribution (volumetric integral)
-                // Multiply by step size to convert from density to accumulated radiance
-                totalEmission += godRayTotal * stepSize * godRayStepMultiplier;
-            }
+            // NOTE: God ray contribution moved to separate atmospheric fog pass
+            // See RayMarchAtmosphericFog() call after particle rendering
 
             // Volume rendering equation with proper absorption/emission
             float absorption = density * stepSize * extinction;
@@ -697,6 +810,28 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 backgroundColor = float3(0.0, 0.0, 0.0);
     float finalTransmittance = exp(logTransmittance);
     float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
+
+    // =========================================================================
+    // ATMOSPHERIC FOG RAY MARCHING - Volumetric God Rays
+    // =========================================================================
+    // March through uniform atmospheric fog independent of particle positions
+    // This creates visible light shafts even in empty space!
+    if (godRayDensity > 0.001) {
+        float3 atmosphericFog = RayMarchAtmosphericFog(
+            cameraPos,           // Camera position
+            ray.Direction,       // Ray direction (from GenerateCameraRay)
+            3000.0,              // Max ray march distance (covers entire scene)
+            g_lights,            // Light array
+            lightCount,          // Number of active lights
+            time,                // Total elapsed time (for rotation)
+            godRayDensity,       // Global fog density
+            g_particleBVH        // TLAS for shadow rays
+        );
+
+        // Add atmospheric fog to final color (before tone mapping)
+        // Scale by 0.1 for balanced contribution relative to particles
+        finalColor += atmosphericFog * 0.1;
+    }
 
     // Enhanced tone mapping for HDR
     // Use ACES tone mapping for better color preservation
