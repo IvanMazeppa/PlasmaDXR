@@ -10,6 +10,7 @@
 #include "../lighting/RTXDILightingSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#include "../ml/AdaptiveQualitySystem.h"
 #ifdef USE_PIX
 #include "../debug/PIXCaptureHelper.h"
 #endif
@@ -244,6 +245,16 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         }
     }
 
+    // Initialize Adaptive Quality System (ML-based performance prediction)
+    LOG_INFO("Initializing Adaptive Quality System...");
+    m_adaptiveQuality = std::make_unique<AdaptiveQualitySystem>();
+    if (!m_adaptiveQuality->Initialize("ml/models/adaptive_quality.model")) {
+        LOG_WARN("Adaptive Quality System initialized with default heuristics (no trained model)");
+    } else {
+        LOG_INFO("Adaptive Quality System ready (ML model loaded)");
+    }
+    m_adaptiveQuality->SetTargetFPS(m_adaptiveTargetFPS);
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -326,6 +337,43 @@ int Application::Run() {
 
 void Application::Update(float deltaTime) {
     m_totalTime += deltaTime;
+
+    // === Adaptive Quality System Update ===
+    if (m_adaptiveQuality && m_enableAdaptiveQuality) {
+        // Build scene features for prediction
+        AdaptiveQualitySystem::SceneFeatures features;
+        features.particleCount = m_activeParticleCount;
+        features.lightCount = static_cast<float>(m_lights.size());
+        features.cameraDistance = m_cameraDistance;
+        features.shadowRaysPerLight = m_shadowRaysPerLight;
+        features.useShadowRays = m_useShadowRays ? 1.0f : 0.0f;
+        features.useInScattering = m_useInScattering ? 1.0f : 0.0f;
+        features.usePhaseFunction = m_usePhaseFunction ? 1.0f : 0.0f;
+        features.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1.0f : 0.0f;
+        features.enableTemporalFiltering = m_enableTemporalFiltering ? 1.0f : 0.0f;
+        features.useRTXDI = (m_lightingSystem == LightingSystem::RTXDI) ? 1.0f : 0.0f;
+        features.enableRTLighting = m_enableRTLighting ? 1.0f : 0.0f;
+        features.godRayDensity = m_godRayDensity;
+        features.actualFrameTime = m_deltaTime * 1000.0f; // Convert to ms
+
+        // Update adaptive quality (may adjust settings)
+        m_adaptiveQuality->Update(deltaTime, features);
+
+        // Apply recommended quality level
+        auto recommendedQuality = m_adaptiveQuality->GetCurrentQuality();
+        auto preset = m_adaptiveQuality->GetQualityPreset(recommendedQuality);
+
+        // Apply settings
+        m_shadowRaysPerLight = preset.shadowRaysPerLight;
+        m_useShadowRays = preset.useShadowRays;
+        m_useInScattering = preset.useInScattering;
+        m_usePhaseFunction = preset.usePhaseFunction;
+        m_useAnisotropicGaussians = preset.useAnisotropicGaussians;
+        m_enableTemporalFiltering = preset.enableTemporalFiltering;
+        m_enableRTLighting = preset.enableRTLighting;
+        m_godRayDensity = preset.godRayDensity;
+        m_rtLightingStrength = preset.rtLightingStrength;
+    }
 
     // Physics update moved to Render() to ensure proper command list ordering
     // (physics commands must be recorded after ResetCommandList())
@@ -1979,6 +2027,109 @@ void Application::RenderImGui() {
         ImGui::Checkbox("Gravitational Redshift (G)", &m_useGravitationalRedshift);
         if (m_useGravitationalRedshift) {
             ImGui::SliderFloat("Redshift Strength (Ctrl/Shift+G)", &m_redshiftStrength, 0.0f, 5.0f);
+        }
+    }
+
+    // === Adaptive Quality System (ML-Based) ===
+    if (ImGui::CollapsingHeader("Adaptive Quality (ML)", ImGuiTreeNodeFlags_None)) {
+        ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "ML-Based Performance Prediction");
+
+        // Enable/Disable toggle
+        if (ImGui::Checkbox("Enable Adaptive Quality", &m_enableAdaptiveQuality)) {
+            if (m_adaptiveQuality) {
+                m_adaptiveQuality->SetEnabled(m_enableAdaptiveQuality);
+                LOG_INFO("Adaptive Quality: {}", m_enableAdaptiveQuality ? "ENABLED" : "DISABLED");
+            }
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Automatically adjusts quality settings to maintain target FPS\n"
+                             "Uses ML model to predict frame time based on scene complexity");
+        }
+
+        if (m_enableAdaptiveQuality) {
+            ImGui::Separator();
+
+            // Target FPS
+            const char* fpsTargets[] = { "60 FPS", "90 FPS", "120 FPS", "144 FPS", "165 FPS" };
+            float fpsValues[] = { 60.0f, 90.0f, 120.0f, 144.0f, 165.0f };
+            int currentFPS = 2; // Default to 120 FPS
+            for (int i = 0; i < 5; i++) {
+                if (std::abs(m_adaptiveTargetFPS - fpsValues[i]) < 0.1f) {
+                    currentFPS = i;
+                    break;
+                }
+            }
+
+            if (ImGui::Combo("Target FPS", &currentFPS, fpsTargets, 5)) {
+                m_adaptiveTargetFPS = fpsValues[currentFPS];
+                if (m_adaptiveQuality) {
+                    m_adaptiveQuality->SetTargetFPS(m_adaptiveTargetFPS);
+                    LOG_INFO("Adaptive Quality Target FPS: {:.0f}", m_adaptiveTargetFPS);
+                }
+            }
+
+            // Display current quality level
+            if (m_adaptiveQuality) {
+                ImGui::Separator();
+                ImGui::Text("Current Quality Level:");
+
+                auto currentQuality = m_adaptiveQuality->GetCurrentQuality();
+                const char* qualityNames[] = { "Ultra", "High", "Medium", "Low", "Minimal" };
+                ImVec4 qualityColors[] = {
+                    ImVec4(1.0f, 0.0f, 1.0f, 1.0f),  // Ultra: Magenta
+                    ImVec4(0.0f, 1.0f, 0.0f, 1.0f),  // High: Green
+                    ImVec4(1.0f, 1.0f, 0.0f, 1.0f),  // Medium: Yellow
+                    ImVec4(1.0f, 0.5f, 0.0f, 1.0f),  // Low: Orange
+                    ImVec4(1.0f, 0.0f, 0.0f, 1.0f)   // Minimal: Red
+                };
+
+                int qualityIndex = static_cast<int>(currentQuality);
+                ImGui::TextColored(qualityColors[qualityIndex], "  %s", qualityNames[qualityIndex]);
+
+                // Show predicted frame time
+                float predictedFrameTime = m_adaptiveQuality->GetPredictedFrameTime();
+                float targetFrameTime = 1000.0f / m_adaptiveTargetFPS;
+                ImGui::Text("Predicted Frame Time: %.2f ms", predictedFrameTime);
+                ImGui::Text("Target Frame Time: %.2f ms", targetFrameTime);
+
+                // Show performance bar
+                float performanceRatio = predictedFrameTime / targetFrameTime;
+                ImVec4 barColor = (performanceRatio < 1.1f) ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f) :  // Green
+                                  (performanceRatio < 1.5f) ? ImVec4(1.0f, 1.0f, 0.0f, 1.0f) :  // Yellow
+                                                              ImVec4(1.0f, 0.0f, 0.0f, 1.0f);   // Red
+
+                ImGui::ProgressBar(std::min(performanceRatio, 2.0f) / 2.0f, ImVec2(-1, 0));
+            }
+
+            ImGui::Separator();
+
+            // Data collection for training
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 1.0f, 1.0f), "Training Data Collection");
+            if (ImGui::Checkbox("Collect Performance Data", &m_collectPerformanceData)) {
+                if (m_adaptiveQuality) {
+                    if (m_collectPerformanceData) {
+                        m_adaptiveQuality->StartDataCollection("ml/training_data/performance_data.csv");
+                        LOG_INFO("Started collecting performance data");
+                    } else {
+                        m_adaptiveQuality->StopDataCollection();
+                        LOG_INFO("Stopped collecting performance data");
+                    }
+                }
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Collect training data for ML model\n"
+                                 "Data saved to ml/training_data/performance_data.csv\n"
+                                 "Use different scenarios (particle counts, camera distances, features)\n"
+                                 "Then run: python ml/train_adaptive_quality.py");
+            }
+
+            if (m_collectPerformanceData) {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "  Recording samples...");
+            }
         }
     }
 

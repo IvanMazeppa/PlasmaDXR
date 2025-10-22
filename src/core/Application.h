@@ -19,6 +19,7 @@ class ParticleRenderer;
 class RTLightingSystem_RayQuery;
 class RTXDILightingSystem;
 class ResourceManager;
+class AdaptiveQualitySystem;
 
 // Need full include for ParticleRenderer_Gaussian::Light nested type
 #include "../particles/ParticleRenderer_Gaussian.h"
@@ -71,6 +72,7 @@ private:
     std::unique_ptr<ParticleRenderer_Gaussian> m_gaussianRenderer;  // Gaussian Splatting (optional)
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;  // RTXDI parallel lighting path
+    std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;    // ML-based adaptive quality
 
     // Timing
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
@@ -253,6 +255,11 @@ private:
     bool m_mouseLookActive = false;
     int m_lastMouseX = 0;
     int m_lastMouseY = 0;
+
+    // === Adaptive Quality System (ML-based) ===
+    bool m_enableAdaptiveQuality = false;        // F12 to toggle
+    float m_adaptiveTargetFPS = 120.0f;          // Target FPS (60/120/144)
+    bool m_collectPerformanceData = false;       // Collect training data
 
     // Buffer dump feature (zero overhead when disabled)
     bool m_enableBufferDump = false;

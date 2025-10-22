@@ -1170,8 +1170,19 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
         m_debugOutputInSRVState = true;
     }
 
-    // Accumulated buffer stays in UAV state (it's both input and output)
-    // No transition needed
+    // PING-PONG: Determine which buffers to read/write
+    uint32_t prevIndex = 1 - m_currentAccumIndex;  // Previous frame's buffer (read as SRV)
+    uint32_t currIndex = m_currentAccumIndex;      // Current frame's buffer (write as UAV)
+
+    // Current accumulated buffer: If in SRV state from previous frame, transition to UAV for writing
+    if (m_accumulatedInSRVState[currIndex]) {
+        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+            m_accumulatedBuffer[currIndex].Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        ));
+        m_accumulatedInSRVState[currIndex] = false;
+    }
 
     if (!barriers.empty()) {
         commandList->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
@@ -1214,8 +1225,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
 
     // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
     // PING-PONG BUFFERS: Read from previous frame, write to current frame
-    uint32_t prevIndex = 1 - m_currentAccumIndex;  // Previous frame's buffer
-    uint32_t currIndex = m_currentAccumIndex;      // Current frame's buffer
+    // (prevIndex and currIndex already declared in section 1)
 
     // Convert CPU descriptor handles to GPU handles
     D3D12_GPU_DESCRIPTOR_HANDLE debugOutputGPU = m_resources->GetGPUHandle(m_debugOutputSRV);
@@ -1234,6 +1244,15 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     // === 6. UAV barrier (ensure writes complete on current frame's buffer) ===
     D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_accumulatedBuffer[currIndex].Get());
     commandList->ResourceBarrier(1, &uavBarrier);
+
+    // === 6b. Transition current buffer from UAV to SRV (for Gaussian renderer to read) ===
+    D3D12_RESOURCE_BARRIER toSrvBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_accumulatedBuffer[currIndex].Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
+    commandList->ResourceBarrier(1, &toSrvBarrier);
+    m_accumulatedInSRVState[currIndex] = true;  // Track state
 
     // === 7. SWAP BUFFERS (ping-pong for next frame) ===
     m_currentAccumIndex = 1 - m_currentAccumIndex;  // Toggle 0↔1

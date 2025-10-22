@@ -190,6 +190,7 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedSRV[2];      // SRVs for both buffers
     D3D12_CPU_DESCRIPTOR_HANDLE m_accumulatedUAV[2];      // UAVs for both buffers
     uint32_t m_currentAccumIndex = 0;                     // Ping-pong index (swaps 0↔1 each frame)
+    bool m_accumulatedInSRVState[2] = {false, false};     // Track resource state for proper transitions
 
     ComPtr<ID3D12PipelineState> m_temporalAccumulatePSO;  // Temporal accumulation compute PSO
     ComPtr<ID3D12RootSignature> m_temporalAccumulateRS;   // Root signature
