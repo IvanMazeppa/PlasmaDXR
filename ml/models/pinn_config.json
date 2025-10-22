@@ -1,0 +1,11 @@
+{
+  "black_hole_mass": 10.0,
+  "alpha_viscosity": 0.01,
+  "hidden_dim": 128,
+  "num_layers": 5,
+  "num_trajectories": 500,
+  "trajectory_length": 50,
+  "num_epochs": 1000,
+  "learning_rate": 0.001,
+  "device": "cuda"
+}

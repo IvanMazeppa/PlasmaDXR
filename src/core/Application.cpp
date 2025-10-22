@@ -2100,7 +2100,7 @@ void Application::RenderImGui() {
                                   (performanceRatio < 1.5f) ? ImVec4(1.0f, 1.0f, 0.0f, 1.0f) :  // Yellow
                                                               ImVec4(1.0f, 0.0f, 0.0f, 1.0f);   // Red
 
-                ImGui::ProgressBar(std::min(performanceRatio, 2.0f) / 2.0f, ImVec2(-1, 0));
+                ImGui::ProgressBar((std::min)(performanceRatio, 2.0f) / 2.0f, ImVec2(-1, 0));
             }
 
             ImGui::Separator();

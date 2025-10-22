@@ -57,15 +57,81 @@ Thumbs.db
 # Keep certain files
 !external/D3D12/*.dll
 !shaders/**/*.dxil
+
+# PIX captures and screenshots
+PIX/
 PIX/GPU 8_GpuId9_API Parameters.bmp
 PIX/image.png
 screenshots/image copy 18.png
 screenshots/image copy 19.png
 screenshots/image copy 20.png
 screenshots/image copy 21.png
-PIX/
- 
+
 # Vendor SDKs (ignored)
 # Ensure RTXDI SDK is not accidentally committed when vendored under external/
 external/RTXDI/
 external/RTXDI/**
+
+# ============================================================
+# Machine Learning / Python
+# ============================================================
+
+# Python virtual environment (DO NOT COMMIT - 3.5 GB)
+ml/venv/
+venv/
+env/
+ENV/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Generated training data (can be regenerated)
+ml/training_data/
+ml/data/
+ml/datasets/
+
+# Generated analysis plots (can be regenerated)
+ml/analysis/
+ml/plots/
+ml/figures/
+
+# Large model weight files (keep .onnx, ignore .data)
+*.onnx.data
+ml/models/*.onnx.data
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyTorch model checkpoints (optional - keep if small)
+# ml/models/*.pt
+# ml/models/*.pth
+
+# TensorFlow/Keras models
+*.h5
+*.keras
+
+# MLflow tracking
+mlruns/
+
+# Weights & Biases
+wandb/
+
+# PyCharm
+.idea/
+
+# VS Code (Python-specific)
+.vscode/
+*.code-workspace
+
+# ============================================================
+# Keep these ML files (small, important)
+# ============================================================
+!ml/models/*.onnx
+!ml/models/*.json
+!ml/*.py
+!ml/*.md
+!ml/requirements*.txt

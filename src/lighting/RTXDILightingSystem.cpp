@@ -1154,7 +1154,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
 
     // PIX marker for debugging
 #ifdef USE_PIX
-    PIXBeginEvent(commandList, PIX_COLOR_INDEX(4), "RTXDI M5 Temporal Accumulation");
+    //     PIXBeginEvent(commandList, PIX_COLOR_INDEX(4), "RTXDI M5 Temporal Accumulation");
 #endif
 
     // === 1. Transition resources ===
@@ -1263,6 +1263,6 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     m_forceReset = false;  // Clear reset flag
 
 #ifdef USE_PIX
-    PIXEndEvent(commandList);
+    //     PIXEndEvent(commandList);
 #endif
 }
