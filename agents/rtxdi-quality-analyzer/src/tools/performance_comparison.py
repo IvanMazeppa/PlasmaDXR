@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import os
 
-from ..utils.metrics_parser import (
+from utils.metrics_parser import (
     parse_performance_metrics,
     compare_metrics,
     PerformanceMetrics

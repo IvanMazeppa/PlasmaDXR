@@ -758,6 +758,12 @@ void Application::Render() {
             m_isRunning = false;
         }
     }
+
+    // Capture screenshot if requested (F2 key)
+    if (m_captureScreenshotNextFrame) {
+        CaptureScreenshot();
+        m_captureScreenshotNextFrame = false;
+    }
 }
 
 bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
@@ -971,6 +977,11 @@ void Application::OnKeyPress(UINT8 key) {
     case VK_F1:
         m_showImGui = !m_showImGui;
         LOG_INFO("ImGui: {}", m_showImGui ? "ON" : "OFF");
+        break;
+
+    case VK_F2:
+        m_captureScreenshotNextFrame = true;
+        LOG_INFO("Screenshot will be captured next frame (F2)");
         break;
 
     case 'S':
@@ -1542,6 +1553,163 @@ void Application::WriteMetadataJSON() {
         fclose(file);
 
         LOG_INFO("  Wrote metadata: {}", filepath);
+    }
+}
+
+void Application::CaptureScreenshot() {
+    LOG_INFO("\n=== CAPTURING SCREENSHOT (Frame {}) ===", m_frameCount);
+
+    // Create screenshots directory
+    std::filesystem::create_directories(m_screenshotOutputDir);
+
+    // Get timestamp for filename
+    auto now = std::chrono::system_clock::now();
+    auto timeT = std::chrono::system_clock::to_time_t(now);
+    char timestamp[100];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", localtime(&timeT));
+
+    std::string filename = m_screenshotOutputDir + "screenshot_" + std::string(timestamp) + ".bmp";
+
+    // Get the current back buffer
+    auto backBuffer = m_swapChain->GetCurrentBackBuffer();
+
+    // Save the back buffer to file
+    SaveBackBufferToFile(backBuffer, filename);
+
+    LOG_INFO("Screenshot saved: {}", filename);
+}
+
+void Application::SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::string& filename) {
+    // Get back buffer description
+    D3D12_RESOURCE_DESC desc = backBuffer->GetDesc();
+
+    // Create readback buffer
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_READBACK;
+
+    D3D12_RESOURCE_DESC readbackDesc = {};
+    readbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readbackDesc.Width = desc.Width * desc.Height * 4; // RGBA 8-bit
+    readbackDesc.Height = 1;
+    readbackDesc.DepthOrArraySize = 1;
+    readbackDesc.MipLevels = 1;
+    readbackDesc.Format = DXGI_FORMAT_UNKNOWN;
+    readbackDesc.SampleDesc.Count = 1;
+    readbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackBuffer;
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readbackBuffer));
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create readback buffer for screenshot");
+        return;
+    }
+
+    // Reset command list for copy operation
+    m_device->ResetCommandList();
+    auto cmdList = m_device->GetCommandList();
+
+    // Transition back buffer to copy source
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = backBuffer;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Setup copy locations
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+    footprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    footprint.Footprint.Width = static_cast<UINT>(desc.Width);
+    footprint.Footprint.Height = desc.Height;
+    footprint.Footprint.Depth = 1;
+    footprint.Footprint.RowPitch = static_cast<UINT>(desc.Width) * 4;
+
+    D3D12_TEXTURE_COPY_LOCATION dst = {};
+    dst.pResource = readbackBuffer.Get();
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dst.PlacedFootprint = footprint;
+
+    D3D12_TEXTURE_COPY_LOCATION src = {};
+    src.pResource = backBuffer;
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
+
+    // Copy back buffer to readback buffer
+    cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+    // Transition back to present state
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Execute and wait
+    cmdList->Close();
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();
+
+    // Map readback buffer
+    void* mappedData = nullptr;
+    D3D12_RANGE readRange = { 0, static_cast<SIZE_T>(readbackDesc.Width) };
+    hr = readbackBuffer->Map(0, &readRange, &mappedData);
+
+    if (SUCCEEDED(hr)) {
+        // Convert BGRA to RGB and flip vertically for BMP
+        std::vector<uint8_t> rgbData(desc.Width * desc.Height * 3);
+        uint8_t* src = reinterpret_cast<uint8_t*>(mappedData);
+
+        for (UINT y = 0; y < desc.Height; ++y) {
+            for (UINT x = 0; x < desc.Width; ++x) {
+                UINT srcIdx = (y * footprint.Footprint.RowPitch) + (x * 4);
+                UINT dstIdx = ((desc.Height - 1 - y) * desc.Width + x) * 3;
+
+                rgbData[dstIdx + 0] = src[srcIdx + 2]; // R
+                rgbData[dstIdx + 1] = src[srcIdx + 1]; // G
+                rgbData[dstIdx + 2] = src[srcIdx + 0]; // B
+            }
+        }
+
+        // Write BMP file
+        FILE* file = fopen(filename.c_str(), "wb");
+        if (file) {
+            uint32_t fileSize = 54 + (desc.Width * desc.Height * 3);
+            uint32_t imageSize = desc.Width * desc.Height * 3;
+
+            uint8_t header[54] = {
+                'B', 'M',
+                0, 0, 0, 0,
+                0, 0, 0, 0,
+                54, 0, 0, 0,
+                40, 0, 0, 0,
+                0, 0, 0, 0,
+                0, 0, 0, 0,
+                1, 0,
+                24, 0,
+                0, 0, 0, 0,
+                0, 0, 0, 0,
+                0x13, 0x0B, 0, 0,
+                0x13, 0x0B, 0, 0,
+                0, 0, 0, 0,
+                0, 0, 0, 0
+            };
+
+            memcpy(header + 2, &fileSize, 4);
+            memcpy(header + 18, &desc.Width, 4);
+            memcpy(header + 22, &desc.Height, 4);
+            memcpy(header + 34, &imageSize, 4);
+
+            fwrite(header, 1, 54, file);
+            fwrite(rgbData.data(), 1, imageSize, file);
+            fclose(file);
+        }
+
+        readbackBuffer->Unmap(0, nullptr);
     }
 }
 

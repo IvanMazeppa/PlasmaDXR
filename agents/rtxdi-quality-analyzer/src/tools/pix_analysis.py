@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import os
 
-from ..utils.pix_parser import (
+from utils.pix_parser import (
     parse_pix_capture,
     parse_buffer_dump,
     analyze_light_grid_coverage,

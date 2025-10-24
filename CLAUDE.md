@@ -10,11 +10,13 @@ The user is named Ben.
 
 **PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). The project simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
 
-**Current Status (2025-10-22):**
+**Current Status (2025-10-24):**
 - RTXDI M5 (Phase 2) - Temporal accumulation with ping-pong buffers
 - PINN ML Physics - Python training pipeline complete, C++ integration in progress
 - Adaptive Quality System integrated with ONNX Runtime
 - Bulk light color control system operational
+- MCP server operational with 4 tools (performance analysis, PIX analysis, ML screenshot comparison, screenshot listing)
+- F2 screenshot capture system (direct GPU framebuffer capture at native resolution)
 - God rays system (SHELVED - active but marked for deactivation due to issues)
 - 30×30×30 spatial grid covering 3000×3000×3000 unit world space
 
@@ -700,6 +702,103 @@ All draw calls and compute dispatches are wrapped with PIX event markers. Use PI
 
 ---
 
+## MCP Server for RTXDI Quality Analysis
+
+**Status:** Operational with 4 tools
+
+**Location:** `agents/rtxdi-quality-analyzer/`
+
+**Server:** `rtxdi_server.py` (flat structure with SDK 0.1.4)
+
+### Available Tools
+
+1. **`compare_performance`** - Compare RTXDI performance metrics between legacy renderer, RTXDI M4, and RTXDI M5
+2. **`analyze_pix_capture`** - Analyze PIX GPU captures for RTXDI bottlenecks and performance issues
+3. **`compare_screenshots_ml`** - ML-powered before/after screenshot comparison using LPIPS perceptual similarity (~92% correlation to human judgment)
+4. **`list_recent_screenshots`** - List recent screenshots from `screenshots/` directory sorted by time (newest first)
+
+### Key Implementation Details
+
+**CRITICAL: Lazy Loading Pattern for ML Tools**
+
+The server uses lazy loading for PyTorch and LPIPS to avoid MCP timeout (30-second limit):
+
+```python
+class MLVisualComparison:
+    def __init__(self):
+        """Initialize (lazy loading - LPIPS loaded on first use)"""
+        self.lpips_model = None
+        self.device = 'cpu'
+
+    def _ensure_lpips_loaded(self):
+        """Lazy load LPIPS model only when needed"""
+        if self.lpips_model is None:
+            import torch
+            import lpips
+            self.lpips_model = lpips.LPIPS(net='vgg', version='0.1')
+            self.lpips_model.eval()
+            self.lpips_model.to(self.device)
+```
+
+**Why this matters:**
+- PyTorch + LPIPS = 528MB of weights
+- Loading at import time = 30+ seconds (exceeds MCP timeout)
+- Lazy loading = ~8 second startup, ML loads only when `compare_screenshots_ml` is called
+
+**Running the server:**
+```bash
+cd agents/rtxdi-quality-analyzer
+./run_server.sh
+```
+
+**Dependencies:**
+```bash
+pip install -r requirements.txt
+# Includes: mcp, Pillow, numpy, torch, lpips, scikit-image
+```
+
+### Screenshot Capture System
+
+**In-Application Screenshot Capture:**
+
+Press **F2** during rendering to capture the exact GPU framebuffer at full native resolution.
+
+**Implementation:**
+- F2 key binding in `Application.cpp:976-979`
+- Direct GPU backbuffer capture via D3D12
+- BGRA → RGB conversion with vertical flip for BMP format
+- Saves to `screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.bmp`
+- Captures at native resolution (1440p) not monitor resolution
+
+**Technical details:**
+1. Creates readback buffer in CPU-accessible memory
+2. Transitions backbuffer: PRESENT → COPY_SOURCE → PRESENT
+3. Maps readback buffer and converts pixel format
+4. Writes BMP file with proper header
+
+**Why BMP instead of PNG:**
+- No external library dependency
+- Lossless quality
+- Easy to implement
+- ML comparison tool accepts both formats
+
+**Complete workflow:**
+```bash
+# 1. Capture screenshots in PlasmaDX (F2 key)
+# 2. List recent screenshots via MCP
+list_recent_screenshots(limit=5)
+
+# 3. Compare screenshots via MCP
+compare_screenshots_ml(
+    before_path="/path/to/screenshot1.bmp",
+    after_path="/path/to/screenshot2.bmp",
+    save_heatmap=True
+)
+# Returns LPIPS similarity score and saves difference heatmap to PIX/heatmaps/
+```
+
+---
+
 ## Autonomous Testing with v3 Agents
 
 **Status:** Custom plugin system operational (plasmadx-testing-v3)
@@ -1034,12 +1133,15 @@ LOG_WARN("ONNX Runtime not found, ML features disabled");
 
 **Current sprint priorities (Phase 5 - ML Integration):**
 1. ✅ PINN Python training pipeline (COMPLETE)
-2. 🔄 C++ ONNX Runtime integration (IN PROGRESS)
-3. 🔄 RTXDI M5 temporal accumulation (IN PROGRESS)
-4. ⏳ Hybrid physics mode (PINN + traditional) - 2-3 days
-5. ⏳ Performance benchmarking (PINN vs traditional) - 1 day
-6. ⏳ ImGui controls for PINN mode - 4 hours
-7. ⏳ Disable god rays feature (add toggle, default OFF) - 1 hour
+2. ✅ MCP server with 4 tools (COMPLETE)
+3. ✅ F2 screenshot capture system (COMPLETE - pending build test)
+4. 🔄 Fix AdaptiveQualitySystem.cpp linking (add to CMakeLists.txt) - BLOCKING
+5. 🔄 C++ ONNX Runtime integration (IN PROGRESS)
+6. 🔄 RTXDI M5 temporal accumulation (IN PROGRESS)
+7. ⏳ Hybrid physics mode (PINN + traditional) - 2-3 days
+8. ⏳ Performance benchmarking (PINN vs traditional) - 1 day
+9. ⏳ ImGui controls for PINN mode - 4 hours
+10. ⏳ Disable god rays feature (add toggle, default OFF) - 1 hour
 
 **Roadmap (see MASTER_ROADMAP_V2.md for full details):**
 - **Current:** Phase 5 - PINN ML Integration (Python ✅, C++ 🔄)
@@ -1050,8 +1152,8 @@ LOG_WARN("ONNX Runtime not found, ML features disabled");
 
 ---
 
-**Last Updated:** 2025-10-22
-**Project Version:** 0.9.4
+**Last Updated:** 2025-10-24
+**Project Version:** 0.10.1
 **Documentation maintained by:** Claude Code sessions
 
 ---
@@ -1117,8 +1219,47 @@ Complete Python PINN training pipeline with physics-informed constraints. First 
 - `cbfbe45` - fix: Implement ping-pong buffers for M5 temporal accumulation
 - `18a2155` - feat: Implement temporal accumulation in RTXDI lighting system
 
+### MCP Server & Screenshot Capture System (2025-10-24)
+**Branch:** `0.10.1` (current)
+
+**Achievement:**
+Complete MCP server for RTXDI quality analysis with 4 tools, plus in-application screenshot capture system.
+
+**MCP Server Features:**
+- **Lazy Loading Pattern** - Critical fix for MCP timeout issue (PyTorch/LPIPS deferred until first use)
+- **4 Tools Operational** - Performance comparison, PIX analysis, ML screenshot comparison, screenshot listing
+- **LPIPS Integration** - ML-powered visual comparison with ~92% human judgment correlation
+- **Startup Time** - Reduced from 30+ seconds (timeout) to ~8 seconds
+
+**Screenshot Capture Features:**
+- **F2 Key Binding** - Direct GPU framebuffer capture during rendering
+- **Native Resolution** - Captures at exact render resolution (1440p), not monitor resolution
+- **BMP Format** - Lossless capture without external dependencies
+- **Auto-Timestamping** - `screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.bmp`
+
+**Technical Implementation:**
+- `agents/rtxdi-quality-analyzer/rtxdi_server.py` - Flat MCP server with SDK 0.1.4
+- `agents/rtxdi-quality-analyzer/src/tools/ml_visual_comparison.py` - Lazy loading pattern
+- `src/core/Application.cpp:976-979` - F2 key handler
+- `src/core/Application.cpp:1559-1714` - Screenshot capture implementation
+
+**Key Learnings:**
+- **MCP Timeout Root Cause** - Heavy ML imports at module load time
+- **Solution** - Lazy loading pattern defers 528MB of PyTorch/LPIPS weights until first tool invocation
+- **Not SDK Version** - Issue was not related to SDK versions (0.1.1, 0.1.3, 0.1.4 all work)
+- **Not Package Structure** - Flat vs package structure was not the problem
+
+**Status:** ✅ COMPLETE
+
+**Next Steps:**
+- Fix AdaptiveQualitySystem.cpp linking issue (add to CMakeLists.txt)
+- Test F2 screenshot capture once build is fixed
+- Test complete workflow: F2 → list → compare
+
+**See:** `MCP_SERVER_DEBUG_SESSION_SUMMARY.md` for complete debugging timeline
+
 ### Bulk Light Color Control (2025-10-22)
-**Branch:** `0.9.4` (current)
+**Branch:** `0.9.4`
 
 **Achievement:**
 Enhanced light control system with bulk operations for all lights simultaneously.

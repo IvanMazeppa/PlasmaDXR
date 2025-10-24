@@ -14,9 +14,7 @@ from typing import Dict, Any, Optional, Tuple
 import os
 
 import numpy as np
-import torch
 from PIL import Image
-import lpips
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr
 from skimage.metrics import mean_squared_error as mse
@@ -27,15 +25,22 @@ class MLVisualComparison:
     """ML-powered visual comparison using LPIPS and traditional CV metrics"""
 
     def __init__(self):
-        """Initialize LPIPS model (VGG backbone, pre-trained)"""
-        # Load LPIPS model (VGG backbone - best accuracy)
-        # This downloads pre-trained weights on first use (~50MB)
-        self.lpips_model = lpips.LPIPS(net='vgg', version='0.1')
-        self.lpips_model.eval()
-
-        # Move to CPU (GPU optional for faster inference)
+        """Initialize (lazy loading - LPIPS loaded on first use)"""
+        self.lpips_model = None
         self.device = 'cpu'
-        self.lpips_model.to(self.device)
+
+    def _ensure_lpips_loaded(self):
+        """Lazy load LPIPS model only when needed"""
+        if self.lpips_model is None:
+            # Import torch/lpips only when needed (avoids slow startup)
+            import torch
+            import lpips
+
+            # Load LPIPS model (VGG backbone - best accuracy)
+            # This downloads pre-trained weights on first use (~528MB)
+            self.lpips_model = lpips.LPIPS(net='vgg', version='0.1')
+            self.lpips_model.eval()
+            self.lpips_model.to(self.device)
 
     def load_image(self, image_path: Path) -> np.ndarray:
         """
@@ -51,7 +56,7 @@ class MLVisualComparison:
         img_array = np.array(img).astype(np.float32) / 255.0
         return img_array
 
-    def prepare_tensor(self, img_array: np.ndarray) -> torch.Tensor:
+    def prepare_tensor(self, img_array: np.ndarray):
         """
         Convert numpy array to PyTorch tensor for LPIPS
 
@@ -61,6 +66,9 @@ class MLVisualComparison:
         Returns:
             Tensor (1, 3, H, W) in [-1, 1] range
         """
+        # Lazy load torch
+        import torch
+
         # Convert to tensor and rearrange dimensions
         tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
 
@@ -162,6 +170,12 @@ class MLVisualComparison:
         Returns:
             Dictionary with LPIPS distance and similarity
         """
+        # Lazy load LPIPS model on first use
+        self._ensure_lpips_loaded()
+
+        # Lazy load torch
+        import torch
+
         # Prepare tensors
         tensor_before = self.prepare_tensor(img_before)
         tensor_after = self.prepare_tensor(img_after)

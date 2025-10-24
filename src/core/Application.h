@@ -272,6 +272,12 @@ private:
     void DumpBufferToFile(ID3D12Resource* buffer, const char* name);
     void WriteMetadataJSON();
 
+    // Screenshot capture (F2 to capture)
+    bool m_captureScreenshotNextFrame = false;
+    std::string m_screenshotOutputDir = "screenshots/";
+    void CaptureScreenshot();
+    void SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::string& filename);
+
     // ImGui
     void InitializeImGui();
     void ShutdownImGui();

@@ -48,10 +48,9 @@ class RTXDIAnalyzer:
     """
     RTXDI Quality Analyzer Agent
 
-    Provides three core diagnostic capabilities:
+    Provides two core diagnostic capabilities:
     1. Performance comparison between legacy, RTXDI M4, and RTXDI M5
     2. PIX capture analysis for bottleneck identification
-    3. ML-powered screenshot comparison using LPIPS
     """
 
     def __init__(self, project_root: Optional[str] = None):
@@ -189,10 +188,10 @@ async def main():
     # Initialize analyzer
     analyzer = RTXDIAnalyzer()
 
-    # Create MCP server INSIDE main() function (required for proper MCP protocol initialization)
+    # Create MCP server
     server = Server("rtxdi-quality-analyzer")
 
-    # Register tool: list_tools
+    # Register tool: compare_performance
     @server.list_tools()
     async def list_tools() -> list[Tool]:
         return [
@@ -242,11 +241,11 @@ async def main():
                     "properties": {
                         "before_path": {
                             "type": "string",
-                            "description": "Path to 'before' screenshot (e.g., /mnt/c/Users/dilli/Pictures/Screenshots/screenshot1.png)"
+                            "description": "Path to 'before' screenshot (e.g., /mnt/c/Users/dilli/Pictures/PlasmaDX-Screenshots/rtxdi_m4_before.png)"
                         },
                         "after_path": {
                             "type": "string",
-                            "description": "Path to 'after' screenshot (e.g., /mnt/c/Users/dilli/Pictures/Screenshots/screenshot2.png)"
+                            "description": "Path to 'after' screenshot (e.g., /mnt/c/Users/dilli/Pictures/PlasmaDX-Screenshots/rtxdi_m5_after.png)"
                         },
                         "save_heatmap": {
                             "type": "boolean",
@@ -259,7 +258,7 @@ async def main():
             )
         ]
 
-    # Register tool handler: call_tool
+    # Register tool handler: compare_performance
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if name == "compare_performance":
