@@ -880,9 +880,8 @@ LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
         return 0;
     }
 
-    // Let ImGui handle input first
-    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
-        return true;
+    // Let ImGui handle input first (but only if it wants it)
+    ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam);
 
     switch (msg) {
     case WM_CREATE:
@@ -929,7 +928,19 @@ LRESULT CALLBACK Application::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 
     case WM_KEYDOWN:
         if (app) {
-            app->OnKeyPress(static_cast<UINT8>(wParam));
+            // Always allow F-keys and special keys even if ImGui wants keyboard
+            UINT8 key = static_cast<UINT8>(wParam);
+            bool isFunctionKey = (key >= VK_F1 && key <= VK_F12);
+            bool isSpecialKey = (key == VK_ESCAPE);
+
+            // Handle function keys and special keys regardless of ImGui state
+            if (isFunctionKey || isSpecialKey) {
+                app->OnKeyPress(key);
+            }
+            // For other keys, only handle if ImGui doesn't want keyboard input
+            else if (!ImGui::GetIO().WantCaptureKeyboard) {
+                app->OnKeyPress(key);
+            }
         }
         return 0;
 

@@ -45,7 +45,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='DebugPIX'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -90,6 +90,7 @@
     <ClCompile Include="src\particles\ParticleRenderer.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer_Billboard.cpp" />
     <ClCompile Include="src\particles\ParticleRenderer_Gaussian.cpp" />
+    <ClCompile Include="src\ml\AdaptiveQualitySystem.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem.cpp" />
     <ClCompile Include="src\lighting\RTLightingSystem_RayQuery.cpp" />
     <ClCompile Include="src\lighting\RTXDILightingSystem.cpp" />
