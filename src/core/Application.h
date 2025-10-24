@@ -276,43 +276,138 @@ private:
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
 
-    // Screenshot metadata structure (Phase 1: Visual Analysis Enhancement)
+    // Screenshot metadata structure v2.0 (Phase 2: Enhanced Configuration Capture)
     struct ScreenshotMetadata {
-        // Rendering configuration
-        bool rtxdiEnabled;
-        bool rtxdiM5Enabled;
-        float temporalBlendFactor;
-        int shadowRaysPerLight;
-        int lightCount;
-        bool usePhaseFunction;
-        bool useShadowRays;
-        bool useInScattering;
+        // Schema versioning
+        std::string schemaVersion = "2.0";
 
-        // Particle configuration
-        int particleCount;
-        float particleRadius;
-        float gravityStrength;
-        bool physicsEnabled;
+        // === RENDERING CONFIGURATION ===
 
-        // Performance metrics
-        float fps;
-        float frameTime;
+        // Active systems
+        std::string activeLightingSystem;  // "MultiLight" or "RTXDI"
+        std::string rendererType;          // "Billboard" or "Gaussian"
 
-        // Camera state
+        // RTXDI configuration (only relevant if RTXDI active)
+        struct RTXDIConfig {
+            bool enabled = false;
+            bool m4Enabled = false;
+            bool m5Enabled = false;
+            float temporalBlendFactor = 0.0f;
+        } rtxdi;
+
+        // Light configuration
+        struct LightConfig {
+            int count = 0;
+            struct LightInfo {
+                float posX, posY, posZ;
+                float colorR, colorG, colorB;
+                float intensity;
+                float radius;
+            };
+            std::vector<LightInfo> lights;
+        } lightConfig;
+
+        // Shadow configuration
+        struct ShadowConfig {
+            std::string preset;  // "Performance", "Balanced", "Quality", "Custom"
+            int raysPerLight = 0;
+            bool temporalFilteringEnabled = false;
+            float temporalBlendFactor = 0.0f;
+        } shadows;
+
+        // === QUALITY PRESET ===
+
+        std::string qualityPreset;  // "Maximum", "Ultra", "High", "Medium", "Low"
+        float targetFPS = 0.0f;     // 0 (Maximum), 30 (Ultra), 60 (High), 120 (Medium), 165 (Low)
+
+        // === PHYSICAL EFFECTS ===
+
+        struct PhysicalEffects {
+            // Emission
+            bool usePhysicalEmission = false;
+            float emissionStrength = 0.0f;
+            float emissionBlendFactor = 0.0f;
+
+            // Relativistic effects
+            bool useDopplerShift = false;
+            float dopplerStrength = 0.0f;
+            bool useGravitationalRedshift = false;
+            float redshiftStrength = 0.0f;
+
+            // Scattering
+            bool usePhaseFunction = false;
+            float phaseStrength = 0.0f;
+
+            // Anisotropic Gaussians
+            bool useAnisotropicGaussians = false;
+            float anisotropyStrength = 0.0f;
+        } physicalEffects;
+
+        // === FEATURE STATUS FLAGS ===
+
+        struct FeatureStatus {
+            // Working features
+            bool multiLightWorking = true;
+            bool shadowRaysWorking = true;
+            bool phaseFunctionWorking = true;
+            bool physicalEmissionWorking = true;
+            bool anisotropicGaussiansWorking = true;
+
+            // WIP features (visible but not fully functional)
+            bool dopplerShiftWorking = false;      // No visible effect currently
+            bool redshiftWorking = false;          // No visible effect currently
+            bool rtxdiM5Working = false;           // Temporal accumulation in progress
+
+            // Deprecated/non-functional
+            bool inScatteringDeprecated = true;
+            bool godRaysDeprecated = true;
+        } featureStatus;
+
+        // === PARTICLES ===
+
+        struct ParticleConfig {
+            int count = 0;
+            float radius = 0.0f;
+            float gravityStrength = 0.0f;
+            bool physicsEnabled = false;
+
+            // Physics system details
+            float innerRadius = 0.0f;
+            float outerRadius = 0.0f;
+            float diskThickness = 0.0f;
+        } particles;
+
+        // === PERFORMANCE ===
+
+        struct Performance {
+            float fps = 0.0f;
+            float frameTime = 0.0f;
+            float targetFPS = 0.0f;
+            float fpsRatio = 0.0f;  // current / target (1.0 = on target)
+        } performance;
+
+        // === CAMERA ===
+
         struct CameraState {
             float x, y, z;       // Camera position
             float lookAtX, lookAtY, lookAtZ;  // Look-at point
             float distance;      // Distance from center
             float height;        // Height above disk
             float angle;         // Orbit angle
+            float pitch;         // Vertical rotation
         } camera;
 
-        // ML/Quality systems
-        bool pinnEnabled;
-        std::string modelPath;
-        bool adaptiveQualityEnabled;
+        // === ML/QUALITY ===
 
-        // Timestamp
+        struct MLQuality {
+            bool pinnEnabled = false;
+            std::string modelPath;
+            bool adaptiveQualityEnabled = false;
+            float adaptiveTargetFPS = 0.0f;
+        } mlQuality;
+
+        // === METADATA ===
+
         std::string timestamp;
         std::string configFile;
     };
@@ -321,6 +416,7 @@ private:
     void SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::string& filename);
     void SaveScreenshotMetadata(const std::string& screenshotPath, const ScreenshotMetadata& metadata);
     ScreenshotMetadata GatherScreenshotMetadata();
+    void DetectQualityPreset(ScreenshotMetadata& meta);  // Helper to determine quality preset from settings
 
     // ImGui
     void InitializeImGui();

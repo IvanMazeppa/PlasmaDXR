@@ -8,24 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The user is named Ben.
 
-**PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). The project simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
+**PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
 
 **Current Status (2025-10-24):**
 - RTXDI M5 (Phase 2) - Temporal accumulation with ping-pong buffers
-- PINN ML Physics - Python training pipeline complete, C++ integration in progress
-- Adaptive Quality System integrated with ONNX Runtime
-- Bulk light color control system operational
+- PINN ML Physics - Python training complete, C++ integration in progress
 - MCP server operational with 4 tools (performance analysis, PIX analysis, ML screenshot comparison, screenshot listing)
-- F2 screenshot capture system (direct GPU framebuffer capture at native resolution)
-- God rays system (SHELVED - active but marked for deactivation due to issues)
+- F2 screenshot capture system (direct GPU framebuffer capture)
+- God rays system SHELVED (marked for deactivation)
 - 30×30×30 spatial grid covering 3000×3000×3000 unit world space
 
 **Core Technology Stack:**
 - DirectX 12 with Agility SDK
 - DXR 1.1 (RayQuery API for inline ray tracing)
 - HLSL Shader Model 6.5+
-- ImGui for runtime controls
-- PIX for Windows (GPU debugging)
+- ImGui, PIX for Windows
 - ONNX Runtime (ML inference, optional)
 - PyTorch (PINN training)
 
@@ -47,7 +44,6 @@ MSBuild PlasmaDX-Clean.sln /p:Configuration=DebugPIX /p:Platform=x64
 
 **Debug** - Daily development (zero PIX overhead):
 - D3D12 debug layer enabled
-- Fast iteration
 - Output: `build/Debug/PlasmaDX-Clean.exe`
 
 **DebugPIX** - PIX GPU debugging (instrumented):
@@ -66,8 +62,6 @@ dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo particle_p
 
 ### ONNX Runtime (ML Features) - Optional
 
-**Status:** Optional dependency for PINN physics acceleration
-
 **Detection:** CMake automatically detects ONNX Runtime presence
 - If found: `ENABLE_ML_FEATURES=ON`, PINN available
 - If missing: `ENABLE_ML_FEATURES=OFF`, warning shown, ML features disabled
@@ -76,24 +70,8 @@ dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo particle_p
 ```bash
 # Download from: https://github.com/microsoft/onnxruntime/releases
 # Extract to: external/onnxruntime/
-# Required structure:
-#   external/onnxruntime/include/
-#   external/onnxruntime/lib/onnxruntime.lib
-#   external/onnxruntime/lib/onnxruntime.dll
+# Required structure: external/onnxruntime/include/, lib/
 ```
-
-**CMake Integration:**
-```cmake
-# In CMakeLists.txt (automatic detection)
-if(NOT EXISTS "${ONNXRUNTIME_DIR}/include")
-    message(WARNING "ONNX Runtime not found. ML features will be disabled.")
-    set(ENABLE_ML_FEATURES OFF)
-endif()
-```
-
-**Required DLLs (copied automatically if enabled):**
-- `onnxruntime.dll`
-- `onnxruntime_providers_shared.dll`
 
 ---
 
@@ -181,25 +159,13 @@ The codebase follows strict separation of concerns with single-responsibility mo
 ### Key Shaders
 
 **Physics Simulation:**
-- `shaders/particles/particle_physics.hlsl` - GPU physics compute shader
-  - Schwarzschild black hole gravity
-  - Keplerian orbital dynamics
-  - Temperature-based blackbody emission
-  - Anisotropic Gaussian elongation
+- `shaders/particles/particle_physics.hlsl` - GPU physics compute shader (Schwarzschild black hole gravity, Keplerian orbital dynamics, temperature-based blackbody emission, anisotropic Gaussian elongation)
 
 **Volumetric Rendering:**
-- `shaders/particles/particle_gaussian_raytrace.hlsl` - Main volumetric renderer
-  - Uses RayQuery API (DXR 1.1 inline ray tracing)
-  - Analytic ray-ellipsoid intersection
-  - Beer-Lambert law for volumetric absorption (log-space for numerical stability)
-  - Henyey-Greenstein phase function for anisotropic scattering
-  - Hybrid emission blend system (artistic warm colors + physically accurate blackbody radiation)
+- `shaders/particles/particle_gaussian_raytrace.hlsl` - Main volumetric renderer (RayQuery API, analytic ray-ellipsoid intersection, Beer-Lambert law for volumetric absorption, Henyey-Greenstein phase function, hybrid emission blend system)
 
 **Ray Traced Lighting:**
-- `shaders/dxr/particle_raytraced_lighting_cs.hlsl` - RT lighting compute
-  - Particle-to-particle illumination via TLAS traversal
-  - Shadow rays for occlusion
-  - ReSTIR Phase 1 (temporal reuse - deprecated, replaced by RTXDI)
+- `shaders/dxr/particle_raytraced_lighting_cs.hlsl` - RT lighting compute (particle-to-particle illumination via TLAS traversal, shadow rays for occlusion)
 
 **RTXDI System:**
 - `shaders/rtxdi/rtxdi_raygen.hlsl` - DXR raygen shader for weighted reservoir sampling
@@ -209,14 +175,6 @@ The codebase follows strict separation of concerns with single-responsibility mo
 **Acceleration Structure:**
 - `shaders/dxr/generate_particle_aabbs.hlsl` - Procedural primitive AABB generation
 - `shaders/dxr/particle_intersection.hlsl` - Ray-ellipsoid intersection shader
-
-### Shader Constants Structure
-
-The physics shader uses a large constant buffer (`PhysicsConstants`) passed via root constants:
-- Particle count, delta time, total time
-- Black hole mass, gravity strength, turbulence
-- Constraint shape parameters (radius, thickness)
-- Alpha viscosity (Shakura-Sunyaev accretion parameter)
 
 **IMPORTANT:** Root constants are limited to 64 DWORDs. Large constant structures should use constant buffers instead.
 
@@ -236,20 +194,11 @@ Unlike traditional 2D Gaussian splatting (NeRF/3DGS reconstruction), this engine
 **Ray-Ellipsoid Intersection:**
 The core algorithm transforms rays into ellipsoid space and solves the quadratic equation. See `RayGaussianIntersection()` in `gaussian_common.hlsl`.
 
-**Anisotropic Elongation:**
-Particles elongate along velocity vectors to simulate tidal forces:
-```hlsl
-scale.xyz = baseRadius * (1, 1, 1 + anisotropy * velocityMagnitude)
-```
-
 ---
 
 ## RTXDI Implementation (Phase 4 - ACTIVE)
 
 **Status:** M5 Phase 2 In Progress - Temporal Accumulation with Ping-Pong Buffers
-
-**Achievement (2025-10-22):**
-Successfully implemented custom RTXDI system using DXR 1.1 raytracing with M5 temporal accumulation. After 14 hours of intensive development and debugging (M4), RTXDI weighted reservoir sampling is operational with temporal smoothing now being implemented.
 
 **Implementation:**
 - **DXR Pipeline:** Raygen shader performs weighted reservoir sampling
@@ -260,28 +209,10 @@ Successfully implemented custom RTXDI system using DXR 1.1 raytracing with M5 te
 - **Temporal Accumulation:** Ping-pong buffers for M5 temporal reuse
 
 **Architecture:**
-1. **Light Grid Building** (compute shader):
-   - Uploads 13-16 lights to GPU structured buffer
-   - Computes spatial grid cells (30×30×30)
-   - Assigns lights to cells based on position and radius
-   - Calculates importance weights per light per cell
-
-2. **Weighted Reservoir Sampling** (DXR raygen shader):
-   - Maps pixel to world position → grid cell
-   - Reads cell's light list and weights
-   - Performs weighted random selection (1 light per pixel per frame)
-   - Uses PCG hash for temporal variation (frame index + pixel coords)
-
-3. **Temporal Accumulation (M5)** (compute shader):
-   - Ping-pong buffers for temporal reuse
-   - Accumulates 8-16 samples over 60ms
-   - Smooths patchwork pattern from M4 Phase 1
-
-4. **Gaussian Renderer Integration**:
-   - Reads RTXDI output buffer (t6)
-   - Uses temporally accumulated light selection
-   - Auto-disables RT particle-to-particle lighting in RTXDI mode
-   - Debug visualization shows rainbow colors (light index mapping)
+1. **Light Grid Building** (compute shader): Uploads 13-16 lights to GPU, computes spatial grid cells, assigns lights to cells, calculates importance weights
+2. **Weighted Reservoir Sampling** (DXR raygen shader): Maps pixel to world position → grid cell, reads cell's light list and weights, performs weighted random selection (1 light per pixel per frame), uses PCG hash for temporal variation
+3. **Temporal Accumulation (M5)** (compute shader): Ping-pong buffers for temporal reuse, accumulates 8-16 samples over 60ms, smooths patchwork pattern from M4 Phase 1
+4. **Gaussian Renderer Integration**: Reads RTXDI output buffer (t6), uses temporally accumulated light selection, auto-disables RT particle-to-particle lighting in RTXDI mode
 
 **Key Technical Details:**
 - **Fibonacci Sphere Distribution** (RTXDI Sphere preset) - 13 lights @ 1200-unit radius
@@ -290,31 +221,7 @@ Successfully implemented custom RTXDI system using DXR 1.1 raytracing with M5 te
 - **Temporal Smoothing** - M5 accumulation reduces patchwork artifacts
 
 **Migration from Custom ReSTIR:**
-Original custom ReSTIR implementation (126 MB reservoir buffers, temporal reuse attempts) was deprecated in favor of lightweight RTXDI approach. Custom implementation removed, RTXDI built from scratch using:
-- NVIDIA ReSTIR paper principles (Bitterli et al. 2020)
-- DXR 1.1 TraceRay API for raygen shader
-- Custom light grid building compute shader
-- Spatial partitioning with temporal accumulation
-
-**Custom Implementation Technical Details (for reference):**
-
-**Algorithm:** Weighted Reservoir Sampling for many-light problems
-1. Candidate Sampling: Cast 16-32 random rays to find light-emitting particles
-2. Importance Weighting: `weight = luminance(emission * intensity * attenuation)`
-3. Reservoir Update: Probabilistic selection maintains 1 sample from M candidates
-4. Temporal Reuse: Previous frame's reservoir is validated and merged
-5. Unbiased Estimator: Correction weight `W = weightSum / M`
-
-**Ping-Pong Buffers:**
-- 2× reservoir buffers (63MB each @ 1080p)
-- Structure: `{ float3 lightPos, float weightSum, uint M, float W, uint particleIdx }`
-- Swap each frame via `m_currentReservoirIndex`
-
-**Known Issues (historical):**
-- Weight calculation edge cases for low-temperature particles
-- Temporal reuse validation bugs
-- Attenuation formula tuning at large scales
-- See `RESTIR_DEBUG_BRIEFING.md` for full debugging history
+Original custom ReSTIR implementation (126 MB reservoir buffers) was deprecated in favor of lightweight RTXDI approach. Custom implementation removed, RTXDI built from scratch using NVIDIA ReSTIR paper principles (Bitterli et al. 2020).
 
 **Current Status:**
 - Phase 1 (M4): Weighted sampling ✅ COMPLETE
@@ -327,21 +234,16 @@ Original custom ReSTIR implementation (126 MB reservoir buffers, temporal reuse 
 
 **Status:** Implemented and working
 
-**Achievement:** First production-ready many-light system using RT volumetric rendering. 13 lights distributed across the accretion disk achieve realistic multi-directional shadowing, rim lighting, and atmospheric scattering effects.
+First production-ready many-light system using RT volumetric rendering. 13 lights distributed across the accretion disk achieve realistic multi-directional shadowing, rim lighting, and atmospheric scattering effects.
 
 **Architecture:**
 - Light array stored in `m_lights` vector (Application.cpp:118)
 - Uploaded to GPU via structured buffer (32 bytes/light)
 - Gaussian raytrace shader reads all lights (particle_gaussian_raytrace.hlsl:726)
-- Each light contributes independently to volumetric illumination
 - Bulk color control system for all lights simultaneously
 
 **ImGui Controls:**
-All lights fully controllable at runtime:
-- Position (X/Y/Z sliders)
-- Color (RGB color picker)
-- Intensity (0.1 - 20.0 range)
-- Radius (10.0 - 200.0 range)
+- Position (X/Y/Z sliders), Color (RGB picker), Intensity (0.1 - 20.0), Radius (10.0 - 200.0)
 - Per-light enable/disable toggles
 - **Bulk Controls:** Apply color/intensity to all lights at once
 
@@ -351,77 +253,27 @@ All lights fully controllable at runtime:
 - **Trinary Dance** - 3 lights in triangular formation
 - **Single Beacon** - 1 centered light (debugging/comparison)
 
-**Performance Impact:**
-- 13 lights: ~5% FPS overhead compared to single light
-- Bottleneck: Per-light attenuation calculation in ray marching loop
-- Current: 120+ FPS @ 10K particles with 13 lights (RTX 4060 Ti, 1080p)
-- Target maintained ✅
-
-**User Feedback:** "this is one hell of a brilliant update!!!!!!!!!!!"
+**Performance:** 120+ FPS @ 10K particles with 13 lights (RTX 4060 Ti, 1080p)
 
 ---
 
 ## PCSS Soft Shadows (Phase 3.6 - COMPLETE ✅)
 
-**Implementation Date:** 2025-10-18
-**Status:** Complete and operational
+Full PCSS (Percentage-Closer Soft Shadows) implementation with temporal filtering achieving soft shadows at 115-120 FPS (Performance preset) on RTX 4060 Ti @ 1080p with 10K particles.
 
-**Achievement:** Full PCSS (Percentage-Closer Soft Shadows) implementation with temporal filtering achieving soft shadows at 115-120 FPS (Performance preset) on RTX 4060 Ti @ 1080p with 10K particles.
+### Three Shadow Quality Presets:
 
-### Architecture
-
-**Three Shadow Quality Presets:**
-
-1. **Performance** (Default - Variant 3: 1-ray + temporal filtering)
-   - 1 ray per light
-   - Temporal accumulation (67ms convergence to 8-ray quality)
-   - Target: 115-120 FPS
-   - Best for: Real-time gameplay, interactive exploration
-
-2. **Balanced** (Variant 1: 4-ray PCSS)
-   - 4 rays per light (Poisson disk sampling)
-   - Instant soft shadows (no temporal accumulation)
-   - Target: 90-100 FPS
-   - Best for: High-quality screenshots, moderate performance
-
-3. **Quality** (Variant 2: 8-ray PCSS)
-   - 8 rays per light (Poisson disk sampling)
-   - Highest quality soft shadows
-   - Target: 60-75 FPS
-   - Best for: Cinematic captures, maximum quality
+1. **Performance** (Default - 1-ray + temporal filtering): 1 ray per light, temporal accumulation (67ms convergence to 8-ray quality), Target: 115-120 FPS
+2. **Balanced** (4-ray PCSS): 4 rays per light (Poisson disk sampling), instant soft shadows, Target: 90-100 FPS
+3. **Quality** (8-ray PCSS): 8 rays per light (Poisson disk sampling), highest quality, Target: 60-75 FPS
 
 **Technical Implementation:**
 - Shadow buffers: 2× R16_FLOAT (ping-pong, 4MB @ 1080p)
 - Root signature: 10 parameters (was 8, +2 for shadow buffers)
 - Shader resources: `t5: g_prevShadow`, `u2: g_currShadow`
 - Temporal blend formula: `finalShadow = lerp(prevShadow, currentShadow, 0.1)`
-- Convergence time: `t = -ln(0.125) / 0.1 ≈ 67ms` (8 frames @ 120 FPS)
 
-### Configuration Files
-
-**Preset configs:** `configs/presets/`
-- `shadows_performance.json` - 1-ray + temporal (default)
-- `shadows_balanced.json` - 4-ray PCSS
-- `shadows_quality.json` - 8-ray PCSS
-
-**Command-line usage:**
-```bash
-# Performance preset (default)
-./build/Debug/PlasmaDX-Clean.exe --config=configs/presets/shadows_performance.json
-
-# Balanced preset
-./build/Debug/PlasmaDX-Clean.exe --config=configs/presets/shadows_balanced.json
-
-# Quality preset
-./build/Debug/PlasmaDX-Clean.exe --config=configs/presets/shadows_quality.json
-```
-
-### Performance Impact
-| Preset | Rays/Light | Temporal | FPS Target | Overhead |
-|--------|-----------|----------|------------|----------|
-| Performance | 1 | ON | 115-120 | ~4% |
-| Balanced | 4 | OFF | 90-100 | ~15% |
-| Quality | 8 | OFF | 60-75 | ~35% |
+**Preset configs:** `configs/presets/shadows_performance.json`, `shadows_balanced.json`, `shadows_quality.json`
 
 **See:** `PCSS_IMPLEMENTATION_SUMMARY.md` for complete technical details
 
@@ -431,7 +283,7 @@ All lights fully controllable at runtime:
 
 **Status:** Python training pipeline complete ✅, C++ integration in progress 🔄
 
-**Achievement:** Research-level PINN that learns accretion disk particle forces while respecting fundamental astrophysics:
+Research-level PINN that learns accretion disk particle forces while respecting fundamental astrophysics:
 
 ### Physics Constraints Enforced:
 1. ✅ **General Relativity** - Schwarzschild metric (V_eff with GR correction term)
@@ -445,35 +297,6 @@ All lights fully controllable at runtime:
 - **Scientifically accurate** - respects conservation laws & GR
 - **Hybrid mode ready** - PINN for far particles, shader for close-up
 - **Retrainable** - collect new data, improve model
-
-### Files Created:
-
-**Python Training Pipeline:**
-```
-ml/
-├── pinn_accretion_disk.py          # Main PINN implementation (530 lines)
-│   ├── AccretionDiskPINN            # Neural network model
-│   ├── Physics loss functions       # Conservation laws enforcement
-│   ├── Training loop                # Combined data + physics loss
-│   └── ONNX export                  # For C++ inference
-│
-├── collect_physics_data.py         # GPU buffer dump processor (300 lines)
-│   ├── Read g_particles.bin         # Binary particle buffer
-│   ├── Cartesian → Spherical        # Coordinate transformation
-│   └── Compute forces               # From velocity finite differences
-│
-├── test_pinn.py                     # ONNX model validation
-├── requirements_pinn.txt            # PyTorch, ONNX, scientific stack
-├── PINN_README.md                   # Comprehensive documentation (500+ lines)
-└── models/
-    └── pinn_accretion_disk.onnx     # Trained model for C++ inference
-```
-
-**C++ Integration (In Progress):**
-```
-src/ml/
-└── AdaptiveQualitySystem.h/cpp      # ONNX Runtime integration
-```
 
 ### Network Architecture:
 
@@ -509,20 +332,6 @@ python pinn_accretion_disk.py
 python test_pinn.py --model models/pinn_accretion_disk.onnx
 ```
 
-**Expected Training Output:**
-```
-Epoch 2000/2000
-  Total Loss: 0.000234
-  Data Loss: 0.000156
-  Physics Losses:
-    keplerian: 0.000012
-    angular_momentum: 0.000034
-    energy: 0.000008
-    gr: 0.000024
-
-Model exported to ml/models/pinn_accretion_disk.onnx ✅
-```
-
 ### C++ Integration Status:
 
 **Completed:**
@@ -547,9 +356,7 @@ Model exported to ml/models/pinn_accretion_disk.onnx ✅
 | 50K | 45 FPS | 180 FPS | **4.0×** |
 | 100K | 18 FPS | 110 FPS | **6.1×** |
 
-**Why faster?**
-- Traditional: O(N) particle updates + O(N·M) RT lighting (expensive)
-- PINN: O(N) neural network inference (constant time per particle)
+**Why faster?** Traditional: O(N) particle updates + O(N·M) RT lighting (expensive), PINN: O(N) neural network inference (constant time per particle)
 
 **See:** `ml/PINN_README.md` and `PINN_IMPLEMENTATION_SUMMARY.md` for complete documentation
 
@@ -557,25 +364,9 @@ Model exported to ml/models/pinn_accretion_disk.onnx ✅
 
 ## Volumetric God Rays (Phase 3.7 - SHELVED ⚠️)
 
-**Implementation Date:** 2025-10-22
 **Status:** ⚠️ **SHELVED** - Active in application but marked for deactivation
 
 **Reason:** Various issues encountered during implementation. Feature remains in codebase but should be disabled until issues are resolved.
-
-**Implementation:**
-- Atmospheric fog ray marching
-- Volumetric god ray rendering from light sources
-- Light shaft visualization through particle medium
-
-**Technical Details:**
-- Ray marching through atmospheric volume
-- Light shaft scattering calculations
-- Configurable density and scattering parameters
-- Integration with existing Gaussian volumetric renderer
-
-**Files:**
-- Implementation integrated into `ParticleRenderer_Gaussian.cpp`
-- Shader code in `particle_gaussian_raytrace.hlsl`
 
 **Known Issues:**
 - Performance impact not acceptable for real-time use
@@ -588,15 +379,7 @@ Model exported to ml/models/pinn_accretion_disk.onnx ✅
 - Default to OFF in config files
 - Document issues in roadmap for future work
 
-**Commits:**
-- `78d1d86` - Implement atmospheric fog ray marching for volumetric god rays
-- `c0170db` - Integrate God Ray System into Particle Renderer and Application
-
-**Future Work:**
-- Revisit after RTXDI M6 complete
-- Consider alternative implementation approach
-- Profile performance bottlenecks
-- Fix interaction with multi-light system
+**Future Work:** Revisit after RTXDI M6 complete, consider alternative implementation approach
 
 ---
 
@@ -646,11 +429,6 @@ The Gaussian renderer reuses the TLAS built by RTLightingSystem. Do NOT create d
 - Alpha viscosity (Shakura-Sunyaev accretion - inward spiral)
 - Enhanced temperature models (velocity-based heating)
 
-**Not Implemented (intentionally skipped):**
-- SPH (Smoothed Particle Hydrodynamics) - too complex, different use case
-- Relativistic jets - will use RT-based volumetric approach instead
-- Dual galaxy collision - unstable in previous implementation
-
 ### Runtime Physics Controls
 
 **Keyboard shortcuts:**
@@ -660,7 +438,6 @@ The Gaussian renderer reuses the TLAS built by RTLightingSystem. Do NOT create d
 - Shift+Up/Down: Damping
 - [/]: Particle size
 
-**ImGui controls:**
 All physics parameters are exposed in the ImGui interface with real-time adjustments.
 
 ---
@@ -683,9 +460,6 @@ Add `--dump-buffers <frame>` to save GPU buffers to `PIX/buffer_dumps/`:
 - `g_prevReservoirs.bin` - Previous frame ReSTIR reservoirs (deprecated)
 - `g_rtLighting.bin` - Pre-computed RT lighting
 
-**Analysis Scripts:**
-See `PIX/scripts/analysis/` for Python scripts to analyze buffer dumps.
-
 **PINN Training Data:**
 ```bash
 # Collect physics training data
@@ -695,8 +469,6 @@ See `PIX/scripts/analysis/` for Python scripts to analyze buffer dumps.
 cd ml
 python collect_physics_data.py --input ../PIX/buffer_dumps
 ```
-
-### PIX Event Markers
 
 All draw calls and compute dispatches are wrapped with PIX event markers. Use PIX timeline view to navigate the frame.
 
@@ -721,40 +493,12 @@ All draw calls and compute dispatches are wrapped with PIX event markers. Use PI
 
 **CRITICAL: Lazy Loading Pattern for ML Tools**
 
-The server uses lazy loading for PyTorch and LPIPS to avoid MCP timeout (30-second limit):
-
-```python
-class MLVisualComparison:
-    def __init__(self):
-        """Initialize (lazy loading - LPIPS loaded on first use)"""
-        self.lpips_model = None
-        self.device = 'cpu'
-
-    def _ensure_lpips_loaded(self):
-        """Lazy load LPIPS model only when needed"""
-        if self.lpips_model is None:
-            import torch
-            import lpips
-            self.lpips_model = lpips.LPIPS(net='vgg', version='0.1')
-            self.lpips_model.eval()
-            self.lpips_model.to(self.device)
-```
-
-**Why this matters:**
-- PyTorch + LPIPS = 528MB of weights
-- Loading at import time = 30+ seconds (exceeds MCP timeout)
-- Lazy loading = ~8 second startup, ML loads only when `compare_screenshots_ml` is called
+The server uses lazy loading for PyTorch and LPIPS to avoid MCP timeout (30-second limit). PyTorch + LPIPS = 528MB of weights. Loading at import time = 30+ seconds (exceeds MCP timeout), lazy loading = ~8 second startup, ML loads only when `compare_screenshots_ml` is called.
 
 **Running the server:**
 ```bash
 cd agents/rtxdi-quality-analyzer
 ./run_server.sh
-```
-
-**Dependencies:**
-```bash
-pip install -r requirements.txt
-# Includes: mcp, Pillow, numpy, torch, lpips, scikit-image
 ```
 
 ### Screenshot Capture System
@@ -770,17 +514,7 @@ Press **F2** during rendering to capture the exact GPU framebuffer at full nativ
 - Saves to `screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.bmp`
 - Captures at native resolution (1440p) not monitor resolution
 
-**Technical details:**
-1. Creates readback buffer in CPU-accessible memory
-2. Transitions backbuffer: PRESENT → COPY_SOURCE → PRESENT
-3. Maps readback buffer and converts pixel format
-4. Writes BMP file with proper header
-
-**Why BMP instead of PNG:**
-- No external library dependency
-- Lossless quality
-- Easy to implement
-- ML comparison tool accepts both formats
+**Why BMP instead of PNG:** No external library dependency, lossless quality, easy to implement, ML comparison tool accepts both formats
 
 **Complete workflow:**
 ```bash
@@ -809,123 +543,22 @@ PlasmaDX uses Claude Code's plugin system for autonomous multi-agent testing. Cu
 
 ### Custom v3 Agents
 
-**buffer-validator-v3** - Autonomous GPU buffer validation
-- Validates binary buffer dumps from `--dump-buffers` flag
-- Knows DirectX 12 buffer formats (32 bytes/particle, 32 bytes/light, 32 bytes/pixel)
-- Detects NaN/Inf, out-of-bounds values, statistical anomalies
-- Auto-generates Python validation scripts
-- **Usage:** `@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_particles.bin`
+**buffer-validator-v3** - Autonomous GPU buffer validation (validates binary buffer dumps, detects NaN/Inf, out-of-bounds values, statistical anomalies)
 
-**pix-debugger-v3** - Root cause analysis for rendering issues
-- Diagnoses black screens, color artifacts, missing effects
-- Knows multi-light system architecture (Phase 3.5)
-- Understands RT lighting pipeline (Phase 2.6)
-- Provides specific file:line fixes with time estimates
-- **Usage:** `@pix-debugger-v3 analyze "lights disappear beyond 300 units"`
+**pix-debugger-v3** - Root cause analysis for rendering issues (diagnoses black screens, color artifacts, missing effects, provides specific file:line fixes)
 
-**stress-tester-v3** - Comprehensive stress testing
-- Particle count scaling (100 → 100K)
-- Multi-light scaling (0 → 50 lights)
-- Camera distance testing (close, mid, far scenarios)
-- Performance regression detection
-- **Usage:** `@stress-tester-v3 run particle-scaling`
+**stress-tester-v3** - Comprehensive stress testing (particle count scaling 100 → 100K, multi-light scaling 0 → 50 lights, camera distance testing)
 
-**performance-analyzer-v3** - Performance profiling
-- Identifies bottlenecks (BLAS rebuild, shader dispatches)
-- Compares against performance targets (RTX 4060 Ti baseline)
-- Generates optimization recommendations
-- Integrates with PIX timing captures
-- **Usage:** `@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe`
+**performance-analyzer-v3** - Performance profiling (identifies bottlenecks, compares against performance targets, generates optimization recommendations)
 
 ### Built-in Claude Code Agents
-
-PlasmaDX also uses Claude Code's built-in specialized agents:
 
 - **pix-debugging-agent** - Autonomous PIX capture analysis
 - **dxr-graphics-debugging-engineer-v2** - DXR rendering diagnosis
 - **dx12-mesh-shader-engineer-v2** - Mesh/Amplification shader work
 - **physics-performance-agent-v2** - Physics simulation optimization
 
-### Multi-Agent Workflows
-
-**Example: Debug Multi-Light Issue**
-```bash
-# 1. Capture frame with buffer dump
-./build/DebugPIX/PlasmaDX-Clean-PIX.exe --dump-buffers 120
-
-# 2. Validate buffers
-@buffer-validator-v3 validate PIX/buffer_dumps/frame_120/g_lights.bin
-
-# 3. Analyze rendering issue
-@pix-debugger-v3 analyze "light radius control has no effect"
-
-# 4. Apply fix to shader
-# (pix-debugger-v3 provides file:line and exact code change)
-```
-
-**Example: Performance Regression**
-```bash
-# 1. Run stress test
-@stress-tester-v3 run multi-light-scaling
-
-# 2. Profile bottlenecks
-@performance-analyzer-v3 profile build/Debug/PlasmaDX-Clean.exe
-
-# 3. Use built-in physics optimization
-@physics-performance-agent-v2 optimize particle physics shader
-```
-
-### Plugin System Documentation
-
-See `CLAUDE_CODE_PLUGINS_GUIDE.md` for complete plugin system documentation including:
-- Agent creation guide
-- Built-in vs custom agents
-- Multi-agent orchestration
-- Future Agent SDK use cases
-
----
-
-## Common Development Tasks
-
-### Running Tests
-There are no automated unit tests. Testing is primarily visual and performance-based:
-1. Run Debug build
-2. Verify particle rendering is correct
-3. Check FPS counter (target: >100 FPS @ 100K particles)
-4. Test RTXDI toggle (F7 key)
-5. Adjust physics parameters via ImGui
-
-### Debugging Rendering Issues
-
-**Black screen or missing particles:**
-1. Check logs in `logs/` directory
-2. Verify shaders compiled successfully (check `build/Debug/shaders/`)
-3. Enable D3D12 debug layer (builds/Debug.json: `enableDebugLayer: true`)
-4. Check for D3D12 errors in Visual Studio output
-
-**RTXDI artifacts (patchwork pattern, color issues):**
-1. Use PIX capture to inspect RTXDI output buffers
-2. Check light grid coverage (ensure lights within 3000-unit bounds)
-3. Adjust camera distance (patchwork expected in M4, should be smooth in M5)
-4. Compare with RTXDI disabled
-
-### Adding New Features
-
-**Workflow:**
-1. Create feature branch from `main`
-2. Implement in appropriate module (`src/particles/`, `src/lighting/`, `src/ml/`, etc.)
-3. Add shader changes if needed
-4. Expose to ImGui for runtime control
-5. Test thoroughly at various particle counts and camera distances
-6. Commit with descriptive message
-7. Create PR to `main`
-
-**Commit message style:**
-```
-feat: Add PINN ML physics integration
-fix: Address RTXDI temporal accumulation bugs
-refactor: Separate RTXDI into dedicated lighting system
-```
+See `CLAUDE_CODE_PLUGINS_GUIDE.md` for complete plugin system documentation.
 
 ---
 
@@ -962,10 +595,7 @@ Always insert UAV barriers between dependent compute dispatches.
 
 **Current implementation:** Full BLAS/TLAS rebuild every frame (2.1ms @ 100K particles)
 
-**Optimization potential:**
-- BLAS update (no rebuild): +25% FPS
-- Instance culling: +50% FPS
-- Static BLAS with dynamic TLAS: Possible but requires careful particle management
+**Optimization potential:** BLAS update (no rebuild): +25% FPS, Instance culling: +50% FPS, Static BLAS with dynamic TLAS: Possible but requires careful particle management
 
 Do NOT attempt BLAS updates without thorough testing - easy to introduce crashes.
 
@@ -988,10 +618,7 @@ Do NOT attempt BLAS updates without thorough testing - easy to introduce crashes
 
 ### God Rays System
 **Status:** SHELVED ⚠️
-**Known issues:**
-- Performance impact not acceptable
-- Visual artifacts at certain angles
-- Conflicts with RTXDI lighting
+**Known issues:** Performance impact not acceptable, visual artifacts at certain angles, conflicts with RTXDI lighting
 **Workaround:** Disable via ImGui (feature marked for deactivation)
 
 ### PINN ML Integration
@@ -1029,9 +656,7 @@ Do NOT attempt BLAS updates without thorough testing - easy to introduce crashes
 4. Particle LOD culling: +50% FPS (PLANNED)
 5. Release build optimization: +30% FPS (PLANNED)
 
-Always use context7 when I need code generation, setup or configuration steps, or
-library/API documentation. This means you should automatically use the Context7 MCP
-tools to resolve library id and get library docs without me having to explicitly ask.
+Always use context7 when I need code generation, setup or configuration steps, or library/API documentation. This means you should automatically use the Context7 MCP tools to resolve library id and get library docs without me having to explicitly ask.
 
 ---
 
@@ -1040,10 +665,10 @@ tools to resolve library id and get library docs without me having to explicitly
 - Headers: `.h` (not `.hpp`)
 - Implementation: `.cpp`
 - Shaders: `.hlsl`
-- Compiled shaders: `.dxil` (output directory)
+- Compiled shaders: `.dxil`
 - Configs: `.json`
-- ML models: `.onnx` (PINN trained models)
-- Training data: `.npz` (NumPy compressed arrays)
+- ML models: `.onnx`
+- Training data: `.npz`
 
 **Naming style:**
 - Classes: PascalCase (`ParticleSystem`, `RTLightingSystem_RayQuery`, `AdaptiveQualitySystem`)
@@ -1065,14 +690,6 @@ logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log
 - `LOG_WARN` - Non-critical issues, fallback activations
 - `LOG_ERROR` - Recoverable errors, resource creation failures
 - `LOG_CRITICAL` - Unrecoverable errors, immediate exit
-
-**Usage:**
-```cpp
-LOG_INFO("Initializing particle system with {} particles", particleCount);
-LOG_WARN("Mesh shaders failed, using compute fallback");
-LOG_ERROR("Failed to create BLAS: {}", errorMessage);
-LOG_WARN("ONNX Runtime not found, ML features disabled");
-```
 
 ---
 
@@ -1112,9 +729,8 @@ LOG_WARN("ONNX Runtime not found, ML features disabled");
 - `BUILD_GUIDE.md` - Build configuration details
 - `configs/README.md` - Configuration system reference
 - `PHYSICS_PORT_ANALYSIS.md` - Physics feature porting plan
-- `RESTIR_DEBUG_BRIEFING.md` - ReSTIR debugging status (deprecated, see RTXDI)
 - `PIX/docs/QUICK_REFERENCE.md` - PIX capture system guide
-- `ml/PINN_README.md` - PINN training and integration guide (500+ lines)
+- `ml/PINN_README.md` - PINN training and integration guide
 - `PINN_IMPLEMENTATION_SUMMARY.md` - PINN implementation overview
 - `PCSS_IMPLEMENTATION_SUMMARY.md` - PCSS soft shadows technical details
 
@@ -1155,218 +771,3 @@ LOG_WARN("ONNX Runtime not found, ML features disabled");
 **Last Updated:** 2025-10-24
 **Project Version:** 0.10.1
 **Documentation maintained by:** Claude Code sessions
-
----
-
-## Recent Major Milestones
-
-### PINN ML Physics Integration - Phase 5 (2025-10-22)
-**Branch:** `0.9.4` (current)
-
-**Achievement:**
-Complete Python PINN training pipeline with physics-informed constraints. First ML-accelerated physics system respecting General Relativity, conservation laws, and Shakura-Sunyaev α-disk viscosity.
-
-**Technical Implementation:**
-- 5-layer × 128-neuron network (~50,000 parameters)
-- Combined data + physics loss function
-- 5 physics constraints: GR, Keplerian motion, L conservation, E conservation, α-viscosity
-- ONNX export for C++ inference
-- GPU buffer dump → training data pipeline
-
-**Key Features:**
-- `ml/pinn_accretion_disk.py` - Complete PINN training (530 lines)
-- `ml/collect_physics_data.py` - GPU buffer processor (300 lines)
-- `src/ml/AdaptiveQualitySystem.h/cpp` - C++ ONNX Runtime wrapper
-- CMake auto-detection of ONNX Runtime
-
-**Status:**
-- Python training pipeline: ✅ COMPLETE
-- C++ integration: 🔄 IN PROGRESS
-- Hybrid mode: ⏳ PLANNED
-
-**Expected Impact:**
-- 5-10× performance improvement at 100K particles
-- 110 FPS (PINN) vs 18 FPS (traditional) @ 100K particles
-- Scientific accuracy maintained via physics constraints
-
-**Next Steps:**
-- Complete ONNX model loading in C++
-- Implement hybrid mode (PINN for r > 10×R_ISCO, shader for r < 10×R_ISCO)
-- Add ImGui controls
-- Benchmark performance
-
-**Commits:**
-- `6ebf879` - feat: Integrate Adaptive Quality System for ML-based performance optimization
-
-### RTXDI M5 Temporal Accumulation (2025-10-22)
-**Branch:** `0.9.4` (current)
-
-**Status:** 🔄 IN PROGRESS
-
-**Implementation:**
-- Ping-pong buffer system for temporal reuse
-- Accumulates 8-16 samples over 60ms
-- Smooths patchwork pattern from M4 Phase 1
-- Integration with existing RTXDI weighted sampling
-
-**Technical Details:**
-- 2× accumulation buffers (ping-pong)
-- Temporal blend factor: 0.1 (configurable)
-- Convergence time: ~67ms @ 120 FPS
-- Compatible with all RTXDI light presets
-
-**Commits:**
-- `cbfbe45` - fix: Implement ping-pong buffers for M5 temporal accumulation
-- `18a2155` - feat: Implement temporal accumulation in RTXDI lighting system
-
-### MCP Server & Screenshot Capture System (2025-10-24)
-**Branch:** `0.10.1` (current)
-
-**Achievement:**
-Complete MCP server for RTXDI quality analysis with 4 tools, plus in-application screenshot capture system.
-
-**MCP Server Features:**
-- **Lazy Loading Pattern** - Critical fix for MCP timeout issue (PyTorch/LPIPS deferred until first use)
-- **4 Tools Operational** - Performance comparison, PIX analysis, ML screenshot comparison, screenshot listing
-- **LPIPS Integration** - ML-powered visual comparison with ~92% human judgment correlation
-- **Startup Time** - Reduced from 30+ seconds (timeout) to ~8 seconds
-
-**Screenshot Capture Features:**
-- **F2 Key Binding** - Direct GPU framebuffer capture during rendering
-- **Native Resolution** - Captures at exact render resolution (1440p), not monitor resolution
-- **BMP Format** - Lossless capture without external dependencies
-- **Auto-Timestamping** - `screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.bmp`
-
-**Technical Implementation:**
-- `agents/rtxdi-quality-analyzer/rtxdi_server.py` - Flat MCP server with SDK 0.1.4
-- `agents/rtxdi-quality-analyzer/src/tools/ml_visual_comparison.py` - Lazy loading pattern
-- `src/core/Application.cpp:976-979` - F2 key handler
-- `src/core/Application.cpp:1559-1714` - Screenshot capture implementation
-
-**Key Learnings:**
-- **MCP Timeout Root Cause** - Heavy ML imports at module load time
-- **Solution** - Lazy loading pattern defers 528MB of PyTorch/LPIPS weights until first tool invocation
-- **Not SDK Version** - Issue was not related to SDK versions (0.1.1, 0.1.3, 0.1.4 all work)
-- **Not Package Structure** - Flat vs package structure was not the problem
-
-**Status:** ✅ COMPLETE
-
-**Next Steps:**
-- Fix AdaptiveQualitySystem.cpp linking issue (add to CMakeLists.txt)
-- Test F2 screenshot capture once build is fixed
-- Test complete workflow: F2 → list → compare
-
-**See:** `MCP_SERVER_DEBUG_SESSION_SUMMARY.md` for complete debugging timeline
-
-### Bulk Light Color Control (2025-10-22)
-**Branch:** `0.9.4`
-
-**Achievement:**
-Enhanced light control system with bulk operations for all lights simultaneously.
-
-**Features:**
-- Apply color to all lights at once
-- Apply intensity multiplier to all lights
-- Per-light and global control modes
-- Preset-based color schemes
-
-**Status:** ✅ COMPLETE
-
-**Commits:**
-- `56eda17` - feat: Implement bulk light color control system in Application class
-
-### God Rays System - SHELVED (2025-10-22)
-**Branch:** `0.9.4` (current)
-
-**Status:** ⚠️ SHELVED - Active but marked for deactivation
-
-**Implementation:**
-- Atmospheric fog ray marching
-- Volumetric god ray rendering
-- Light shaft visualization
-
-**Issues:**
-- Performance impact not acceptable for real-time
-- Visual artifacts at certain camera angles
-- Conflicts with RTXDI lighting system
-- Needs architectural redesign
-
-**Action Items:**
-- Add ImGui toggle to disable (default OFF)
-- Document issues in roadmap
-- Revisit after RTXDI M6 complete
-
-**Commits:**
-- `78d1d86` - feat: Implement atmospheric fog ray marching for volumetric god rays
-- `c0170db` - feat: Integrate God Ray System into Particle Renderer and Application
-
-### RTXDI M4 Complete - Weighted Reservoir Sampling (2025-10-19)
-**Branch:** `0.8.2` (milestone)
-
-**Achievement:**
-After 14 hours of intensive development, RTXDI weighted reservoir sampling is operational. First production-ready RTXDI implementation using DXR 1.1 raygen shader with custom spatial grid building.
-
-**Technical Implementation:**
-- DXR 1.1 raygen shader performs per-pixel weighted random light selection
-- 30×30×30 spatial grid covering 3000×3000×3000 unit world space
-- PCG hash for temporal variation (frame index + pixel coordinates)
-- Debug visualization shows rainbow pattern (light index mapping)
-- Auto-disables RT particle-to-particle lighting in RTXDI mode
-
-**RTXDI-Optimized Light Presets:**
-- **Sphere (13):** Fibonacci sphere @ 1200-unit radius
-- **Ring (16):** Dual-ring disk @ 600-1000 unit radii
-- **Sparse (5):** Debug cross pattern @ 1000-unit spacing
-
-**Critical Fixes Applied:**
-- Expanded RTXDI world bounds from 600 to 3000 units (5× larger coverage)
-- Removed Grid (27) preset (exceeded 16-light hardware limit)
-- Cell size increased from 20 to 100 units per cell
-
-**Current Status:** Phase 1 complete (M4), Phase 2 in progress (M5)
-
-**User Feedback:** "oh my god the image quality has entered a new dimension!! it looks gorgeous"
-
-### Multi-Light System Breakthrough (2025-10-17)
-**Branch:** `0.6.6` (milestone)
-
-**Achievement:**
-First production-ready many-light system using RT volumetric rendering. 13 lights distributed across the accretion disk achieve:
-- Realistic multi-directional shadowing
-- Rim lighting halos from multiple angles
-- Atmospheric scattering with multiple sources
-- Full runtime control via ImGui (position, color, intensity, radius)
-- 120+ FPS maintained @ 10K particles with 13 lights
-
-**Status:** ✅ COMPLETE
-
-**User Feedback:** "this is one hell of a brilliant update!!!!!!!!!!!"
-
-### RT Volumetric Lighting Breakthrough (2025-10-15)
-**Branch:** `0.6.0` (milestone marker)
-
-**What was fixed:**
-Physical emission (blackbody self-emission) was being incorrectly modulated by external RT lighting, causing the entire volumetric RT system to produce incorrect results. The fix separated self-emission from external lighting contributions.
-
-**Result:**
-All RT systems working correctly for the first time:
-- Volumetric depth with proper particle occlusion
-- Rim lighting halos from Henyey-Greenstein phase function
-- Perfect temperature gradients (800K-26000K)
-- Atmospheric scattering effects
-- Realistic multi-directional shadowing
-- 120+ FPS @ 1080p with 10K particles and 16 rays/particle
-
-**Led to:** Phase 3.5 Multi-Light System implementation
-
-### ReSTIR Deprecation Decision (2025-10-16)
-**Status:** Custom implementation removed ✅
-
-**Decision:**
-After months of debugging custom ReSTIR implementation (Phase 1 temporal reuse), adopted NVIDIA RTXDI (RTX Direct Illumination) instead. RTXDI provides battle-tested ReSTIR GI with spatial/temporal reuse, optimized for RTX hardware.
-
-**Migration:** Complete - 126 MB of custom ReSTIR code removed
-
-**Outcome:** RTXDI M4 + M5 operational, much cleaner implementation
-
-**Current Milestone:** RTXDI M5 Temporal Accumulation (2025-10-22)

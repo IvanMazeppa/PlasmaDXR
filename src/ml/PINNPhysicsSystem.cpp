@@ -1,0 +1,345 @@
+#include "PINNPhysicsSystem.h"
+#include "../utils/Logger.h"
+#include <cmath>
+#include <chrono>
+#include <sstream>
+
+using namespace DirectX;
+
+PINNPhysicsSystem::PINNPhysicsSystem()
+#ifdef ENABLE_ML_FEATURES
+    : m_memoryInfo(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault))
+#endif
+{
+    LOG_INFO("[PINN] Initializing Physics-Informed Neural Network system...");
+}
+
+PINNPhysicsSystem::~PINNPhysicsSystem() {
+#ifdef ENABLE_ML_FEATURES
+    m_ortSession.reset();
+    m_sessionOptions.reset();
+    m_ortEnv.reset();
+#endif
+    LOG_INFO("[PINN] Shutting down PINN physics system");
+}
+
+bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
+#ifndef ENABLE_ML_FEATURES
+    LOG_WARN("[PINN] ONNX Runtime not available. PINN features disabled.");
+    LOG_WARN("[PINN] To enable: Install ONNX Runtime to external/onnxruntime/ and rebuild");
+    return false;
+#else
+    try {
+        LOG_INFO("[PINN] Loading trained PINN model from: {}", modelPath);
+
+        // Create ONNX Runtime environment
+        m_ortEnv = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "PlasmaDX-PINN");
+
+        // Configure session options
+        m_sessionOptions = std::make_unique<Ort::SessionOptions>();
+        m_sessionOptions->SetIntraOpNumThreads(4);  // Use 4 CPU threads
+        m_sessionOptions->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+        // Convert path to wide string (Windows requirement)
+        std::wstring wideModelPath(modelPath.begin(), modelPath.end());
+
+        // Create inference session
+        m_ortSession = std::make_unique<Ort::Session>(*m_ortEnv, wideModelPath.c_str(), *m_sessionOptions);
+
+        // Get input/output metadata
+        Ort::AllocatorWithDefaultOptions allocator;
+
+        // Input info
+        size_t numInputs = m_ortSession->GetInputCount();
+        if (numInputs != 1) {
+            LOG_ERROR("[PINN] Expected 1 input, found {}", numInputs);
+            return false;
+        }
+
+        auto inputName = m_ortSession->GetInputNameAllocated(0, allocator);
+        m_inputNames.push_back(std::string(inputName.get()));
+
+        auto inputTypeInfo = m_ortSession->GetInputTypeInfo(0);
+        auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();
+        m_inputShape = inputTensorInfo.GetShape();
+
+        LOG_INFO("[PINN] Input: '{}', shape: [{}, {}]", m_inputNames[0], m_inputShape[0], m_inputShape[1]);
+
+        // Output info
+        size_t numOutputs = m_ortSession->GetOutputCount();
+        if (numOutputs != 1) {
+            LOG_ERROR("[PINN] Expected 1 output, found {}", numOutputs);
+            return false;
+        }
+
+        auto outputName = m_ortSession->GetOutputNameAllocated(0, allocator);
+        m_outputNames.push_back(std::string(outputName.get()));
+
+        auto outputTypeInfo = m_ortSession->GetOutputTypeInfo(0);
+        auto outputTensorInfo = outputTypeInfo.GetTensorTypeAndShapeInfo();
+        m_outputShape = outputTensorInfo.GetShape();
+
+        LOG_INFO("[PINN] Output: '{}', shape: [{}, {}]", m_outputNames[0], m_outputShape[0], m_outputShape[1]);
+
+        // Validate model dimensions
+        if (m_inputShape[1] != 7) {
+            LOG_ERROR("[PINN] Invalid input shape. Expected 7 features (r, θ, φ, v_r, v_θ, v_φ, t), got {}", m_inputShape[1]);
+            return false;
+        }
+
+        if (m_outputShape[1] != 3) {
+            LOG_ERROR("[PINN] Invalid output shape. Expected 3 forces (F_r, F_θ, F_φ), got {}", m_outputShape[1]);
+            return false;
+        }
+
+        m_modelLoaded = true;
+        LOG_INFO("[PINN] Successfully loaded PINN model!");
+        LOG_INFO("[PINN] Hybrid mode: {} (threshold: {:.1f}× R_ISCO)", m_hybridMode ? "ON" : "OFF", m_hybridThresholdRadius / R_ISCO);
+
+        return true;
+
+    } catch (const Ort::Exception& e) {
+        LOG_ERROR("[PINN] ONNX Runtime exception: {}", e.what());
+        return false;
+    }
+#endif
+}
+
+bool PINNPhysicsSystem::IsAvailable() const {
+#ifdef ENABLE_ML_FEATURES
+    return m_modelLoaded;
+#else
+    return false;
+#endif
+}
+
+void PINNPhysicsSystem::SetHybridThreshold(float radiusMultiplier) {
+    m_hybridThresholdRadius = radiusMultiplier * R_ISCO;
+    LOG_INFO("[PINN] Hybrid threshold set to {:.1f}× R_ISCO ({:.1f} units)", radiusMultiplier, m_hybridThresholdRadius);
+}
+
+bool PINNPhysicsSystem::PredictForcesBatch(
+    const DirectX::XMFLOAT3* positions,
+    const DirectX::XMFLOAT3* velocities,
+    DirectX::XMFLOAT3* outForces,
+    uint32_t particleCount,
+    float currentTime) {
+
+#ifndef ENABLE_ML_FEATURES
+    LOG_WARN("[PINN] ONNX Runtime not available");
+    return false;
+#else
+    if (!m_enabled || !m_modelLoaded) {
+        return false;
+    }
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    try {
+        // Prepare input tensor data: [particleCount, 7]
+        std::vector<float> inputData;
+        inputData.reserve(particleCount * 7);
+
+        std::vector<uint32_t> pinnIndices;  // Indices of particles to process with PINN
+        pinnIndices.reserve(particleCount);
+
+        for (uint32_t i = 0; i < particleCount; i++) {
+            // Convert to spherical coordinates
+            ParticleStateSpherical state = CartesianToSpherical(positions[i], velocities[i]);
+
+            // Hybrid mode: only use PINN for particles beyond threshold
+            if (m_hybridMode && !ShouldUsePINN(state.r)) {
+                // Mark for GPU shader processing (zero forces for now)
+                outForces[i] = XMFLOAT3(0.0f, 0.0f, 0.0f);
+                continue;
+            }
+
+            // Add to PINN batch
+            pinnIndices.push_back(i);
+
+            // Append input features: (r, θ, φ, v_r, v_θ, v_φ, t)
+            inputData.push_back(state.r);
+            inputData.push_back(state.theta);
+            inputData.push_back(state.phi);
+            inputData.push_back(state.v_r);
+            inputData.push_back(state.v_theta);
+            inputData.push_back(state.v_phi);
+            inputData.push_back(currentTime);
+        }
+
+        uint32_t pinnParticleCount = static_cast<uint32_t>(pinnIndices.size());
+
+        if (pinnParticleCount == 0) {
+            // No particles for PINN, all handled by GPU shader
+            return true;
+        }
+
+        // Run ONNX inference
+        std::vector<float> outputData;
+        outputData.resize(pinnParticleCount * 3);
+
+        // Update input shape for current batch
+        std::vector<int64_t> inputShape = { static_cast<int64_t>(pinnParticleCount), 7 };
+
+        // Create input tensor
+        Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
+            m_memoryInfo,
+            inputData.data(),
+            inputData.size(),
+            inputShape.data(),
+            inputShape.size()
+        );
+
+        // Run inference
+        const char* inputNames[] = { m_inputNames[0].c_str() };
+        const char* outputNames[] = { m_outputNames[0].c_str() };
+
+        auto outputTensors = m_ortSession->Run(
+            Ort::RunOptions{ nullptr },
+            inputNames,
+            &inputTensor,
+            1,
+            outputNames,
+            1
+        );
+
+        // Extract output
+        float* outputPtr = outputTensors[0].GetTensorMutableData<float>();
+        std::copy(outputPtr, outputPtr + pinnParticleCount * 3, outputData.begin());
+
+        // Convert spherical forces back to Cartesian coordinates
+        for (uint32_t i = 0; i < pinnParticleCount; i++) {
+            uint32_t particleIdx = pinnIndices[i];
+
+            PredictedForces forces;
+            forces.F_r = outputData[i * 3 + 0];
+            forces.F_theta = outputData[i * 3 + 1];
+            forces.F_phi = outputData[i * 3 + 2];
+
+            // Convert back to Cartesian
+            ParticleStateSpherical state = CartesianToSpherical(positions[particleIdx], velocities[particleIdx]);
+            outForces[particleIdx] = SphericalForcesToCartesian(forces, state);
+        }
+
+        // Update performance metrics
+        auto endTime = std::chrono::high_resolution_clock::now();
+        float elapsedMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
+
+        m_metrics.inferenceTimeMs = elapsedMs;
+        m_metrics.particlesProcessed = pinnParticleCount;
+        m_metrics.batchCount++;
+        m_metrics.avgBatchTimeMs = (m_metrics.avgBatchTimeMs * (m_metrics.batchCount - 1) + elapsedMs) / m_metrics.batchCount;
+
+        return true;
+
+    } catch (const Ort::Exception& e) {
+        LOG_ERROR("[PINN] Inference failed: {}", e.what());
+        return false;
+    }
+#endif
+}
+
+bool PINNPhysicsSystem::PredictForces(
+    const DirectX::XMFLOAT3& position,
+    const DirectX::XMFLOAT3& velocity,
+    DirectX::XMFLOAT3& outForce,
+    float currentTime) {
+
+    return PredictForcesBatch(&position, &velocity, &outForce, 1, currentTime);
+}
+
+void PINNPhysicsSystem::ResetMetrics() {
+    m_metrics = {};
+}
+
+std::string PINNPhysicsSystem::GetModelInfo() const {
+#ifndef ENABLE_ML_FEATURES
+    return "ONNX Runtime not available (compiled without ENABLE_ML_FEATURES)";
+#else
+    if (!m_modelLoaded) {
+        return "No model loaded";
+    }
+
+    std::ostringstream oss;
+    oss << "PINN Accretion Disk Model\n";
+    oss << "  Input: " << m_inputNames[0] << " [batch, 7]\n";
+    oss << "  Output: " << m_outputNames[0] << " [batch, 3]\n";
+    oss << "  Hybrid Mode: " << (m_hybridMode ? "ON" : "OFF") << "\n";
+    oss << "  Threshold: " << (m_hybridThresholdRadius / R_ISCO) << "× R_ISCO\n";
+    oss << "  Status: " << (m_enabled ? "ENABLED" : "DISABLED");
+
+    return oss.str();
+#endif
+}
+
+// === Private Methods ===
+
+PINNPhysicsSystem::ParticleStateSpherical PINNPhysicsSystem::CartesianToSpherical(
+    const DirectX::XMFLOAT3& position,
+    const DirectX::XMFLOAT3& velocity) const {
+
+    ParticleStateSpherical state;
+
+    // Position in spherical coordinates
+    float x = position.x;
+    float y = position.y;
+    float z = position.z;
+
+    state.r = std::sqrt(x * x + y * y + z * z);
+    state.theta = std::acos(z / (state.r + 1e-6f));  // Avoid division by zero
+    state.phi = std::atan2(y, x);
+
+    // Velocity in spherical coordinates (using Jacobian transformation)
+    float sin_theta = std::sin(state.theta);
+    float cos_theta = std::cos(state.theta);
+    float sin_phi = std::sin(state.phi);
+    float cos_phi = std::cos(state.phi);
+
+    // Transform velocity components
+    // v_r = v · r̂
+    // v_θ = v · θ̂
+    // v_φ = v · φ̂
+    state.v_r = (x * velocity.x + y * velocity.y + z * velocity.z) / (state.r + 1e-6f);
+    state.v_theta = (cos_theta * cos_phi * velocity.x + cos_theta * sin_phi * velocity.y - sin_theta * velocity.z);
+    state.v_phi = (-sin_phi * velocity.x + cos_phi * velocity.y);
+
+    return state;
+}
+
+DirectX::XMFLOAT3 PINNPhysicsSystem::SphericalForcesToCartesian(
+    const PredictedForces& forces,
+    const ParticleStateSpherical& state) const {
+
+    float sin_theta = std::sin(state.theta);
+    float cos_theta = std::cos(state.theta);
+    float sin_phi = std::sin(state.phi);
+    float cos_phi = std::cos(state.phi);
+
+    // Spherical unit vectors in Cartesian coordinates:
+    // r̂ = (sin θ cos φ, sin θ sin φ, cos θ)
+    // θ̂ = (cos θ cos φ, cos θ sin φ, -sin θ)
+    // φ̂ = (-sin φ, cos φ, 0)
+
+    float F_x = forces.F_r * sin_theta * cos_phi +
+                forces.F_theta * cos_theta * cos_phi +
+                forces.F_phi * (-sin_phi);
+
+    float F_y = forces.F_r * sin_theta * sin_phi +
+                forces.F_theta * cos_theta * sin_phi +
+                forces.F_phi * cos_phi;
+
+    float F_z = forces.F_r * cos_theta +
+                forces.F_theta * (-sin_theta);
+
+    return XMFLOAT3(F_x, F_y, F_z);
+}
+
+bool PINNPhysicsSystem::ShouldUsePINN(float radius) const {
+    if (!m_hybridMode) {
+        return true;  // Always use PINN if not in hybrid mode
+    }
+
+    // Use PINN only for particles beyond hybrid threshold
+    // Near ISCO, use GPU shader for more accurate physics
+    return radius > m_hybridThresholdRadius;
+}

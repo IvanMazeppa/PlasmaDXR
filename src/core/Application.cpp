@@ -1567,30 +1567,168 @@ void Application::WriteMetadataJSON() {
     }
 }
 
+void Application::DetectQualityPreset(ScreenshotMetadata& meta) {
+    // Detect quality preset based on settings (Phase 2 v2.0)
+    // Quality tiers from FEATURE_STATUS.md:
+    //   Maximum: Any FPS (video/screenshots, not realtime)
+    //   Ultra: 30 FPS target
+    //   High: 60 FPS target
+    //   Medium: 120 FPS target
+    //   Low: 165 FPS target
+
+    // Heuristic based on shadow quality and particle count
+    bool highQualityShadows = (m_shadowPreset == ShadowPreset::Quality || m_shadowRaysPerLight >= 8);
+    bool mediumShadows = (m_shadowPreset == ShadowPreset::Balanced || m_shadowRaysPerLight >= 4);
+    bool lowQualityShadows = (m_shadowPreset == ShadowPreset::Performance || m_shadowRaysPerLight <= 1);
+
+    uint32_t particleCount = m_config.particleCount;
+
+    // Ultra quality: High shadows + high particle count
+    if (highQualityShadows && particleCount >= 50000) {
+        meta.qualityPreset = "Ultra";
+        meta.targetFPS = 30.0f;
+    }
+    // High quality: Medium shadows or medium particle count
+    else if (mediumShadows || particleCount >= 25000) {
+        meta.qualityPreset = "High";
+        meta.targetFPS = 60.0f;
+    }
+    // Low quality: Low shadows + low particle count
+    else if (lowQualityShadows && particleCount <= 5000) {
+        meta.qualityPreset = "Low";
+        meta.targetFPS = 165.0f;
+    }
+    // Medium quality (default/most common)
+    else {
+        meta.qualityPreset = "Medium";
+        meta.targetFPS = 120.0f;
+    }
+
+    // Override: If adaptive quality is targeting specific FPS, use that
+    if (m_enableAdaptiveQuality && m_adaptiveTargetFPS > 0.0f) {
+        meta.targetFPS = m_adaptiveTargetFPS;
+
+        // Update preset name based on adaptive target
+        if (m_adaptiveTargetFPS >= 150.0f) {
+            meta.qualityPreset = "Low";
+        } else if (m_adaptiveTargetFPS >= 100.0f) {
+            meta.qualityPreset = "Medium";
+        } else if (m_adaptiveTargetFPS >= 50.0f) {
+            meta.qualityPreset = "High";
+        } else {
+            meta.qualityPreset = "Ultra";
+        }
+    }
+}
+
 Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     ScreenshotMetadata meta;
 
-    // Rendering configuration
-    meta.rtxdiEnabled = (m_lightingSystem == LightingSystem::RTXDI);
-    meta.rtxdiM5Enabled = m_enableTemporalFiltering;  // M5 uses temporal filtering
-    meta.temporalBlendFactor = m_temporalBlend;
-    meta.shadowRaysPerLight = static_cast<int>(m_shadowRaysPerLight);
-    meta.lightCount = static_cast<int>(m_lights.size());
-    meta.usePhaseFunction = m_usePhaseFunction;
-    meta.useShadowRays = m_useShadowRays;
-    meta.useInScattering = m_useInScattering;
+    // Schema version
+    meta.schemaVersion = "2.0";
 
-    // Particle configuration
-    meta.particleCount = static_cast<int>(m_config.particleCount);
-    meta.particleRadius = m_particleSize;
-    meta.gravityStrength = 1.0f;  // Would need ParticleSystem API to get actual value
-    meta.physicsEnabled = m_physicsEnabled;
+    // === RENDERING CONFIGURATION ===
 
-    // Performance metrics
-    meta.fps = m_fps;
-    meta.frameTime = (m_fps > 0.0f) ? (1000.0f / m_fps) : 0.0f;
+    // Active systems
+    meta.activeLightingSystem = (m_lightingSystem == LightingSystem::RTXDI) ? "RTXDI" : "MultiLight";
+    meta.rendererType = (m_config.rendererType == RendererType::Gaussian) ? "Gaussian" : "Billboard";
 
-    // Camera state
+    // RTXDI configuration
+    meta.rtxdi.enabled = (m_lightingSystem == LightingSystem::RTXDI);
+    meta.rtxdi.m4Enabled = meta.rtxdi.enabled;  // M4 is always on if RTXDI is enabled
+    meta.rtxdi.m5Enabled = m_enableTemporalFiltering;
+    meta.rtxdi.temporalBlendFactor = m_temporalBlend;
+
+    // Light configuration (capture all light positions, colors, intensities)
+    meta.lightConfig.count = static_cast<int>(m_lights.size());
+    for (const auto& light : m_lights) {
+        ScreenshotMetadata::LightConfig::LightInfo info;
+        info.posX = light.position.x;
+        info.posY = light.position.y;
+        info.posZ = light.position.z;
+        info.colorR = light.color.x;
+        info.colorG = light.color.y;
+        info.colorB = light.color.z;
+        info.intensity = light.intensity;
+        info.radius = light.radius;
+        meta.lightConfig.lights.push_back(info);
+    }
+
+    // Shadow configuration
+    switch (m_shadowPreset) {
+        case ShadowPreset::Performance:
+            meta.shadows.preset = "Performance";
+            break;
+        case ShadowPreset::Balanced:
+            meta.shadows.preset = "Balanced";
+            break;
+        case ShadowPreset::Quality:
+            meta.shadows.preset = "Quality";
+            break;
+        case ShadowPreset::Custom:
+            meta.shadows.preset = "Custom";
+            break;
+    }
+    meta.shadows.raysPerLight = static_cast<int>(m_shadowRaysPerLight);
+    meta.shadows.temporalFilteringEnabled = m_enableTemporalFiltering;
+    meta.shadows.temporalBlendFactor = m_temporalBlend;
+
+    // Quality preset detection (call helper)
+    DetectQualityPreset(meta);
+
+    // === PHYSICAL EFFECTS ===
+
+    meta.physicalEffects.usePhysicalEmission = m_usePhysicalEmission;
+    meta.physicalEffects.emissionStrength = m_emissionStrength;
+    meta.physicalEffects.emissionBlendFactor = m_emissionBlendFactor;
+
+    meta.physicalEffects.useDopplerShift = m_useDopplerShift;
+    meta.physicalEffects.dopplerStrength = m_dopplerStrength;
+
+    meta.physicalEffects.useGravitationalRedshift = m_useGravitationalRedshift;
+    meta.physicalEffects.redshiftStrength = m_redshiftStrength;
+
+    meta.physicalEffects.usePhaseFunction = m_usePhaseFunction;
+    meta.physicalEffects.phaseStrength = m_phaseStrength;
+
+    meta.physicalEffects.useAnisotropicGaussians = m_useAnisotropicGaussians;
+    meta.physicalEffects.anisotropyStrength = m_anisotropyStrength;
+
+    // === FEATURE STATUS FLAGS ===
+    // (These are hardcoded based on FEATURE_STATUS.md audit)
+
+    meta.featureStatus.multiLightWorking = true;
+    meta.featureStatus.shadowRaysWorking = true;
+    meta.featureStatus.phaseFunctionWorking = true;
+    meta.featureStatus.physicalEmissionWorking = true;
+    meta.featureStatus.anisotropicGaussiansWorking = true;
+
+    meta.featureStatus.dopplerShiftWorking = false;      // No visible effect (needs debugging)
+    meta.featureStatus.redshiftWorking = false;          // No visible effect (needs debugging)
+    meta.featureStatus.rtxdiM5Working = false;           // Temporal accumulation WIP
+
+    meta.featureStatus.inScatteringDeprecated = true;
+    meta.featureStatus.godRaysDeprecated = true;
+
+    // === PARTICLES ===
+
+    meta.particles.count = static_cast<int>(m_config.particleCount);
+    meta.particles.radius = m_particleSize;
+    meta.particles.gravityStrength = 1.0f;  // Would need ParticleSystem API
+    meta.particles.physicsEnabled = m_physicsEnabled;
+    meta.particles.innerRadius = m_innerRadius;
+    meta.particles.outerRadius = m_outerRadius;
+    meta.particles.diskThickness = m_diskThickness;
+
+    // === PERFORMANCE ===
+
+    meta.performance.fps = m_fps;
+    meta.performance.frameTime = (m_fps > 0.0f) ? (1000.0f / m_fps) : 0.0f;
+    meta.performance.targetFPS = meta.targetFPS;  // Set by DetectQualityPreset()
+    meta.performance.fpsRatio = (meta.targetFPS > 0.0f) ? (m_fps / meta.targetFPS) : 0.0f;
+
+    // === CAMERA ===
+
     float camX = m_cameraDistance * cos(m_cameraAngle);
     float camZ = m_cameraDistance * sin(m_cameraAngle);
 
@@ -1603,19 +1741,23 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.camera.distance = m_cameraDistance;
     meta.camera.height = m_cameraHeight;
     meta.camera.angle = m_cameraAngle;
+    meta.camera.pitch = m_cameraPitch;
 
-    // ML/Quality systems
-    meta.pinnEnabled = false;  // Would need to check m_adaptiveQuality
-    meta.modelPath = "";
-    meta.adaptiveQualityEnabled = m_enableAdaptiveQuality;
+    // === ML/QUALITY ===
 
-    // Timestamp
+    meta.mlQuality.pinnEnabled = false;  // Would need to check m_adaptiveQuality system
+    meta.mlQuality.modelPath = "";
+    meta.mlQuality.adaptiveQualityEnabled = m_enableAdaptiveQuality;
+    meta.mlQuality.adaptiveTargetFPS = m_adaptiveTargetFPS;
+
+    // === METADATA ===
+
     auto now = std::chrono::system_clock::now();
     auto timeT = std::chrono::system_clock::to_time_t(now);
     char timestamp[100];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", gmtime(&timeT));
     meta.timestamp = std::string(timestamp);
-    meta.configFile = ""; // Would need to track loaded config file
+    meta.configFile = "";  // Would need to track loaded config file
 
     return meta;
 }
@@ -1630,47 +1772,142 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
         return;
     }
 
-    // Write JSON (simple manual serialization - no library dependency)
+    // Write JSON v2.0 (simple manual serialization - no library dependency)
     fprintf(file, "{\n");
-    fprintf(file, "  \"schema_version\": \"1.0\",\n");
+    fprintf(file, "  \"schema_version\": \"%s\",\n", meta.schemaVersion.c_str());
     fprintf(file, "  \"timestamp\": \"%s\",\n", meta.timestamp.c_str());
+    fprintf(file, "  \"config_file\": \"%s\",\n", meta.configFile.c_str());
+
+    // === RENDERING CONFIGURATION ===
     fprintf(file, "  \"rendering\": {\n");
-    fprintf(file, "    \"rtxdi_enabled\": %s,\n", meta.rtxdiEnabled ? "true" : "false");
-    fprintf(file, "    \"rtxdi_m5_enabled\": %s,\n", meta.rtxdiM5Enabled ? "true" : "false");
-    fprintf(file, "    \"temporal_blend_factor\": %.3f,\n", meta.temporalBlendFactor);
-    fprintf(file, "    \"shadow_rays_per_light\": %d,\n", meta.shadowRaysPerLight);
-    fprintf(file, "    \"light_count\": %d,\n", meta.lightCount);
-    fprintf(file, "    \"use_phase_function\": %s,\n", meta.usePhaseFunction ? "true" : "false");
-    fprintf(file, "    \"use_shadow_rays\": %s,\n", meta.useShadowRays ? "true" : "false");
-    fprintf(file, "    \"use_in_scattering\": %s\n", meta.useInScattering ? "true" : "false");
+    fprintf(file, "    \"active_lighting_system\": \"%s\",\n", meta.activeLightingSystem.c_str());
+    fprintf(file, "    \"renderer_type\": \"%s\",\n", meta.rendererType.c_str());
+
+    // RTXDI
+    fprintf(file, "    \"rtxdi\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.rtxdi.enabled ? "true" : "false");
+    fprintf(file, "      \"m4_enabled\": %s,\n", meta.rtxdi.m4Enabled ? "true" : "false");
+    fprintf(file, "      \"m5_enabled\": %s,\n", meta.rtxdi.m5Enabled ? "true" : "false");
+    fprintf(file, "      \"temporal_blend_factor\": %.3f\n", meta.rtxdi.temporalBlendFactor);
+    fprintf(file, "    },\n");
+
+    // Lights
+    fprintf(file, "    \"lights\": {\n");
+    fprintf(file, "      \"count\": %d,\n", meta.lightConfig.count);
+    fprintf(file, "      \"light_list\": [\n");
+    for (size_t i = 0; i < meta.lightConfig.lights.size(); ++i) {
+        const auto& light = meta.lightConfig.lights[i];
+        fprintf(file, "        {\n");
+        fprintf(file, "          \"position\": [%.1f, %.1f, %.1f],\n", light.posX, light.posY, light.posZ);
+        fprintf(file, "          \"color\": [%.3f, %.3f, %.3f],\n", light.colorR, light.colorG, light.colorB);
+        fprintf(file, "          \"intensity\": %.2f,\n", light.intensity);
+        fprintf(file, "          \"radius\": %.1f\n", light.radius);
+        fprintf(file, "        }%s\n", (i < meta.lightConfig.lights.size() - 1) ? "," : "");
+    }
+    fprintf(file, "      ]\n");
+    fprintf(file, "    },\n");
+
+    // Shadows
+    fprintf(file, "    \"shadows\": {\n");
+    fprintf(file, "      \"preset\": \"%s\",\n", meta.shadows.preset.c_str());
+    fprintf(file, "      \"rays_per_light\": %d,\n", meta.shadows.raysPerLight);
+    fprintf(file, "      \"temporal_filtering\": %s,\n", meta.shadows.temporalFilteringEnabled ? "true" : "false");
+    fprintf(file, "      \"temporal_blend\": %.3f\n", meta.shadows.temporalBlendFactor);
+    fprintf(file, "    }\n");
     fprintf(file, "  },\n");
+
+    // === QUALITY PRESET ===
+    fprintf(file, "  \"quality\": {\n");
+    fprintf(file, "    \"preset\": \"%s\",\n", meta.qualityPreset.c_str());
+    fprintf(file, "    \"target_fps\": %.1f\n", meta.targetFPS);
+    fprintf(file, "  },\n");
+
+    // === PHYSICAL EFFECTS ===
+    fprintf(file, "  \"physical_effects\": {\n");
+    fprintf(file, "    \"physical_emission\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.physicalEffects.usePhysicalEmission ? "true" : "false");
+    fprintf(file, "      \"strength\": %.2f,\n", meta.physicalEffects.emissionStrength);
+    fprintf(file, "      \"blend_factor\": %.2f\n", meta.physicalEffects.emissionBlendFactor);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"doppler_shift\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.physicalEffects.useDopplerShift ? "true" : "false");
+    fprintf(file, "      \"strength\": %.2f\n", meta.physicalEffects.dopplerStrength);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"gravitational_redshift\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.physicalEffects.useGravitationalRedshift ? "true" : "false");
+    fprintf(file, "      \"strength\": %.2f\n", meta.physicalEffects.redshiftStrength);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"phase_function\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.physicalEffects.usePhaseFunction ? "true" : "false");
+    fprintf(file, "      \"strength\": %.2f\n", meta.physicalEffects.phaseStrength);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"anisotropic_gaussians\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.physicalEffects.useAnisotropicGaussians ? "true" : "false");
+    fprintf(file, "      \"strength\": %.2f\n", meta.physicalEffects.anisotropyStrength);
+    fprintf(file, "    }\n");
+    fprintf(file, "  },\n");
+
+    // === FEATURE STATUS ===
+    fprintf(file, "  \"feature_status\": {\n");
+    fprintf(file, "    \"working\": {\n");
+    fprintf(file, "      \"multi_light\": %s,\n", meta.featureStatus.multiLightWorking ? "true" : "false");
+    fprintf(file, "      \"shadow_rays\": %s,\n", meta.featureStatus.shadowRaysWorking ? "true" : "false");
+    fprintf(file, "      \"phase_function\": %s,\n", meta.featureStatus.phaseFunctionWorking ? "true" : "false");
+    fprintf(file, "      \"physical_emission\": %s,\n", meta.featureStatus.physicalEmissionWorking ? "true" : "false");
+    fprintf(file, "      \"anisotropic_gaussians\": %s\n", meta.featureStatus.anisotropicGaussiansWorking ? "true" : "false");
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"wip\": {\n");
+    fprintf(file, "      \"doppler_shift\": %s,\n", !meta.featureStatus.dopplerShiftWorking ? "true" : "false");
+    fprintf(file, "      \"gravitational_redshift\": %s,\n", !meta.featureStatus.redshiftWorking ? "true" : "false");
+    fprintf(file, "      \"rtxdi_m5\": %s\n", !meta.featureStatus.rtxdiM5Working ? "true" : "false");
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"deprecated\": {\n");
+    fprintf(file, "      \"in_scattering\": %s,\n", meta.featureStatus.inScatteringDeprecated ? "true" : "false");
+    fprintf(file, "      \"god_rays\": %s\n", meta.featureStatus.godRaysDeprecated ? "true" : "false");
+    fprintf(file, "    }\n");
+    fprintf(file, "  },\n");
+
+    // === PARTICLES ===
     fprintf(file, "  \"particles\": {\n");
-    fprintf(file, "    \"count\": %d,\n", meta.particleCount);
-    fprintf(file, "    \"radius\": %.1f,\n", meta.particleRadius);
-    fprintf(file, "    \"gravity_strength\": %.2f,\n", meta.gravityStrength);
-    fprintf(file, "    \"physics_enabled\": %s\n", meta.physicsEnabled ? "true" : "false");
+    fprintf(file, "    \"count\": %d,\n", meta.particles.count);
+    fprintf(file, "    \"radius\": %.1f,\n", meta.particles.radius);
+    fprintf(file, "    \"gravity_strength\": %.2f,\n", meta.particles.gravityStrength);
+    fprintf(file, "    \"physics_enabled\": %s,\n", meta.particles.physicsEnabled ? "true" : "false");
+    fprintf(file, "    \"inner_radius\": %.1f,\n", meta.particles.innerRadius);
+    fprintf(file, "    \"outer_radius\": %.1f,\n", meta.particles.outerRadius);
+    fprintf(file, "    \"disk_thickness\": %.1f\n", meta.particles.diskThickness);
     fprintf(file, "  },\n");
+
+    // === PERFORMANCE ===
     fprintf(file, "  \"performance\": {\n");
-    fprintf(file, "    \"fps\": %.1f,\n", meta.fps);
-    fprintf(file, "    \"frame_time_ms\": %.2f\n", meta.frameTime);
+    fprintf(file, "    \"fps\": %.1f,\n", meta.performance.fps);
+    fprintf(file, "    \"frame_time_ms\": %.2f,\n", meta.performance.frameTime);
+    fprintf(file, "    \"target_fps\": %.1f,\n", meta.performance.targetFPS);
+    fprintf(file, "    \"fps_ratio\": %.3f\n", meta.performance.fpsRatio);
     fprintf(file, "  },\n");
+
+    // === CAMERA ===
     fprintf(file, "  \"camera\": {\n");
     fprintf(file, "    \"position\": [%.1f, %.1f, %.1f],\n", meta.camera.x, meta.camera.y, meta.camera.z);
     fprintf(file, "    \"look_at\": [%.1f, %.1f, %.1f],\n",
             meta.camera.lookAtX, meta.camera.lookAtY, meta.camera.lookAtZ);
     fprintf(file, "    \"distance\": %.1f,\n", meta.camera.distance);
     fprintf(file, "    \"height\": %.1f,\n", meta.camera.height);
-    fprintf(file, "    \"angle\": %.3f\n", meta.camera.angle);
+    fprintf(file, "    \"angle\": %.3f,\n", meta.camera.angle);
+    fprintf(file, "    \"pitch\": %.3f\n", meta.camera.pitch);
     fprintf(file, "  },\n");
+
+    // === ML/QUALITY ===
     fprintf(file, "  \"ml_quality\": {\n");
-    fprintf(file, "    \"pinn_enabled\": %s,\n", meta.pinnEnabled ? "true" : "false");
-    fprintf(file, "    \"model_path\": \"%s\",\n", meta.modelPath.c_str());
-    fprintf(file, "    \"adaptive_quality_enabled\": %s\n", meta.adaptiveQualityEnabled ? "true" : "false");
+    fprintf(file, "    \"pinn_enabled\": %s,\n", meta.mlQuality.pinnEnabled ? "true" : "false");
+    fprintf(file, "    \"model_path\": \"%s\",\n", meta.mlQuality.modelPath.c_str());
+    fprintf(file, "    \"adaptive_quality_enabled\": %s,\n", meta.mlQuality.adaptiveQualityEnabled ? "true" : "false");
+    fprintf(file, "    \"adaptive_target_fps\": %.1f\n", meta.mlQuality.adaptiveTargetFPS);
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
 
     fclose(file);
-    LOG_INFO("Metadata saved: {}", metaPath);
+    LOG_INFO("Metadata v2.0 saved: {}", metaPath);
 }
 
 void Application::CaptureScreenshot() {
