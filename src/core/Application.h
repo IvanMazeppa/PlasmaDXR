@@ -275,8 +275,52 @@ private:
     // Screenshot capture (F2 to capture)
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
+
+    // Screenshot metadata structure (Phase 1: Visual Analysis Enhancement)
+    struct ScreenshotMetadata {
+        // Rendering configuration
+        bool rtxdiEnabled;
+        bool rtxdiM5Enabled;
+        float temporalBlendFactor;
+        int shadowRaysPerLight;
+        int lightCount;
+        bool usePhaseFunction;
+        bool useShadowRays;
+        bool useInScattering;
+
+        // Particle configuration
+        int particleCount;
+        float particleRadius;
+        float gravityStrength;
+        bool physicsEnabled;
+
+        // Performance metrics
+        float fps;
+        float frameTime;
+
+        // Camera state
+        struct CameraState {
+            float x, y, z;       // Camera position
+            float lookAtX, lookAtY, lookAtZ;  // Look-at point
+            float distance;      // Distance from center
+            float height;        // Height above disk
+            float angle;         // Orbit angle
+        } camera;
+
+        // ML/Quality systems
+        bool pinnEnabled;
+        std::string modelPath;
+        bool adaptiveQualityEnabled;
+
+        // Timestamp
+        std::string timestamp;
+        std::string configFile;
+    };
+
     void CaptureScreenshot();
     void SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::string& filename);
+    void SaveScreenshotMetadata(const std::string& screenshotPath, const ScreenshotMetadata& metadata);
+    ScreenshotMetadata GatherScreenshotMetadata();
 
     // ImGui
     void InitializeImGui();

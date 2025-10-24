@@ -15,12 +15,14 @@ sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from dotenv import load_dotenv
 from mcp.server import Server
-from mcp.types import TextContent, Tool
+from mcp.types import TextContent, ImageContent, Tool
+import base64
 
 # Import tools directly (not as packages)
 from tools.performance_comparison import compare_performance, format_comparison_report
 from tools.pix_analysis import analyze_pix_capture, format_pix_report
 from tools.ml_visual_comparison import compare_screenshots_ml, format_comparison_report as format_ml_report
+from tools.visual_quality_assessment import assess_screenshot_quality
 
 # Load environment
 load_dotenv()
@@ -32,22 +34,37 @@ PIX_PATH = os.getenv("PIX_PATH", "/mnt/c/Program Files (x86)/Windows Kits/10/bin
 server = Server("rtxdi-quality-analyzer")
 
 
+def load_screenshot_metadata(screenshot_path: str) -> dict:
+    """Load metadata JSON sidecar file for a screenshot"""
+    import json
+    metadata_path = Path(str(screenshot_path) + ".json")
+
+    if not metadata_path.exists():
+        return None
+
+    try:
+        with open(metadata_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        return None
+
+
 async def list_recent_screenshots(limit: int = 10) -> str:
     """List recent screenshots from project directory"""
     screenshots_dir = Path(PROJECT_ROOT) / "screenshots"
 
     if not screenshots_dir.exists():
-        return "No screenshots directory found. Use Ctrl+Shift+S to capture screenshots."
+        return "No screenshots directory found. Use F2 to capture screenshots."
 
-    # Get all PNG files sorted by modification time
+    # Get all PNG and BMP files sorted by modification time
     screenshots = sorted(
-        screenshots_dir.glob("*.png"),
+        list(screenshots_dir.glob("*.png")) + list(screenshots_dir.glob("*.bmp")),
         key=lambda p: p.stat().st_mtime,
         reverse=True
     )[:limit]
 
     if not screenshots:
-        return "No screenshots found. Use Ctrl+Shift+S to capture screenshots."
+        return "No screenshots found. Use F2 to capture screenshots."
 
     result = f"Recent screenshots (showing {len(screenshots)} most recent):\n\n"
     for i, screenshot in enumerate(screenshots, 1):
@@ -58,7 +75,24 @@ async def list_recent_screenshots(limit: int = 10) -> str:
         result += f"{i}. {screenshot.name}\n"
         result += f"   Path: {screenshot}\n"
         result += f"   Time: {timestamp}\n"
-        result += f"   Size: {size_mb:.2f} MB\n\n"
+        result += f"   Size: {size_mb:.2f} MB\n"
+
+        # Load metadata if available (Phase 1 enhancement)
+        metadata = load_screenshot_metadata(str(screenshot))
+        if metadata:
+            result += f"   Metadata: ✅ Available\n"
+            if 'rendering' in metadata:
+                r = metadata['rendering']
+                rtxdi_status = 'M5' if r.get('rtxdi_m5_enabled') else ('M4' if r.get('rtxdi_enabled') else 'OFF')
+                result += f"     RTXDI: {rtxdi_status}\n"
+                result += f"     Shadow rays: {r.get('shadow_rays_per_light', 'N/A')}\n"
+            if 'performance' in metadata:
+                p = metadata['performance']
+                result += f"     FPS: {p.get('fps', 'N/A'):.1f}\n"
+        else:
+            result += f"   Metadata: ❌ Not available (captured before Phase 1)\n"
+
+        result += "\n"
 
     return result
 
@@ -141,12 +175,30 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["before_path", "after_path"]
             }
+        ),
+        Tool(
+            name="assess_visual_quality",
+            description="Analyze screenshot for volumetric rendering quality using AI vision. Returns the screenshot as an image for Claude to analyze against the quality rubric (7 dimensions: volumetric depth, rim lighting, temperature gradient, RTXDI stability, shadows, scattering, temporal stability).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "screenshot_path": {
+                        "type": "string",
+                        "description": "Path to screenshot to analyze (BMP or PNG)"
+                    },
+                    "comparison_before": {
+                        "type": "string",
+                        "description": "Optional: path to 'before' screenshot for comparison analysis"
+                    }
+                },
+                "required": ["screenshot_path"]
+            }
         )
     ]
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
     """Execute a tool"""
 
     if name == "list_recent_screenshots":
@@ -183,6 +235,56 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         )
         report = format_ml_report(results)
         return [TextContent(type="text", text=report)]
+
+    elif name == "assess_visual_quality":
+        screenshot_path = arguments.get("screenshot_path")
+        comparison_before = arguments.get("comparison_before")
+
+        # Get the analysis context (rubric + prompt)
+        context = assess_screenshot_quality(
+            screenshot_path=screenshot_path,
+            project_root=PROJECT_ROOT,
+            comparison_before=comparison_before,
+            save_annotation=False  # Don't save yet, wait for Claude's analysis
+        )
+
+        # Load and encode the screenshot as base64
+        screenshot_file = Path(screenshot_path)
+        if not screenshot_file.exists():
+            return [TextContent(type="text", text=f"Error: Screenshot not found: {screenshot_path}")]
+
+        # Convert/resize image to avoid API 400 errors (6MB BMP → <500KB PNG)
+        try:
+            from PIL import Image
+            import io
+
+            # Load image
+            img = Image.open(screenshot_file)
+
+            # Resize to reasonable size for analysis (preserves aspect ratio)
+            # 1280x720 is sufficient for visual quality assessment
+            max_size = (1280, 720)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+            # Convert to PNG in memory
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG', optimize=True)
+            image_bytes = buffer.getvalue()
+
+            # Encode as base64
+            encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+
+            # Return both text context and image using MCP standard format
+            return [
+                TextContent(type="text", text=context),
+                ImageContent(
+                    type="image",
+                    data=encoded_image,
+                    mimeType="image/png"
+                )
+            ]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error processing image: {str(e)}\nPlease ensure Pillow is installed: pip install Pillow")]
 
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]

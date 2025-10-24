@@ -1567,6 +1567,112 @@ void Application::WriteMetadataJSON() {
     }
 }
 
+Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
+    ScreenshotMetadata meta;
+
+    // Rendering configuration
+    meta.rtxdiEnabled = (m_lightingSystem == LightingSystem::RTXDI);
+    meta.rtxdiM5Enabled = m_enableTemporalFiltering;  // M5 uses temporal filtering
+    meta.temporalBlendFactor = m_temporalBlend;
+    meta.shadowRaysPerLight = static_cast<int>(m_shadowRaysPerLight);
+    meta.lightCount = static_cast<int>(m_lights.size());
+    meta.usePhaseFunction = m_usePhaseFunction;
+    meta.useShadowRays = m_useShadowRays;
+    meta.useInScattering = m_useInScattering;
+
+    // Particle configuration
+    meta.particleCount = static_cast<int>(m_config.particleCount);
+    meta.particleRadius = m_particleSize;
+    meta.gravityStrength = 1.0f;  // Would need ParticleSystem API to get actual value
+    meta.physicsEnabled = m_physicsEnabled;
+
+    // Performance metrics
+    meta.fps = m_fps;
+    meta.frameTime = (m_fps > 0.0f) ? (1000.0f / m_fps) : 0.0f;
+
+    // Camera state
+    float camX = m_cameraDistance * cos(m_cameraAngle);
+    float camZ = m_cameraDistance * sin(m_cameraAngle);
+
+    meta.camera.x = camX;
+    meta.camera.y = m_cameraHeight;
+    meta.camera.z = camZ;
+    meta.camera.lookAtX = 0.0f;
+    meta.camera.lookAtY = 0.0f;
+    meta.camera.lookAtZ = 0.0f;
+    meta.camera.distance = m_cameraDistance;
+    meta.camera.height = m_cameraHeight;
+    meta.camera.angle = m_cameraAngle;
+
+    // ML/Quality systems
+    meta.pinnEnabled = false;  // Would need to check m_adaptiveQuality
+    meta.modelPath = "";
+    meta.adaptiveQualityEnabled = m_enableAdaptiveQuality;
+
+    // Timestamp
+    auto now = std::chrono::system_clock::now();
+    auto timeT = std::chrono::system_clock::to_time_t(now);
+    char timestamp[100];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", gmtime(&timeT));
+    meta.timestamp = std::string(timestamp);
+    meta.configFile = ""; // Would need to track loaded config file
+
+    return meta;
+}
+
+void Application::SaveScreenshotMetadata(const std::string& screenshotPath, const ScreenshotMetadata& meta) {
+    // Create metadata filename (same as screenshot + .json)
+    std::string metaPath = screenshotPath + ".json";
+
+    FILE* file = fopen(metaPath.c_str(), "w");
+    if (!file) {
+        LOG_ERROR("Failed to create metadata file: {}", metaPath);
+        return;
+    }
+
+    // Write JSON (simple manual serialization - no library dependency)
+    fprintf(file, "{\n");
+    fprintf(file, "  \"schema_version\": \"1.0\",\n");
+    fprintf(file, "  \"timestamp\": \"%s\",\n", meta.timestamp.c_str());
+    fprintf(file, "  \"rendering\": {\n");
+    fprintf(file, "    \"rtxdi_enabled\": %s,\n", meta.rtxdiEnabled ? "true" : "false");
+    fprintf(file, "    \"rtxdi_m5_enabled\": %s,\n", meta.rtxdiM5Enabled ? "true" : "false");
+    fprintf(file, "    \"temporal_blend_factor\": %.3f,\n", meta.temporalBlendFactor);
+    fprintf(file, "    \"shadow_rays_per_light\": %d,\n", meta.shadowRaysPerLight);
+    fprintf(file, "    \"light_count\": %d,\n", meta.lightCount);
+    fprintf(file, "    \"use_phase_function\": %s,\n", meta.usePhaseFunction ? "true" : "false");
+    fprintf(file, "    \"use_shadow_rays\": %s,\n", meta.useShadowRays ? "true" : "false");
+    fprintf(file, "    \"use_in_scattering\": %s\n", meta.useInScattering ? "true" : "false");
+    fprintf(file, "  },\n");
+    fprintf(file, "  \"particles\": {\n");
+    fprintf(file, "    \"count\": %d,\n", meta.particleCount);
+    fprintf(file, "    \"radius\": %.1f,\n", meta.particleRadius);
+    fprintf(file, "    \"gravity_strength\": %.2f,\n", meta.gravityStrength);
+    fprintf(file, "    \"physics_enabled\": %s\n", meta.physicsEnabled ? "true" : "false");
+    fprintf(file, "  },\n");
+    fprintf(file, "  \"performance\": {\n");
+    fprintf(file, "    \"fps\": %.1f,\n", meta.fps);
+    fprintf(file, "    \"frame_time_ms\": %.2f\n", meta.frameTime);
+    fprintf(file, "  },\n");
+    fprintf(file, "  \"camera\": {\n");
+    fprintf(file, "    \"position\": [%.1f, %.1f, %.1f],\n", meta.camera.x, meta.camera.y, meta.camera.z);
+    fprintf(file, "    \"look_at\": [%.1f, %.1f, %.1f],\n",
+            meta.camera.lookAtX, meta.camera.lookAtY, meta.camera.lookAtZ);
+    fprintf(file, "    \"distance\": %.1f,\n", meta.camera.distance);
+    fprintf(file, "    \"height\": %.1f,\n", meta.camera.height);
+    fprintf(file, "    \"angle\": %.3f\n", meta.camera.angle);
+    fprintf(file, "  },\n");
+    fprintf(file, "  \"ml_quality\": {\n");
+    fprintf(file, "    \"pinn_enabled\": %s,\n", meta.pinnEnabled ? "true" : "false");
+    fprintf(file, "    \"model_path\": \"%s\",\n", meta.modelPath.c_str());
+    fprintf(file, "    \"adaptive_quality_enabled\": %s\n", meta.adaptiveQualityEnabled ? "true" : "false");
+    fprintf(file, "  }\n");
+    fprintf(file, "}\n");
+
+    fclose(file);
+    LOG_INFO("Metadata saved: {}", metaPath);
+}
+
 void Application::CaptureScreenshot() {
     LOG_INFO("\n=== CAPTURING SCREENSHOT (Frame {}) ===", m_frameCount);
 
@@ -1586,6 +1692,10 @@ void Application::CaptureScreenshot() {
 
     // Save the back buffer to file
     SaveBackBufferToFile(backBuffer, filename);
+
+    // Phase 1: Capture and save metadata alongside screenshot
+    ScreenshotMetadata metadata = GatherScreenshotMetadata();
+    SaveScreenshotMetadata(filename, metadata);
 
     LOG_INFO("Screenshot saved: {}", filename);
 }
