@@ -3,6 +3,7 @@
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../utils/d3dx12/d3dx12.h"
+#include "../ml/PINNPhysicsSystem.h"
 #include <random>
 #include <cmath>
 #include <algorithm>
@@ -12,6 +13,7 @@
 #pragma comment(lib, "d3dcompiler.lib")
 
 ParticleSystem::~ParticleSystem() {
+    delete m_pinnPhysics;
     Shutdown();
 }
 
@@ -61,6 +63,38 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
         return false;
     }
 
+    // Initialize PINN ML Physics System (optional)
+    m_pinnPhysics = new PINNPhysicsSystem();
+    // Path relative to project root (working directory)
+    if (m_pinnPhysics->Initialize("ml/models/pinn_accretion_disk.onnx")) {
+        m_pinnPhysics->SetEnabled(false);  // Start disabled (user can enable via 'P' key)
+        m_pinnPhysics->SetHybridMode(true);
+        m_pinnPhysics->SetHybridThreshold(10.0f);  // 10× R_ISCO
+        LOG_INFO("PINN physics available! Press 'P' to toggle PINN physics");
+        LOG_INFO("  {}", m_pinnPhysics->GetModelInfo());
+
+        // Allocate CPU buffers for PINN inference
+        m_cpuPositions.resize(particleCount);
+        m_cpuVelocities.resize(particleCount);
+        m_cpuForces.resize(particleCount);
+
+        // Initialize particles on CPU (avoid GPU readback entirely)
+        LOG_INFO("[PINN] Initializing particles on CPU (no GPU readback needed)");
+        InitializeAccretionDisk_CPU();
+        m_particlesOnCPU = true;
+
+        // Upload CPU particles to GPU for rendering
+        UploadParticleData(m_cpuPositions, m_cpuVelocities);
+        m_device->ExecuteCommandList();
+        m_device->WaitForGPU();
+        m_device->ResetCommandList();
+
+        LOG_INFO("[PINN] CPU initialization complete - {} particles ready", particleCount);
+    } else {
+        LOG_INFO("PINN not available (ONNX Runtime not installed or model not found)");
+        LOG_INFO("  GPU physics will be used exclusively");
+    }
+
     return true;
 }
 
@@ -69,7 +103,36 @@ void ParticleSystem::InitializeAccretionDisk() {
     LOG_INFO("Particles will be GPU-initialized by physics shader");
 }
 
-// Removed all CPU initialization code - physics shader handles GPU init
+void ParticleSystem::InitializeAccretionDisk_CPU() {
+    // CPU-based initialization for PINN mode (matches GPU shader logic)
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution<float> radiusDist(INNER_STABLE_ORBIT, OUTER_DISK_RADIUS);
+    std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159265f);
+    std::uniform_real_distribution<float> heightDist(-DISK_THICKNESS * 0.5f, DISK_THICKNESS * 0.5f);
+
+    for (uint32_t i = 0; i < m_particleCount; i++) {
+        // Cylindrical coordinates
+        float radius = radiusDist(rng);
+        float angle = angleDist(rng);
+        float height = heightDist(rng);
+
+        // Convert to Cartesian
+        m_cpuPositions[i].x = radius * cosf(angle);
+        m_cpuPositions[i].y = height;
+        m_cpuPositions[i].z = radius * sinf(angle);
+
+        // Keplerian orbital velocity: v = sqrt(GM/r)
+        float orbitalSpeed = sqrtf(m_gravityStrength / radius) * m_angularMomentumBoost;
+
+        // Tangential velocity in disk plane
+        m_cpuVelocities[i].x = -orbitalSpeed * sinf(angle);
+        m_cpuVelocities[i].y = 0.0f;  // No initial vertical velocity
+        m_cpuVelocities[i].z = orbitalSpeed * cosf(angle);
+    }
+
+    LOG_INFO("[PINN] CPU-initialized {} particles in accretion disk", m_particleCount);
+}
 
 bool ParticleSystem::CreateComputePipeline() {
     HRESULT hr;
@@ -152,14 +215,22 @@ bool ParticleSystem::CreateComputePipeline() {
 }
 
 void ParticleSystem::Update(float deltaTime, float totalTime) {
+    // Apply timescale to deltaTime (allows slowing down/speeding up simulation)
+    deltaTime *= m_timeScale;
+    m_totalTime = totalTime;
+
+    // Dispatch to PINN or GPU physics
+    if (m_usePINN && m_pinnPhysics && m_pinnPhysics->IsAvailable()) {
+        UpdatePhysics_PINN(deltaTime, totalTime);
+    } else {
+        UpdatePhysics_GPU(deltaTime, totalTime);
+    }
+}
+
+void ParticleSystem::UpdatePhysics_GPU(float deltaTime, float totalTime) {
     if (!m_computePSO || !m_computeRootSignature) {
         return;  // Physics not initialized
     }
-
-    // Apply timescale to deltaTime (allows slowing down/speeding up simulation)
-    deltaTime *= m_timeScale;
-
-    m_totalTime = totalTime;
 
     // CRITICAL DEBUG: Log first few frames to verify GPU initialization
     static int s_debugFrameCount = 0;
@@ -332,4 +403,199 @@ void ParticleSystem::DebugReadbackParticles(int count) {
 
     m_device->ResetCommandList();
     LOG_INFO("===========================================");
+}
+
+// ===================================================================
+// PINN Physics Implementation
+// ===================================================================
+
+void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
+    if (!m_pinnPhysics || !m_pinnPhysics->IsEnabled()) {
+        return;
+    }
+
+    if (!m_particlesOnCPU) {
+        LOG_ERROR("[PINN] Particles not on CPU - cannot use PINN!");
+        return;
+    }
+
+    // Step 1: Predict forces using PINN (works directly on CPU particles)
+    bool success = m_pinnPhysics->PredictForcesBatch(
+        m_cpuPositions.data(),
+        m_cpuVelocities.data(),
+        m_cpuForces.data(),
+        m_activeParticleCount,
+        totalTime
+    );
+
+    if (!success) {
+        LOG_ERROR("[PINN] Force prediction failed");
+        return;
+    }
+
+    // Step 2: Integrate forces (Velocity Verlet) on CPU particles
+    IntegrateForces(m_cpuForces, deltaTime);
+
+    // Step 3: Upload updated CPU particles to GPU for rendering
+    UploadParticleData(m_cpuPositions, m_cpuVelocities);
+
+    // Log performance metrics every 60 frames
+    static int s_pinnUpdateCount = 0;
+    s_pinnUpdateCount++;
+    if (s_pinnUpdateCount % 60 == 0) {
+        auto metrics = m_pinnPhysics->GetPerformanceMetrics();
+        LOG_INFO("[PINN] Update {} - Inference: {:.2f}ms, {} particles, CPU-only: {}",
+                 s_pinnUpdateCount, metrics.inferenceTimeMs, metrics.particlesProcessed,
+                 m_particlesOnCPU ? "YES" : "NO");
+    }
+}
+
+// ReadbackParticleData() removed - particles are initialized on CPU when PINN is available
+// This eliminates GPU crashes caused by copying particle buffer while RT acceleration structures reference it
+
+void ParticleSystem::UploadParticleData(
+    const std::vector<DirectX::XMFLOAT3>& positions,
+    const std::vector<DirectX::XMFLOAT3>& velocities) {
+
+    // Create upload buffer
+    size_t bufferSize = m_particleCount * sizeof(Particle);
+    Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer;
+
+    CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        IID_PPV_ARGS(&uploadBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("[PINN] Failed to create upload buffer");
+        return;
+    }
+
+    // Map and copy data
+    void* uploadData = nullptr;
+    hr = uploadBuffer->Map(0, nullptr, &uploadData);
+    if (FAILED(hr)) {
+        LOG_ERROR("[PINN] Failed to map upload buffer");
+        return;
+    }
+
+    Particle* particles = static_cast<Particle*>(uploadData);
+    for (uint32_t i = 0; i < m_activeParticleCount; i++) {
+        particles[i].position = positions[i];
+        particles[i].velocity = velocities[i];
+        // Keep temperature and density from GPU (PINN doesn't modify these)
+    }
+
+    uploadBuffer->Unmap(0, nullptr);
+
+    // Copy to GPU
+    auto cmdList = m_device->GetCommandList();
+
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = m_particleBuffer.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    cmdList->CopyResource(m_particleBuffer.Get(), uploadBuffer.Get());
+
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Don't execute - let main loop handle it
+}
+
+void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime) {
+    // Velocity Verlet integration
+    for (uint32_t i = 0; i < m_activeParticleCount; i++) {
+        // Update velocity: v' = v + a * dt
+        float ax = forces[i].x;
+        float ay = forces[i].y;
+        float az = forces[i].z;
+
+        m_cpuVelocities[i].x += ax * deltaTime;
+        m_cpuVelocities[i].y += ay * deltaTime;
+        m_cpuVelocities[i].z += az * deltaTime;
+
+        // Update position: p' = p + v' * dt
+        m_cpuPositions[i].x += m_cpuVelocities[i].x * deltaTime;
+        m_cpuPositions[i].y += m_cpuVelocities[i].y * deltaTime;
+        m_cpuPositions[i].z += m_cpuVelocities[i].z * deltaTime;
+    }
+}
+
+// PINN Control Methods
+
+bool ParticleSystem::IsPINNAvailable() const {
+    return m_pinnPhysics && m_pinnPhysics->IsAvailable();
+}
+
+bool ParticleSystem::IsPINNEnabled() const {
+    return m_usePINN;
+}
+
+void ParticleSystem::SetPINNEnabled(bool enabled) {
+    if (!IsPINNAvailable()) {
+        LOG_WARN("[PINN] Cannot enable - PINN not available");
+        return;
+    }
+
+    if (!m_particlesOnCPU) {
+        LOG_WARN("[PINN] Particles not initialized on CPU - cannot use PINN");
+        return;
+    }
+
+    m_usePINN = enabled;
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetEnabled(enabled);
+    }
+
+    LOG_INFO("[PINN] Physics {} (particles already on CPU)", enabled ? "ENABLED" : "DISABLED");
+}
+
+void ParticleSystem::TogglePINNPhysics() {
+    SetPINNEnabled(!m_usePINN);
+}
+
+bool ParticleSystem::IsPINNHybridMode() const {
+    return m_pinnPhysics ? m_pinnPhysics->IsHybridMode() : false;
+}
+
+void ParticleSystem::SetPINNHybridMode(bool hybrid) {
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetHybridMode(hybrid);
+        LOG_INFO("[PINN] Hybrid mode {}", hybrid ? "ENABLED" : "DISABLED");
+    }
+}
+
+float ParticleSystem::GetPINNHybridThreshold() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetHybridThreshold() / 6.0f : 10.0f;  // Return in × R_ISCO
+}
+
+void ParticleSystem::SetPINNHybridThreshold(float radiusMultiplier) {
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetHybridThreshold(radiusMultiplier);
+    }
+}
+
+std::string ParticleSystem::GetPINNModelInfo() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetModelInfo() : "PINN not available";
+}
+
+ParticleSystem::PINNMetrics ParticleSystem::GetPINNMetrics() const {
+    PINNMetrics metrics;
+    if (m_pinnPhysics) {
+        auto pinnMetrics = m_pinnPhysics->GetPerformanceMetrics();
+        metrics.inferenceTimeMs = pinnMetrics.inferenceTimeMs;
+        metrics.particlesProcessed = pinnMetrics.particlesProcessed;
+        metrics.avgBatchTimeMs = pinnMetrics.avgBatchTimeMs;
+    }
+    return metrics;
 }

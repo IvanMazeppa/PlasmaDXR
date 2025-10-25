@@ -4,9 +4,13 @@
 #include <wrl/client.h>
 #include <DirectXMath.h>
 #include <algorithm>
+#include <memory>
+#include <vector>
+#include <string>
 
 class Device;
 class ResourceManager;
+class PINNPhysicsSystem;
 
 // ParticleSystem - Manages particle data and physics
 // Focused on NASA-quality accretion disk simulation
@@ -82,9 +86,37 @@ public:
     // Debug: Readback particle data from GPU
     void DebugReadbackParticles(int count = 5);
 
+    // PINN Physics Controls
+    bool IsPINNAvailable() const;
+    bool IsPINNEnabled() const;
+    void SetPINNEnabled(bool enabled);
+    void TogglePINNPhysics();
+
+    bool IsPINNHybridMode() const;
+    void SetPINNHybridMode(bool hybrid);
+
+    float GetPINNHybridThreshold() const;
+    void SetPINNHybridThreshold(float radiusMultiplier);
+
+    std::string GetPINNModelInfo() const;
+
+    struct PINNMetrics {
+        float inferenceTimeMs = 0.0f;
+        uint32_t particlesProcessed = 0;
+        float avgBatchTimeMs = 0.0f;
+    };
+    PINNMetrics GetPINNMetrics() const;
+
 private:
     void InitializeAccretionDisk();
+    void InitializeAccretionDisk_CPU();  // CPU-based initialization for PINN mode
     bool CreateComputePipeline();
+
+    // PINN Physics Helper Methods
+    void UpdatePhysics_GPU(float deltaTime, float totalTime);
+    void UpdatePhysics_PINN(float deltaTime, float totalTime);
+    void UploadParticleData(const std::vector<DirectX::XMFLOAT3>& positions, const std::vector<DirectX::XMFLOAT3>& velocities);
+    void IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime);
 
 private:
     Device* m_device = nullptr;
@@ -117,4 +149,14 @@ private:
 
     DirectX::XMFLOAT3 m_blackHolePosition = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
     DirectX::XMFLOAT3 m_diskAxis = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);
+
+    // PINN ML Physics System
+    PINNPhysicsSystem* m_pinnPhysics = nullptr;
+    bool m_usePINN = false;
+    bool m_particlesOnCPU = false;  // When true, particles are stored on CPU (PINN mode)
+
+    // CPU-side particle data buffers (for PINN inference)
+    std::vector<DirectX::XMFLOAT3> m_cpuPositions;
+    std::vector<DirectX::XMFLOAT3> m_cpuVelocities;
+    std::vector<DirectX::XMFLOAT3> m_cpuForces;
 };

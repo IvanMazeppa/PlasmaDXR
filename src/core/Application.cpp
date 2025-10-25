@@ -1052,10 +1052,27 @@ void Application::OnKeyPress(UINT8 key) {
         }
         break;
 
-    // Toggle physics
+    // Toggle physics (PINN if available, otherwise standard physics)
     case 'P':
-        m_physicsEnabled = !m_physicsEnabled;
-        LOG_INFO("Physics: {}", m_physicsEnabled ? "ENABLED" : "DISABLED");
+        if (m_particleSystem && m_particleSystem->IsPINNAvailable()) {
+            // Toggle PINN physics
+            m_particleSystem->TogglePINNPhysics();
+            LOG_INFO("PINN Physics: {} (Press 'P' to toggle)",
+                     m_particleSystem->IsPINNEnabled() ? "ENABLED" : "DISABLED");
+            if (m_particleSystem->IsPINNEnabled()) {
+                LOG_INFO("  Hybrid Mode: {}", m_particleSystem->IsPINNHybridMode() ? "ON" : "OFF");
+                if (m_particleSystem->IsPINNHybridMode()) {
+                    LOG_INFO("  Threshold: {:.1f}× R_ISCO", m_particleSystem->GetPINNHybridThreshold());
+                }
+            }
+        } else {
+            // Fall back to standard physics toggle
+            m_physicsEnabled = !m_physicsEnabled;
+            LOG_INFO("Physics: {}", m_physicsEnabled ? "ENABLED" : "DISABLED");
+            if (!m_particleSystem || !m_particleSystem->IsPINNAvailable()) {
+                LOG_INFO("  (PINN not available - using GPU physics only)");
+            }
+        }
         break;
 
     // Debug: Readback particle data (Ctrl+D = buffer dump if enabled)
@@ -2662,7 +2679,58 @@ void Application::RenderImGui() {
     // Physics controls
     if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Physics Enabled (P)", &m_physicsEnabled);
+
+        // PINN ML Physics Controls
         if (m_particleSystem) {
+            ImGui::Separator();
+            ImGui::Text("ML Physics (PINN)");
+
+            if (m_particleSystem->IsPINNAvailable()) {
+                bool pinnEnabled = m_particleSystem->IsPINNEnabled();
+                if (ImGui::Checkbox("Enable PINN Physics (P key)", &pinnEnabled)) {
+                    m_particleSystem->SetPINNEnabled(pinnEnabled);
+                }
+
+                if (pinnEnabled) {
+                    ImGui::Indent();
+
+                    // Hybrid mode toggle
+                    bool hybridMode = m_particleSystem->IsPINNHybridMode();
+                    if (ImGui::Checkbox("Hybrid Mode (PINN + GPU)", &hybridMode)) {
+                        m_particleSystem->SetPINNHybridMode(hybridMode);
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("PINN for far particles (r > threshold),\nGPU shader for near particles (r < threshold)");
+                    }
+
+                    // Hybrid threshold slider
+                    if (hybridMode) {
+                        float threshold = m_particleSystem->GetPINNHybridThreshold();
+                        if (ImGui::SliderFloat("Hybrid Threshold (x R_ISCO)", &threshold, 5.0f, 50.0f, "%.1f")) {
+                            m_particleSystem->SetPINNHybridThreshold(threshold);
+                        }
+                    }
+
+                    // Performance metrics
+                    auto metrics = m_particleSystem->GetPINNMetrics();
+                    ImGui::Separator();
+                    ImGui::Text("Performance:");
+                    ImGui::Text("  Inference: %.2f ms", metrics.inferenceTimeMs);
+                    ImGui::Text("  Particles: %u", metrics.particlesProcessed);
+                    ImGui::Text("  Avg Batch: %.2f ms", metrics.avgBatchTimeMs);
+
+                    ImGui::Unindent();
+                }
+
+                // Model info
+                ImGui::TextDisabled("Model: PINN Accretion Disk (5 layers, 128 neurons)");
+            } else {
+                ImGui::TextDisabled("PINN: Not Available");
+                ImGui::TextDisabled("(ONNX Runtime or model not found)");
+            }
+
             ImGui::Separator();
             ImGui::Text("Dynamic Physics Parameters");
             float gravity = m_particleSystem->GetGravityStrength();
