@@ -424,7 +424,7 @@ void Application::Render() {
 
                     // Keplerian angular velocity: ω = √(GM/r³) ≈ 1/√r
                     float angularVelocity = orbitSpeedScale / sqrtf(radius);
-                    angle += angularVelocity * m_deltaTime;
+                    angle -= angularVelocity * m_deltaTime;  // Negative for clockwise rotation (matches particles)
 
                     // Update XZ position (orbital plane)
                     m_lights[i].position.x = radius * cosf(angle);
@@ -2909,6 +2909,62 @@ void Application::RenderImGui() {
                               "\n"
                               "Creates dynamic shadows and illumination as lights orbit!\n"
                               "Very effective for visualizing celestial body movement.");
+        }
+
+        ImGui::Separator();
+
+        // Bulk Light Controls
+        if (ImGui::TreeNode("Bulk Light Controls (Apply to All)")) {
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Apply settings to all lights simultaneously\n"
+                                  "Useful for creating uniform stellar properties");
+            }
+
+            static DirectX::XMFLOAT3 bulkColor = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+            static float bulkIntensity = 10.0f;
+            static float bulkRadius = 10.0f;
+
+            ImGui::ColorEdit3("Bulk Color", &bulkColor.x);
+            ImGui::SliderFloat("Bulk Intensity", &bulkIntensity, 0.1f, 20.0f, "%.1f");
+            ImGui::SliderFloat("Bulk Radius", &bulkRadius, 1.0f, 200.0f, "%.1f");
+
+            ImGui::Spacing();
+
+            if (ImGui::Button("Apply Color to All")) {
+                for (auto& light : m_lights) {
+                    light.color = bulkColor;
+                }
+                LOG_INFO("Applied bulk color ({:.2f}, {:.2f}, {:.2f}) to {} lights",
+                         bulkColor.x, bulkColor.y, bulkColor.z, m_lights.size());
+            }
+            ImGui::SameLine();
+
+            if (ImGui::Button("Apply Intensity to All")) {
+                for (auto& light : m_lights) {
+                    light.intensity = bulkIntensity;
+                }
+                LOG_INFO("Applied bulk intensity {:.1f} to {} lights", bulkIntensity, m_lights.size());
+            }
+
+            if (ImGui::Button("Apply Radius to All")) {
+                for (auto& light : m_lights) {
+                    light.radius = bulkRadius;
+                }
+                LOG_INFO("Applied bulk radius {:.1f} to {} lights", bulkRadius, m_lights.size());
+            }
+            ImGui::SameLine();
+
+            if (ImGui::Button("Apply All Properties")) {
+                for (auto& light : m_lights) {
+                    light.color = bulkColor;
+                    light.intensity = bulkIntensity;
+                    light.radius = bulkRadius;
+                }
+                LOG_INFO("Applied all bulk properties to {} lights: Color({:.2f}, {:.2f}, {:.2f}), Intensity={:.1f}, Radius={:.1f}",
+                         m_lights.size(), bulkColor.x, bulkColor.y, bulkColor.z, bulkIntensity, bulkRadius);
+            }
+
+            ImGui::TreePop();
         }
 
         ImGui::Separator();
