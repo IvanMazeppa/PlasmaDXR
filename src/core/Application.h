@@ -145,6 +145,10 @@ private:
 
     int m_selectedLightIndex = -1;  // For ImGui light selection
 
+    // Physics-driven lights system (celestial body lights)
+    bool m_physicsDrivenLights = false;        // Toggle: lights move with physics like celestial bodies
+    std::vector<uint32_t> m_lightParticleIndices;  // Particle index for each light (empty = random selection)
+
     // === Bulk Light Color Control System (Phase 5 Milestone 5.3b) ===
     enum class ColorPreset {
         Custom,

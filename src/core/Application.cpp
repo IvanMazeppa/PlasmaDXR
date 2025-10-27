@@ -406,6 +406,36 @@ void Application::Render() {
         // Sync runtime particle count control
         m_particleSystem->SetActiveParticleCount(m_activeParticleCount);
         m_particleSystem->Update(m_deltaTime, m_totalTime);
+
+        // PHYSICS-DRIVEN LIGHTS: Update light positions to simulate orbital motion
+        // Lights move like celestial bodies (stars/clusters) orbiting the black hole
+        if (m_physicsDrivenLights && !m_lights.empty()) {
+            // Keplerian orbit: angular velocity ∝ 1/√r
+            float orbitSpeedScale = 5.0f;  // Adjustable speed multiplier
+
+            for (size_t i = 0; i < m_lights.size(); i++) {
+                // Current position
+                float x = m_lights[i].position.x;
+                float z = m_lights[i].position.z;
+                float radius = sqrtf(x * x + z * z);
+
+                if (radius > 1.0f) {  // Skip lights at origin
+                    float angle = atan2f(z, x);
+
+                    // Keplerian angular velocity: ω = √(GM/r³) ≈ 1/√r
+                    float angularVelocity = orbitSpeedScale / sqrtf(radius);
+                    angle += angularVelocity * m_deltaTime;
+
+                    // Update XZ position (orbital plane)
+                    m_lights[i].position.x = radius * cosf(angle);
+                    m_lights[i].position.z = radius * sinf(angle);
+
+                    // Small vertical oscillation for disk thickness variation
+                    m_lights[i].position.y += sinf(m_totalTime * 0.3f + i * 2.0f) * 10.0f * m_deltaTime;
+                    m_lights[i].position.y = fmaxf(-50.0f, fminf(50.0f, m_lights[i].position.y));  // Clamp to disk thickness
+                }
+            }
+        }
     }
 
     // Get current back buffer
@@ -2861,6 +2891,24 @@ void Application::RenderImGui() {
             m_lights.push_back(newLight);
             m_selectedLightIndex = static_cast<int>(m_lights.size()) - 1;
             LOG_INFO("Added light {} at ({:.1f}, {:.1f}, {:.1f})", m_lights.size() - 1, newLight.position.x, newLight.position.y, newLight.position.z);
+        }
+
+        ImGui::Separator();
+
+        // Physics-Driven Lights Toggle
+        if (ImGui::Checkbox("Physics-Driven Lights (Celestial Bodies)", &m_physicsDrivenLights)) {
+            if (m_physicsDrivenLights) {
+                LOG_INFO("Physics-driven lights ENABLED - lights will orbit like celestial bodies");
+            } else {
+                LOG_INFO("Physics-driven lights DISABLED - lights remain static");
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Enable: Lights move with Keplerian orbits like bright stars/clusters\n"
+                              "Disable: Lights remain in fixed positions\n"
+                              "\n"
+                              "Creates dynamic shadows and illumination as lights orbit!\n"
+                              "Very effective for visualizing celestial body movement.");
         }
 
         ImGui::Separator();
