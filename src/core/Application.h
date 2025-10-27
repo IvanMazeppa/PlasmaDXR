@@ -121,8 +121,9 @@ private:
     // RT Lighting runtime controls
     bool m_enableRTLighting = true;  // Toggle for particle-to-particle RT lighting
     float m_rtLightingIntensity = 1.0f;
-    float m_rtMaxDistance = 100.0f;  // Updated to match shader
+    float m_rtMaxDistance = 100.0f;  // Updated to match shader (max 400 via ImGui)
     float m_rtParticleRadius = 5.0f;   // Updated to match shader
+    float m_rtMinAmbient = 0.05f;     // Global ambient term (0.0-0.2) - Phase 1 lighting fix
 
     // === God Ray System (Phase 5 Milestone 5.3c) ===
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)

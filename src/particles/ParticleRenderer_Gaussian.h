@@ -87,6 +87,10 @@ public:
         float godRayDensity;               // Global god ray density (0.0-1.0, ambient medium)
         float godRayStepMultiplier;        // Ray march step multiplier (0.5-2.0, quality vs speed)
         DirectX::XMFLOAT2 godRayPadding;   // Padding for alignment
+
+        // === Phase 1 Lighting Fix ===
+        float rtMinAmbient;                // Global ambient term (0.0-0.2) to prevent completely black particles
+        DirectX::XMFLOAT3 lightingPadding; // Padding for alignment
     };
 
 public:

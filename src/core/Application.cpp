@@ -666,6 +666,10 @@ void Application::Render() {
             gaussianConstants.godRayStepMultiplier = m_godRayStepMultiplier;
             gaussianConstants.godRayPadding = DirectX::XMFLOAT2(0, 0);
 
+            // Phase 1 Lighting Fix: Global ambient to prevent completely black particles
+            gaussianConstants.rtMinAmbient = m_rtMinAmbient;
+            gaussianConstants.lightingPadding = DirectX::XMFLOAT3(0, 0, 0);
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -2493,6 +2497,30 @@ void Application::RenderImGui() {
         }
         if (m_enableRTLighting) {
             ImGui::SliderFloat("RT Lighting Strength (F10)", &m_rtLightingStrength, 0.0f, 10.0f);
+            ImGui::SliderFloat("RT Max Distance", &m_rtMaxDistance, 50.0f, 400.0f, "%.0f units");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Maximum distance for particle-to-particle RT lighting\n"
+                                  "100 units = innermost particles only (default)\n"
+                                  "200 units = middle disk coverage\n"
+                                  "300 units = full disk coverage\n"
+                                  "400 units = extended range (may impact performance)\n"
+                                  "\n"
+                                  "Find your GPU's sweet spot by gradually increasing!");
+            }
+            // Update RTLightingSystem with new distance
+            if (m_rtLighting) {
+                m_rtLighting->SetMaxLightingDistance(m_rtMaxDistance);
+            }
+        }
+        ImGui::SliderFloat("Global Ambient", &m_rtMinAmbient, 0.0f, 0.2f, "%.3f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Minimum ambient light for all particles\n"
+                              "Prevents particles from being completely black\n"
+                              "\n"
+                              "0.000 = Pure black when unlit (original)\n"
+                              "0.050 = Subtle ambient glow (recommended)\n"
+                              "0.100 = Brighter ambient\n"
+                              "0.200 = Maximum ambient");
         }
         ImGui::Checkbox("Anisotropic Gaussians (F11)", &m_useAnisotropicGaussians);
         if (m_useAnisotropicGaussians) {

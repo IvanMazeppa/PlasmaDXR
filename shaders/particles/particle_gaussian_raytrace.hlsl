@@ -59,6 +59,10 @@ cbuffer GaussianConstants : register(b0)
     float godRayDensity;           // Global god ray density (0.0-1.0)
     float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0)
     float2 godRayPadding;          // Padding for alignment
+
+    // Phase 1 Lighting Fix
+    float rtMinAmbient;            // Global ambient term (0.0-0.2)
+    float3 lightingPadding;        // Padding for alignment
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -615,7 +619,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
                 // Base ambient level (allows particles to be visible even with no self-emission)
                 // External lighting (RT + multi-light) will be added to this base
-                float3 illumination = float3(0.05, 0.05, 0.05);  // Very dark ambient base
+                // Phase 1 lighting fix: Use rtMinAmbient parameter (default 0.05, adjustable 0.0-0.2)
+                float3 illumination = float3(rtMinAmbient, rtMinAmbient, rtMinAmbient);
 
                 // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
                 // Clamp to prevent over-brightness from extreme ReSTIR samples
