@@ -149,6 +149,11 @@ private:
     bool m_physicsDrivenLights = false;        // Toggle: lights move with physics like celestial bodies
     std::vector<uint32_t> m_lightParticleIndices;  // Particle index for each light (empty = random selection)
 
+    // Stellar temperature color system (Phase 2)
+    bool m_useStellarTemperatureColors = false;  // Toggle: auto-apply stellar temperature colors based on intensity
+    DirectX::XMFLOAT3 GetStellarColorFromTemperature(float temperature);
+    float GetStellarTemperatureFromIntensity(float intensity);  // Maps intensity (0.1-20.0) → temperature (3000K-30000K)
+
     // === Bulk Light Color Control System (Phase 5 Milestone 5.3b) ===
     enum class ColorPreset {
         Custom,

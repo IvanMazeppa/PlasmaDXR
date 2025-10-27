@@ -436,6 +436,15 @@ void Application::Render() {
                 }
             }
         }
+
+        // STELLAR TEMPERATURE COLORS: Auto-apply colors based on intensity
+        // Maps intensity → temperature → realistic stellar colors
+        if (m_useStellarTemperatureColors && !m_lights.empty()) {
+            for (size_t i = 0; i < m_lights.size(); i++) {
+                float temperature = GetStellarTemperatureFromIntensity(m_lights[i].intensity);
+                m_lights[i].color = GetStellarColorFromTemperature(temperature);
+            }
+        }
     }
 
     // Get current back buffer
@@ -2911,6 +2920,35 @@ void Application::RenderImGui() {
                               "Very effective for visualizing celestial body movement.");
         }
 
+        // Stellar Temperature Colors Toggle
+        if (ImGui::Checkbox("Stellar Temperature Colors (Auto-Apply)", &m_useStellarTemperatureColors)) {
+            if (m_useStellarTemperatureColors) {
+                LOG_INFO("Stellar temperature colors ENABLED - light colors based on intensity");
+                // Apply colors immediately
+                for (size_t i = 0; i < m_lights.size(); i++) {
+                    float temperature = GetStellarTemperatureFromIntensity(m_lights[i].intensity);
+                    m_lights[i].color = GetStellarColorFromTemperature(temperature);
+                    LOG_INFO("Light {}: Intensity={:.1f} → Temp={:.0f}K → Color=({:.2f}, {:.2f}, {:.2f})",
+                             i, m_lights[i].intensity, temperature,
+                             m_lights[i].color.x, m_lights[i].color.y, m_lights[i].color.z);
+                }
+            } else {
+                LOG_INFO("Stellar temperature colors DISABLED - manual color control restored");
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Enable: Light colors automatically match stellar temperature\n"
+                              "Disable: Manual color control\n"
+                              "\n"
+                              "Intensity → Temperature → Color mapping:\n"
+                              "  • Low intensity (0.1-5):   Red (M-type, 3000K)\n"
+                              "  • Medium (5-10):           Yellow (G-type, 5500K) - Sun-like\n"
+                              "  • High (10-15):            White (A-type, 8000K)\n"
+                              "  • Very high (15-20):       Blue (O-type, 25000K)\n"
+                              "\n"
+                              "Based on Morgan-Keenan stellar classification system!");
+        }
+
         ImGui::Separator();
 
         // Bulk Light Controls
@@ -3836,6 +3874,86 @@ DirectX::XMFLOAT3 Application::BlackbodyColor(float temperature) {
     }
 
     return DirectX::XMFLOAT3(r, g, b);
+}
+
+// ====================================================================
+// Stellar Temperature Color System (Phase 2)
+// ====================================================================
+
+float Application::GetStellarTemperatureFromIntensity(float intensity) {
+    // Map intensity (0.1 - 20.0) to stellar temperature (3000K - 30000K)
+    // Low intensity = cool red stars (M-type, 3000K)
+    // High intensity = hot blue stars (O-type, 30000K)
+
+    const float minTemp = 3000.0f;   // M-type red dwarf/supergiant
+    const float maxTemp = 30000.0f;  // O-type blue supergiant
+    const float minIntensity = 0.1f;
+    const float maxIntensity = 20.0f;
+
+    // Linear mapping
+    float t = (intensity - minIntensity) / (maxIntensity - minIntensity);
+    t = (std::max)(0.0f, (std::min)(1.0f, t));  // Clamp to [0,1]
+
+    return minTemp + t * (maxTemp - minTemp);
+}
+
+DirectX::XMFLOAT3 Application::GetStellarColorFromTemperature(float temperature) {
+    // Map temperature to stellar classification colors
+    // Based on Morgan-Keenan spectral classification system
+
+    if (temperature >= 30000.0f) {
+        // O-type: Blue (30,000K+)
+        return DirectX::XMFLOAT3(0.6f, 0.7f, 1.0f);
+    } else if (temperature >= 10000.0f) {
+        // B-type: Blue-white (10,000K - 30,000K)
+        float t = (temperature - 10000.0f) / 20000.0f;
+        return DirectX::XMFLOAT3(
+            0.6f + t * 0.2f,   // 0.6 → 0.8
+            0.7f + t * 0.15f,  // 0.7 → 0.85
+            1.0f
+        );
+    } else if (temperature >= 7500.0f) {
+        // A-type: White (7,500K - 10,000K)
+        float t = (temperature - 7500.0f) / 2500.0f;
+        return DirectX::XMFLOAT3(
+            0.8f + t * 0.2f,   // 0.8 → 1.0
+            0.85f + t * 0.15f, // 0.85 → 1.0
+            1.0f
+        );
+    } else if (temperature >= 6000.0f) {
+        // F-type: Yellow-white (6,000K - 7,500K)
+        float t = (temperature - 6000.0f) / 1500.0f;
+        return DirectX::XMFLOAT3(
+            1.0f,
+            0.9f + t * 0.1f,   // 0.9 → 1.0
+            0.7f + t * 0.3f    // 0.7 → 1.0 (moving from yellow to white)
+        );
+    } else if (temperature >= 5200.0f) {
+        // G-type: Yellow - Sun-like! (5,200K - 6,000K)
+        float t = (temperature - 5200.0f) / 800.0f;
+        return DirectX::XMFLOAT3(
+            1.0f,
+            0.85f + t * 0.05f, // 0.85 → 0.9
+            0.6f + t * 0.1f    // 0.6 → 0.7
+        );
+    } else if (temperature >= 3700.0f) {
+        // K-type: Orange (3,700K - 5,200K)
+        float t = (temperature - 3700.0f) / 1500.0f;
+        return DirectX::XMFLOAT3(
+            1.0f,
+            0.6f + t * 0.25f,  // 0.6 → 0.85
+            0.3f + t * 0.3f    // 0.3 → 0.6
+        );
+    } else {
+        // M-type: Red dwarf/supergiant (2,400K - 3,700K)
+        float t = (temperature - 2400.0f) / 1300.0f;
+        t = (std::max)(0.0f, (std::min)(1.0f, t));
+        return DirectX::XMFLOAT3(
+            1.0f,
+            0.4f + t * 0.2f,   // 0.4 → 0.6
+            0.2f + t * 0.1f    // 0.2 → 0.3
+        );
+    }
 }
 
 std::vector<int> Application::GetSelectedLightIndices() {
