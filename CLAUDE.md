@@ -10,9 +10,10 @@ The user is named Ben.
 
 **PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
 
-**Current Status (2025-10-24):**
+**Current Status (2025-10-28):**
 - RTXDI M5 (Phase 2) - Temporal accumulation with ping-pong buffers
 - PINN ML Physics - Python training complete, C++ integration in progress
+- Adaptive Particle Radius (Phase 1.5) - Camera-distance adaptive sizing ✅ COMPLETE
 - MCP server operational with 4 tools (performance analysis, PIX analysis, ML screenshot comparison, screenshot listing)
 - F2 screenshot capture system (direct GPU framebuffer capture)
 - God rays system SHELVED (marked for deactivation)
@@ -276,6 +277,81 @@ Full PCSS (Percentage-Closer Soft Shadows) implementation with temporal filterin
 **Preset configs:** `configs/presets/shadows_performance.json`, `shadows_balanced.json`, `shadows_quality.json`
 
 **See:** `PCSS_IMPLEMENTATION_SUMMARY.md` for complete technical details
+
+---
+
+## Adaptive Particle Radius (Phase 1.5 - COMPLETE ✅)
+
+**Status:** Fully functional with all bugs fixed
+
+Dynamic particle sizing system that adjusts particle radii based on camera distance and local particle density to maintain visual quality at all viewing distances.
+
+### Core Functionality:
+
+**Camera-Distance Adaptive Sizing:**
+- **Inner Zone** (close to camera): Particles shrink to reduce overlap and maintain detail
+- **Transition Zone** (mid-distance): Linear interpolation between inner and outer scales
+- **Outer Zone** (far from camera): Particles grow to remain visible at distance
+
+**Density-Based Scaling:**
+- Local particle density affects size scaling
+- High-density regions: More aggressive shrinking to prevent overlap
+- Low-density regions: Less aggressive scaling to maintain coverage
+- Configurable density scale range (min/max multipliers)
+
+### Technical Implementation:
+
+**Shader Integration:**
+- Computed in `particle_gaussian_raytrace.hlsl` and `generate_particle_aabbs.hlsl`
+- Camera distance calculated per-particle every frame
+- Smooth transitions using `smoothstep()` interpolation
+- Applied before AABB generation for RT acceleration structure
+
+**ImGui Controls:**
+- Enable/disable toggle
+- Inner/Outer zone thresholds (distance from camera)
+- Inner/Outer scale multipliers (shrink/grow factors)
+- Density scale min/max (density-based adjustment range)
+- **Event-driven updates** - setters called only when values change (prevents freezing)
+
+**Parameters:**
+```cpp
+bool m_enableAdaptiveRadius = true;       // Master toggle
+float m_adaptiveInnerZone = 150.0f;       // Distance where shrinking starts
+float m_adaptiveOuterZone = 800.0f;       // Distance where growing starts
+float m_adaptiveInnerScale = 0.3f;        // Shrink to 30% in inner zone
+float m_adaptiveOuterScale = 3.0f;        // Grow to 300% in outer zone
+float m_densityScaleMin = 0.5f;           // Minimum density multiplier
+float m_densityScaleMax = 1.5f;           // Maximum density multiplier
+```
+
+### Bug Fixes Applied:
+
+1. **TDR Crash Fix** - Prevented GPU timeout by fixing infinite loop in AABB generation
+2. **BLAS Rebuild Fix** - Ensured BLAS updates correctly when adaptive radius changes
+3. **ImGui Freeze Fix** - Changed to event-driven updates (only call setters on value change)
+
+**Key Lesson:** ImGui widgets return `bool` when values change. Always use this to avoid calling setters every frame:
+
+```cpp
+// WRONG (calls setter 60× per second)
+ImGui::SliderFloat("Value", &value, 0, 1);
+SetValue(value);
+
+// CORRECT (calls setter only on change)
+if (ImGui::SliderFloat("Value", &value, 0, 1)) {
+    SetValue(value);
+}
+```
+
+### Performance Impact:
+
+- Minimal overhead (<0.1ms per frame)
+- Improves visual quality at all distances
+- Reduces overdraw in close-up views
+- Maintains visibility at extreme distances
+
+**See:** `ADAPTIVE_RADIUS_FIX.md`, `ADAPTIVE_RADIUS_TDR_FIX.md`, `ADAPTIVE_RADIUS_BLAS_FIX.md`, `ADAPTIVE_RADIUS_IMGUI_FREEZE_FIX.md` for complete implementation history
 
 ---
 
@@ -768,6 +844,6 @@ logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log
 
 ---
 
-**Last Updated:** 2025-10-24
-**Project Version:** 0.10.1
+**Last Updated:** 2025-10-28
+**Project Version:** 0.10.11
 **Documentation maintained by:** Claude Code sessions
