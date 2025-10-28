@@ -105,7 +105,7 @@ bool RTLightingSystem_RayQuery::CreateRootSignatures() {
     // u0: RWStructuredBuffer<AABB> particleAABBs
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[3];
-        rootParams[0].InitAsConstants(4, 0);  // b0: AABBConstants (4 DWORDs)
+        rootParams[0].InitAsConstants(10, 0);  // b0: AABBConstants (10 DWORDs - Phase 1.5 adaptive radius)
         rootParams[1].InitAsShaderResourceView(0);  // t0: particles
         rootParams[2].InitAsUnorderedAccessView(0);  // u0: AABBs
 
@@ -351,9 +351,20 @@ void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdLis
     cmdList->SetPipelineState(m_aabbGenPSO.Get());
     cmdList->SetComputeRootSignature(m_aabbGenRootSig.Get());
 
-    // Set root parameters
-    AABBConstants constants = {m_particleCount, m_particleRadius, {0, 0}};
-    cmdList->SetComputeRoot32BitConstants(0, 4, &constants, 0);
+    // Set root parameters (Phase 1.5: Added adaptive radius parameters)
+    AABBConstants constants = {
+        m_particleCount,
+        m_particleRadius,
+        m_enableAdaptiveRadius ? 1u : 0u,
+        m_adaptiveInnerZone,
+        m_adaptiveOuterZone,
+        m_adaptiveInnerScale,
+        m_adaptiveOuterScale,
+        m_densityScaleMin,
+        m_densityScaleMax,
+        0.0f  // padding
+    };
+    cmdList->SetComputeRoot32BitConstants(0, 10, &constants, 0);
     cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
     cmdList->SetComputeRootUnorderedAccessView(2, m_aabbBuffer->GetGPUVirtualAddress());
 

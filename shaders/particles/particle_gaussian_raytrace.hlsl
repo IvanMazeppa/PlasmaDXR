@@ -63,6 +63,16 @@ cbuffer GaussianConstants : register(b0)
     // Phase 1 Lighting Fix
     float rtMinAmbient;            // Global ambient term (0.0-0.2)
     float3 lightingPadding;        // Padding for alignment
+
+    // Phase 1.5 Adaptive Particle Radius
+    uint enableAdaptiveRadius;     // Toggle for density/distance-based radius scaling
+    float adaptiveInnerZone;       // Distance threshold for inner shrinking (0-200 units)
+    float adaptiveOuterZone;       // Distance threshold for outer expansion (200-600 units)
+    float adaptiveInnerScale;      // Min scale for inner dense regions (0.1-1.0)
+    float adaptiveOuterScale;      // Max scale for outer sparse regions (1.0-3.0)
+    float densityScaleMin;         // Min density scale clamp (0.1-1.0)
+    float densityScaleMax;         // Max density scale clamp (1.0-5.0)
+    float adaptivePadding;         // Padding for alignment
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -466,10 +476,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Read particle
             Particle p = g_particles[particleIdx];
 
-            // Compute Gaussian parameters (with anisotropic control)
-            float3 scale = ComputeGaussianScale(p, baseParticleRadius,
-                                                useAnisotropicGaussians != 0,
-                                                anisotropyStrength);
+            // Compute Gaussian parameters (with anisotropic control + adaptive radius)
+            float3 scale = ComputeGaussianScale(
+                p, baseParticleRadius,
+                useAnisotropicGaussians != 0,
+                anisotropyStrength,
+                enableAdaptiveRadius != 0,
+                adaptiveInnerZone,
+                adaptiveOuterZone,
+                adaptiveInnerScale,
+                adaptiveOuterScale,
+                densityScaleMin,
+                densityScaleMax
+            );
             float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
             // Detailed Gaussian-ellipsoid intersection
@@ -512,10 +531,19 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         HitRecord hit = hits[i];
         Particle p = g_particles[hit.particleIdx];
 
-        // Gaussian parameters (with anisotropic control)
-        float3 scale = ComputeGaussianScale(p, baseParticleRadius,
-                                            useAnisotropicGaussians != 0,
-                                            anisotropyStrength);
+        // Gaussian parameters (with anisotropic control + adaptive radius)
+        float3 scale = ComputeGaussianScale(
+            p, baseParticleRadius,
+            useAnisotropicGaussians != 0,
+            anisotropyStrength,
+            enableAdaptiveRadius != 0,
+            adaptiveInnerZone,
+            adaptiveOuterZone,
+            adaptiveInnerScale,
+            adaptiveOuterScale,
+            densityScaleMin,
+            densityScaleMax
+        );
         float3x3 rotation = ComputeGaussianRotation(p.velocity);
 
         // Ray-march through this Gaussian with fixed step count for stability

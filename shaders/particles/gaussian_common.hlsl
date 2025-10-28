@@ -9,14 +9,45 @@ struct Particle {
 };
 
 // Compute Gaussian scale from particle properties (with anisotropy control)
-float3 ComputeGaussianScale(Particle p, float baseRadius, bool useAnisotropic, float anisotropyStrength) {
+// Phase 1.5: Added adaptive radius parameters
+float3 ComputeGaussianScale(
+    Particle p,
+    float baseRadius,
+    bool useAnisotropic,
+    float anisotropyStrength,
+    bool enableAdaptive,
+    float innerZone,
+    float outerZone,
+    float innerScale,
+    float outerScale,
+    float densityMin,
+    float densityMax
+) {
     // Scale based on temperature (hotter = larger)
     float tempScale = 1.0 + (p.temperature - 800.0) / 25200.0; // 1.0-2.0 range
 
-    // Scale based on density (denser = larger)
-    float densityScale = sqrt(p.density); // sqrt to keep reasonable
+    // FIXED: Inverse density scaling (denser = SMALLER to reduce overlap)
+    // Dense inner particles shrink, sparse outer particles grow
+    float densityScale = 1.0 / sqrt(max(p.density, 0.1)); // Prevent divide-by-zero
+    densityScale = clamp(densityScale, densityMin, densityMax); // User-configurable bounds
 
-    float radius = baseRadius * tempScale * densityScale;
+    // Distance-based expansion for outer sparse regions
+    float distFromCenter = length(p.position);
+    float distanceScale = 1.0;
+
+    if (enableAdaptive) {
+        // Inner region: shrink to reduce overlap
+        if (distFromCenter < innerZone) {
+            distanceScale = lerp(innerScale, 1.0, distFromCenter / innerZone);
+        }
+        // Outer region: expand to improve visibility
+        else if (distFromCenter > outerZone) {
+            float outerBlend = saturate((distFromCenter - outerZone) / 500.0);
+            distanceScale = lerp(1.0, outerScale, outerBlend);
+        }
+    }
+
+    float radius = baseRadius * tempScale * densityScale * distanceScale;
 
     if (useAnisotropic) {
         // Ellipsoid: stretch along velocity direction for motion blur effect
@@ -70,8 +101,23 @@ struct AABB {
     float3 maxPoint;
 };
 
-AABB ComputeGaussianAABB(Particle p, float baseRadius, bool useAnisotropic, float anisotropyStrength) {
-    float3 scale = ComputeGaussianScale(p, baseRadius, useAnisotropic, anisotropyStrength);
+AABB ComputeGaussianAABB(
+    Particle p,
+    float baseRadius,
+    bool useAnisotropic,
+    float anisotropyStrength,
+    bool enableAdaptive,
+    float innerZone,
+    float outerZone,
+    float innerScale,
+    float outerScale,
+    float densityMin,
+    float densityMax
+) {
+    float3 scale = ComputeGaussianScale(
+        p, baseRadius, useAnisotropic, anisotropyStrength,
+        enableAdaptive, innerZone, outerZone, innerScale, outerScale, densityMin, densityMax
+    );
 
     // Conservative bound: max of all axes (axis-aligned)
     float maxRadius = max(scale.x, max(scale.y, scale.z)) * 3.0; // 3 std devs

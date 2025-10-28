@@ -91,6 +91,16 @@ public:
         // === Phase 1 Lighting Fix ===
         float rtMinAmbient;                // Global ambient term (0.0-0.2) to prevent completely black particles
         DirectX::XMFLOAT3 lightingPadding; // Padding for alignment
+
+        // === Phase 1.5 Adaptive Particle Radius ===
+        uint32_t enableAdaptiveRadius;     // Toggle for density/distance-based radius scaling
+        float adaptiveInnerZone;           // Distance threshold for inner shrinking (0-200 units)
+        float adaptiveOuterZone;           // Distance threshold for outer expansion (200-600 units)
+        float adaptiveInnerScale;          // Min scale for inner dense regions (0.1-1.0)
+        float adaptiveOuterScale;          // Max scale for outer sparse regions (1.0-3.0)
+        float densityScaleMin;             // Min density scale clamp (0.1-1.0)
+        float densityScaleMax;             // Max density scale clamp (1.0-5.0)
+        float adaptivePadding;             // Padding for alignment
     };
 
 public:

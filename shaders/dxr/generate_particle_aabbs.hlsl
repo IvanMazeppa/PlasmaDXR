@@ -8,7 +8,16 @@ cbuffer AABBConstants : register(b0)
 {
     uint particleCount;
     float particleRadius;  // Base particle radius for Gaussian sizing
-    float2 padding;
+
+    // Phase 1.5 Adaptive Particle Radius
+    uint enableAdaptiveRadius;     // Toggle for density/distance-based radius scaling
+    float adaptiveInnerZone;       // Distance threshold for inner shrinking
+    float adaptiveOuterZone;       // Distance threshold for outer expansion
+    float adaptiveInnerScale;      // Min scale for inner dense regions
+    float adaptiveOuterScale;      // Max scale for outer sparse regions
+    float densityScaleMin;         // Min density scale clamp
+    float densityScaleMax;         // Max density scale clamp
+    float padding;                 // Padding for alignment
 };
 
 StructuredBuffer<Particle> particles : register(t0);
@@ -36,7 +45,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Compute Gaussian AABB (conservative, axis-aligned bound)
     // Use maximum anisotropic bounds for conservative AABB (true, 3.0 max strength)
-    AABB gaussianAABB = ComputeGaussianAABB(p, particleRadius, true, 3.0);
+    AABB gaussianAABB = ComputeGaussianAABB(
+        p, particleRadius, true, 3.0,
+        enableAdaptiveRadius != 0,
+        adaptiveInnerZone,
+        adaptiveOuterZone,
+        adaptiveInnerScale,
+        adaptiveOuterScale,
+        densityScaleMin,
+        densityScaleMax
+    );
 
     // Write to output buffer in D3D12 format
     AABBOutput aabb;

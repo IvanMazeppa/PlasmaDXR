@@ -670,6 +670,16 @@ void Application::Render() {
             gaussianConstants.rtMinAmbient = m_rtMinAmbient;
             gaussianConstants.lightingPadding = DirectX::XMFLOAT3(0, 0, 0);
 
+            // Phase 1.5 Adaptive Particle Radius: Fix overlap artifacts and sparse coverage
+            gaussianConstants.enableAdaptiveRadius = m_enableAdaptiveRadius ? 1u : 0u;
+            gaussianConstants.adaptiveInnerZone = m_adaptiveInnerZone;
+            gaussianConstants.adaptiveOuterZone = m_adaptiveOuterZone;
+            gaussianConstants.adaptiveInnerScale = m_adaptiveInnerScale;
+            gaussianConstants.adaptiveOuterScale = m_adaptiveOuterScale;
+            gaussianConstants.densityScaleMin = m_densityScaleMin;
+            gaussianConstants.densityScaleMax = m_densityScaleMax;
+            gaussianConstants.adaptivePadding = 0.0f;
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -2522,6 +2532,60 @@ void Application::RenderImGui() {
                               "0.100 = Brighter ambient\n"
                               "0.200 = Maximum ambient");
         }
+
+        // === Phase 1.5 Adaptive Particle Radius (Fix overlap artifacts) ===
+        ImGui::Separator();
+        ImGui::Text("Adaptive Particle Radius (Phase 1.5)");
+        ImGui::Checkbox("Enable Adaptive Radius", &m_enableAdaptiveRadius);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Fixes overlap artifacts in dense regions and improves visibility in sparse regions\n"
+                              "- Dense inner particles shrink to reduce overlap\n"
+                              "- Sparse outer particles grow to improve ray intersection");
+        }
+
+        if (m_enableAdaptiveRadius) {
+            ImGui::SliderFloat("Inner Zone Threshold", &m_adaptiveInnerZone, 0.0f, 200.0f, "%.0f units");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance below which particles shrink (dense region)");
+            }
+
+            ImGui::SliderFloat("Outer Zone Threshold", &m_adaptiveOuterZone, 200.0f, 600.0f, "%.0f units");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Distance above which particles grow (sparse region)");
+            }
+
+            ImGui::SliderFloat("Inner Scale (Shrink)", &m_adaptiveInnerScale, 0.1f, 1.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Minimum radius scale for dense inner particles\n"
+                                  "0.1 = 10% size (maximum shrink)\n"
+                                  "0.5 = 50% size (default)\n"
+                                  "1.0 = 100% size (no shrink)");
+            }
+
+            ImGui::SliderFloat("Outer Scale (Grow)", &m_adaptiveOuterScale, 1.0f, 3.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Maximum radius scale for sparse outer particles\n"
+                                  "1.0 = 100% size (no grow)\n"
+                                  "2.0 = 200% size (default)\n"
+                                  "3.0 = 300% size (maximum grow)");
+            }
+
+            ImGui::SliderFloat("Density Scale Min", &m_densityScaleMin, 0.1f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Density Scale Max", &m_densityScaleMax, 1.0f, 5.0f, "%.2f");
+
+            // Update RTLightingSystem with new parameters
+            if (m_rtLighting) {
+                m_rtLighting->SetAdaptiveRadiusEnabled(m_enableAdaptiveRadius);
+                m_rtLighting->SetAdaptiveInnerZone(m_adaptiveInnerZone);
+                m_rtLighting->SetAdaptiveOuterZone(m_adaptiveOuterZone);
+                m_rtLighting->SetAdaptiveInnerScale(m_adaptiveInnerScale);
+                m_rtLighting->SetAdaptiveOuterScale(m_adaptiveOuterScale);
+                m_rtLighting->SetDensityScaleMin(m_densityScaleMin);
+                m_rtLighting->SetDensityScaleMax(m_densityScaleMax);
+            }
+        }
+        ImGui::Separator();
+
         ImGui::Checkbox("Anisotropic Gaussians (F11)", &m_useAnisotropicGaussians);
         if (m_useAnisotropicGaussians) {
             ImGui::SliderFloat("Anisotropy Strength (F12)", &m_anisotropyStrength, 0.0f, 3.0f);

@@ -23,7 +23,15 @@ public:
     struct AABBConstants {
         uint32_t particleCount;
         float particleRadius;
-        float padding[2];
+        // Phase 1.5 Adaptive Particle Radius
+        uint32_t enableAdaptiveRadius;
+        float adaptiveInnerZone;
+        float adaptiveOuterZone;
+        float adaptiveInnerScale;
+        float adaptiveOuterScale;
+        float densityScaleMin;
+        float densityScaleMax;
+        float padding;
     };
 
 public:
@@ -50,6 +58,15 @@ public:
     void SetMaxLightingDistance(float dist) { m_maxLightingDistance = dist; }
     void SetLightingIntensity(float intensity) { m_lightingIntensity = intensity; }
 
+    // Phase 1.5 Adaptive Particle Radius
+    void SetAdaptiveRadiusEnabled(bool enabled) { m_enableAdaptiveRadius = enabled; }
+    void SetAdaptiveInnerZone(float zone) { m_adaptiveInnerZone = zone; }
+    void SetAdaptiveOuterZone(float zone) { m_adaptiveOuterZone = zone; }
+    void SetAdaptiveInnerScale(float scale) { m_adaptiveInnerScale = scale; }
+    void SetAdaptiveOuterScale(float scale) { m_adaptiveOuterScale = scale; }
+    void SetDensityScaleMin(float min) { m_densityScaleMin = min; }
+    void SetDensityScaleMax(float max) { m_densityScaleMax = max; }
+
 private:
     bool LoadShaders();
     bool CreateRootSignatures();
@@ -71,6 +88,15 @@ private:
     float m_maxLightingDistance = 100.0f;    // Reduced from 500 to limit ray distance
     float m_lightingIntensity = 1.0f;        // Global intensity multiplier
     float m_particleRadius = 5.0f;           // Matches visual particle size (reduced from 25.0)
+
+    // Phase 1.5 Adaptive Particle Radius
+    bool m_enableAdaptiveRadius = true;
+    float m_adaptiveInnerZone = 100.0f;
+    float m_adaptiveOuterZone = 300.0f;
+    float m_adaptiveInnerScale = 0.5f;
+    float m_adaptiveOuterScale = 2.0f;
+    float m_densityScaleMin = 0.3f;
+    float m_densityScaleMax = 3.0f;
 
     // Compute shaders (RayQuery approach - no lib_6_x needed!)
     Microsoft::WRL::ComPtr<ID3DBlob> m_aabbGenShader;

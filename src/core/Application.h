@@ -125,6 +125,15 @@ private:
     float m_rtParticleRadius = 5.0f;   // Updated to match shader
     float m_rtMinAmbient = 0.05f;     // Global ambient term (0.0-0.2) - Phase 1 lighting fix
 
+    // === Adaptive Particle Radius System (Phase 1.5) ===
+    bool m_enableAdaptiveRadius = true;      // Toggle for density/distance-based radius scaling
+    float m_adaptiveInnerZone = 100.0f;      // Distance threshold for inner shrinking (0-200 units)
+    float m_adaptiveOuterZone = 300.0f;      // Distance threshold for outer expansion (200-600 units)
+    float m_adaptiveInnerScale = 0.5f;       // Min scale for inner dense regions (0.1-1.0)
+    float m_adaptiveOuterScale = 2.0f;       // Max scale for outer sparse regions (1.0-3.0)
+    float m_densityScaleMin = 0.3f;          // Min density scale clamp (0.1-1.0)
+    float m_densityScaleMax = 3.0f;          // Max density scale clamp (1.0-5.0)
+
     // === God Ray System (Phase 5 Milestone 5.3c) ===
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
