@@ -23,16 +23,33 @@ float3 ComputeGaussianScale(
     float densityMin,
     float densityMax
 ) {
+    // DEFENSIVE: Validate particle data to prevent NaN/Inf propagation
+    // Invalid density or position can cause TDR crashes in BLAS building
+    float density = p.density;
+    if (isnan(density) || isinf(density) || density <= 1e-6) {
+        density = 1.0;  // Neutral density fallback
+    }
+
+    // Validate position (check for NaN/Inf in any component)
+    float3 position = p.position;
+    if (any(isnan(position)) || any(isinf(position))) {
+        position = float3(0, 0, 0);  // Origin fallback
+    }
+
     // Scale based on temperature (hotter = larger)
     float tempScale = 1.0 + (p.temperature - 800.0) / 25200.0; // 1.0-2.0 range
+    tempScale = clamp(tempScale, 0.5, 3.0);  // Safety clamp
 
     // FIXED: Inverse density scaling (denser = SMALLER to reduce overlap)
     // Dense inner particles shrink, sparse outer particles grow
-    float densityScale = 1.0 / sqrt(max(p.density, 0.1)); // Prevent divide-by-zero
+    float densityScale = 1.0 / sqrt(density);
     densityScale = clamp(densityScale, densityMin, densityMax); // User-configurable bounds
 
     // Distance-based expansion for outer sparse regions
-    float distFromCenter = length(p.position);
+    float distFromCenter = length(position);
+    if (isnan(distFromCenter) || isinf(distFromCenter)) {
+        distFromCenter = 100.0;  // Neutral distance fallback
+    }
     float distanceScale = 1.0;
 
     if (enableAdaptive) {
@@ -49,11 +66,19 @@ float3 ComputeGaussianScale(
 
     float radius = baseRadius * tempScale * densityScale * distanceScale;
 
+    // FINAL VALIDATION: Ensure radius is finite and positive
+    // This prevents NaN/Inf from reaching AABB bounds (which causes TDR crashes)
+    if (isnan(radius) || isinf(radius) || radius <= 0.0) {
+        radius = baseRadius;  // Fallback to unscaled radius
+    }
+    // Safety clamp to prevent extreme values
+    radius = clamp(radius, baseRadius * 0.1, baseRadius * 10.0);
+
     if (useAnisotropic) {
         // Ellipsoid: stretch along velocity direction for motion blur effect
         float speedFactor = length(p.velocity) / 100.0; // Normalize velocity
         speedFactor = 1.0 + (speedFactor - 1.0) * anisotropyStrength; // Apply strength
-        speedFactor = clamp(speedFactor, 1.0, 3.0 * anisotropyStrength); // Limit stretch
+        speedFactor = clamp(speedFactor, 1.0, 3.0); // FIXED: Cap at 3.0 regardless of strength (was 3.0 * anisotropyStrength)
 
         // Perpendicular radii (circular cross-section)
         float perpRadius = radius;
@@ -61,10 +86,18 @@ float3 ComputeGaussianScale(
         // Parallel radius (stretched along velocity)
         float paraRadius = radius * speedFactor;
 
+        // CRITICAL FIX: Clamp AFTER anisotropic stretching to prevent BLAS explosion
+        // Without this, paraRadius can reach 360+ units with small baseRadius + high adaptive scaling
+        // This causes VRAM overflow during BLAS build → TDR crash
+        float maxAllowedRadius = 100.0; // Maximum radius for any axis (conservative)
+        perpRadius = min(perpRadius, maxAllowedRadius);
+        paraRadius = min(paraRadius, maxAllowedRadius);
+
         return float3(perpRadius, perpRadius, paraRadius);
     } else {
         // Spherical (isotropic) Gaussians
-        return float3(radius, radius, radius);
+        float clampedRadius = min(radius, 100.0); // Apply same cap for consistency
+        return float3(clampedRadius, clampedRadius, clampedRadius);
     }
 }
 
