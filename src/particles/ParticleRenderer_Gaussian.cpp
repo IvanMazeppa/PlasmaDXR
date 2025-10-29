@@ -984,44 +984,73 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
             break;
     }
 
-    // Query optimal settings from DLSS SDK
+    // Manual resolution calculation based on DLSS quality mode percentages
+    // This is more reliable than NGX_DLSS_GET_OPTIMAL_SETTINGS which often returns native res
+    float renderScale = 1.0f;
+    switch (m_dlssQualityMode) {
+        case DLSSSystem::DLSSQualityMode::Quality:
+            renderScale = 0.667f;  // 66.7% - 1.5× upscale
+            break;
+        case DLSSSystem::DLSSQualityMode::Balanced:
+            renderScale = 0.58f;   // 58% - 1.72× upscale (RECOMMENDED)
+            break;
+        case DLSSSystem::DLSSQualityMode::Performance:
+            renderScale = 0.5f;    // 50% - 2× upscale
+            break;
+        case DLSSSystem::DLSSQualityMode::UltraPerf:
+            renderScale = 0.33f;   // 33% - 3× upscale
+            break;
+    }
+
+    // Calculate render resolution
+    m_renderWidth = static_cast<uint32_t>(width * renderScale);
+    m_renderHeight = static_cast<uint32_t>(height * renderScale);
+
+    // Align to 2 pixels (DLSS requirement)
+    m_renderWidth = (m_renderWidth + 1) & ~1;
+    m_renderHeight = (m_renderHeight + 1) & ~1;
+
+    // Set recommended sharpness
+    m_dlssSharpness = 0.0f;  // DLSS 3.x auto-tunes sharpness
+
+    // Query NGX_DLSS_GET_OPTIMAL_SETTINGS for validation (optional)
+    NVSDK_NGX_Parameter_SetUI(ngxParams, NVSDK_NGX_Parameter_OutWidth, width);
+    NVSDK_NGX_Parameter_SetUI(ngxParams, NVSDK_NGX_Parameter_OutHeight, height);
+    NVSDK_NGX_Parameter_SetI(ngxParams, NVSDK_NGX_Parameter_PerfQualityValue, perfQuality);
+
     NVSDK_NGX_Result result = NGX_DLSS_GET_OPTIMAL_SETTINGS(
         ngxParams,
-        width, height,              // Output resolution (native)
-        perfQuality,                // Quality mode
-        &optimalRenderWidth,        // OUT: Optimal render width
-        &optimalRenderHeight,       // OUT: Optimal render height
-        &maxRenderWidth,            // OUT: Max dynamic resolution width
-        &maxRenderHeight,           // OUT: Max dynamic resolution height
-        &minRenderWidth,            // OUT: Min dynamic resolution width
-        &minRenderHeight,           // OUT: Min dynamic resolution height
-        &sharpness                  // OUT: Recommended sharpness
+        width, height,
+        perfQuality,
+        &optimalRenderWidth,
+        &optimalRenderHeight,
+        &maxRenderWidth,
+        &maxRenderHeight,
+        &minRenderWidth,
+        &minRenderHeight,
+        &sharpness
     );
 
-    if (NVSDK_NGX_FAILED(result)) {
-        char hexStr[16];
-        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
-        LOG_ERROR("DLSS: NGX_DLSS_GET_OPTIMAL_SETTINGS failed: 0x{}", hexStr);
-        LOG_WARN("  Falling back to native resolution (no upscaling)");
-        m_renderWidth = width;
-        m_renderHeight = height;
-    } else {
-        m_renderWidth = optimalRenderWidth;
-        m_renderHeight = optimalRenderHeight;
-        m_dlssSharpness = sharpness;
-
-        LOG_INFO("DLSS: Optimal resolution calculated successfully");
-        LOG_INFO("  Old resolution: {}x{}", oldWidth, oldHeight);
-        LOG_INFO("  Output resolution: {}x{}", m_outputWidth, m_outputHeight);
-        LOG_INFO("  Render resolution: {}x{} ({:.1f}% scaling)",
-                 m_renderWidth, m_renderHeight,
-                 (float)m_renderWidth / (float)m_outputWidth * 100.0f);
-        LOG_INFO("  Dynamic res range: {}x{} to {}x{}",
-                 minRenderWidth, minRenderHeight, maxRenderWidth, maxRenderHeight);
-        LOG_INFO("  Recommended sharpness: {:.2f}", m_dlssSharpness);
-        LOG_INFO("  Expected FPS boost: {:.1f}×",
-                 (float)(m_outputWidth * m_outputHeight) / (float)(m_renderWidth * m_renderHeight));
+    if (!NVSDK_NGX_FAILED(result)) {
+        LOG_INFO("DLSS: NGX_DLSS_GET_OPTIMAL_SETTINGS validation:");
+        LOG_INFO("  NGX recommended: {}x{}", optimalRenderWidth, optimalRenderHeight);
+        LOG_INFO("  Manual calculation: {}x{}", m_renderWidth, m_renderHeight);
+        LOG_INFO("  Using manual calculation (more reliable)");
     }
+
+    LOG_INFO("DLSS: Resolution calculated successfully");
+    LOG_INFO("  Old resolution: {}x{}", oldWidth, oldHeight);
+    LOG_INFO("  Output resolution: {}x{}", m_outputWidth, m_outputHeight);
+    LOG_INFO("  Render resolution: {}x{} ({:.1f}% scaling)",
+             m_renderWidth, m_renderHeight,
+             renderScale * 100.0f);
+    LOG_INFO("  Quality mode: {} ({}% render scale)",
+             m_dlssQualityMode == DLSSSystem::DLSSQualityMode::Quality ? "Quality" :
+             m_dlssQualityMode == DLSSSystem::DLSSQualityMode::Balanced ? "Balanced" :
+             m_dlssQualityMode == DLSSSystem::DLSSQualityMode::Performance ? "Performance" : "Ultra Performance",
+             static_cast<int>(renderScale * 100));
+    LOG_INFO("  Expected FPS boost: {:.2f}×",
+             (float)(m_outputWidth * m_outputHeight) / (float)(m_renderWidth * m_renderHeight));
 
     // Update m_screenWidth/m_screenHeight to use render resolution
     // This ensures all rendering happens at the lower resolution

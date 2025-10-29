@@ -636,12 +636,30 @@ void Application::Render() {
         if (m_gaussianRenderer) {
             // 3D Gaussian Splatting path
             ParticleRenderer_Gaussian::RenderConstants gaussianConstants = {};
-            gaussianConstants.viewProj = renderConstants.viewProj;
+
+            // Get actual render resolution (may differ from window if DLSS is enabled)
+            uint32_t renderWidth = m_gaussianRenderer->GetRenderWidth();
+            uint32_t renderHeight = m_gaussianRenderer->GetRenderHeight();
+            float renderAspect = static_cast<float>(renderWidth) / static_cast<float>(renderHeight);
+
+            // Recalculate view-projection with render resolution aspect ratio (CRITICAL for DLSS!)
+            DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
+                DirectX::XMLoadFloat3(&renderConstants.cameraPos),
+                DirectX::XMVectorSet(0, 0, 0, 1.0f),
+                DirectX::XMVectorSet(0, 1, 0, 0)
+            );
+            DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(
+                DirectX::XM_PIDIV4,  // 45 degrees FOV
+                renderAspect,        // Render aspect ratio (not window!)
+                1.0f,                // Near plane
+                10000.0f             // Far plane
+            );
+            DirectX::XMMATRIX viewProj = DirectX::XMMatrixMultiply(view, proj);
+            DirectX::XMStoreFloat4x4(&gaussianConstants.viewProj, viewProj);
 
             // Calculate inverse view-projection for ray generation
-            DirectX::XMMATRIX viewProjMat = DirectX::XMLoadFloat4x4(&renderConstants.viewProj);
             DirectX::XMVECTOR det;
-            DirectX::XMMATRIX invViewProjMat = DirectX::XMMatrixInverse(&det, viewProjMat);
+            DirectX::XMMATRIX invViewProjMat = DirectX::XMMatrixInverse(&det, viewProj);
             DirectX::XMStoreFloat4x4(&gaussianConstants.invViewProj, invViewProjMat);
 
             // Camera vectors
@@ -659,10 +677,10 @@ void Application::Render() {
             // Other parameters
             gaussianConstants.particleRadius = renderConstants.particleSize;
             gaussianConstants.time = renderConstants.time;
-            gaussianConstants.screenWidth = renderConstants.screenWidth;
-            gaussianConstants.screenHeight = renderConstants.screenHeight;
+            gaussianConstants.screenWidth = renderWidth;   // Use render resolution (not window!)
+            gaussianConstants.screenHeight = renderHeight; // Use render resolution (not window!)
             gaussianConstants.fovY = DirectX::XM_PIDIV4; // 45 degrees
-            gaussianConstants.aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
+            gaussianConstants.aspectRatio = renderAspect;   // Use render aspect ratio (not window!)
             gaussianConstants.particleCount = m_config.particleCount;
             gaussianConstants.usePhysicalEmission = renderConstants.usePhysicalEmission ? 1u : 0u;
             gaussianConstants.emissionStrength = renderConstants.emissionStrength;
@@ -918,6 +936,10 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
 
     ShowWindow(m_hwnd, nCmdShow);
     UpdateWindow(m_hwnd);
+
+    // Start in fullscreen mode (Alt+Enter to toggle)
+    ToggleFullscreen();
+    LOG_INFO("Starting in fullscreen mode (Alt+Enter to toggle)");
 
     return true;
 }
