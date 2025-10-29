@@ -196,5 +196,12 @@ private:
     bool m_dlssFeatureCreated = false;        // Track lazy creation
     uint32_t m_dlssWidth = 0;                 // Feature creation width
     uint32_t m_dlssHeight = 0;                // Feature creation height
+
+    // Motion vector buffer for DLSS temporal denoising (RG16_FLOAT)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_motionVectorBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_motionVectorSRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorSRVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_motionVectorUAV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorUAVGPU;
 #endif
 };

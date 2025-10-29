@@ -191,6 +191,71 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
                  i, m_shadowSRVGPU[i].ptr, m_shadowUAVGPU[i].ptr);
     }
 
+#ifdef ENABLE_DLSS
+    // Create motion vector buffer for DLSS Ray Reconstruction (RG16_FLOAT)
+    LOG_INFO("Creating motion vector buffer for DLSS...");
+    LOG_INFO("  Resolution: {}x{} pixels", screenWidth, screenHeight);
+    LOG_INFO("  Format: RG16_FLOAT (32-bit per pixel, 2 components)");
+    LOG_INFO("  Buffer size: {} MB", (screenWidth * screenHeight * 4) / (1024 * 1024));
+
+    D3D12_RESOURCE_DESC mvTexDesc = {};
+    mvTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    mvTexDesc.Width = screenWidth;
+    mvTexDesc.Height = screenHeight;
+    mvTexDesc.DepthOrArraySize = 1;
+    mvTexDesc.MipLevels = 1;
+    mvTexDesc.Format = DXGI_FORMAT_R16G16_FLOAT;  // 2-component motion vector
+    mvTexDesc.SampleDesc.Count = 1;
+    mvTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &mvTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_motionVectorBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create motion vector buffer");
+        return false;
+    }
+
+    // Create SRV for reading motion vectors
+    D3D12_SHADER_RESOURCE_VIEW_DESC mvSrvDesc = {};
+    mvSrvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    mvSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    mvSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    mvSrvDesc.Texture2D.MipLevels = 1;
+
+    m_motionVectorSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_motionVectorBuffer.Get(),
+        &mvSrvDesc,
+        m_motionVectorSRV
+    );
+    m_motionVectorSRVGPU = m_resources->GetGPUHandle(m_motionVectorSRV);
+
+    // Create UAV for writing motion vectors
+    D3D12_UNORDERED_ACCESS_VIEW_DESC mvUavDesc = {};
+    mvUavDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    mvUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    mvUavDesc.Texture2D.MipSlice = 0;
+
+    m_motionVectorUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_motionVectorBuffer.Get(),
+        nullptr,
+        &mvUavDesc,
+        m_motionVectorUAV
+    );
+    m_motionVectorUAVGPU = m_resources->GetGPUHandle(m_motionVectorUAV);
+
+    LOG_INFO("Created motion vector buffer: SRV=0x{:016X}, UAV=0x{:016X}",
+             m_motionVectorSRVGPU.ptr, m_motionVectorUAVGPU.ptr);
+#endif
+
     if (!CreatePipeline()) {
         return false;
     }
