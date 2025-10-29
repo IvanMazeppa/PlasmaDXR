@@ -11,6 +11,21 @@ bool SwapChain::Initialize(Device* device, HWND hwnd, UINT width, UINT height) {
     m_width = width;
     m_height = height;
 
+    // Check for tearing support (variable refresh rate / unlocked framerate)
+    BOOL allowTearing = FALSE;
+    Microsoft::WRL::ComPtr<IDXGIFactory5> factory5;
+    if (SUCCEEDED(m_device->GetDXGIFactory()->QueryInterface(IID_PPV_ARGS(&factory5)))) {
+        if (SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing)))) {
+            m_tearingSupported = (allowTearing == TRUE);
+        }
+    }
+
+    if (m_tearingSupported) {
+        LOG_INFO("Variable refresh rate (tearing) supported - unlocked framerate available");
+    } else {
+        LOG_WARN("Variable refresh rate not supported - framerate may be locked to VSync");
+    }
+
     if (!CreateSwapChain(hwnd, width, height)) {
         return false;
     }
@@ -41,6 +56,11 @@ bool SwapChain::CreateSwapChain(HWND hwnd, UINT width, UINT height) {
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.SampleDesc.Count = 1;
+
+    // Enable tearing support for unlocked framerate (if supported)
+    if (m_tearingSupported) {
+        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    }
 
     Microsoft::WRL::ComPtr<IDXGISwapChain1> swapChain1;
     if (FAILED(m_device->GetDXGIFactory()->CreateSwapChainForHwnd(
@@ -99,7 +119,13 @@ bool SwapChain::CreateRenderTargets() {
 }
 
 void SwapChain::Present(UINT syncInterval) {
-    m_swapChain->Present(syncInterval, 0);
+    // Use tearing flag for unlocked framerate when VSync is off
+    UINT presentFlags = 0;
+    if (m_tearingSupported && syncInterval == 0) {
+        presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+    }
+
+    m_swapChain->Present(syncInterval, presentFlags);
     m_currentFrame = m_swapChain->GetCurrentBackBufferIndex();
 }
 

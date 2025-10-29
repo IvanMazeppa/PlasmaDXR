@@ -41,4 +41,5 @@ private:
     UINT m_height = 0;
     UINT m_currentFrame = 0;
     UINT m_rtvDescriptorSize = 0;
+    bool m_tearingSupported = false;  // Variable refresh rate support
 };

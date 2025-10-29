@@ -1173,8 +1173,70 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         return;
     }
 
+    // Recreate PCSS shadow buffers at render resolution
+    LOG_INFO("DLSS: Recreating PCSS shadow buffers at render resolution...");
+    for (int i = 0; i < 2; i++) {
+        m_shadowBuffer[i].Reset();
+
+        D3D12_RESOURCE_DESC shadowTexDesc = {};
+        shadowTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        shadowTexDesc.Width = m_renderWidth;
+        shadowTexDesc.Height = m_renderHeight;
+        shadowTexDesc.DepthOrArraySize = 1;
+        shadowTexDesc.MipLevels = 1;
+        shadowTexDesc.Format = DXGI_FORMAT_R16_FLOAT;
+        shadowTexDesc.SampleDesc.Count = 1;
+        shadowTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &shadowTexDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_shadowBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("DLSS: Failed to recreate shadow buffer {}", i);
+            m_dlssSystem = nullptr;
+            return;
+        }
+
+        // Recreate SRV
+        D3D12_SHADER_RESOURCE_VIEW_DESC shadowSrvDesc = {};
+        shadowSrvDesc.Format = DXGI_FORMAT_R16_FLOAT;
+        shadowSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        shadowSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        shadowSrvDesc.Texture2D.MipLevels = 1;
+
+        m_shadowSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_shadowBuffer[i].Get(),
+            &shadowSrvDesc,
+            m_shadowSRV[i]
+        );
+        m_shadowSRVGPU[i] = m_resources->GetGPUHandle(m_shadowSRV[i]);
+
+        // Recreate UAV
+        D3D12_UNORDERED_ACCESS_VIEW_DESC shadowUavDesc = {};
+        shadowUavDesc.Format = DXGI_FORMAT_R16_FLOAT;
+        shadowUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        shadowUavDesc.Texture2D.MipSlice = 0;
+
+        m_shadowUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_shadowBuffer[i].Get(),
+            nullptr,
+            &shadowUavDesc,
+            m_shadowUAV[i]
+        );
+        m_shadowUAVGPU[i] = m_resources->GetGPUHandle(m_shadowUAV[i]);
+    }
+
     LOG_INFO("DLSS: All buffers recreated successfully at optimal resolutions");
-    LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color)", m_renderWidth, m_renderHeight);
+    LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color, shadows)", m_renderWidth, m_renderHeight);
+    LOG_INFO("  Shadow buffer size: {} MB per buffer", (m_renderWidth * m_renderHeight * 2) / (1024 * 1024));
     LOG_INFO("  Output buffer: {}x{} (upscaled result)", m_outputWidth, m_outputHeight);
 
     // Mark feature for recreation with new parameters
