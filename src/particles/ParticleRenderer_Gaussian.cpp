@@ -274,7 +274,7 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
         &denoisedTexDesc,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         nullptr,
-        IID_PPV_ARGS(&m_denoisedOutputTexture)
+        IID_PPV_ARGS(&m_upscaledOutputTexture)
     );
 
     if (FAILED(hr)) {
@@ -289,16 +289,16 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     denoisedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     denoisedSrvDesc.Texture2D.MipLevels = 1;
 
-    m_denoisedOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_upscaledOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->GetDevice()->CreateShaderResourceView(
-        m_denoisedOutputTexture.Get(),
+        m_upscaledOutputTexture.Get(),
         &denoisedSrvDesc,
-        m_denoisedOutputSRV
+        m_upscaledOutputSRV
     );
-    m_denoisedOutputSRVGPU = m_resources->GetGPUHandle(m_denoisedOutputSRV);
+    m_upscaledOutputSRVGPU = m_resources->GetGPUHandle(m_upscaledOutputSRV);
 
     LOG_INFO("Created denoised output texture: SRV=0x{:016X}",
-             m_denoisedOutputSRVGPU.ptr);
+             m_upscaledOutputSRVGPU.ptr);
 
     // Create depth buffer for DLSS (REQUIRED input)
     LOG_INFO("Creating depth buffer for DLSS...");
@@ -638,12 +638,20 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         ID3D12GraphicsCommandList* baseList = static_cast<ID3D12GraphicsCommandList*>(cmdList);
 
         // Pass the command list to feature creation (CRITICAL!)
-        if (m_dlssSystem->CreateRayReconstructionFeature(baseList, m_dlssWidth, m_dlssHeight)) {
+        // TODO: Calculate optimal render resolution using NGX_DLSS_GET_OPTIMAL_SETTINGS
+        // For now, use native resolution (no upscaling) until resolution logic is implemented
+        uint32_t renderW = m_dlssWidth;
+        uint32_t renderH = m_dlssHeight;
+        uint32_t outputW = m_dlssWidth;
+        uint32_t outputH = m_dlssHeight;
+
+        if (m_dlssSystem->CreateSuperResolutionFeature(baseList, renderW, renderH, outputW, outputH,
+                                                        DLSSSystem::DLSSQualityMode::Balanced)) {
             m_dlssFeatureCreated = true;
-            LOG_INFO("DLSS: Ray Reconstruction feature created successfully!");
-            LOG_INFO("  Feature ready for shadow denoising");
+            LOG_INFO("DLSS: Super Resolution feature created successfully!");
+            LOG_INFO("  Render: {}x{}, Output: {}x{}", renderW, renderH, outputW, outputH);
         } else {
-            LOG_ERROR("DLSS: Feature creation failed (requires resolution >= 1920x1080)");
+            LOG_ERROR("DLSS: Feature creation failed");
             LOG_WARN("  DLSS will be disabled for this session");
             m_dlssSystem = nullptr;  // Don't try again
         }
@@ -788,38 +796,51 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         );
         cmdList->ResourceBarrier(1, &depthToSRV);
 
-        // Setup DLSS parameters
-        DLSSSystem::RayReconstructionParams dlssParams = {};
-        dlssParams.inputNoisySignal = m_outputTexture.Get();              // Noisy Gaussian output
-        dlssParams.outputDenoisedSignal = m_denoisedOutputTexture.Get();  // Denoised result
-        dlssParams.inputMotionVectors = m_motionVectorBuffer.Get();       // Zero MVs (static scene assumption)
-        dlssParams.inputDepth = m_depthBuffer.Get();                      // REQUIRED: Even if zeros initially
-        dlssParams.width = m_screenWidth;
-        dlssParams.height = m_screenHeight;
+        // Setup DLSS Super Resolution parameters
+        DLSSSystem::SuperResolutionParams dlssParams = {};
+        dlssParams.inputColor = m_outputTexture.Get();              // Gaussian render output
+        dlssParams.outputUpscaled = m_upscaledOutputTexture.Get();  // AI upscaled result
+        dlssParams.inputMotionVectors = m_motionVectorBuffer.Get(); // Zero MVs (static scene assumption)
+        dlssParams.inputDepth = m_depthBuffer.Get();                // Optional (improves quality)
+
+        // TODO: Calculate optimal render resolution using NGX_DLSS_GET_OPTIMAL_SETTINGS
+        // For now, using native resolution (no upscaling) until resolution logic is implemented
+        dlssParams.renderWidth = m_screenWidth;
+        dlssParams.renderHeight = m_screenHeight;
+        dlssParams.outputWidth = m_screenWidth;
+        dlssParams.outputHeight = m_screenHeight;
+
         dlssParams.jitterOffsetX = 0.0f;  // No TAA
         dlssParams.jitterOffsetY = 0.0f;
+        dlssParams.sharpness = m_dlssSharpness;  // User-configurable sharpness
+        dlssParams.reset = m_dlssFirstFrame ? 1 : 0;  // Clear history on first frame
 
-        // Call DLSS Ray Reconstruction
-        bool dlssSuccess = m_dlssSystem->EvaluateRayReconstruction(
+        // Reset flag for subsequent frames
+        if (m_dlssFirstFrame) {
+            m_dlssFirstFrame = false;
+        }
+
+        // Call DLSS Super Resolution
+        bool dlssSuccess = m_dlssSystem->EvaluateSuperResolution(
             static_cast<ID3D12GraphicsCommandList*>(cmdList),
             dlssParams
         );
 
         if (dlssSuccess) {
-            // DLSS succeeded! Denoised output is ready for blit pass
-            LOG_INFO("DLSS: Full-scene denoising successful");
+            // DLSS succeeded! Upscaled output is ready for blit pass
+            LOG_INFO("DLSS: Super Resolution upscaling successful");
 
-            // Transition denoised output: UAV → SRV (for blit pass)
-            CD3DX12_RESOURCE_BARRIER denoisedToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
-                m_denoisedOutputTexture.Get(),
+            // Transition upscaled output: UAV → SRV (for blit pass)
+            CD3DX12_RESOURCE_BARRIER upscaledToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+                m_upscaledOutputTexture.Get(),
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
             );
-            cmdList->ResourceBarrier(1, &denoisedToSRV);
+            cmdList->ResourceBarrier(1, &upscaledToSRV);
         } else {
-            // DLSS failed: Transition noisy output back to SRV for blit pass
-            // (Blit will use noisy output as fallback)
-            LOG_WARN("DLSS: Denoising failed, using noisy output");
+            // DLSS failed: Transition non-upscaled output back to SRV for blit pass
+            // (Blit will use native-resolution output as fallback)
+            LOG_WARN("DLSS: Super Resolution failed, using native-resolution output");
         }
 
         // Transition depth buffer back to UAV for next frame

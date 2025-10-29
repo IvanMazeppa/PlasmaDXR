@@ -2551,7 +2551,7 @@ void Application::RenderImGui() {
 #ifdef ENABLE_DLSS
         // DLSS 4.0 Ray Reconstruction controls
         ImGui::Separator();
-        bool dlssAvailable = (m_dlssSystem && m_dlssSystem->IsRayReconstructionSupported());
+        bool dlssAvailable = (m_dlssSystem && m_dlssSystem->IsSuperResolutionSupported());
 
         if (!dlssAvailable) {
             ImGui::BeginDisabled();
@@ -2588,7 +2588,7 @@ void Application::RenderImGui() {
                 ImGui::Indent();
                 if (ImGui::SliderFloat("Denoiser Strength", &m_dlssDenoiserStrength, 0.0f, 2.0f)) {
                     if (m_dlssSystem) {
-                        m_dlssSystem->SetDenoiserStrength(m_dlssDenoiserStrength);
+                        m_dlssSystem->SetSharpness(m_dlssDenoiserStrength);  // TODO: Rename variable in Phase 3
                     }
                 }
                 ImGui::SameLine();

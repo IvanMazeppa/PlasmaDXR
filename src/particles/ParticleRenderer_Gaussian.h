@@ -10,7 +10,7 @@ class Device;
 class ResourceManager;
 
 #ifdef ENABLE_DLSS
-class DLSSSystem;
+#include "../dlss/DLSSSystem.h"  // Need full definition for DLSSQualityMode enum
 #endif
 
 // ParticleRenderer_Gaussian - 3D Gaussian Splatting via Inline Ray Tracing
@@ -136,9 +136,9 @@ public:
     // Get output SRV for blit pass (HDR→SDR conversion)
 #ifdef ENABLE_DLSS
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const {
-        // If DLSS succeeded, return denoised output, otherwise noisy output
-        if (m_dlssSystem && m_dlssFeatureCreated && m_denoisedOutputSRVGPU.ptr != 0) {
-            return m_denoisedOutputSRVGPU;
+        // If DLSS succeeded, return upscaled output, otherwise render-res output
+        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputSRVGPU.ptr != 0) {
+            return m_upscaledOutputSRVGPU;
         }
         return m_outputSRVGPU;
     }
@@ -205,11 +205,20 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_rtxdiSRVGPU = {};               // Cached GPU handle
 
 #ifdef ENABLE_DLSS
-    // DLSS Ray Reconstruction system (lazy feature creation)
+    // DLSS Super Resolution system (lazy feature creation)
     DLSSSystem* m_dlssSystem = nullptr;       // Not owned (pointer to Application's DLSSSystem)
     bool m_dlssFeatureCreated = false;        // Track lazy creation
     uint32_t m_dlssWidth = 0;                 // Feature creation width
     uint32_t m_dlssHeight = 0;                // Feature creation height
+
+    // Super Resolution parameters
+    DLSSSystem::DLSSQualityMode m_dlssQualityMode = DLSSSystem::DLSSQualityMode::Balanced;
+    uint32_t m_renderWidth = 0;   // Internal render resolution (e.g., 1280×720)
+    uint32_t m_renderHeight = 0;
+    uint32_t m_outputWidth = 0;   // Final display resolution (e.g., 1920×1080)
+    uint32_t m_outputHeight = 0;
+    bool m_dlssFirstFrame = true; // For reset flag
+    float m_dlssSharpness = 0.0f; // DLSS sharpness setting
 
     // Motion vector buffer for DLSS temporal denoising (RG16_FLOAT)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_motionVectorBuffer;
@@ -218,12 +227,12 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_motionVectorUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorUAVGPU;
 
-    // Denoised output texture (DLSS writes here, then we blit this to screen)
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_denoisedOutputTexture;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_denoisedOutputSRV;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_denoisedOutputSRVGPU;
+    // Upscaled output texture (DLSS writes here at full resolution)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_upscaledOutputTexture;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_upscaledOutputSRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_upscaledOutputSRVGPU;
 
-    // Depth buffer for DLSS Ray Reconstruction (R32_FLOAT)
+    // Depth buffer for DLSS (R32_FLOAT, optional for SR)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_depthUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_depthUAVGPU;

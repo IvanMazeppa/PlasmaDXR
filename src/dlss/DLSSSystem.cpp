@@ -4,7 +4,7 @@
 
 #include "../utils/Logger.h"
 #include <stdexcept>
-#include "nvsdk_ngx_defs_dlssd.h"  // Ray Reconstruction definitions
+#include "nvsdk_ngx_helpers.h"  // For NGX_DLSS_GET_OPTIMAL_SETTINGS
 
 // DLSS Project ID for development (narrow string, NOT wide string)
 // IMPORTANT: ProjectID must be UUID/GUID format (hexadecimal characters only!)
@@ -88,19 +88,19 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
         return false;
     }
 
-    // Check DLSS-RR (Ray Reconstruction / Denoiser) availability
-    int rrAvailable = 0;
-    result = m_params->Get(NVSDK_NGX_Parameter_SuperSampling_Available, &rrAvailable);
+    // Check DLSS Super Resolution availability
+    int dlssAvailable = 0;
+    result = m_params->Get(NVSDK_NGX_Parameter_SuperSampling_Available, &dlssAvailable);
 
-    m_rrSupported = (rrAvailable != 0);
+    m_dlssSupported = (dlssAvailable != 0);
 
-    if (!m_rrSupported) {
-        LOG_WARN("DLSS: Ray Reconstruction not supported on this GPU");
+    if (!m_dlssSupported) {
+        LOG_WARN("DLSS: Super Resolution not supported on this GPU");
         NVSDK_NGX_D3D12_Shutdown1(device);
         return false;
     }
 
-    LOG_INFO("DLSS: Ray Reconstruction supported");
+    LOG_INFO("DLSS: Super Resolution supported");
     m_initialized = true;
     return true;
 }
@@ -108,10 +108,10 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
 void DLSSSystem::Shutdown() {
     if (!m_initialized) return;
 
-    // Release Ray Reconstruction feature
-    if (m_rrFeature) {
-        NVSDK_NGX_D3D12_ReleaseFeature(m_rrFeature);
-        m_rrFeature = nullptr;
+    // Release DLSS Super Resolution feature
+    if (m_dlssFeature) {
+        NVSDK_NGX_D3D12_ReleaseFeature(m_dlssFeature);
+        m_dlssFeature = nullptr;
     }
 
     // Shutdown NGX (use Shutdown1 with device pointer, NOT deprecated Shutdown())
@@ -123,83 +123,99 @@ void DLSSSystem::Shutdown() {
     LOG_INFO("DLSS: Shutdown complete");
 }
 
-bool DLSSSystem::CreateRayReconstructionFeature(ID3D12GraphicsCommandList* cmdList, uint32_t width, uint32_t height) {
+bool DLSSSystem::CreateSuperResolutionFeature(
+    ID3D12GraphicsCommandList* cmdList,
+    uint32_t renderWidth,
+    uint32_t renderHeight,
+    uint32_t outputWidth,
+    uint32_t outputHeight,
+    DLSSQualityMode qualityMode
+) {
     if (!cmdList) {
         LOG_ERROR("DLSS: Command list is required for feature creation");
         return false;
     }
 
-    if (!m_initialized || !m_rrSupported) {
-        LOG_ERROR("DLSS: Not initialized or RR not supported");
+    if (!m_initialized || !m_dlssSupported) {
+        LOG_ERROR("DLSS: Not initialized or DLSS not supported");
         return false;
     }
 
     // Release existing feature if resolution changed
-    if (m_rrFeature && (m_featureWidth != width || m_featureHeight != height)) {
-        NVSDK_NGX_D3D12_ReleaseFeature(m_rrFeature);
-        m_rrFeature = nullptr;
+    if (m_dlssFeature && (m_renderWidth != renderWidth || m_renderHeight != renderHeight ||
+                          m_outputWidth != outputWidth || m_outputHeight != outputHeight)) {
+        NVSDK_NGX_D3D12_ReleaseFeature(m_dlssFeature);
+        m_dlssFeature = nullptr;
+        LOG_INFO("DLSS: Released feature due to resolution change");
     }
 
-    if (m_rrFeature) {
+    if (m_dlssFeature) {
         return true; // Already created for this resolution
     }
 
-    // Set creation parameters
-    NVSDK_NGX_Parameter* creationParams = nullptr;
-    NVSDK_NGX_Result result = NVSDK_NGX_D3D12_AllocateParameters(&creationParams);
-
-    if (NVSDK_NGX_FAILED(result)) {
-        char hexStr[16];
-        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
-        LOG_ERROR("DLSS: Failed to allocate creation parameters: 0x{}", hexStr);
-        return false;
+    // Convert quality mode to NGX enum
+    NVSDK_NGX_PerfQuality_Value perfQuality;
+    switch (qualityMode) {
+        case DLSSQualityMode::Quality:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality;
+            break;
+        case DLSSQualityMode::Balanced:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
+            break;
+        case DLSSQualityMode::Performance:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf;
+            break;
+        case DLSSQualityMode::UltraPerf:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_UltraPerformance;
+            break;
+        default:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
     }
 
-    // Set required parameters for Ray Reconstruction (MUST use typed setters!)
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_CreationNodeMask, 1);
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_VisibilityNodeMask, 1);
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_Width, width);
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_Height, height);
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_OutWidth, width);
-    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_OutHeight, height);
-    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    // CRITICAL: Must set MVLowRes flag for Ray Reconstruction
-    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,
-                             NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
-    // CRITICAL: Denoise mode MUST be set to DLUnified for Ray Reconstruction
-    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_DLSS_Denoise_Mode,
-                             NVSDK_NGX_DLSS_Denoise_Mode_DLUnified);
+    // Use m_params for creation (already allocated in Initialize)
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_CreationNodeMask, 1);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_VisibilityNodeMask, 1);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_Width, renderWidth);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_Height, renderHeight);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_OutWidth, outputWidth);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_OutHeight, outputHeight);
+    NVSDK_NGX_Parameter_SetI(m_params, NVSDK_NGX_Parameter_PerfQualityValue, perfQuality);
 
-    // Create Ray Reconstruction feature with VALID command list
-    result = NVSDK_NGX_D3D12_CreateFeature(
-        cmdList,  // MUST be valid command list!
-        NVSDK_NGX_Feature_RayReconstruction,
-        creationParams,
-        &m_rrFeature
+    // HDR flag (our renderer uses HDR R16G16B16A16_FLOAT)
+    NVSDK_NGX_Parameter_SetI(m_params, NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,
+                             NVSDK_NGX_DLSS_Feature_Flags_IsHDR);
+
+    // Create Super Resolution feature (NOT RayReconstruction!)
+    NVSDK_NGX_Result result = NVSDK_NGX_D3D12_CreateFeature(
+        cmdList,
+        NVSDK_NGX_Feature_SuperSampling,  // ← SUPER RESOLUTION, not Ray Reconstruction
+        m_params,
+        &m_dlssFeature
     );
 
-    NVSDK_NGX_D3D12_DestroyParameters(creationParams);
-
     if (NVSDK_NGX_FAILED(result)) {
         char hexStr[16];
         sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
-        LOG_ERROR("DLSS: Failed to create Ray Reconstruction feature: 0x{}", hexStr);
+        LOG_ERROR("DLSS: Failed to create Super Resolution feature: 0x{}", hexStr);
         return false;
     }
 
-    m_featureWidth = width;
-    m_featureHeight = height;
+    m_renderWidth = renderWidth;
+    m_renderHeight = renderHeight;
+    m_outputWidth = outputWidth;
+    m_outputHeight = outputHeight;
 
-    LOG_INFO("DLSS: Ray Reconstruction feature created ({}x{})", width, height);
+    LOG_INFO("DLSS: Super Resolution feature created successfully!");
+    LOG_INFO("  Render: {}x{}, Output: {}x{}", renderWidth, renderHeight, outputWidth, outputHeight);
     return true;
 }
 
-bool DLSSSystem::EvaluateRayReconstruction(
+bool DLSSSystem::EvaluateSuperResolution(
     ID3D12GraphicsCommandList* cmdList,
-    const RayReconstructionParams& params
+    const SuperResolutionParams& params
 ) {
-    if (!m_rrFeature) {
-        LOG_ERROR("DLSS: Ray Reconstruction feature not created");
+    if (!m_dlssFeature) {
+        LOG_ERROR("DLSS: Super Resolution feature not created");
         return false;
     }
 
@@ -208,88 +224,68 @@ bool DLSSSystem::EvaluateRayReconstruction(
         return false;
     }
 
-    if (!params.inputNoisySignal || !params.outputDenoisedSignal) {
+    if (!params.inputColor || !params.outputUpscaled) {
         LOG_ERROR("DLSS: Missing required input/output buffers");
         return false;
     }
 
-    // Set evaluation parameters (using typed setters - generic Set() doesn't work!)
-    NVSDK_NGX_Parameter* evalParams = nullptr;
-    NVSDK_NGX_Result result = NVSDK_NGX_D3D12_AllocateParameters(&evalParams);
+    // Set input color (render resolution)
+    NVSDK_NGX_Parameter_SetD3d12Resource(m_params, NVSDK_NGX_Parameter_Color,
+                                         params.inputColor);
 
-    if (NVSDK_NGX_FAILED(result)) {
-        char hexStr[16];
-        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
-        LOG_ERROR("DLSS: Failed to allocate eval parameters: 0x{}", hexStr);
-        return false;
-    }
+    // Set output upscaled (target resolution)
+    NVSDK_NGX_Parameter_SetD3d12Resource(m_params, NVSDK_NGX_Parameter_Output,
+                                         params.outputUpscaled);
 
-    // Input/Output resources (use SetD3d12Resource!)
-    NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Color,
-                                         params.inputNoisySignal);
-    NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Output,
-                                         params.outputDenoisedSignal);
-
-    // Motion vectors (REQUIRED for Ray Reconstruction)
+    // Motion vectors (optional, zeros OK)
     if (params.inputMotionVectors) {
-        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_MotionVectors,
+        NVSDK_NGX_Parameter_SetD3d12Resource(m_params, NVSDK_NGX_Parameter_MotionVectors,
                                              params.inputMotionVectors);
+
+        // CRITICAL: MV scaling with RENDER resolution (not output resolution!)
+        float mvScaleX = 1.0f / params.renderWidth;
+        float mvScaleY = 1.0f / params.renderHeight;
+        NVSDK_NGX_Parameter_SetF(m_params, NVSDK_NGX_Parameter_MV_Scale_X, mvScaleX);
+        NVSDK_NGX_Parameter_SetF(m_params, NVSDK_NGX_Parameter_MV_Scale_Y, mvScaleY);
     }
 
-    // Depth buffer (REQUIRED for Ray Reconstruction - 3D scene understanding)
+    // Depth (optional, improves quality)
     if (params.inputDepth) {
-        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Depth,
+        NVSDK_NGX_Parameter_SetD3d12Resource(m_params, NVSDK_NGX_Parameter_Depth,
                                              params.inputDepth);
     }
 
-    // Optional inputs (improve quality if provided)
-    if (params.inputDiffuseAlbedo) {
-        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Albedo,
-                                             params.inputDiffuseAlbedo);
-    }
-    if (params.inputNormals) {
-        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Normals,
-                                             params.inputNormals);
-    }
-    if (params.inputRoughness) {
-        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Roughness,
-                                             params.inputRoughness);
-    }
+    // Resolution parameters
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_Width, params.renderWidth);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_Height, params.renderHeight);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_OutWidth, params.outputWidth);
+    NVSDK_NGX_Parameter_SetUI(m_params, NVSDK_NGX_Parameter_OutHeight, params.outputHeight);
 
-    // Jitter offset (we don't use TAA, set to 0)
-    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Jitter_Offset_X,
-                             params.jitterOffsetX);
-    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Jitter_Offset_Y,
-                             params.jitterOffsetY);
+    // Sharpness
+    NVSDK_NGX_Parameter_SetF(m_params, NVSDK_NGX_Parameter_Sharpness, params.sharpness);
 
-    // Motion vector scale (1.0 = already in pixel space)
-    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_MV_Scale_X, 1.0f);
-    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_MV_Scale_Y, 1.0f);
+    // Jitter (always 0 for non-TAA)
+    NVSDK_NGX_Parameter_SetF(m_params, NVSDK_NGX_Parameter_Jitter_Offset_X, params.jitterOffsetX);
+    NVSDK_NGX_Parameter_SetF(m_params, NVSDK_NGX_Parameter_Jitter_Offset_Y, params.jitterOffsetY);
 
-    // Denoiser strength (0.0-2.0, default 1.0)
-    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Denoise, m_denoiserStrength);
+    // Reset flag
+    NVSDK_NGX_Parameter_SetI(m_params, NVSDK_NGX_Parameter_Reset, params.reset);
 
-    // Reset flag (0 = use temporal history, 1 = reset on scene change)
-    NVSDK_NGX_Parameter_SetI(evalParams, NVSDK_NGX_Parameter_Reset, 0);
-
-    // Evaluate Ray Reconstruction
-    result = NVSDK_NGX_D3D12_EvaluateFeature(
+    // Evaluate DLSS Super Resolution
+    NVSDK_NGX_Result result = NVSDK_NGX_D3D12_EvaluateFeature(
         cmdList,
-        m_rrFeature,
-        evalParams,
-        nullptr  // Callback (not needed)
+        m_dlssFeature,
+        m_params,
+        nullptr
     );
-
-    NVSDK_NGX_D3D12_DestroyParameters(evalParams);
 
     if (NVSDK_NGX_FAILED(result)) {
         char hexStr[16];
         sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
-        LOG_ERROR("DLSS: Ray Reconstruction evaluation failed: 0x{}", hexStr);
+        LOG_ERROR("DLSS: Super Resolution evaluation failed: 0x{}", hexStr);
         return false;
     }
 
-    LOG_INFO("DLSS: Ray Reconstruction evaluated successfully");
     return true;
 }
 
