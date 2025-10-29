@@ -9,6 +9,7 @@
 
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"
+#include "nvsdk_ngx_helpers.h"  // For NGX_DLSS_GET_OPTIMAL_SETTINGS
 #endif
 
 ParticleRenderer_Gaussian::~ParticleRenderer_Gaussian() {
@@ -932,3 +933,217 @@ bool ParticleRenderer_Gaussian::Resize(uint32_t newWidth, uint32_t newHeight) {
     LOG_INFO("Gaussian renderer resized successfully to {}x{}", newWidth, newHeight);
     return true;
 }
+
+#ifdef ENABLE_DLSS
+void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height) {
+    if (!dlss) {
+        LOG_ERROR("DLSS: Null DLSS system pointer");
+        return;
+    }
+
+    m_dlssSystem = dlss;
+    m_outputWidth = width;   // Native window resolution (target for upscaling)
+    m_outputHeight = height;
+
+    // Store old resolution for logging
+    uint32_t oldWidth = m_screenWidth;
+    uint32_t oldHeight = m_screenHeight;
+
+    // Get NGX parameters for resolution calculation
+    NVSDK_NGX_Parameter* ngxParams = m_dlssSystem->GetParameters();
+    if (!ngxParams) {
+        LOG_ERROR("DLSS: Failed to get NGX parameters for resolution calculation");
+        m_dlssSystem = nullptr;
+        return;
+    }
+
+    // Calculate optimal render resolution using NGX_DLSS_GET_OPTIMAL_SETTINGS
+    // This gives us the ideal resolution to render at for the chosen quality mode
+    uint32_t optimalRenderWidth = 0;
+    uint32_t optimalRenderHeight = 0;
+    uint32_t minRenderWidth = 0;
+    uint32_t minRenderHeight = 0;
+    uint32_t maxRenderWidth = 0;
+    uint32_t maxRenderHeight = 0;
+    float sharpness = 0.0f;
+
+    // Convert quality mode to NGX enum
+    NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
+    switch (m_dlssQualityMode) {
+        case DLSSSystem::DLSSQualityMode::Quality:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_MaxQuality;
+            break;
+        case DLSSSystem::DLSSQualityMode::Balanced:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
+            break;
+        case DLSSSystem::DLSSQualityMode::Performance:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf;
+            break;
+        case DLSSSystem::DLSSQualityMode::UltraPerf:
+            perfQuality = NVSDK_NGX_PerfQuality_Value_UltraPerformance;
+            break;
+    }
+
+    // Query optimal settings from DLSS SDK
+    NVSDK_NGX_Result result = NGX_DLSS_GET_OPTIMAL_SETTINGS(
+        ngxParams,
+        width, height,              // Output resolution (native)
+        perfQuality,                // Quality mode
+        &optimalRenderWidth,        // OUT: Optimal render width
+        &optimalRenderHeight,       // OUT: Optimal render height
+        &maxRenderWidth,            // OUT: Max dynamic resolution width
+        &maxRenderHeight,           // OUT: Max dynamic resolution height
+        &minRenderWidth,            // OUT: Min dynamic resolution width
+        &minRenderHeight,           // OUT: Min dynamic resolution height
+        &sharpness                  // OUT: Recommended sharpness
+    );
+
+    if (NVSDK_NGX_FAILED(result)) {
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: NGX_DLSS_GET_OPTIMAL_SETTINGS failed: 0x{}", hexStr);
+        LOG_WARN("  Falling back to native resolution (no upscaling)");
+        m_renderWidth = width;
+        m_renderHeight = height;
+    } else {
+        m_renderWidth = optimalRenderWidth;
+        m_renderHeight = optimalRenderHeight;
+        m_dlssSharpness = sharpness;
+
+        LOG_INFO("DLSS: Optimal resolution calculated successfully");
+        LOG_INFO("  Old resolution: {}x{}", oldWidth, oldHeight);
+        LOG_INFO("  Output resolution: {}x{}", m_outputWidth, m_outputHeight);
+        LOG_INFO("  Render resolution: {}x{} ({:.1f}% scaling)",
+                 m_renderWidth, m_renderHeight,
+                 (float)m_renderWidth / (float)m_outputWidth * 100.0f);
+        LOG_INFO("  Dynamic res range: {}x{} to {}x{}",
+                 minRenderWidth, minRenderHeight, maxRenderWidth, maxRenderHeight);
+        LOG_INFO("  Recommended sharpness: {:.2f}", m_dlssSharpness);
+        LOG_INFO("  Expected FPS boost: {:.1f}×",
+                 (float)(m_outputWidth * m_outputHeight) / (float)(m_renderWidth * m_renderHeight));
+    }
+
+    // Update m_screenWidth/m_screenHeight to use render resolution
+    // This ensures all rendering happens at the lower resolution
+    m_screenWidth = m_renderWidth;
+    m_screenHeight = m_renderHeight;
+
+    // Recreate output texture at render resolution (lower)
+    LOG_INFO("DLSS: Recreating output texture at render resolution...");
+    m_outputTexture.Reset();
+    if (!CreateOutputTexture(m_renderWidth, m_renderHeight)) {
+        LOG_ERROR("DLSS: Failed to recreate output texture at render resolution");
+        m_dlssSystem = nullptr;
+        return;
+    }
+
+    // Create upscaled output texture at output resolution (native)
+    LOG_INFO("DLSS: Creating upscaled output texture at native resolution...");
+    D3D12_RESOURCE_DESC texDesc = {};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = m_outputWidth;
+    texDesc.Height = m_outputHeight;
+    texDesc.DepthOrArraySize = 1;
+    texDesc.MipLevels = 1;
+    texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+    texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    D3D12_HEAP_PROPERTIES defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_upscaledOutputTexture)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("DLSS: Failed to create upscaled output texture");
+        m_dlssSystem = nullptr;
+        return;
+    }
+
+    // Create SRV for blit pass (DLSS output → swap chain)
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    m_upscaledOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_upscaledOutputTexture.Get(),
+        &srvDesc,
+        m_upscaledOutputSRV
+    );
+    m_upscaledOutputSRVGPU = m_resources->GetGPUHandle(m_upscaledOutputSRV);
+
+    LOG_INFO("DLSS: Upscaled output texture created successfully");
+    LOG_INFO("  Resolution: {}x{}", m_outputWidth, m_outputHeight);
+    LOG_INFO("  SRV GPU handle: 0x{:016X}", m_upscaledOutputSRVGPU.ptr);
+
+    // Recreate motion vector buffer at render resolution
+    LOG_INFO("DLSS: Recreating motion vector buffer at render resolution...");
+    m_motionVectorBuffer.Reset();
+
+    D3D12_RESOURCE_DESC mvTexDesc = {};
+    mvTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    mvTexDesc.Width = m_renderWidth;
+    mvTexDesc.Height = m_renderHeight;
+    mvTexDesc.DepthOrArraySize = 1;
+    mvTexDesc.MipLevels = 1;
+    mvTexDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+    mvTexDesc.SampleDesc.Count = 1;
+    mvTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &mvTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_motionVectorBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("DLSS: Failed to recreate motion vector buffer");
+        m_dlssSystem = nullptr;
+        return;
+    }
+
+    // Recreate depth buffer at render resolution
+    LOG_INFO("DLSS: Recreating depth buffer at render resolution...");
+    m_depthBuffer.Reset();
+
+    D3D12_RESOURCE_DESC depthTexDesc = {};
+    depthTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    depthTexDesc.Width = m_renderWidth;
+    depthTexDesc.Height = m_renderHeight;
+    depthTexDesc.DepthOrArraySize = 1;
+    depthTexDesc.MipLevels = 1;
+    depthTexDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    depthTexDesc.SampleDesc.Count = 1;
+    depthTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &depthTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_depthBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("DLSS: Failed to recreate depth buffer");
+        m_dlssSystem = nullptr;
+        return;
+    }
+
+    LOG_INFO("DLSS: All buffers recreated successfully at optimal resolutions");
+    LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color)", m_renderWidth, m_renderHeight);
+    LOG_INFO("  Output buffer: {}x{} (upscaled result)", m_outputWidth, m_outputHeight);
+}
+#endif // ENABLE_DLSS

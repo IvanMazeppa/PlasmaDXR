@@ -147,12 +147,8 @@ public:
 #endif
 
 #ifdef ENABLE_DLSS
-    // Set DLSS system reference for lazy feature creation
-    void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height) {
-        m_dlssSystem = dlss;
-        m_dlssWidth = width;
-        m_dlssHeight = height;
-    }
+    // Set DLSS system reference and calculate optimal render resolution
+    void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height);
 #endif
 
 private:
