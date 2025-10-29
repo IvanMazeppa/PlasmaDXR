@@ -822,7 +822,7 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
         if (dlssSuccess) {
             // DLSS succeeded! Upscaled output is ready for blit pass
-            LOG_INFO("DLSS: Super Resolution upscaling successful");
+            // (No per-frame logging - success is expected behavior)
 
             // Transition upscaled output: UAV → SRV (for blit pass)
             CD3DX12_RESOURCE_BARRIER upscaledToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
