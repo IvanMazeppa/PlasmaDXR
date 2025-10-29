@@ -155,18 +155,20 @@ bool DLSSSystem::CreateRayReconstructionFeature(ID3D12GraphicsCommandList* cmdLi
         return false;
     }
 
-    // Set required parameters for Ray Reconstruction (based on SDK helpers)
-    creationParams->Set(NVSDK_NGX_Parameter_CreationNodeMask, 1);  // Single GPU
-    creationParams->Set(NVSDK_NGX_Parameter_VisibilityNodeMask, 1);
-    creationParams->Set(NVSDK_NGX_Parameter_Width, width);
-    creationParams->Set(NVSDK_NGX_Parameter_Height, height);
-    creationParams->Set(NVSDK_NGX_Parameter_OutWidth, width);   // Output same as input for denoising
-    creationParams->Set(NVSDK_NGX_Parameter_OutHeight, height);
-    creationParams->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
-    creationParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,
-                       NVSDK_NGX_DLSS_Feature_Flags_IsHDR);  // HDR support
+    // Set required parameters for Ray Reconstruction (MUST use typed setters!)
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_CreationNodeMask, 1);
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_VisibilityNodeMask, 1);
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_Width, width);
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_Height, height);
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_OutWidth, width);
+    NVSDK_NGX_Parameter_SetUI(creationParams, NVSDK_NGX_Parameter_OutHeight, height);
+    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
+    // CRITICAL: Must set MVLowRes flag for Ray Reconstruction
+    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,
+                             NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes);
     // CRITICAL: Denoise mode MUST be set to DLUnified for Ray Reconstruction
-    creationParams->Set(NVSDK_NGX_Parameter_DLSS_Denoise_Mode, NVSDK_NGX_DLSS_Denoise_Mode_DLUnified);
+    NVSDK_NGX_Parameter_SetI(creationParams, NVSDK_NGX_Parameter_DLSS_Denoise_Mode,
+                             NVSDK_NGX_DLSS_Denoise_Mode_DLUnified);
 
     // Create Ray Reconstruction feature with VALID command list
     result = NVSDK_NGX_D3D12_CreateFeature(
