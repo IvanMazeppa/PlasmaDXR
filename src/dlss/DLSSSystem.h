@@ -29,6 +29,7 @@ public:
         ID3D12Resource* inputNormals;          // Surface normals (optional for particles)
         ID3D12Resource* inputRoughness;        // Surface roughness (optional)
         ID3D12Resource* inputMotionVectors;    // Particle motion vectors
+        ID3D12Resource* inputDepth;            // Depth buffer (REQUIRED for Ray Reconstruction)
         ID3D12Resource* outputDenoisedSignal;  // Denoised result
 
         uint32_t width;

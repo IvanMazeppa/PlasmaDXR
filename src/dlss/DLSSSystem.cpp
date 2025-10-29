@@ -236,6 +236,12 @@ bool DLSSSystem::EvaluateRayReconstruction(
                                              params.inputMotionVectors);
     }
 
+    // Depth buffer (REQUIRED for Ray Reconstruction - 3D scene understanding)
+    if (params.inputDepth) {
+        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Depth,
+                                             params.inputDepth);
+    }
+
     // Optional inputs (improve quality if provided)
     if (params.inputDiffuseAlbedo) {
         NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Albedo,

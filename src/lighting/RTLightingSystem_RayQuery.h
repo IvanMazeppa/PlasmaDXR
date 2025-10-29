@@ -84,7 +84,7 @@ private:
     uint32_t m_particleCount = 0;
 
     // Settings
-    uint32_t m_raysPerParticle = 16;         // Increased from 4: Eliminates violent brightness flashing (40% visual improvement)
+    uint32_t m_raysPerParticle = 16;         // Minimum for acceptable quality without denoising
     float m_maxLightingDistance = 100.0f;    // Reduced from 500 to limit ray distance
     float m_lightingIntensity = 1.0f;        // Global intensity multiplier
     float m_particleRadius = 5.0f;           // Matches visual particle size (reduced from 25.0)

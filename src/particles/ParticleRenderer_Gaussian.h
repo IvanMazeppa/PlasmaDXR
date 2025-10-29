@@ -134,7 +134,17 @@ public:
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
 
     // Get output SRV for blit pass (HDR→SDR conversion)
+#ifdef ENABLE_DLSS
+    D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const {
+        // If DLSS succeeded, return denoised output, otherwise noisy output
+        if (m_dlssSystem && m_dlssFeatureCreated && m_denoisedOutputSRVGPU.ptr != 0) {
+            return m_denoisedOutputSRVGPU;
+        }
+        return m_outputSRVGPU;
+    }
+#else
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const { return m_outputSRVGPU; }
+#endif
 
 #ifdef ENABLE_DLSS
     // Set DLSS system reference for lazy feature creation
@@ -207,6 +217,18 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorSRVGPU;
     D3D12_CPU_DESCRIPTOR_HANDLE m_motionVectorUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorUAVGPU;
+
+    // Denoised output texture (DLSS writes here, then we blit this to screen)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_denoisedOutputTexture;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_denoisedOutputSRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_denoisedOutputSRVGPU;
+
+    // Depth buffer for DLSS Ray Reconstruction (R32_FLOAT)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_depthBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_depthUAV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_depthUAVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_depthSRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_depthSRVGPU;
 
     // Motion vector compute pipeline
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_motionVectorPSO;

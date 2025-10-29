@@ -255,6 +255,108 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
 
     LOG_INFO("Created motion vector buffer: SRV=0x{:016X}, UAV=0x{:016X}",
              m_motionVectorSRVGPU.ptr, m_motionVectorUAVGPU.ptr);
+
+    // Create denoised output texture (DLSS target)
+    LOG_INFO("Creating denoised output texture for DLSS...");
+    D3D12_RESOURCE_DESC denoisedTexDesc = {};
+    denoisedTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    denoisedTexDesc.Width = screenWidth;
+    denoisedTexDesc.Height = screenHeight;
+    denoisedTexDesc.DepthOrArraySize = 1;
+    denoisedTexDesc.MipLevels = 1;
+    denoisedTexDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;  // Match main output
+    denoisedTexDesc.SampleDesc.Count = 1;
+    denoisedTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &denoisedTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_denoisedOutputTexture)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create denoised output texture");
+        return false;
+    }
+
+    // Create SRV for reading denoised output (for blit pass)
+    D3D12_SHADER_RESOURCE_VIEW_DESC denoisedSrvDesc = {};
+    denoisedSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    denoisedSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    denoisedSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    denoisedSrvDesc.Texture2D.MipLevels = 1;
+
+    m_denoisedOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_denoisedOutputTexture.Get(),
+        &denoisedSrvDesc,
+        m_denoisedOutputSRV
+    );
+    m_denoisedOutputSRVGPU = m_resources->GetGPUHandle(m_denoisedOutputSRV);
+
+    LOG_INFO("Created denoised output texture: SRV=0x{:016X}",
+             m_denoisedOutputSRVGPU.ptr);
+
+    // Create depth buffer for DLSS (REQUIRED input)
+    LOG_INFO("Creating depth buffer for DLSS...");
+    D3D12_RESOURCE_DESC depthTexDesc = {};
+    depthTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    depthTexDesc.Width = screenWidth;
+    depthTexDesc.Height = screenHeight;
+    depthTexDesc.DepthOrArraySize = 1;
+    depthTexDesc.MipLevels = 1;
+    depthTexDesc.Format = DXGI_FORMAT_R32_FLOAT;  // Single-channel depth
+    depthTexDesc.SampleDesc.Count = 1;
+    depthTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &depthTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_depthBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create depth buffer");
+        return false;
+    }
+
+    // Create UAV for shader to write depth
+    D3D12_UNORDERED_ACCESS_VIEW_DESC depthUavDesc = {};
+    depthUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    depthUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    m_depthUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_depthBuffer.Get(),
+        nullptr,
+        &depthUavDesc,
+        m_depthUAV
+    );
+    m_depthUAVGPU = m_resources->GetGPUHandle(m_depthUAV);
+
+    // Create SRV for DLSS to read depth
+    D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
+    depthSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    depthSrvDesc.Texture2D.MipLevels = 1;
+
+    m_depthSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_depthBuffer.Get(),
+        &depthSrvDesc,
+        m_depthSRV
+    );
+    m_depthSRVGPU = m_resources->GetGPUHandle(m_depthSRV);
+
+    LOG_INFO("Created depth buffer: UAV=0x{:016X}, SRV=0x{:016X}",
+             m_depthUAVGPU.ptr, m_depthSRVGPU.ptr);
 #endif
 
     if (!CreatePipeline()) {
@@ -527,8 +629,9 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
 
 #ifdef ENABLE_DLSS
-    // Lazy DLSS feature creation (on first render with valid command list)
-    if (m_dlssSystem && !m_dlssFeatureCreated) {
+    // Lazy DLSS feature creation: DISABLED - requires full G-buffer
+    // See DLSS_PHASE3_POSTMORTEM.md for details
+    if (false && m_dlssSystem && !m_dlssFeatureCreated) {
         LOG_INFO("DLSS: Creating Ray Reconstruction feature ({}x{})...", m_dlssWidth, m_dlssHeight);
 
         // Cast to ID3D12GraphicsCommandList for feature creation
@@ -666,24 +769,31 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     cmdList->ResourceBarrier(2, uavBarriers);
 
 #ifdef ENABLE_DLSS
-    // DLSS Ray Reconstruction: Denoise shadows (if enabled)
-    if (m_dlssSystem && m_dlssFeatureCreated && constants.shadowRaysPerLight == 1) {
-        // Only use DLSS when using 1 ray/light (noisy input)
-        // Multi-ray shadow (4-8 rays) already clean, no need for denoising
-
-        // Transition shadow buffer: UAV → SRV (DLSS input)
+    // DLSS Ray Reconstruction: DISABLED - requires full G-buffer (normals, roughness, albedo)
+    // See DLSS_PHASE3_FINAL_STEPS.md for implementation requirements
+    if (false && m_dlssSystem && m_dlssFeatureCreated) {
+        // Transition noisy output: UAV → SRV (DLSS input)
         CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
-            m_shadowBuffer[m_currentShadowIndex].Get(),
+            m_outputTexture.Get(),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
         );
         cmdList->ResourceBarrier(1, &toSRV);
 
+        // Transition depth buffer: UAV → SRV (DLSS input)
+        CD3DX12_RESOURCE_BARRIER depthToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+            m_depthBuffer.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        );
+        cmdList->ResourceBarrier(1, &depthToSRV);
+
         // Setup DLSS parameters
         DLSSSystem::RayReconstructionParams dlssParams = {};
-        dlssParams.inputNoisySignal = m_shadowBuffer[m_currentShadowIndex].Get();  // Current frame (noisy)
-        dlssParams.outputDenoisedSignal = m_shadowBuffer[1 - m_currentShadowIndex].Get();  // Output to other buffer
-        dlssParams.inputMotionVectors = m_motionVectorBuffer.Get();  // Zero motion vectors (static scene)
+        dlssParams.inputNoisySignal = m_outputTexture.Get();              // Noisy Gaussian output
+        dlssParams.outputDenoisedSignal = m_denoisedOutputTexture.Get();  // Denoised result
+        dlssParams.inputMotionVectors = m_motionVectorBuffer.Get();       // Zero MVs (static scene assumption)
+        dlssParams.inputDepth = m_depthBuffer.Get();                      // REQUIRED: Even if zeros initially
         dlssParams.width = m_screenWidth;
         dlssParams.height = m_screenHeight;
         dlssParams.jitterOffsetX = 0.0f;  // No TAA
@@ -696,39 +806,52 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         );
 
         if (dlssSuccess) {
-            // DLSS succeeded: Swap to denoised buffer
-            // Output is in the "other" buffer, so we need to swap indices
-            m_currentShadowIndex = 1 - m_currentShadowIndex;
+            // DLSS succeeded! Denoised output is ready for blit pass
+            LOG_INFO("DLSS: Full-scene denoising successful");
 
-            // Transition denoised shadow back to UAV for next frame
-            CD3DX12_RESOURCE_BARRIER toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
-                m_shadowBuffer[m_currentShadowIndex].Get(),
-                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+            // Transition denoised output: UAV → SRV (for blit pass)
+            CD3DX12_RESOURCE_BARRIER denoisedToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+                m_denoisedOutputTexture.Get(),
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
             );
-            cmdList->ResourceBarrier(1, &toUAV);
-
-            LOG_INFO("DLSS: Shadow denoising applied (frame {})");
+            cmdList->ResourceBarrier(1, &denoisedToSRV);
         } else {
-            // DLSS failed: Transition back to UAV, fall back to temporal filtering
-            CD3DX12_RESOURCE_BARRIER toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
-                m_shadowBuffer[m_currentShadowIndex].Get(),
-                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-            );
-            cmdList->ResourceBarrier(1, &toUAV);
-
-            LOG_WARN("DLSS: Denoising failed, using temporal filtering fallback");
-
-            // Fall back to temporal filtering (normal ping-pong)
-            m_currentShadowIndex = 1 - m_currentShadowIndex;
+            // DLSS failed: Transition noisy output back to SRV for blit pass
+            // (Blit will use noisy output as fallback)
+            LOG_WARN("DLSS: Denoising failed, using noisy output");
         }
-    } else
-#endif
-    {
-        // PCSS: Swap shadow buffers for next frame (ping-pong temporal filtering)
-        m_currentShadowIndex = 1 - m_currentShadowIndex;
+
+        // Transition depth buffer back to UAV for next frame
+        CD3DX12_RESOURCE_BARRIER depthBackToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
+            m_depthBuffer.Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+        cmdList->ResourceBarrier(1, &depthBackToUAV);
+
+        // Note: m_outputTexture stays in SRV state for potential fallback
+    } else {
+        // DLSS not available: Transition noisy output to SRV for blit pass
+        CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+            m_outputTexture.Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        );
+        cmdList->ResourceBarrier(1, &toSRV);
     }
+#else
+    // No DLSS: Transition noisy output to SRV for blit pass
+    CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_outputTexture.Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+    );
+    cmdList->ResourceBarrier(1, &toSRV);
+#endif
+
+    // PCSS: Swap shadow buffers for next frame (ping-pong temporal filtering)
+    m_currentShadowIndex = 1 - m_currentShadowIndex;
 }
 
 void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {
