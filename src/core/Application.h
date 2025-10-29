@@ -20,6 +20,9 @@ class RTLightingSystem_RayQuery;
 class RTXDILightingSystem;
 class ResourceManager;
 class AdaptiveQualitySystem;
+#ifdef ENABLE_DLSS
+class DLSSSystem;
+#endif
 
 // Need full include for ParticleRenderer_Gaussian::Light nested type
 #include "../particles/ParticleRenderer_Gaussian.h"
@@ -73,6 +76,9 @@ private:
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;  // RTXDI parallel lighting path
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;    // ML-based adaptive quality
+#ifdef ENABLE_DLSS
+    std::unique_ptr<DLSSSystem> m_dlssSystem;                    // DLSS 4.0 Ray Reconstruction (AI denoising)
+#endif
 
     // Timing
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
@@ -267,6 +273,12 @@ private:
     uint32_t m_shadowRaysPerLight = 1;           // Shadow rays per light (1-16)
     bool m_enableTemporalFiltering = true;       // Temporal shadow accumulation
     float m_temporalBlend = 0.1f;                // Temporal blend factor (0.0-1.0)
+
+    // DLSS 4.0 Ray Reconstruction system (AI denoising for shadow rays)
+#ifdef ENABLE_DLSS
+    bool m_enableDLSS = false;                   // Toggle DLSS Ray Reconstruction
+    float m_dlssDenoiserStrength = 1.0f;         // Denoiser strength (0.0-2.0)
+#endif
 
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
 

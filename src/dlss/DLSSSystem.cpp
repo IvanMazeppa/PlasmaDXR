@@ -5,8 +5,11 @@
 #include "../utils/Logger.h"
 #include <stdexcept>
 
-// DLSS Project ID for development (placeholder - official app ID would come from NVIDIA)
-#define DLSS_PROJECT_ID L"PlasmaDX-Clean"
+// DLSS Project ID for development (narrow string, NOT wide string)
+// IMPORTANT: ProjectID must be UUID/GUID format (hexadecimal characters only!)
+// Generated UUID for PlasmaDX-Clean: a0b1c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d
+#define DLSS_PROJECT_ID "a0b1c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d"
+#define DLSS_ENGINE_VERSION "1.0.0"
 
 DLSSSystem::DLSSSystem() = default;
 
@@ -27,17 +30,30 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
 
     m_device = device;
 
-    // Initialize NGX SDK
+    // Configure NGX common features (logging, DLL paths)
+    const wchar_t* dllPaths[] = { L"." };  // Search local directory first
+    NVSDK_NGX_FeatureCommonInfo featureInfo = {};
+    featureInfo.LoggingInfo.LoggingCallback = nullptr;  // Use default file logging
+    featureInfo.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;  // Enable debugging
+    featureInfo.LoggingInfo.DisableOtherLoggingSinks = false;
+    featureInfo.PathListInfo.Path = dllPaths;
+    featureInfo.PathListInfo.Length = 1;
+
+    // Initialize NGX SDK with Project ID
     NVSDK_NGX_Result result = NVSDK_NGX_D3D12_Init_with_ProjectID(
-        DLSS_PROJECT_ID,
-        NVSDK_NGX_ENGINE_TYPE_CUSTOM,  // Custom engine
-        NVSDK_NGX_ENGINE_VERSION(1, 0, 0),
-        appDataPath,
-        device
+        DLSS_PROJECT_ID,                   // const char* (narrow string!)
+        NVSDK_NGX_ENGINE_TYPE_CUSTOM,      // Custom engine
+        DLSS_ENGINE_VERSION,                // const char* engine version
+        appDataPath,                        // const wchar_t* app data path
+        device,                             // ID3D12Device*
+        &featureInfo,                       // FeatureCommonInfo (with logging!)
+        NVSDK_NGX_Version_API               // SDK version
     );
 
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Failed to initialize NGX SDK: 0x{:X}", static_cast<uint32_t>(result));
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Failed to initialize NGX SDK: 0x{}", hexStr);
         return false;
     }
 
@@ -46,8 +62,10 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
     // Get capability parameters
     result = NVSDK_NGX_D3D12_GetCapabilityParameters(&m_params);
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Failed to get capability parameters: 0x{:X}", static_cast<uint32_t>(result));
-        NVSDK_NGX_D3D12_Shutdown();
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Failed to get capability parameters: 0x{}", hexStr);
+        NVSDK_NGX_D3D12_Shutdown1(device);
         return false;
     }
 
@@ -65,7 +83,7 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
         LOG_WARN("DLSS: Driver update required. Minimum version: {}.{}",
                  minDriverVersionMajor, minDriverVersionMinor);
 
-        NVSDK_NGX_D3D12_Shutdown();
+        NVSDK_NGX_D3D12_Shutdown1(device);
         return false;
     }
 
@@ -77,7 +95,7 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
 
     if (!m_rrSupported) {
         LOG_WARN("DLSS: Ray Reconstruction not supported on this GPU");
-        NVSDK_NGX_D3D12_Shutdown();
+        NVSDK_NGX_D3D12_Shutdown1(device);
         return false;
     }
 
@@ -95,8 +113,10 @@ void DLSSSystem::Shutdown() {
         m_rrFeature = nullptr;
     }
 
-    // Shutdown NGX
-    NVSDK_NGX_D3D12_Shutdown();
+    // Shutdown NGX (use Shutdown1 with device pointer, NOT deprecated Shutdown())
+    if (m_device) {
+        NVSDK_NGX_D3D12_Shutdown1(m_device.Get());
+    }
 
     m_initialized = false;
     LOG_INFO("DLSS: Shutdown complete");
@@ -123,7 +143,9 @@ bool DLSSSystem::CreateRayReconstructionFeature(uint32_t width, uint32_t height)
     NVSDK_NGX_Result result = NVSDK_NGX_D3D12_AllocateParameters(&creationParams);
 
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Failed to allocate creation parameters: 0x{:X}", static_cast<uint32_t>(result));
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Failed to allocate creation parameters: 0x{}", hexStr);
         return false;
     }
 
@@ -144,7 +166,9 @@ bool DLSSSystem::CreateRayReconstructionFeature(uint32_t width, uint32_t height)
     NVSDK_NGX_D3D12_DestroyParameters(creationParams);
 
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Failed to create Ray Reconstruction feature: 0x{:X}", static_cast<uint32_t>(result));
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Failed to create Ray Reconstruction feature: 0x{}", hexStr);
         return false;
     }
 
@@ -179,7 +203,9 @@ bool DLSSSystem::EvaluateRayReconstruction(
     NVSDK_NGX_Result result = NVSDK_NGX_D3D12_AllocateParameters(&evalParams);
 
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Failed to allocate eval parameters: 0x{:X}", static_cast<uint32_t>(result));
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Failed to allocate eval parameters: 0x{}", hexStr);
         return false;
     }
 
@@ -205,8 +231,8 @@ bool DLSSSystem::EvaluateRayReconstruction(
     evalParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_X, params.jitterOffsetX);
     evalParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y, params.jitterOffsetY);
 
-    // Denoiser strength
-    evalParams->Set(NVSDK_NGX_Parameter_Denoise_Strength, m_denoiserStrength);
+    // Denoiser strength (parameter name is "Denoise" not "Denoise_Strength")
+    evalParams->Set(NVSDK_NGX_Parameter_Denoise, m_denoiserStrength);
 
     // Evaluate
     result = NVSDK_NGX_D3D12_EvaluateFeature(
@@ -219,7 +245,9 @@ bool DLSSSystem::EvaluateRayReconstruction(
     NVSDK_NGX_D3D12_DestroyParameters(evalParams);
 
     if (NVSDK_NGX_FAILED(result)) {
-        LOG_ERROR("DLSS: Ray Reconstruction evaluation failed: 0x{:X}", static_cast<uint32_t>(result));
+        char hexStr[16];
+        sprintf_s(hexStr, "%08X", static_cast<uint32_t>(result));
+        LOG_ERROR("DLSS: Ray Reconstruction evaluation failed: 0x{}", hexStr);
         return false;
     }
 

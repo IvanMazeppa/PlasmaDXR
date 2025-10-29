@@ -11,6 +11,9 @@
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
+#ifdef ENABLE_DLSS
+#include "../dlss/DLSSSystem.h"
+#endif
 #ifdef USE_PIX
 #include "../debug/PIXCaptureHelper.h"
 #endif
@@ -255,6 +258,38 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     }
     m_adaptiveQuality->SetTargetFPS(m_adaptiveTargetFPS);
 
+#ifdef ENABLE_DLSS
+    // Initialize DLSS 4.0 Ray Reconstruction (AI denoising for shadow rays)
+    LOG_INFO("Initializing DLSS Ray Reconstruction...");
+
+    // Create NGX directory for DLSS logs and cache
+    CreateDirectoryW(L"ngx", nullptr); // Ignore error if exists
+    wchar_t ngxPath[MAX_PATH];
+    GetFullPathNameW(L"ngx", MAX_PATH, ngxPath, nullptr);
+    LOG_INFO("NGX data path: {}", std::filesystem::path(ngxPath).string());
+
+    m_dlssSystem = std::make_unique<DLSSSystem>();
+    if (m_dlssSystem->Initialize(m_device->GetDevice(), ngxPath)) {
+        // Create Ray Reconstruction feature for current resolution
+        if (m_dlssSystem->CreateRayReconstructionFeature(m_width, m_height)) {
+            LOG_INFO("DLSS Ray Reconstruction ready ({}x{})", m_width, m_height);
+            LOG_INFO("  Press F4 to toggle DLSS denoising");
+            LOG_INFO("  Denoiser strength: {:.1f} (adjustable in ImGui)", m_dlssDenoiserStrength);
+        } else {
+            LOG_WARN("DLSS Ray Reconstruction feature creation failed");
+            LOG_WARN("  DLSS will not be available (check resolution >= 1920x1080)");
+            m_dlssSystem.reset();
+        }
+    } else {
+        LOG_WARN("DLSS initialization failed");
+        LOG_WARN("  Possible causes: Driver too old (need 531.00+), non-RTX GPU, missing DLL");
+        LOG_WARN("  Shadow rays will use traditional denoising");
+        m_dlssSystem.reset();
+    }
+#else
+    LOG_INFO("DLSS support not enabled (ENABLE_DLSS not defined)");
+#endif
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -271,6 +306,11 @@ void Application::Shutdown() {
 
     // Shutdown ImGui
     ShutdownImGui();
+
+#ifdef ENABLE_DLSS
+    // Shutdown DLSS (releases NGX SDK resources)
+    m_dlssSystem.reset();
+#endif
 
     m_rtLighting.reset();
     m_particleRenderer.reset();
@@ -1246,6 +1286,24 @@ void Application::OnKeyPress(UINT8 key) {
             : LightingSystem::RTXDI;
         LOG_INFO("Lighting System: {}", m_lightingSystem == LightingSystem::RTXDI ? "RTXDI" : "Multi-Light");
         break;
+
+#ifdef ENABLE_DLSS
+    // F4: Toggle DLSS Ray Reconstruction (AI denoising for shadow rays)
+    case VK_F4:
+        m_enableDLSS = !m_enableDLSS;
+        if (m_enableDLSS && !m_dlssSystem) {
+            LOG_WARN("DLSS: Cannot enable - DLSS system not initialized");
+            LOG_WARN("  Check: Driver 531.00+, RTX GPU, nvngx_dlssd.dll in exe directory");
+            m_enableDLSS = false;
+        } else {
+            LOG_INFO("DLSS Ray Reconstruction: {}", m_enableDLSS ? "ENABLED" : "DISABLED");
+            if (m_enableDLSS) {
+                LOG_INFO("  AI denoising for shadow rays");
+                LOG_INFO("  Denoiser strength: {:.1f} (adjust in ImGui)", m_dlssDenoiserStrength);
+            }
+        }
+        break;
+#endif
 
     // F5: Toggle shadow rays
     case VK_F5:
@@ -2489,6 +2547,65 @@ void Application::RenderImGui() {
 
             ImGui::Unindent();
         }
+
+#ifdef ENABLE_DLSS
+        // DLSS 4.0 Ray Reconstruction controls
+        ImGui::Separator();
+        bool dlssAvailable = (m_dlssSystem && m_dlssSystem->IsRayReconstructionSupported());
+
+        if (!dlssAvailable) {
+            ImGui::BeginDisabled();
+        }
+
+        if (ImGui::Checkbox("DLSS Ray Reconstruction (F4)", &m_enableDLSS)) {
+            if (m_enableDLSS && !dlssAvailable) {
+                LOG_WARN("DLSS: Cannot enable - system not available");
+                m_enableDLSS = false;
+            }
+        }
+
+        if (!dlssAvailable) {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "(Not Available)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("DLSS requires:\n"
+                                 "- NVIDIA RTX GPU\n"
+                                 "- Driver 531.00+\n"
+                                 "- nvngx_dlssd.dll in exe directory");
+            }
+        } else {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("AI-powered denoising for shadow rays\n"
+                                 "Reduces shadow noise at 1-2 rays/light\n"
+                                 "Expected: 2-4× raytracing performance");
+            }
+
+            // Denoiser strength slider (only show when DLSS enabled)
+            if (m_enableDLSS) {
+                ImGui::Indent();
+                if (ImGui::SliderFloat("Denoiser Strength", &m_dlssDenoiserStrength, 0.0f, 2.0f)) {
+                    if (m_dlssSystem) {
+                        m_dlssSystem->SetDenoiserStrength(m_dlssDenoiserStrength);
+                    }
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("0.0 = No denoising (full noise)\n"
+                                     "1.0 = Default (balanced)\n"
+                                     "2.0 = Maximum (smoothest)");
+                }
+
+                // Status indicator
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "DLSS Active");
+                ImGui::Unindent();
+            }
+        }
+        ImGui::Separator();
+#endif
 
         ImGui::Checkbox("In-Scattering (F6)", &m_useInScattering);
         if (m_useInScattering) {
