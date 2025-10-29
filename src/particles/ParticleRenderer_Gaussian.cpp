@@ -665,8 +665,70 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     uavBarriers[1].UAV.pResource = m_shadowBuffer[m_currentShadowIndex].Get();
     cmdList->ResourceBarrier(2, uavBarriers);
 
-    // PCSS: Swap shadow buffers for next frame (ping-pong)
-    m_currentShadowIndex = 1 - m_currentShadowIndex;
+#ifdef ENABLE_DLSS
+    // DLSS Ray Reconstruction: Denoise shadows (if enabled)
+    if (m_dlssSystem && m_dlssFeatureCreated && constants.shadowRaysPerLight == 1) {
+        // Only use DLSS when using 1 ray/light (noisy input)
+        // Multi-ray shadow (4-8 rays) already clean, no need for denoising
+
+        // Transition shadow buffer: UAV → SRV (DLSS input)
+        CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+            m_shadowBuffer[m_currentShadowIndex].Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+        );
+        cmdList->ResourceBarrier(1, &toSRV);
+
+        // Setup DLSS parameters
+        DLSSSystem::RayReconstructionParams dlssParams = {};
+        dlssParams.inputNoisySignal = m_shadowBuffer[m_currentShadowIndex].Get();  // Current frame (noisy)
+        dlssParams.outputDenoisedSignal = m_shadowBuffer[1 - m_currentShadowIndex].Get();  // Output to other buffer
+        dlssParams.inputMotionVectors = m_motionVectorBuffer.Get();  // Zero motion vectors (static scene)
+        dlssParams.width = m_screenWidth;
+        dlssParams.height = m_screenHeight;
+        dlssParams.jitterOffsetX = 0.0f;  // No TAA
+        dlssParams.jitterOffsetY = 0.0f;
+
+        // Call DLSS Ray Reconstruction
+        bool dlssSuccess = m_dlssSystem->EvaluateRayReconstruction(
+            static_cast<ID3D12GraphicsCommandList*>(cmdList),
+            dlssParams
+        );
+
+        if (dlssSuccess) {
+            // DLSS succeeded: Swap to denoised buffer
+            // Output is in the "other" buffer, so we need to swap indices
+            m_currentShadowIndex = 1 - m_currentShadowIndex;
+
+            // Transition denoised shadow back to UAV for next frame
+            CD3DX12_RESOURCE_BARRIER toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
+                m_shadowBuffer[m_currentShadowIndex].Get(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+            );
+            cmdList->ResourceBarrier(1, &toUAV);
+
+            LOG_INFO("DLSS: Shadow denoising applied (frame {})");
+        } else {
+            // DLSS failed: Transition back to UAV, fall back to temporal filtering
+            CD3DX12_RESOURCE_BARRIER toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
+                m_shadowBuffer[m_currentShadowIndex].Get(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+            );
+            cmdList->ResourceBarrier(1, &toUAV);
+
+            LOG_WARN("DLSS: Denoising failed, using temporal filtering fallback");
+
+            // Fall back to temporal filtering (normal ping-pong)
+            m_currentShadowIndex = 1 - m_currentShadowIndex;
+        }
+    } else
+#endif
+    {
+        // PCSS: Swap shadow buffers for next frame (ping-pong temporal filtering)
+        m_currentShadowIndex = 1 - m_currentShadowIndex;
+    }
 }
 
 void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {
