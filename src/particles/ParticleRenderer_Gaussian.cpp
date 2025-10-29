@@ -6,6 +6,10 @@
 #include <d3dcompiler.h>
 #include <fstream>
 
+#ifdef ENABLE_DLSS
+#include "../dlss/DLSSSystem.h"
+#endif
+
 ParticleRenderer_Gaussian::~ParticleRenderer_Gaussian() {
     // ComPtr cleanup automatic
 }
@@ -379,6 +383,27 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         LOG_ERROR("Gaussian Render: null resource!");
         return;
     }
+
+#ifdef ENABLE_DLSS
+    // Lazy DLSS feature creation (on first render with valid command list)
+    if (m_dlssSystem && !m_dlssFeatureCreated) {
+        LOG_INFO("DLSS: Creating Ray Reconstruction feature ({}x{})...", m_dlssWidth, m_dlssHeight);
+
+        // Cast to ID3D12GraphicsCommandList for feature creation
+        ID3D12GraphicsCommandList* baseList = static_cast<ID3D12GraphicsCommandList*>(cmdList);
+
+        // Pass the command list to feature creation (CRITICAL!)
+        if (m_dlssSystem->CreateRayReconstructionFeature(baseList, m_dlssWidth, m_dlssHeight)) {
+            m_dlssFeatureCreated = true;
+            LOG_INFO("DLSS: Ray Reconstruction feature created successfully!");
+            LOG_INFO("  Feature ready for shadow denoising");
+        } else {
+            LOG_ERROR("DLSS: Feature creation failed (requires resolution >= 1920x1080)");
+            LOG_WARN("  DLSS will be disabled for this session");
+            m_dlssSystem = nullptr;  // Don't try again
+        }
+    }
+#endif
 
     // Set descriptor heap (required for descriptor tables!)
     ID3D12DescriptorHeap* heap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);

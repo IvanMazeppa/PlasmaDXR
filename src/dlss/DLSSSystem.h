@@ -37,7 +37,7 @@ public:
         float jitterOffsetY;
     };
 
-    bool CreateRayReconstructionFeature(uint32_t width, uint32_t height);
+    bool CreateRayReconstructionFeature(ID3D12GraphicsCommandList* cmdList, uint32_t width, uint32_t height);
     bool EvaluateRayReconstruction(
         ID3D12GraphicsCommandList* cmdList,
         const RayReconstructionParams& params

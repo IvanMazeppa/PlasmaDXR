@@ -9,6 +9,10 @@
 class Device;
 class ResourceManager;
 
+#ifdef ENABLE_DLSS
+class DLSSSystem;
+#endif
+
 // ParticleRenderer_Gaussian - 3D Gaussian Splatting via Inline Ray Tracing
 // REUSES existing RTLightingSystem's BLAS/TLAS - no duplicate infrastructure!
 // Just a compute shader that ray traces Gaussians and outputs to texture
@@ -132,6 +136,15 @@ public:
     // Get output SRV for blit pass (HDR→SDR conversion)
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const { return m_outputSRVGPU; }
 
+#ifdef ENABLE_DLSS
+    // Set DLSS system reference for lazy feature creation
+    void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height) {
+        m_dlssSystem = dlss;
+        m_dlssWidth = width;
+        m_dlssHeight = height;
+    }
+#endif
+
 private:
     bool CreatePipeline();
     bool CreateOutputTexture(uint32_t width, uint32_t height);
@@ -176,4 +189,12 @@ private:
     // RTXDI output buffer cache (to prevent descriptor leak)
     D3D12_CPU_DESCRIPTOR_HANDLE m_rtxdiSRV = {};                  // Cached SRV for RTXDI output
     D3D12_GPU_DESCRIPTOR_HANDLE m_rtxdiSRVGPU = {};               // Cached GPU handle
+
+#ifdef ENABLE_DLSS
+    // DLSS Ray Reconstruction system (lazy feature creation)
+    DLSSSystem* m_dlssSystem = nullptr;       // Not owned (pointer to Application's DLSSSystem)
+    bool m_dlssFeatureCreated = false;        // Track lazy creation
+    uint32_t m_dlssWidth = 0;                 // Feature creation width
+    uint32_t m_dlssHeight = 0;                // Feature creation height
+#endif
 };

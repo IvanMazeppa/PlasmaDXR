@@ -1,9 +1,10 @@
 # DLSS 4.0 Integration Plan for PlasmaDX-Clean
 
-**Date:** 2025-10-28
-**Branch:** 0.10.12
-**SDK Location:** `/mnt/d/Users/dilli/AndroidStudioProjects/dlss/`
+**Date:** 2025-10-29 (Updated)
+**Branch:** v0.11.1
+**SDK Location:** `dlss/` (project-local copy)
 **Target:** Integrate NVIDIA DLSS 4.0 Ray Reconstruction for 2-4× raytracing performance
+**Status:** ✅ Phase 2 Complete - NGX SDK Initialization Working
 
 ---
 

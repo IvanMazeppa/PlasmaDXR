@@ -4,6 +4,7 @@
 
 #include "../utils/Logger.h"
 #include <stdexcept>
+#include "nvsdk_ngx_defs_dlssd.h"  // Ray Reconstruction definitions
 
 // DLSS Project ID for development (narrow string, NOT wide string)
 // IMPORTANT: ProjectID must be UUID/GUID format (hexadecimal characters only!)
@@ -122,7 +123,12 @@ void DLSSSystem::Shutdown() {
     LOG_INFO("DLSS: Shutdown complete");
 }
 
-bool DLSSSystem::CreateRayReconstructionFeature(uint32_t width, uint32_t height) {
+bool DLSSSystem::CreateRayReconstructionFeature(ID3D12GraphicsCommandList* cmdList, uint32_t width, uint32_t height) {
+    if (!cmdList) {
+        LOG_ERROR("DLSS: Command list is required for feature creation");
+        return false;
+    }
+
     if (!m_initialized || !m_rrSupported) {
         LOG_ERROR("DLSS: Not initialized or RR not supported");
         return false;
@@ -149,15 +155,22 @@ bool DLSSSystem::CreateRayReconstructionFeature(uint32_t width, uint32_t height)
         return false;
     }
 
-    // Set required parameters for Ray Reconstruction
+    // Set required parameters for Ray Reconstruction (based on SDK helpers)
+    creationParams->Set(NVSDK_NGX_Parameter_CreationNodeMask, 1);  // Single GPU
+    creationParams->Set(NVSDK_NGX_Parameter_VisibilityNodeMask, 1);
     creationParams->Set(NVSDK_NGX_Parameter_Width, width);
     creationParams->Set(NVSDK_NGX_Parameter_Height, height);
+    creationParams->Set(NVSDK_NGX_Parameter_OutWidth, width);   // Output same as input for denoising
+    creationParams->Set(NVSDK_NGX_Parameter_OutHeight, height);
+    creationParams->Set(NVSDK_NGX_Parameter_PerfQualityValue, NVSDK_NGX_PerfQuality_Value_Balanced);
     creationParams->Set(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags,
                        NVSDK_NGX_DLSS_Feature_Flags_IsHDR);  // HDR support
+    // CRITICAL: Denoise mode MUST be set to DLUnified for Ray Reconstruction
+    creationParams->Set(NVSDK_NGX_Parameter_DLSS_Denoise_Mode, NVSDK_NGX_DLSS_Denoise_Mode_DLUnified);
 
-    // Create Ray Reconstruction feature
+    // Create Ray Reconstruction feature with VALID command list
     result = NVSDK_NGX_D3D12_CreateFeature(
-        nullptr,  // Command list (can be nullptr for creation)
+        cmdList,  // MUST be valid command list!
         NVSDK_NGX_Feature_RayReconstruction,
         creationParams,
         &m_rrFeature

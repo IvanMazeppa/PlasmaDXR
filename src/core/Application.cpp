@@ -270,15 +270,15 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
 
     m_dlssSystem = std::make_unique<DLSSSystem>();
     if (m_dlssSystem->Initialize(m_device->GetDevice(), ngxPath)) {
-        // Create Ray Reconstruction feature for current resolution
-        if (m_dlssSystem->CreateRayReconstructionFeature(m_width, m_height)) {
-            LOG_INFO("DLSS Ray Reconstruction ready ({}x{})", m_width, m_height);
-            LOG_INFO("  Press F4 to toggle DLSS denoising");
-            LOG_INFO("  Denoiser strength: {:.1f} (adjustable in ImGui)", m_dlssDenoiserStrength);
-        } else {
-            LOG_WARN("DLSS Ray Reconstruction feature creation failed");
-            LOG_WARN("  DLSS will not be available (check resolution >= 1920x1080)");
-            m_dlssSystem.reset();
+        LOG_INFO("DLSS: NGX SDK initialized successfully");
+        LOG_INFO("  Press F4 to toggle DLSS denoising");
+        LOG_INFO("  Feature creation deferred to first render (requires command list)");
+        LOG_INFO("  Denoiser strength: {:.1f} (adjustable in ImGui)", m_dlssDenoiserStrength);
+
+        // Pass DLSS system to Gaussian renderer for lazy feature creation
+        if (m_gaussianRenderer) {
+            m_gaussianRenderer->SetDLSSSystem(m_dlssSystem.get(), m_width, m_height);
+            LOG_INFO("  DLSS system reference passed to Gaussian renderer");
         }
     } else {
         LOG_WARN("DLSS initialization failed");
