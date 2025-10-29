@@ -149,6 +149,10 @@ private:
     bool CreatePipeline();
     bool CreateOutputTexture(uint32_t width, uint32_t height);
 
+#ifdef ENABLE_DLSS
+    bool CreateMotionVectorPipeline();
+#endif
+
 private:
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -203,5 +207,9 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorSRVGPU;
     D3D12_CPU_DESCRIPTOR_HANDLE m_motionVectorUAV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_motionVectorUAVGPU;
+
+    // Motion vector compute pipeline
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_motionVectorPSO;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_motionVectorRootSig;
 #endif
 };

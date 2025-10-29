@@ -213,7 +213,7 @@ bool DLSSSystem::EvaluateRayReconstruction(
         return false;
     }
 
-    // Set evaluation parameters
+    // Set evaluation parameters (using typed setters - generic Set() doesn't work!)
     NVSDK_NGX_Parameter* evalParams = nullptr;
     NVSDK_NGX_Result result = NVSDK_NGX_D3D12_AllocateParameters(&evalParams);
 
@@ -224,32 +224,49 @@ bool DLSSSystem::EvaluateRayReconstruction(
         return false;
     }
 
-    // Input/Output resources
-    evalParams->Set(NVSDK_NGX_Parameter_Color, params.inputNoisySignal);
-    evalParams->Set(NVSDK_NGX_Parameter_Output, params.outputDenoisedSignal);
+    // Input/Output resources (use SetD3d12Resource!)
+    NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Color,
+                                         params.inputNoisySignal);
+    NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_Output,
+                                         params.outputDenoisedSignal);
+
+    // Motion vectors (REQUIRED for Ray Reconstruction)
+    if (params.inputMotionVectors) {
+        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_MotionVectors,
+                                             params.inputMotionVectors);
+    }
 
     // Optional inputs (improve quality if provided)
     if (params.inputDiffuseAlbedo) {
-        evalParams->Set(NVSDK_NGX_Parameter_GBuffer_Albedo, params.inputDiffuseAlbedo);
+        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Albedo,
+                                             params.inputDiffuseAlbedo);
     }
     if (params.inputNormals) {
-        evalParams->Set(NVSDK_NGX_Parameter_GBuffer_Normals, params.inputNormals);
+        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Normals,
+                                             params.inputNormals);
     }
     if (params.inputRoughness) {
-        evalParams->Set(NVSDK_NGX_Parameter_GBuffer_Roughness, params.inputRoughness);
-    }
-    if (params.inputMotionVectors) {
-        evalParams->Set(NVSDK_NGX_Parameter_MotionVectors, params.inputMotionVectors);
+        NVSDK_NGX_Parameter_SetD3d12Resource(evalParams, NVSDK_NGX_Parameter_GBuffer_Roughness,
+                                             params.inputRoughness);
     }
 
     // Jitter offset (we don't use TAA, set to 0)
-    evalParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_X, params.jitterOffsetX);
-    evalParams->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y, params.jitterOffsetY);
+    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Jitter_Offset_X,
+                             params.jitterOffsetX);
+    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Jitter_Offset_Y,
+                             params.jitterOffsetY);
 
-    // Denoiser strength (parameter name is "Denoise" not "Denoise_Strength")
-    evalParams->Set(NVSDK_NGX_Parameter_Denoise, m_denoiserStrength);
+    // Motion vector scale (1.0 = already in pixel space)
+    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_MV_Scale_X, 1.0f);
+    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_MV_Scale_Y, 1.0f);
 
-    // Evaluate
+    // Denoiser strength (0.0-2.0, default 1.0)
+    NVSDK_NGX_Parameter_SetF(evalParams, NVSDK_NGX_Parameter_Denoise, m_denoiserStrength);
+
+    // Reset flag (0 = use temporal history, 1 = reset on scene change)
+    NVSDK_NGX_Parameter_SetI(evalParams, NVSDK_NGX_Parameter_Reset, 0);
+
+    // Evaluate Ray Reconstruction
     result = NVSDK_NGX_D3D12_EvaluateFeature(
         cmdList,
         m_rrFeature,
@@ -266,6 +283,7 @@ bool DLSSSystem::EvaluateRayReconstruction(
         return false;
     }
 
+    LOG_INFO("DLSS: Ray Reconstruction evaluated successfully");
     return true;
 }
 

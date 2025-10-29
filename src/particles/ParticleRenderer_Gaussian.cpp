@@ -3,6 +3,7 @@
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../utils/d3dx12/d3dx12.h"
+#include "../debug/pix3.h"
 #include <d3dcompiler.h>
 #include <fstream>
 
@@ -260,6 +261,13 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
         return false;
     }
 
+#ifdef ENABLE_DLSS
+    if (!CreateMotionVectorPipeline()) {
+        LOG_ERROR("Failed to create motion vector compute pipeline");
+        return false;
+    }
+#endif
+
     LOG_INFO("Gaussian Splatting renderer initialized successfully");
     return true;
 }
@@ -438,6 +446,75 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     return true;
 }
 
+#ifdef ENABLE_DLSS
+bool ParticleRenderer_Gaussian::CreateMotionVectorPipeline() {
+    // Load motion vector compute shader
+    std::ifstream shaderFile("shaders/particles/compute_motion_vectors.dxil", std::ios::binary);
+    if (!shaderFile.is_open()) {
+        LOG_ERROR("Failed to load compute_motion_vectors.dxil");
+        LOG_ERROR("  Make sure shader is compiled!");
+        return false;
+    }
+
+    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
+    Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
+    HRESULT hr = D3DCreateBlob(shaderData.size(), &computeShader);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create blob for motion vector shader");
+        return false;
+    }
+    memcpy(computeShader->GetBufferPointer(), shaderData.data(), shaderData.size());
+    LOG_INFO("Loaded motion vector shader: {} bytes", shaderData.size());
+
+    // Root signature for compute_motion_vectors.hlsl
+    // b0: MotionVectorConstants (CBV)
+    // t0: StructuredBuffer<Particle> g_particles
+    // u0: RWTexture2D<float2> g_motionVectors (descriptor table - typed UAV)
+
+    CD3DX12_DESCRIPTOR_RANGE1 uavRange;
+    uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D
+
+    CD3DX12_ROOT_PARAMETER1 rootParams[3];
+    rootParams[0].InitAsConstantBufferView(0);              // b0 - constants
+    rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
+    rootParams[2].InitAsDescriptorTable(1, &uavRange);      // u0 - motion vectors (UAV)
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+    rootSigDesc.Init_1_1(3, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
+    hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Motion vector root signature serialization failed: {}", (char*)error->GetBufferPointer());
+        }
+        return false;
+    }
+
+    hr = m_device->GetDevice()->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                                     IID_PPV_ARGS(&m_motionVectorRootSig));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create motion vector root signature");
+        return false;
+    }
+
+    // Create compute PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_motionVectorRootSig.Get();
+    psoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+
+    hr = m_device->GetDevice()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_motionVectorPSO));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create motion vector PSO");
+        LOG_ERROR("  HRESULT: 0x{:08X}", static_cast<unsigned int>(hr));
+        return false;
+    }
+
+    LOG_INFO("Motion vector pipeline created");
+    return true;
+}
+#endif
+
 void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        ID3D12Resource* particleBuffer,
                                        ID3D12Resource* rtLightingBuffer,
@@ -468,6 +545,19 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
             m_dlssSystem = nullptr;  // Don't try again
         }
     }
+#endif
+
+#ifdef ENABLE_DLSS
+    // TODO: Compute motion vectors for DLSS temporal denoising
+    // TEMPORARILY DISABLED - needs separate constant buffer with prevViewProj
+    // For now, DLSS will use zero motion vectors (static scene assumption)
+    //
+    // if (m_dlssSystem && m_dlssFeatureCreated && m_motionVectorPSO) {
+    //     // Set motion vector compute pipeline
+    //     cmdList->SetPipelineState(m_motionVectorPSO.Get());
+    //     cmdList->SetComputeRootSignature(m_motionVectorRootSig.Get());
+    //     ...
+    // }
 #endif
 
     // Set descriptor heap (required for descriptor tables!)
