@@ -630,27 +630,22 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     }
 
 #ifdef ENABLE_DLSS
-    // Lazy DLSS feature creation: DISABLED - requires full G-buffer
-    // See DLSS_PHASE3_POSTMORTEM.md for details
-    if (false && m_dlssSystem && !m_dlssFeatureCreated) {
-        LOG_INFO("DLSS: Creating Ray Reconstruction feature ({}x{})...", m_dlssWidth, m_dlssHeight);
+    // Lazy DLSS Super Resolution feature creation (first frame only)
+    if (m_dlssSystem && !m_dlssFeatureCreated) {
+        LOG_INFO("DLSS: Creating Super Resolution feature ({}x{} → {}x{})...",
+                 m_renderWidth, m_renderHeight, m_outputWidth, m_outputHeight);
 
         // Cast to ID3D12GraphicsCommandList for feature creation
         ID3D12GraphicsCommandList* baseList = static_cast<ID3D12GraphicsCommandList*>(cmdList);
 
-        // Pass the command list to feature creation (CRITICAL!)
-        // TODO: Calculate optimal render resolution using NGX_DLSS_GET_OPTIMAL_SETTINGS
-        // For now, use native resolution (no upscaling) until resolution logic is implemented
-        uint32_t renderW = m_dlssWidth;
-        uint32_t renderH = m_dlssHeight;
-        uint32_t outputW = m_dlssWidth;
-        uint32_t outputH = m_dlssHeight;
-
-        if (m_dlssSystem->CreateSuperResolutionFeature(baseList, renderW, renderH, outputW, outputH,
+        // Use calculated render/output resolutions from SetDLSSSystem
+        if (m_dlssSystem->CreateSuperResolutionFeature(baseList,
+                                                        m_renderWidth, m_renderHeight,
+                                                        m_outputWidth, m_outputHeight,
                                                         DLSSSystem::DLSSQualityMode::Balanced)) {
             m_dlssFeatureCreated = true;
             LOG_INFO("DLSS: Super Resolution feature created successfully!");
-            LOG_INFO("  Render: {}x{}, Output: {}x{}", renderW, renderH, outputW, outputH);
+            LOG_INFO("  Render: {}x{}, Output: {}x{}", m_renderWidth, m_renderHeight, m_outputWidth, m_outputHeight);
         } else {
             LOG_ERROR("DLSS: Feature creation failed");
             LOG_WARN("  DLSS will be disabled for this session");
@@ -778,9 +773,8 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
     cmdList->ResourceBarrier(2, uavBarriers);
 
 #ifdef ENABLE_DLSS
-    // DLSS Ray Reconstruction: DISABLED - requires full G-buffer (normals, roughness, albedo)
-    // See DLSS_PHASE3_FINAL_STEPS.md for implementation requirements
-    if (false && m_dlssSystem && m_dlssFeatureCreated) {
+    // DLSS Super Resolution: AI upscaling from render resolution to output resolution
+    if (m_dlssSystem && m_dlssFeatureCreated) {
         // Transition noisy output: UAV → SRV (DLSS input)
         CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
             m_outputTexture.Get(),
@@ -799,17 +793,16 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
         // Setup DLSS Super Resolution parameters
         DLSSSystem::SuperResolutionParams dlssParams = {};
-        dlssParams.inputColor = m_outputTexture.Get();              // Gaussian render output
-        dlssParams.outputUpscaled = m_upscaledOutputTexture.Get();  // AI upscaled result
+        dlssParams.inputColor = m_outputTexture.Get();              // Gaussian render output (low-res)
+        dlssParams.outputUpscaled = m_upscaledOutputTexture.Get();  // AI upscaled result (high-res)
         dlssParams.inputMotionVectors = m_motionVectorBuffer.Get(); // Zero MVs (static scene assumption)
         dlssParams.inputDepth = m_depthBuffer.Get();                // Optional (improves quality)
 
-        // TODO: Calculate optimal render resolution using NGX_DLSS_GET_OPTIMAL_SETTINGS
-        // For now, using native resolution (no upscaling) until resolution logic is implemented
-        dlssParams.renderWidth = m_screenWidth;
-        dlssParams.renderHeight = m_screenHeight;
-        dlssParams.outputWidth = m_screenWidth;
-        dlssParams.outputHeight = m_screenHeight;
+        // Use calculated resolutions from SetDLSSSystem()
+        dlssParams.renderWidth = m_screenWidth;    // m_screenWidth is set to render resolution
+        dlssParams.renderHeight = m_screenHeight;  // m_screenHeight is set to render resolution
+        dlssParams.outputWidth = m_outputWidth;    // Target native resolution
+        dlssParams.outputHeight = m_outputHeight;  // Target native resolution
 
         dlssParams.jitterOffsetX = 0.0f;  // No TAA
         dlssParams.jitterOffsetY = 0.0f;
