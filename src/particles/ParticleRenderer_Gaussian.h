@@ -148,7 +148,7 @@ public:
 
 #ifdef ENABLE_DLSS
     // Set DLSS system reference and calculate optimal render resolution
-    void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height);
+    void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height, int qualityMode = 1);
 
     // Get actual render resolution (may differ from screen resolution if DLSS is enabled)
     uint32_t GetRenderWidth() const { return m_screenWidth; }  // Returns render resolution

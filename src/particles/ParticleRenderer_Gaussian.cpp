@@ -642,7 +642,7 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         if (m_dlssSystem->CreateSuperResolutionFeature(baseList,
                                                         m_renderWidth, m_renderHeight,
                                                         m_outputWidth, m_outputHeight,
-                                                        DLSSSystem::DLSSQualityMode::Balanced)) {
+                                                        m_dlssQualityMode)) {
             m_dlssFeatureCreated = true;
             LOG_INFO("DLSS: Super Resolution feature created successfully!");
             LOG_INFO("  Render: {}x{}, Output: {}x{}", m_renderWidth, m_renderHeight, m_outputWidth, m_outputHeight);
@@ -928,7 +928,7 @@ bool ParticleRenderer_Gaussian::Resize(uint32_t newWidth, uint32_t newHeight) {
 }
 
 #ifdef ENABLE_DLSS
-void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height) {
+void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height, int qualityMode) {
     if (!dlss) {
         LOG_ERROR("DLSS: Null DLSS system pointer");
         return;
@@ -937,6 +937,15 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     m_dlssSystem = dlss;
     m_outputWidth = width;   // Native window resolution (target for upscaling)
     m_outputHeight = height;
+
+    // Map int quality mode to DLSSQualityMode enum
+    switch (qualityMode) {
+        case 0: m_dlssQualityMode = DLSSSystem::DLSSQualityMode::Quality; break;
+        case 1: m_dlssQualityMode = DLSSSystem::DLSSQualityMode::Balanced; break;
+        case 2: m_dlssQualityMode = DLSSSystem::DLSSQualityMode::Performance; break;
+        case 3: m_dlssQualityMode = DLSSSystem::DLSSQualityMode::UltraPerf; break;
+        default: m_dlssQualityMode = DLSSSystem::DLSSQualityMode::Balanced; break;
+    }
 
     // Store old resolution for logging
     uint32_t oldWidth = m_screenWidth;
@@ -1167,5 +1176,9 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     LOG_INFO("DLSS: All buffers recreated successfully at optimal resolutions");
     LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color)", m_renderWidth, m_renderHeight);
     LOG_INFO("  Output buffer: {}x{} (upscaled result)", m_outputWidth, m_outputHeight);
+
+    // Mark feature for recreation with new parameters
+    m_dlssFeatureCreated = false;
+    m_dlssFirstFrame = true;  // Reset history when changing settings
 }
 #endif // ENABLE_DLSS

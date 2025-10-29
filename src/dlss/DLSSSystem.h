@@ -89,6 +89,7 @@ private:
     uint32_t m_renderHeight = 0;
     uint32_t m_outputWidth = 0;
     uint32_t m_outputHeight = 0;
+    DLSSQualityMode m_qualityMode = DLSSQualityMode::Balanced;  // Track current quality mode
 };
 
 #endif // ENABLE_DLSS

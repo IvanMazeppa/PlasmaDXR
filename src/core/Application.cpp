@@ -277,7 +277,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
 
         // Pass DLSS system to Gaussian renderer for lazy feature creation
         if (m_gaussianRenderer) {
-            m_gaussianRenderer->SetDLSSSystem(m_dlssSystem.get(), m_width, m_height);
+            m_gaussianRenderer->SetDLSSSystem(m_dlssSystem.get(), m_width, m_height, m_dlssQualityMode);
             LOG_INFO("  DLSS system reference passed to Gaussian renderer");
         }
     } else {
@@ -431,6 +431,15 @@ void Application::Update(float deltaTime) {
 }
 
 void Application::Render() {
+#ifdef ENABLE_DLSS
+    // Apply deferred DLSS quality mode change (safe point: before GPU work begins)
+    if (m_dlssQualityModeChanged && m_gaussianRenderer) {
+        LOG_INFO("DLSS: Applying quality mode change now (safe point)...");
+        m_gaussianRenderer->SetDLSSSystem(m_dlssSystem.get(), m_width, m_height, m_dlssQualityMode);
+        m_dlssQualityModeChanged = false;
+    }
+#endif
+
     // Check if we should schedule buffer dump (zero overhead: 2 int comparisons + 1 bool check)
     if (m_enableBufferDump && m_dumpTargetFrame > 0 && m_frameCount == static_cast<uint32_t>(m_dumpTargetFrame)) {
         m_dumpBuffersNextFrame = true;
@@ -2621,8 +2630,51 @@ void Application::RenderImGui() {
                                      "2.0 = Maximum (smoothest)");
                 }
 
+                ImGui::Spacing();
+                ImGui::Text("DLSS Quality Mode:");
+                bool qualityChanged = false;
+                qualityChanged |= ImGui::RadioButton("Quality (67% res, 1.5x)", &m_dlssQualityMode, 0);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Best quality, moderate performance gain\n"
+                                     "2560x1440 → 1714x964");
+                }
+
+                qualityChanged |= ImGui::RadioButton("Balanced (58% res, 1.7x)", &m_dlssQualityMode, 1);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Recommended balance\n"
+                                     "2560x1440 → 1484x836 (CURRENT)");
+                }
+
+                qualityChanged |= ImGui::RadioButton("Performance (50% res, 2x)", &m_dlssQualityMode, 2);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Higher performance, slight quality loss\n"
+                                     "2560x1440 → 1280x720");
+                }
+
+                qualityChanged |= ImGui::RadioButton("Ultra Perf (33% res, 3x)", &m_dlssQualityMode, 3);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Maximum performance, quality depends on scene\n"
+                                     "2560x1440 → 845x476\n"
+                                     "Great for 4K displays!");
+                }
+
+                // If quality mode changed, defer recreation until safe (start of next frame)
+                if (qualityChanged) {
+                    m_dlssQualityModeChanged = true;
+                    LOG_INFO("DLSS: Quality mode change requested (will apply at start of next frame)");
+                }
+
                 // Status indicator
-                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "DLSS Active");
+                ImGui::Spacing();
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "DLSS Super Resolution Active");
                 ImGui::Unindent();
             }
         }

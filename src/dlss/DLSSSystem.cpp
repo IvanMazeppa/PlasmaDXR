@@ -141,16 +141,17 @@ bool DLSSSystem::CreateSuperResolutionFeature(
         return false;
     }
 
-    // Release existing feature if resolution changed
+    // Release existing feature if resolution or quality mode changed
     if (m_dlssFeature && (m_renderWidth != renderWidth || m_renderHeight != renderHeight ||
-                          m_outputWidth != outputWidth || m_outputHeight != outputHeight)) {
+                          m_outputWidth != outputWidth || m_outputHeight != outputHeight ||
+                          m_qualityMode != qualityMode)) {
         NVSDK_NGX_D3D12_ReleaseFeature(m_dlssFeature);
         m_dlssFeature = nullptr;
-        LOG_INFO("DLSS: Released feature due to resolution change");
+        LOG_INFO("DLSS: Released feature due to resolution or quality mode change");
     }
 
     if (m_dlssFeature) {
-        return true; // Already created for this resolution
+        return true; // Already created for this resolution and quality mode
     }
 
     // Convert quality mode to NGX enum
@@ -204,6 +205,7 @@ bool DLSSSystem::CreateSuperResolutionFeature(
     m_renderHeight = renderHeight;
     m_outputWidth = outputWidth;
     m_outputHeight = outputHeight;
+    m_qualityMode = qualityMode;  // Store quality mode
 
     LOG_INFO("DLSS: Super Resolution feature created successfully!");
     LOG_INFO("  Render: {}x{}, Output: {}x{}", renderWidth, renderHeight, outputWidth, outputHeight);

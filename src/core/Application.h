@@ -278,6 +278,8 @@ private:
 #ifdef ENABLE_DLSS
     bool m_enableDLSS = false;                   // Toggle DLSS Ray Reconstruction
     float m_dlssDenoiserStrength = 1.0f;         // Denoiser strength (0.0-2.0)
+    int m_dlssQualityMode = 1;                   // 0=Quality(67%), 1=Balanced(58%), 2=Performance(50%), 3=Ultra(33%)
+    bool m_dlssQualityModeChanged = false;       // Flag to defer quality mode change until safe
 #endif
 
     int m_rtQualityMode = 0;  // 0=normal, 1=ReSTIR, 2=adaptive
