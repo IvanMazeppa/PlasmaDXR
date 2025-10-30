@@ -130,13 +130,13 @@ bool RTLightingSystem_RayQuery::CreateRootSignatures() {
     }
 
     // RayQuery Lighting Root Signature
-    // b0: LightingConstants
+    // b0: LightingConstants (EXPANDED for dynamic emission - 14 DWORDs)
     // t0: StructuredBuffer<Particle> g_particles
     // t1: RaytracingAccelerationStructure g_particleBVH
     // u0: RWBuffer<float4> g_particleLighting
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[4];
-        rootParams[0].InitAsConstants(4, 0);  // b0: LightingConstants (4 DWORDs)
+        rootParams[0].InitAsConstants(14, 0);  // b0: LightingConstants (14 DWORDs - was 4, expanded for emission)
         rootParams[1].InitAsShaderResourceView(0);  // t0: particles
         rootParams[2].InitAsShaderResourceView(1);  // t1: TLAS
         rootParams[3].InitAsUnorderedAccessView(0);  // u0: lighting buffer
@@ -448,18 +448,28 @@ void RTLightingSystem_RayQuery::BuildTLAS(ID3D12GraphicsCommandList4* cmdList) {
     cmdList->ResourceBarrier(1, &barrier);
 }
 
-void RTLightingSystem_RayQuery::DispatchRayQueryLighting(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer) {
+void RTLightingSystem_RayQuery::DispatchRayQueryLighting(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, const DirectX::XMFLOAT3& cameraPosition) {
     cmdList->SetPipelineState(m_rayQueryLightingPSO.Get());
     cmdList->SetComputeRootSignature(m_rayQueryLightingRootSig.Get());
 
-    // Set root parameters
+    // Increment frame counter for temporal effects
+    m_frameCount++;
+
+    // Set root parameters (expanded for dynamic emission)
     LightingConstants constants = {
         m_particleCount,
         m_raysPerParticle,
         m_maxLightingDistance,
-        m_lightingIntensity
+        m_lightingIntensity,
+        cameraPosition,
+        m_frameCount,
+        m_emissionStrength,
+        m_emissionThreshold,
+        m_rtSuppression,
+        m_temporalRate
     };
-    cmdList->SetComputeRoot32BitConstants(0, 4, &constants, 0);
+    // 14 DWORDs total: 4 (original) + 3 (cameraPos) + 7 (new params) = 14
+    cmdList->SetComputeRoot32BitConstants(0, 14, &constants, 0);
     cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
     cmdList->SetComputeRootShaderResourceView(2, m_topLevelAS->GetGPUVirtualAddress());
     cmdList->SetComputeRootUnorderedAccessView(3, m_lightingBuffer->GetGPUVirtualAddress());
@@ -475,7 +485,8 @@ void RTLightingSystem_RayQuery::DispatchRayQueryLighting(ID3D12GraphicsCommandLi
 
 void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdList,
                                                 ID3D12Resource* particleBuffer,
-                                                uint32_t particleCount) {
+                                                uint32_t particleCount,
+                                                const DirectX::XMFLOAT3& cameraPosition) {
     m_particleCount = particleCount;
 
     // Full pipeline:
@@ -488,6 +499,6 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
     // 3. Build TLAS from BLAS
     BuildTLAS(cmdList);
 
-    // 4. Dispatch RayQuery lighting compute shader
-    DispatchRayQueryLighting(cmdList, particleBuffer);
+    // 4. Dispatch RayQuery lighting compute shader (with camera position for dynamic emission)
+    DispatchRayQueryLighting(cmdList, particleBuffer, cameraPosition);
 }

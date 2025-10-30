@@ -140,6 +140,12 @@ private:
     float m_densityScaleMin = 0.3f;          // Min density scale clamp (0.1-1.0)
     float m_densityScaleMax = 3.0f;          // Max density scale clamp (1.0-5.0)
 
+    // === Dynamic Emission (RT-Driven Star Radiance) ===
+    float m_rtEmissionStrength = 0.25f;      // Global emission multiplier (0.0-1.0)
+    float m_rtEmissionThreshold = 22000.0f;  // Temperature cutoff for emission (K)
+    float m_rtEmissionSuppression = 0.7f;    // How much RT lighting suppresses emission (0.0-1.0)
+    float m_rtEmissionTemporalRate = 0.03f;  // Temporal modulation frequency (0.0-0.1)
+
     // === God Ray System (Phase 5 Milestone 5.3c) ===
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)

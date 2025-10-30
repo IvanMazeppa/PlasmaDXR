@@ -561,20 +561,27 @@ void Application::Render() {
         }
     }
 
-    // RT Lighting Pass (if enabled)
+    // Compute camera position (needed for both RT lighting and rendering)
+    float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
+    float camY = m_cameraDistance * sinf(m_cameraPitch);
+    float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
+    DirectX::XMFLOAT3 cameraPosition = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
+
+    // RT Lighting Pass (if enabled) - now with dynamic emission!
     ID3D12Resource* rtLightingBuffer = nullptr;
     if (m_rtLighting && m_particleSystem) {
         // Full DXR 1.1 RayQuery pipeline: AABB → BLAS → TLAS → RT Lighting
         // RT lighting uses particle buffer as UAV (already in correct state from initialization)
         m_rtLighting->ComputeLighting(cmdList,
                                      m_particleSystem->GetParticleBuffer(),
-                                     m_config.particleCount);
+                                     m_config.particleCount,
+                                     cameraPosition); // NEW: Pass camera for dynamic emission!
 
         rtLightingBuffer = m_rtLighting->GetLightingBuffer();
 
         // Log every 60 frames
         if ((m_frameCount % 60) == 0) {
-            LOG_INFO("RT Lighting computed (frame {})", m_frameCount);
+            LOG_INFO("RT Lighting computed with dynamic emission (frame {})", m_frameCount);
         }
     }
 
@@ -593,11 +600,8 @@ void Application::Render() {
     if (m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
 
-        // Build proper view-projection matrix with mouse look support
-        float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
-        float camY = m_cameraDistance * sinf(m_cameraPitch);
-        float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
-        DirectX::XMVECTOR cameraPos = DirectX::XMVectorSet(camX, camY + m_cameraHeight, camZ, 1.0f);
+        // Use camera position computed earlier (for consistency with RT lighting)
+        DirectX::XMVECTOR cameraPos = DirectX::XMLoadFloat3(&cameraPosition);
         DirectX::XMVECTOR lookAt = DirectX::XMVectorSet(0, 0, 0, 1.0f);
         DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
         DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(cameraPos, lookAt, up);
@@ -607,8 +611,8 @@ void Application::Render() {
         // DON'T transpose - HLSL uses row-major by default, DirectXMath is row-major
         DirectX::XMStoreFloat4x4(&renderConstants.viewProj, view * proj);
 
-        // Use runtime camera controls
-        renderConstants.cameraPos = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
+        // Use runtime camera controls (precomputed for RT lighting consistency)
+        renderConstants.cameraPos = cameraPosition;
         renderConstants.cameraUp = DirectX::XMFLOAT3(0, 1, 0);
         renderConstants.time = m_totalTime;
         renderConstants.particleSize = m_particleSize;
@@ -2722,6 +2726,132 @@ void Application::RenderImGui() {
                               "0.050 = Subtle ambient glow (recommended)\n"
                               "0.100 = Brighter ambient\n"
                               "0.200 = Maximum ambient");
+        }
+
+        // === Dynamic Emission (RT-Driven Star Radiance) ===
+        ImGui::Separator();
+        ImGui::Text("Dynamic Emission (RT-Driven)");
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Emission responds to RT lighting dynamically:\n"
+                              "- Well-lit particles: RT dominates (dynamic)\n"
+                              "- Shadow particles: Emission fills in\n"
+                              "- Hot particles (>threshold): Self-luminous\n"
+                              "- Cool particles: Purely RT-driven\n"
+                              "\n"
+                              "Real-time tuning - no rebuild required!");
+        }
+
+        // Track if any emission value changed this frame
+        bool emissionNeedsUpdate = false;
+
+        if (ImGui::SliderFloat("Emission Strength", &m_rtEmissionStrength, 0.0f, 1.0f, "%.2f")) {
+            emissionNeedsUpdate = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Global emission multiplier\n"
+                              "0.15 = Maximum RT dynamicism (minimal emission)\n"
+                              "0.25 = Balanced (default)\n"
+                              "0.40 = Star-like (more glow)");
+        }
+
+        if (ImGui::SliderFloat("Temp Threshold (K)", &m_rtEmissionThreshold, 15000.0f, 28000.0f, "%.0f")) {
+            emissionNeedsUpdate = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Temperature cutoff for emission\n"
+                              "Only particles hotter than threshold emit\n"
+                              "\n"
+                              "18000K = More stars glow\n"
+                              "22000K = Hot stars only (default)\n"
+                              "25000K = Only hottest stars");
+        }
+
+        if (ImGui::SliderFloat("RT Suppression", &m_rtEmissionSuppression, 0.0f, 1.0f, "%.2f")) {
+            emissionNeedsUpdate = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("How much RT lighting suppresses emission\n"
+                              "Well-lit particles reduce emission strength\n"
+                              "\n"
+                              "0.5 = Emission visible everywhere (less dynamic)\n"
+                              "0.7 = Good suppression (default)\n"
+                              "0.9 = Strong suppression (maximum dynamicism)");
+        }
+
+        if (ImGui::SliderFloat("Temporal Rate", &m_rtEmissionTemporalRate, 0.0f, 0.1f, "%.3f")) {
+            emissionNeedsUpdate = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Star twinkling/pulsing speed\n"
+                              "Each particle pulses at slightly different rate\n"
+                              "\n"
+                              "0.02 = Very subtle breathing\n"
+                              "0.03 = Subtle pulse (default)\n"
+                              "0.05 = Noticeable twinkling\n"
+                              "0.10 = Fast scintillation");
+        }
+
+        // Update RTLightingSystem only when values change (event-driven)
+        if (emissionNeedsUpdate && m_rtLighting) {
+            m_rtLighting->SetEmissionStrength(m_rtEmissionStrength);
+            m_rtLighting->SetEmissionThreshold(m_rtEmissionThreshold);
+            m_rtLighting->SetRTSuppression(m_rtEmissionSuppression);
+            m_rtLighting->SetTemporalRate(m_rtEmissionTemporalRate);
+        }
+
+        // Preset buttons for quick testing
+        ImGui::Spacing();
+        ImGui::Text("Presets:");
+        if (ImGui::Button("Max Dynamicism")) {
+            m_rtEmissionStrength = 0.15f;
+            m_rtEmissionThreshold = 25000.0f;
+            m_rtEmissionSuppression = 0.9f;
+            m_rtEmissionTemporalRate = 0.02f;
+            if (m_rtLighting) {
+                m_rtLighting->SetEmissionStrength(m_rtEmissionStrength);
+                m_rtLighting->SetEmissionThreshold(m_rtEmissionThreshold);
+                m_rtLighting->SetRTSuppression(m_rtEmissionSuppression);
+                m_rtLighting->SetTemporalRate(m_rtEmissionTemporalRate);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("RT lighting drives visual, minimal emission");
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Balanced")) {
+            m_rtEmissionStrength = 0.25f;
+            m_rtEmissionThreshold = 22000.0f;
+            m_rtEmissionSuppression = 0.7f;
+            m_rtEmissionTemporalRate = 0.03f;
+            if (m_rtLighting) {
+                m_rtLighting->SetEmissionStrength(m_rtEmissionStrength);
+                m_rtLighting->SetEmissionThreshold(m_rtEmissionThreshold);
+                m_rtLighting->SetRTSuppression(m_rtEmissionSuppression);
+                m_rtLighting->SetTemporalRate(m_rtEmissionTemporalRate);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Default settings, good shadow fill");
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Star-Like")) {
+            m_rtEmissionStrength = 0.4f;
+            m_rtEmissionThreshold = 18000.0f;
+            m_rtEmissionSuppression = 0.5f;
+            m_rtEmissionTemporalRate = 0.05f;
+            if (m_rtLighting) {
+                m_rtLighting->SetEmissionStrength(m_rtEmissionStrength);
+                m_rtLighting->SetEmissionThreshold(m_rtEmissionThreshold);
+                m_rtLighting->SetRTSuppression(m_rtEmissionSuppression);
+                m_rtLighting->SetTemporalRate(m_rtEmissionTemporalRate);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("More glow, aesthetic starfield look");
         }
 
         // === Phase 1.5 Adaptive Particle Radius (Fix overlap artifacts) ===

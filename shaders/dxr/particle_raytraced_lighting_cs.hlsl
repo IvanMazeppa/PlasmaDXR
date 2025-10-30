@@ -14,6 +14,14 @@ cbuffer LightingConstants : register(b0)
     uint raysPerParticle;      // 8 for high quality, 4 for medium, 2 for low
     float maxLightingDistance; // Ray TMax (e.g., 20.0)
     float lightingIntensity;   // Global intensity multiplier
+
+    // Dynamic emission parameters
+    float3 cameraPosition;     // Camera position for distance-based effects
+    uint frameCount;           // Frame counter for temporal effects
+    float emissionStrength;    // Global emission multiplier (0.0-1.0)
+    float emissionThreshold;   // Temperature threshold for emission (K)
+    float rtSuppression;       // How much RT lighting suppresses emission (0.0-1.0)
+    float temporalRate;        // Temporal modulation frequency
 };
 
 // Input: Particle buffer (read positions and temperatures)
@@ -80,6 +88,78 @@ float EmissionIntensity(float temperature)
     // Stefan-Boltzmann law: L ∝ T^4 (simplified for real-time)
     float normalized = temperature / 26000.0; // Normalize to max temp
     return pow(normalized, 2.0); // Quadratic falloff for performance (instead of T^4)
+}
+
+// NEW: Dynamic Blackbody Color (Wien's law approximation)
+float3 ComputeBlackbodyColor(float temperature)
+{
+    // Improved blackbody approximation using Wien's displacement law
+    // Accurate for 1000K-30000K range
+    float t = saturate((temperature - 1000.0) / 29000.0);
+
+    // Planck curve approximation for RGB wavelengths
+    // Red peak at ~700nm, Green at ~546nm, Blue at ~436nm
+    float3 rgb;
+
+    if (temperature < 3000.0) {
+        // Cool red-orange stars (1000K-3000K)
+        float blend = saturate((temperature - 1000.0) / 2000.0);
+        rgb = lerp(float3(1.0, 0.2, 0.05), float3(1.0, 0.5, 0.1), blend);
+    }
+    else if (temperature < 6000.0) {
+        // Yellow-orange stars (3000K-6000K)
+        float blend = saturate((temperature - 3000.0) / 3000.0);
+        rgb = lerp(float3(1.0, 0.5, 0.1), float3(1.0, 0.9, 0.7), blend);
+    }
+    else if (temperature < 15000.0) {
+        // White stars (6000K-15000K)
+        float blend = saturate((temperature - 6000.0) / 9000.0);
+        rgb = lerp(float3(1.0, 0.9, 0.7), float3(0.9, 0.95, 1.0), blend);
+    }
+    else {
+        // Hot blue stars (15000K-30000K)
+        float blend = saturate((temperature - 15000.0) / 15000.0);
+        rgb = lerp(float3(0.9, 0.95, 1.0), float3(0.6, 0.7, 1.0), blend);
+    }
+
+    return rgb;
+}
+
+// NEW: Compute dynamic emission with RT modulation and temporal effects
+float3 ComputeDynamicEmission(Particle particle, float3 rtLighting, uint particleId)
+{
+    float temperature = particle.temperature;
+
+    // 1. Selective emission - only hot particles emit significantly
+    float hotFactor = saturate((temperature - emissionThreshold) / 8000.0);
+    if (hotFactor < 0.01) {
+        return float3(0, 0, 0); // Early out for cool particles
+    }
+
+    // 2. Base blackbody emission color
+    float3 blackbodyColor = ComputeBlackbodyColor(temperature);
+
+    // 3. Base intensity from Stefan-Boltzmann
+    float baseIntensity = pow(temperature / 5778.0, 4.0); // Sun-normalized T^4
+
+    // 4. RT lighting suppression - emission weakens when particle is well-lit
+    float rtLuminance = dot(rtLighting, float3(0.2126, 0.7152, 0.0722));
+    float suppressionFactor = saturate(1.0 - rtLuminance * rtSuppression);
+
+    // 5. Temporal modulation - gentle pulsing for dynamism
+    uint seed = particleId * 73856093u ^ frameCount * 19349663u;
+    float noisePhase = frac(sin(float(seed) * 0.00001) * 43758.5453);
+    float pulse = sin(frameCount * temporalRate + particleId + noisePhase * 6.28318) * 0.3 + 0.7; // 70-100% range
+
+    // 6. Distance-based LOD - far particles get more emission (visibility)
+    float distToCamera = length(particle.position - cameraPosition);
+    float distanceFactor = saturate((distToCamera - 300.0) / 700.0); // 0 at <300, 1 at >1000
+    float emissionLOD = lerp(0.5, 1.0, distanceFactor); // Close: 50%, Far: 100%
+
+    // Combine all factors
+    float3 finalEmission = blackbodyColor * baseIntensity * hotFactor * suppressionFactor * pulse * emissionLOD * emissionStrength;
+
+    return finalEmission;
 }
 
 [numthreads(64, 1, 1)]
@@ -184,10 +264,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     // Average lighting over all rays and apply global intensity
     // Reduced intensity multiplier to prevent overexposure
-    float3 finalLight = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 2.0;  // Reduced from 50x to 2x
+    float3 rtLighting = (accumulatedLight / float(raysPerParticle)) * lightingIntensity * 2.0;
 
-    // DEBUG REMOVED: Show actual lighting (black=no hits, colored=RT lighting)
-    // Particles with no neighbors will be black, center will be bright
+    // NEW: Compute dynamic emission that responds to RT lighting
+    float3 emission = ComputeDynamicEmission(receiver, rtLighting, particleIdx);
 
+    // Combine RT lighting (dynamic) + emission (modulated support)
+    // RT lighting dominates by design - emission fills shadows and adds color
+    float3 finalLight = rtLighting + emission;
+
+    // Store final lighting (emission now dynamically responds to RT lighting!)
     g_particleLighting[particleIdx] = float4(finalLight, 0.0);
 }
