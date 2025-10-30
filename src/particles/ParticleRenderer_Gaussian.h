@@ -105,6 +105,14 @@ public:
         float densityScaleMin;             // Min density scale clamp (0.1-1.0)
         float densityScaleMax;             // Max density scale clamp (1.0-5.0)
         float adaptivePadding;             // Padding for alignment
+
+        // === Phase 3.9 Volumetric RT Lighting ===
+        uint32_t volumetricRTSamples;      // Number of light rays per sample point (4-32, default 8)
+        float volumetricRTDistance;        // Max distance to search for emitters (100-1000, default 500)
+        float volumetricRTAttenuation;     // Attenuation factor (0.00001-0.001, default 0.0001)
+        uint32_t useVolumetricRT;          // Toggle: 0=legacy per-particle, 1=volumetric per-sample
+        float volumetricRTIntensity;       // Intensity boost for particle emission (50-500, default 200)
+        DirectX::XMFLOAT3 volumetricRTPadding;  // Padding for GPU alignment
     };
 
 public:

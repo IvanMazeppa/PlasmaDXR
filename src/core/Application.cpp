@@ -751,6 +751,14 @@ void Application::Render() {
             gaussianConstants.densityScaleMax = m_densityScaleMax;
             gaussianConstants.adaptivePadding = 0.0f;
 
+            // Phase 3.9 Volumetric RT Lighting: Per-sample-point evaluation for smooth volumetric glow
+            gaussianConstants.volumetricRTSamples = m_volumetricRTSamples;
+            gaussianConstants.volumetricRTDistance = m_volumetricRTDistance;
+            gaussianConstants.volumetricRTAttenuation = m_volumetricRTAttenuation;
+            gaussianConstants.useVolumetricRT = m_useVolumetricRT ? 1u : 0u;
+            gaussianConstants.volumetricRTIntensity = m_volumetricRTIntensity;
+            gaussianConstants.volumetricRTPadding = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -2924,6 +2932,43 @@ void Application::RenderImGui() {
                 m_rtLighting->SetAdaptiveOuterScale(m_adaptiveOuterScale);
                 m_rtLighting->SetDensityScaleMin(m_densityScaleMin);
                 m_rtLighting->SetDensityScaleMax(m_densityScaleMax);
+            }
+        }
+
+        // === Phase 3.9 Spatial RT Interpolation ===
+        ImGui::Separator();
+        ImGui::Text("Spatial RT Interpolation (Phase 3.9)");
+        ImGui::Checkbox("Enable Spatial Interpolation", &m_useVolumetricRT);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("SPATIAL INTERPOLATION: Blends RT lighting from nearby particles\n"
+                              "  - Reads g_rtLighting[] from 3-8 neighbors at sample point\n"
+                              "  - Distance-weighted blending creates smooth gradients\n"
+                              "  - Eliminates discrete jumps without recomputing lighting!\n\n"
+                              "Enabled: Multi-light quality smoothness\n"
+                              "Disabled: Legacy per-particle lookup (faster but jumpy)");
+        }
+
+        if (m_useVolumetricRT) {
+            int samples = static_cast<int>(m_volumetricRTSamples);
+            if (ImGui::SliderInt("Neighbor Samples", &samples, 4, 32)) {
+                m_volumetricRTSamples = static_cast<uint32_t>(samples);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Number of neighbor particles to sample for interpolation\n"
+                                  "4 = Tetrahedral (fast but angular)\n"
+                                  "8 = Cubic (balanced, default)\n"
+                                  "16 = High quality (smooth)\n"
+                                  "32 = Maximum smoothness (expensive)");
+            }
+
+            if (ImGui::SliderFloat("Smoothness Radius", &m_volumetricRTDistance, 100.0f, 400.0f, "%.0f units")) {
+                // Value updated automatically
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Maximum distance to search for neighbor particles\n"
+                                  "Larger = smoother gradients but blurrier\n"
+                                  "Smaller = sharper transitions but more discrete\n"
+                                  "Recommended: 200 units (matches avg particle spacing ~139)");
             }
         }
         ImGui::Separator();

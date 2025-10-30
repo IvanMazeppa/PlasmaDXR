@@ -140,6 +140,13 @@ private:
     float m_densityScaleMin = 0.3f;          // Min density scale clamp (0.1-1.0)
     float m_densityScaleMax = 3.0f;          // Max density scale clamp (1.0-5.0)
 
+    // === Spatial RT Interpolation (Phase 3.9) ===
+    bool m_useVolumetricRT = true;           // Enable spatial interpolation of RT lighting
+    uint32_t m_volumetricRTSamples = 8;      // Number of neighbor particles to sample (4-32)
+    float m_volumetricRTDistance = 200.0f;   // Smoothness radius for interpolation (100-400)
+    float m_volumetricRTAttenuation = 0.0001f; // Unused (kept for compatibility)
+    float m_volumetricRTIntensity = 200.0f;  // Unused (kept for compatibility)
+
     // === Dynamic Emission (RT-Driven Star Radiance) ===
     float m_rtEmissionStrength = 0.25f;      // Global emission multiplier (0.0-1.0)
     float m_rtEmissionThreshold = 22000.0f;  // Temperature cutoff for emission (K)

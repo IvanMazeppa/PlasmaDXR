@@ -73,6 +73,14 @@ cbuffer GaussianConstants : register(b0)
     float densityScaleMin;         // Min density scale clamp (0.1-1.0)
     float densityScaleMax;         // Max density scale clamp (1.0-5.0)
     float adaptivePadding;         // Padding for alignment
+
+    // Volumetric RT Lighting (Phase 3.9)
+    uint volumetricRTSamples;      // Number of light rays per sample point (4-32)
+    float volumetricRTDistance;    // Max distance to search for emitters (100-1000)
+    float volumetricRTAttenuation; // Attenuation factor for distance falloff (0.00001-0.001)
+    uint useVolumetricRT;          // Toggle: 0=legacy per-particle, 1=volumetric per-sample
+    float volumetricRTIntensity;   // Intensity boost for particle emission (50-500)
+    float3 volumetricRTPadding;    // Padding for GPU alignment
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -387,6 +395,106 @@ float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
     return totalScattering / numSamples;
 }
 
+// ============================================================================
+// VOLUMETRIC RT LIGHTING - Per-Sample-Point Evaluation
+// ============================================================================
+// Evaluates RT lighting at ANY point in space (not just particle centers).
+// This creates smooth volumetric scattering exactly like the multi-light system.
+// Replaces billboard-era per-particle lookup with continuous volumetric evaluation.
+//
+// Cost: 8-16 RayQuery traversals per sample (same as particle-to-particle,
+//       but evaluated at sample point instead of particle center)
+// Benefit: Eliminates discrete jumps, creates smooth volumetric glow
+// Phase 3.9: Volumetric RT Lighting with Proper Scattering
+// Treats neighbor particles as virtual lights using g_rtLighting[] as intensity
+// Applies SAME volumetric math as multi-lights: distance attenuation + phase function
+float3 InterpolateRTLighting(float3 worldPos, uint skipIdx, float3 viewDir, float phaseG) {
+    float3 totalLight = float3(0, 0, 0);
+
+    // Number of interpolation samples (runtime configurable)
+    // 4 = Fast (tetrahedral interpolation)
+    // 8 = Balanced (cubic interpolation) - DEFAULT
+    // 16 = Smooth (high quality)
+    uint numSamples = volumetricRTSamples > 0 ? volumetricRTSamples : 8;
+
+    // Maximum interpolation distance (runtime configurable)
+    // Controls the "smoothness radius" - how far to search for neighbors
+    // Larger = smoother gradients but blurrier
+    // Smaller = sharper transitions but more discrete
+    // Default: 200.0 (matches average particle spacing of ~139 units)
+    float maxDistance = volumetricRTDistance > 0.0 ? volumetricRTDistance : 200.0;
+
+    // Fibonacci sphere sampling for even spatial distribution
+    const float PHI = 1.618033988749895; // Golden ratio
+
+    for (uint i = 0; i < numSamples; i++) {
+        // Generate evenly distributed direction (full sphere)
+        float theta = 2.0 * 3.14159265359 * i / PHI;
+        float phi = acos(1.0 - 2.0 * (i + 0.5) / numSamples);
+
+        float sinPhi = sin(phi);
+        float3 sampleDir = normalize(float3(
+            cos(theta) * sinPhi,
+            sin(theta) * sinPhi,
+            cos(phi)
+        ));
+
+        // Cast ray to find nearest particle in this direction
+        RayDesc probeRay;
+        probeRay.Origin = worldPos;
+        probeRay.Direction = sampleDir;
+        probeRay.TMin = 0.01;  // Small bias to avoid self-intersection
+        probeRay.TMax = maxDistance;
+
+        // Inline ray tracing to find nearest particle
+        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+        query.TraceRayInline(g_particleBVH, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, probeRay);
+        query.Proceed();
+
+        // If we found a neighbor particle, treat it as a virtual light!
+        if (query.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
+            uint neighborIdx = query.CommittedPrimitiveIndex();
+
+            // Skip self (though unlikely at sample point)
+            if (neighborIdx == skipIdx) continue;
+
+            // Get neighbor particle position for volumetric scattering math
+            Particle neighbor = g_particles[neighborIdx];
+            float3 neighborPos = neighbor.position;
+
+            // Calculate light direction (from sample point TO neighbor)
+            float3 lightDir = normalize(neighborPos - worldPos);
+            float lightDist = length(neighborPos - worldPos);
+
+            // Use g_rtLighting[] as the "light intensity/color" for this virtual light
+            float3 lightColor = g_rtLighting[neighborIdx].rgb;
+
+            // === VOLUMETRIC SCATTERING (same math as multi-lights!) ===
+
+            // 1. Distance attenuation (quadratic falloff, line 844 in multi-light)
+            float normalizedDist = lightDist / maxDistance;
+            float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
+
+            // 2. Phase function (Henyey-Greenstein for anisotropic scattering, line 856 in multi-light)
+            float phase = 1.0;
+            if (usePhaseFunction != 0) {
+                float cosTheta = dot(-viewDir, lightDir);
+                phase = HenyeyGreenstein(cosTheta, phaseG);
+            }
+
+            // 3. Accumulate light contribution (same formula as multi-lights line 866!)
+            float3 lightContribution = lightColor * attenuation * phase;
+            totalLight += lightContribution;
+        }
+    }
+
+    // Return accumulated light (NO AVERAGING - same as multi-lights!)
+    // Multi-lights loop and accumulate: totalLighting += lightContribution (line 874)
+    // They never divide by light count - we shouldn't either!
+    // This is physically correct: each neighbor is an independent light source
+    return totalLight;
+}
+
 // Generate camera ray from pixel coordinates
 RayDesc GenerateCameraRay(float2 pixelPos) {
     // NDC coordinates (-1 to 1)
@@ -621,11 +729,20 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 intensity = EmissionIntensity(p.temperature);
             }
 
-            // === FIXED: RT lighting as illumination, not replacement ===
+            // === RT LIGHTING: Volumetric (smooth) or Legacy (per-particle) ===
             float3 rtLight;
 
-            // Use pre-computed RT lighting
-            rtLight = g_rtLighting[hit.particleIdx].rgb;
+            if (useVolumetricRT != 0) {
+                // VOLUMETRIC SCATTERING MODE: Treat neighbors as virtual lights
+                // Applies same volumetric math as multi-lights (attenuation + phase function)
+                // This creates true volumetric glow with proper light scattering!
+                rtLight = InterpolateRTLighting(pos, hit.particleIdx, ray.Direction, scatteringG);
+            } else {
+                // LEGACY MODE: Per-particle lookup (billboard-era)
+                // Fast but causes discrete brightness jumps
+                // Kept for comparison and fallback
+                rtLight = g_rtLighting[hit.particleIdx].rgb;
+            }
 
             // === CRITICAL FIX: Physical emission is self-emitting, not lit ===
             // Physical emission (blackbody radiation) should NOT be modulated by external lighting
@@ -646,13 +763,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // Non-physical emission: Temperature-based color that CAN be lit by external sources
 
                 // Base ambient level (allows particles to be visible even with no self-emission)
-                // External lighting (RT + multi-light) will be added to this base
                 // Phase 1 lighting fix: Use rtMinAmbient parameter (default 0.05, adjustable 0.0-0.2)
-                float3 illumination = float3(rtMinAmbient, rtMinAmbient, rtMinAmbient);
+                float3 ambientBase = float3(rtMinAmbient, rtMinAmbient, rtMinAmbient);
 
-                // Add RT lighting as external contribution (RUNTIME ADJUSTABLE)
-                // Clamp to prevent over-brightness from extreme ReSTIR samples
-                illumination += clamp(rtLight * rtLightingStrength, 0.0, 10.0);
+                // RT lighting: Separate from multi-light to avoid scaling conflicts
+                // Volumetric RT has large boost (50-500×) so clamp must be high
+                // Legacy RT (per-particle) is pre-computed so clamp is lower
+                float rtClampMax = useVolumetricRT != 0 ? 100.0 : 10.0;
+                float3 rtContribution = clamp(rtLight * rtLightingStrength, 0.0, rtClampMax);
 
                 // === MULTI-LIGHT SYSTEM: Accumulate lighting from all active lights ===
                 float3 totalLighting = float3(0, 0, 0);
@@ -759,20 +877,24 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                     }
                 }
 
-                // Apply multi-light illumination to external lighting
-                // CRITICAL FIX (2025-10-19): RTXDI uses 1 selected light, multi-light uses 13 lights
-                // The 10× multiplier was designed for multi-light to match RT lighting strength,
-                // but RTXDI should NOT get this boost (it would hide the visual difference)
+                // === MULTI-LIGHT ILLUMINATION ===
+                // Accumulate multi-light contribution with proper scaling
+                float3 multiLightContribution = float3(0, 0, 0);
+
                 if (useRTXDI != 0) {
                     // RTXDI: NO multiplier (1 importance-sampled light)
                     // Expected: Dimmer than multi-light (this is CORRECT)
-                    // Future: Add unbiased weight W from ReSTIR reservoir
-                    illumination += totalLighting;
+                    multiLightContribution = totalLighting * 0.02;  // Apply 2% scaling for external light
                 } else {
                     // Multi-light: 10× multiplier to match RT lighting strength
-                    // This boosts 13 accumulated lights to comparable brightness
-                    illumination += totalLighting * 10.0;
+                    // Then apply 2% scaling for reasonable brightness
+                    multiLightContribution = totalLighting * 10.0 * 0.02;  // = 0.2× total
                 }
+
+                // === RT LIGHTING CONTRIBUTION ===
+                // Apply separate scaling for RT lighting (already boosted 50-500× for volumetric)
+                // This needs MUCH less aggressive scaling than multi-light
+                float3 rtExternalLight = rtContribution * 0.5;  // 50% scaling (vs 2% for multi-light)
 
                 // Add in-scattering for volumetric depth (TOGGLEABLE)
                 float3 inScatter = float3(0, 0, 0);
@@ -784,17 +906,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // Self-emission: Particle's blackbody glow (controlled by emissionStrength)
                 float3 selfEmission = emission * intensity * emissionStrength;
 
-                // External lighting: Much more conservative scaling
-                // illumination can be 0.05 (ambient) + 10 (RT) + 50+ (multi-light) = very high!
-                // Scale down to 0.01-0.02 range for reasonable brightness
-                float3 externalLight = illumination * 0.02;
-
-                // Apply subtle particle color (but keep it mostly white/neutral)
+                // Apply subtle particle color to external lighting
                 // This prevents complete color wash-out while avoiding blown-out emission colors
                 float3 particleAlbedo = lerp(float3(1, 1, 1), emission, 0.15);  // Only 15% emission tint
-                externalLight *= particleAlbedo;
 
-                // Combine: glow + external lighting + in-scattering (all additive)
+                // Combine all lighting sources
+                float3 externalLight = (ambientBase + rtExternalLight + multiLightContribution) * particleAlbedo;
+
+                // Final combination: glow + external lighting + in-scattering (all additive)
                 totalEmission = selfEmission + externalLight + inScatter * inScatterStrength;
             }
 
