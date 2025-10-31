@@ -220,6 +220,26 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     const float memoryMB = (volumeSize * volumeSize * volumeSize * 2) / (1024.0f * 1024.0f);
     LOG_INFO("Mip 2 volume created successfully ({:.2f} MB)", memoryMB);
 
+    // Allocate descriptor table for shading pass (2 contiguous descriptors)
+    // [0]: Reservoir SRV (t2)
+    // [1]: Output texture UAV (u0) - will be filled later
+    m_shadingTableStart = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE secondDescriptor = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_shadingTableGPU = m_resources->GetGPUHandle(m_shadingTableStart);
+
+    // Verify descriptors are contiguous
+    UINT descriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (secondDescriptor.ptr != m_shadingTableStart.ptr + descriptorSize) {
+        LOG_WARN("Shading table descriptors are not contiguous! This may cause issues.");
+    }
+
+    // Copy reservoir SRV to table[0] - this is permanent
+    m_device->GetDevice()->CopyDescriptorsSimple(1, m_shadingTableStart, m_reservoirSRV[0],
+                                                  D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    // Note: table[1] (output UAV) will be set dynamically in ShadeSelectedPaths()
+    LOG_INFO("Shading descriptor table allocated (2 descriptors)");
+
     return true;
 }
 
@@ -482,8 +502,8 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     commandList->SetComputeRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
 
     // Root parameter 3: t2 - Volume Mip 2 (descriptor table)
-    // TODO: Need to set descriptor table for volume texture
-    // For now, skip (will cause shader to fail if it accesses volume)
+    D3D12_GPU_DESCRIPTOR_HANDLE volumeMip2GPU = m_resources->GetGPUHandle(m_volumeMip2SRV);
+    commandList->SetComputeRootDescriptorTable(3, volumeMip2GPU);
 
     // Root parameter 4: u0 - Reservoir buffer (UAV)
     commandList->SetComputeRootUnorderedAccessView(4, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
@@ -530,7 +550,14 @@ void VolumetricReSTIRSystem::TemporalReuse(ID3D12GraphicsCommandList* commandLis
  */
 void VolumetricReSTIRSystem::ShadeSelectedPaths(
     ID3D12GraphicsCommandList* commandList,
-    ID3D12Resource* outputTexture)
+    ID3D12Resource* outputTexture,
+    D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
+    ID3D12Resource* particleBVH,
+    ID3D12Resource* particleBuffer,
+    uint32_t particleCount,
+    const DirectX::XMFLOAT3& cameraPos,
+    const DirectX::XMMATRIX& viewMatrix,
+    const DirectX::XMMATRIX& projMatrix)
 {
     if (!m_initialized) {
         LOG_ERROR("VolumetricReSTIRSystem not initialized");
@@ -554,7 +581,7 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     commandList->SetPipelineState(m_shadingPSO.Get());
     commandList->SetComputeRootSignature(m_shadingRS.Get());
 
-    // Prepare constants (simplified for shading pass)
+    // Prepare constants with data from caller
     struct ShadingConstants {
         uint32_t screenWidth;
         uint32_t screenHeight;
@@ -570,25 +597,49 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     ShadingConstants constants = {};
     constants.screenWidth = m_width;
     constants.screenHeight = m_height;
-    constants.particleCount = 0; // Not needed for shading
-    constants.cameraPos = DirectX::XMFLOAT3(0, 0, 0); // TODO: Pass from caller
+    constants.particleCount = particleCount;
+    constants.cameraPos = cameraPos;
+    DirectX::XMStoreFloat4x4(&constants.viewMatrix, viewMatrix);
+    DirectX::XMStoreFloat4x4(&constants.projMatrix, projMatrix);
 
-    // TODO: Pass matrices from caller for proper ray reconstruction
-    // For now, leave as identity (will be fixed when integrating with Application)
+    // Compute inverse view-projection for ray reconstruction
+    DirectX::XMMATRIX viewProj = viewMatrix * projMatrix;
+    DirectX::XMMATRIX invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
+    DirectX::XMStoreFloat4x4(&constants.invViewProjMatrix, invViewProj);
 
     // Bind resources
     // Root parameter 0: Constants (64 DWORDs)
     commandList->SetComputeRoot32BitConstants(0, sizeof(ShadingConstants) / 4, &constants, 0);
 
     // Root parameter 1: t0 - Particle BLAS (SRV)
-    // TODO: Pass from caller
+    if (particleBVH) {
+        commandList->SetComputeRootShaderResourceView(1, particleBVH->GetGPUVirtualAddress());
+    }
 
     // Root parameter 2: t1 - Particle buffer (SRV)
-    // TODO: Pass from caller
+    commandList->SetComputeRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
 
     // Root parameter 3: Descriptor table (t2: reservoir SRV, u0: output texture UAV)
-    // TODO: Need to set descriptor table
-    // For now, skip (will cause shader to fail)
+    // Update output UAV in descriptor table slot [1]
+    UINT descriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE outputUAVSlot = m_shadingTableStart;
+    outputUAVSlot.ptr += descriptorSize;
+
+    // Create UAV descriptor for output texture at table[1]
+    D3D12_UNORDERED_ACCESS_VIEW_DESC outUAVDesc = {};
+    outUAVDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    outUAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    outUAVDesc.Texture2D.MipSlice = 0;
+    outUAVDesc.Texture2D.PlaneSlice = 0;
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        outputTexture,
+        nullptr,
+        &outUAVDesc,
+        outputUAVSlot
+    );
+
+    // Bind the descriptor table (starts at table[0], includes both SRV and UAV)
+    commandList->SetComputeRootDescriptorTable(3, m_shadingTableGPU);
 
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups

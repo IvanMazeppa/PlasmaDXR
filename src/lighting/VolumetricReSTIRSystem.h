@@ -83,10 +83,24 @@ public:
      *
      * @param commandList Command list
      * @param outputTexture Output render target
+     * @param outputUAV GPU descriptor handle for output texture UAV
+     * @param particleBVH Particle acceleration structure (TLAS)
+     * @param particleBuffer Particle data buffer
+     * @param particleCount Number of particles
+     * @param cameraPos Camera position
+     * @param viewMatrix View matrix
+     * @param projMatrix Projection matrix
      */
     void ShadeSelectedPaths(
         ID3D12GraphicsCommandList* commandList,
-        ID3D12Resource* outputTexture);
+        ID3D12Resource* outputTexture,
+        D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
+        ID3D12Resource* particleBVH,
+        ID3D12Resource* particleBuffer,
+        uint32_t particleCount,
+        const DirectX::XMFLOAT3& cameraPos,
+        const DirectX::XMMATRIX& viewMatrix,
+        const DirectX::XMMATRIX& projMatrix);
 
     /**
      * Get current reservoir buffer (for reading in shaders)
@@ -106,6 +120,11 @@ public:
     void SetMaxBounces(uint32_t K) { m_maxBounces = K; }
     void SetSpatialNeighbors(uint32_t N) { m_spatialNeighbors = N; }
     void SetTemporalClampFactor(float Q) { m_temporalClampFactor = Q; }
+
+    uint32_t GetRandomWalksPerPixel() const { return m_randomWalksPerPixel; }
+    uint32_t GetMaxBounces() const { return m_maxBounces; }
+    uint32_t GetSpatialNeighbors() const { return m_spatialNeighbors; }
+    float GetTemporalClampFactor() const { return m_temporalClampFactor; }
 
 private:
     // === Phase 1: Data Structures ===
@@ -194,6 +213,10 @@ private:
     // Piecewise-constant volume for T* (Mip 2)
     ComPtr<ID3D12Resource> m_volumeMip2;
     D3D12_CPU_DESCRIPTOR_HANDLE m_volumeMip2SRV;
+
+    // Shading pass descriptor table (reservoir SRV + output UAV, contiguous)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_shadingTableStart;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_shadingTableGPU;
 
     // === Compute Pipelines ===
 

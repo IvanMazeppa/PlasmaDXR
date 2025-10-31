@@ -154,6 +154,8 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const { return m_outputSRVGPU; }
 #endif
 
+    D3D12_GPU_DESCRIPTOR_HANDLE GetOutputUAV() const { return m_outputUAVGPU; }
+
 #ifdef ENABLE_DLSS
     // Set DLSS system reference and calculate optimal render resolution
     void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height, int qualityMode = 1);

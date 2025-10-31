@@ -801,15 +801,57 @@ void Application::Render() {
                 rtxdiOutput = m_rtxdiLightingSystem->GetAccumulatedBuffer();  // M5 temporal accumulation output
             }
 
-            // Render to UAV texture
-            m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+            // VolumetricReSTIR: Replace entire rendering with path tracing
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_volumetricReSTIR) {
+                // Extract camera matrices
+                DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
+                    DirectX::XMLoadFloat3(&renderConstants.cameraPos),
+                    DirectX::XMVectorSet(0, 0, 0, 1.0f),  // Look at origin
+                    DirectX::XMVectorSet(0, 1, 0, 0)      // Up vector
+                );
+                DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(
+                    DirectX::XM_PIDIV4,  // 45° FOV
+                    renderAspect,
+                    0.1f,   // Near plane
+                    10000.0f  // Far plane
+                );
+
+                // Generate path candidates (Phase 1: RIS only)
+                m_volumetricReSTIR->GenerateCandidates(
+                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                    m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,  // Particle TLAS
+                    m_particleSystem->GetParticleBuffer(),
+                    m_config.particleCount,
+                    renderConstants.cameraPos,
+                    view,
+                    proj,
+                    m_frameCount  // Frame index for RNG seed
+                );
+
+                // Shade selected paths to output texture
+                m_volumetricReSTIR->ShadeSelectedPaths(
+                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                    m_gaussianRenderer->GetOutputTexture(),  // Write directly to Gaussian output UAV
+                    m_gaussianRenderer->GetOutputUAV(),      // GPU descriptor handle for UAV
+                    m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,  // Particle TLAS
+                    m_particleSystem->GetParticleBuffer(),
+                    m_config.particleCount,
+                    renderConstants.cameraPos,
+                    view,
+                    proj
+                );
+            } else {
+                // Standard Gaussian volumetric rendering
+                // Render to UAV texture
+                m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                                       m_particleSystem->GetParticleBuffer(),
                                       rtLightingBuffer,
                                       m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
                                       gaussianConstants,
                                       rtxdiOutput);  // Pass RTXDI output buffer
+            }  // End else (standard Gaussian rendering)
 
-            // HDR→SDR blit pass (replaces CopyTextureRegion)
+            // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
             D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
 
             // Transition Gaussian output (HDR) from UAV to SRV for sampling
@@ -3012,6 +3054,14 @@ void Application::RenderImGui() {
             m_lightingSystem = LightingSystem::RTXDI;
             LOG_INFO("Switched to RTXDI system");
         }
+        if (ImGui::RadioButton("Volumetric ReSTIR (Experimental)", currentSystem == 2)) {
+            if (m_volumetricReSTIR) {
+                m_lightingSystem = LightingSystem::VolumetricReSTIR;
+                LOG_INFO("Switched to Volumetric ReSTIR system");
+            } else {
+                LOG_WARN("Volumetric ReSTIR system not available");
+            }
+        }
 
         // Display current mode info
         ImGui::Indent();
@@ -3034,6 +3084,16 @@ void Application::RenderImGui() {
             if (m_debugRTXDISelection) {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Rainbow colors = different lights selected");
                 ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "Black = no lights in grid cell");
+            }
+        } else if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
+            ImGui::TextColored(ImVec4(0.5f, 0.7f, 1.0f, 1.0f), "Volumetric ReSTIR: Path tracing (Phase 1)");
+            ImGui::Text("Expected FPS: ~200 FPS @ 1080p (M=8, K=3)");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Phase 1: RIS-only candidate generation\n"
+                                 "No spatial/temporal reuse yet (noisy output)\n"
+                                 "Uses weighted reservoir sampling for volumetric light transport");
             }
         } else {
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Multi-Light: All 13 lights evaluated");
@@ -3084,6 +3144,47 @@ void Application::RenderImGui() {
             int convergenceMs = maxSamples * 8;  // ~8ms per sample @ 120 FPS
             ImGui::Text("Convergence: ~%d ms @ 120 FPS", convergenceMs);
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Patchwork smooths over time");
+        }
+
+        // === Volumetric ReSTIR Controls (Phase 1) ===
+        if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_volumetricReSTIR) {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Volumetric ReSTIR Parameters");
+
+            // Random walks per pixel (M)
+            int randomWalks = static_cast<int>(m_volumetricReSTIR->GetRandomWalksPerPixel());
+            if (ImGui::SliderInt("Random Walks (M)", &randomWalks, 1, 32)) {
+                m_volumetricReSTIR->SetRandomWalksPerPixel(static_cast<uint32_t>(randomWalks));
+                LOG_INFO("Volumetric ReSTIR: Random walks per pixel = {}", randomWalks);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Number of random walk candidates per pixel\n"
+                                  "4 = Fast but noisy\n"
+                                  "8 = Balanced (recommended for Phase 1)\n"
+                                  "16+ = Smoother but slower\n"
+                                  "Higher M = better convergence");
+            }
+
+            // Max bounces (K)
+            int maxBounces = static_cast<int>(m_volumetricReSTIR->GetMaxBounces());
+            if (ImGui::SliderInt("Max Bounces (K)", &maxBounces, 1, 8)) {
+                m_volumetricReSTIR->SetMaxBounces(static_cast<uint32_t>(maxBounces));
+                LOG_INFO("Volumetric ReSTIR: Max bounces = {}", maxBounces);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Maximum scattering events per path\n"
+                                  "1 = Single scattering (fast)\n"
+                                  "3 = Multiple scattering (recommended)\n"
+                                  "8 = High-order scattering (slow)\n"
+                                  "Higher K = more accurate volume caustics");
+            }
+
+            // Performance estimate
+            ImGui::Separator();
+            float estimatedMs = randomWalks * maxBounces * 0.05f;  // Rough estimate
+            ImGui::Text("Estimated cost: %.1f ms/frame", estimatedMs);
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                              "Phase 1: No spatial/temporal reuse (noisy)");
         }
     }
 
