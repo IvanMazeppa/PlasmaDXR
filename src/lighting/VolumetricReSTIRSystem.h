@@ -210,9 +210,16 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_reservoirUAV[2];
     uint32_t m_currentBufferIndex = 0;
 
+    // Constant buffer for path generation
+    ComPtr<ID3D12Resource> m_pathGenConstantBuffer;
+
+    // Constant buffer for shading
+    ComPtr<ID3D12Resource> m_shadingConstantBuffer;
+
     // Piecewise-constant volume for T* (Mip 2)
     ComPtr<ID3D12Resource> m_volumeMip2;
     D3D12_CPU_DESCRIPTOR_HANDLE m_volumeMip2SRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_volumeMip2SRV_GPU;  // Pre-computed GPU handle
 
     // Shading pass descriptor table (reservoir SRV + output UAV, contiguous)
     D3D12_CPU_DESCRIPTOR_HANDLE m_shadingTableStart;

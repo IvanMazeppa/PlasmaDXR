@@ -241,27 +241,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Ready for runtime switching (F3 key)");
     }
 
-    // Initialize Volumetric ReSTIR system (Phase 1 - experimental)
-    LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
-    m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
-    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
-        LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
-        LOG_ERROR("  Volumetric ReSTIR will not be available");
-        m_volumetricReSTIR.reset();
-        // Don't force fallback - user can still use other lighting systems
-        if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
-            LOG_ERROR("  Startup mode was VolumetricReSTIR - falling back to Multi-Light");
-            m_lightingSystem = LightingSystem::MultiLight;
-        }
-    } else {
-        LOG_INFO("Volumetric ReSTIR System initialized successfully!");
-        LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
-                (m_width * m_height * 64 * 2) / (1024.0f * 1024.0f),
-                m_width, m_height);
-        LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
-        LOG_INFO("  Ready for testing (experimental)");
-    }
-
     // Initialize blit pipeline (HDR→SDR conversion for Gaussian renderer)
     if (m_gaussianRenderer) {
         if (!CreateBlitPipeline()) {
@@ -311,6 +290,44 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
 #else
     LOG_INFO("DLSS support not enabled (ENABLE_DLSS not defined)");
 #endif
+
+    // Initialize Volumetric ReSTIR system (Phase 1 - experimental)
+    // IMPORTANT: Initialize AFTER DLSS to get correct render resolution
+    LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
+
+    // Determine render resolution (may differ from window size due to DLSS)
+    uint32_t renderWidth = m_width;
+    uint32_t renderHeight = m_height;
+
+    if (m_gaussianRenderer) {
+        // Gaussian renderer already adjusted for DLSS (if enabled)
+        // Use its dimensions for VolumetricReSTIR buffers
+        renderWidth = m_gaussianRenderer->GetRenderWidth();
+        renderHeight = m_gaussianRenderer->GetRenderHeight();
+        if (renderWidth != m_width || renderHeight != m_height) {
+            LOG_INFO("DLSS active - VolumetricReSTIR using render resolution: {}x{}",
+                     renderWidth, renderHeight);
+        }
+    }
+
+    m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
+    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), renderWidth, renderHeight)) {
+        LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
+        LOG_ERROR("  Volumetric ReSTIR will not be available");
+        m_volumetricReSTIR.reset();
+        // Don't force fallback - user can still use other lighting systems
+        if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
+            LOG_ERROR("  Startup mode was VolumetricReSTIR - falling back to Multi-Light");
+            m_lightingSystem = LightingSystem::MultiLight;
+        }
+    } else {
+        LOG_INFO("Volumetric ReSTIR System initialized successfully!");
+        LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
+                (renderWidth * renderHeight * 64 * 2) / (1024.0f * 1024.0f),
+                renderWidth, renderHeight);
+        LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
+        LOG_INFO("  Ready for testing (experimental)");
+    }
 
     // Initialize ImGui
     InitializeImGui();

@@ -217,6 +217,10 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
         m_volumeMip2SRV
     );
 
+    // Pre-compute GPU handle to avoid GetGPUHandle() call during rendering
+    m_volumeMip2SRV_GPU = m_resources->GetGPUHandle(m_volumeMip2SRV);
+    LOG_INFO("Volume Mip 2 GPU handle: 0x{:016X}", m_volumeMip2SRV_GPU.ptr);
+
     const float memoryMB = (volumeSize * volumeSize * volumeSize * 2) / (1024.0f * 1024.0f);
     LOG_INFO("Mip 2 volume created successfully ({:.2f} MB)", memoryMB);
 
@@ -239,6 +243,58 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
 
     // Note: table[1] (output UAV) will be set dynamically in ShadeSelectedPaths()
     LOG_INFO("Shading descriptor table allocated (2 descriptors)");
+
+    // Create constant buffer for path generation (256 bytes aligned)
+    D3D12_HEAP_PROPERTIES uploadHeapProps = {};
+    uploadHeapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+    uploadHeapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    uploadHeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+    D3D12_RESOURCE_DESC cbDesc = {};
+    cbDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    cbDesc.Width = 256; // PathGenerationConstants size (aligned to 256 bytes)
+    cbDesc.Height = 1;
+    cbDesc.DepthOrArraySize = 1;
+    cbDesc.MipLevels = 1;
+    cbDesc.Format = DXGI_FORMAT_UNKNOWN;
+    cbDesc.SampleDesc.Count = 1;
+    cbDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    cbDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &cbDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_pathGenConstantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create path generation constant buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_pathGenConstantBuffer->SetName(L"PathGeneration Constants");
+    LOG_INFO("Path generation constant buffer created (256 bytes)");
+
+    // Create constant buffer for shading (256 bytes aligned)
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &cbDesc,  // Same size as path gen constants (256 bytes)
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_shadingConstantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create shading constant buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_shadingConstantBuffer->SetName(L"Shading Constants");
+    LOG_INFO("Shading constant buffer created (256 bytes)");
 
     return true;
 }
@@ -268,8 +324,9 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[5];
 
-        // b0: PathGenerationConstants (root constants, 256 bytes = 64 DWORDs)
-        rootParams[0].InitAsConstants(64, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+        // b0: PathGenerationConstants (constant buffer descriptor instead of root constants)
+        // This saves root signature space: CBV = 2 DWORDs vs 64 DWORDs for inline constants
+        rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
         // t0: Particle BLAS (SRV, acceleration structure)
         rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
@@ -364,8 +421,9 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[4];
 
-        // b0: ShadingConstants (root constants, 256 bytes = 64 DWORDs)
-        rootParams[0].InitAsConstants(64, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+        // b0: ShadingConstants (constant buffer descriptor)
+        // This saves root signature space: CBV = 2 DWORDs vs 64 DWORDs for inline constants
+        rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
         // t0: Particle BLAS (SRV, acceleration structure)
         rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
@@ -464,13 +522,38 @@ void VolumetricReSTIRSystem::GenerateCandidates(
         return;
     }
 
+    // CRITICAL: Check for null TLAS (would cause GPU hang)
+    if (!particleBVH) {
+        LOG_ERROR("VolumetricReSTIR: particleBVH is null - cannot generate candidates");
+        LOG_ERROR("  Make sure RT lighting system is initialized");
+        return;
+    }
+
+    if (!particleBuffer) {
+        LOG_ERROR("VolumetricReSTIR: particleBuffer is null - cannot generate candidates");
+        return;
+    }
+
+    LOG_INFO("VolumetricReSTIR: GenerateCandidates starting...");
+    LOG_INFO("  Resolution: {}x{}", m_width, m_height);
+    LOG_INFO("  particleBVH: 0x{:016X}", reinterpret_cast<uint64_t>(particleBVH));
+    LOG_INFO("  particleBuffer: 0x{:016X}", reinterpret_cast<uint64_t>(particleBuffer));
+
     // PIX event marker
     // TODO: Re-enable after fixing PIX includes
     // PIXBeginEvent(commandList, PIX_COLOR_INDEX(10), "VolumetricReSTIR Path Generation");
 
+    LOG_INFO("VolumetricReSTIR: Setting pipeline state...");
+
+    // CRITICAL: Set descriptor heaps (required for descriptor table bindings)
+    ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
+    commandList->SetDescriptorHeaps(1, heaps);
+    LOG_INFO("VolumetricReSTIR: Descriptor heaps set");
+
     // Set pipeline state
     commandList->SetPipelineState(m_pathGenerationPSO.Get());
     commandList->SetComputeRootSignature(m_pathGenerationRS.Get());
+    LOG_INFO("VolumetricReSTIR: Pipeline state set");
 
     // Prepare constants
     PathGenerationConstants constants = {};
@@ -491,26 +574,54 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     DirectX::XMMATRIX invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
     DirectX::XMStoreFloat4x4(&constants.invViewProjMatrix, invViewProj);
 
+    LOG_INFO("VolumetricReSTIR: Uploading constants to constant buffer...");
+    // Upload constants to constant buffer
+    void* mappedData = nullptr;
+    D3D12_RANGE readRange = { 0, 0 }; // Not reading, only writing
+    m_pathGenConstantBuffer->Map(0, &readRange, &mappedData);
+    memcpy(mappedData, &constants, sizeof(PathGenerationConstants));
+    m_pathGenConstantBuffer->Unmap(0, nullptr);
+    LOG_INFO("VolumetricReSTIR: Constants uploaded");
+
+    LOG_INFO("VolumetricReSTIR: Binding resources...");
     // Bind resources
-    // Root parameter 0: Constants (64 DWORDs)
-    commandList->SetComputeRoot32BitConstants(0, sizeof(PathGenerationConstants) / 4, &constants, 0);
+    // Root parameter 0: Constant buffer
+    commandList->SetComputeRootConstantBufferView(0, m_pathGenConstantBuffer->GetGPUVirtualAddress());
 
     // Root parameter 1: t0 - Particle BLAS (SRV)
     commandList->SetComputeRootShaderResourceView(1, particleBVH->GetGPUVirtualAddress());
+    LOG_INFO("VolumetricReSTIR: Bound particle BLAS");
 
     // Root parameter 2: t1 - Particle buffer (SRV)
     commandList->SetComputeRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
+    LOG_INFO("VolumetricReSTIR: Bound particle buffer");
 
     // Root parameter 3: t2 - Volume Mip 2 (descriptor table)
-    D3D12_GPU_DESCRIPTOR_HANDLE volumeMip2GPU = m_resources->GetGPUHandle(m_volumeMip2SRV);
-    commandList->SetComputeRootDescriptorTable(3, volumeMip2GPU);
+    LOG_INFO("VolumetricReSTIR: Binding volume Mip 2 (GPU handle: 0x{:016X})...", m_volumeMip2SRV_GPU.ptr);
+    commandList->SetComputeRootDescriptorTable(3, m_volumeMip2SRV_GPU);
+    LOG_INFO("VolumetricReSTIR: Bound volume Mip 2");
 
     // Root parameter 4: u0 - Reservoir buffer (UAV)
     commandList->SetComputeRootUnorderedAccessView(4, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
+    LOG_INFO("VolumetricReSTIR: Bound reservoir buffer");
 
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
     uint32_t dispatchY = (m_height + 7) / 8;
+    LOG_INFO("VolumetricReSTIR: Dispatching {}x{} thread groups", dispatchX, dispatchY);
+
+    // Log first dispatch for debugging
+    static bool loggedFirstDispatch = false;
+    if (!loggedFirstDispatch) {
+        LOG_INFO("VolumetricReSTIR GenerateCandidates first dispatch:");
+        LOG_INFO("  Resolution: {}x{}", m_width, m_height);
+        LOG_INFO("  Dispatch: {}x{} thread groups ({}x{} threads)",
+                 dispatchX, dispatchY, dispatchX * 8, dispatchY * 8);
+        LOG_INFO("  Reservoirs: {} (should match thread count)",
+                 m_width * m_height);
+        loggedFirstDispatch = true;
+    }
+
     commandList->Dispatch(dispatchX, dispatchY, 1);
 
     // UAV barrier (ensure writes complete before shading)
@@ -607,9 +718,16 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     DirectX::XMMATRIX invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
     DirectX::XMStoreFloat4x4(&constants.invViewProjMatrix, invViewProj);
 
+    // Upload constants to constant buffer
+    void* shadingMappedData = nullptr;
+    D3D12_RANGE shadingReadRange = { 0, 0 }; // Not reading, only writing
+    m_shadingConstantBuffer->Map(0, &shadingReadRange, &shadingMappedData);
+    memcpy(shadingMappedData, &constants, sizeof(ShadingConstants));
+    m_shadingConstantBuffer->Unmap(0, nullptr);
+
     // Bind resources
-    // Root parameter 0: Constants (64 DWORDs)
-    commandList->SetComputeRoot32BitConstants(0, sizeof(ShadingConstants) / 4, &constants, 0);
+    // Root parameter 0: Constant buffer
+    commandList->SetComputeRootConstantBufferView(0, m_shadingConstantBuffer->GetGPUVirtualAddress());
 
     // Root parameter 1: t0 - Particle BLAS (SRV)
     if (particleBVH) {
