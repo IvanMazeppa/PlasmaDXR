@@ -18,6 +18,7 @@ class ParticleSystem;
 class ParticleRenderer;
 class RTLightingSystem_RayQuery;
 class RTXDILightingSystem;
+class VolumetricReSTIRSystem;
 class ResourceManager;
 class AdaptiveQualitySystem;
 #ifdef ENABLE_DLSS
@@ -74,10 +75,11 @@ private:
     std::unique_ptr<ParticleRenderer> m_particleRenderer;           // Billboard renderer (stable)
     std::unique_ptr<ParticleRenderer_Gaussian> m_gaussianRenderer;  // Gaussian Splatting (optional)
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
-    std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;  // RTXDI parallel lighting path
-    std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;    // ML-based adaptive quality
+    std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;     // RTXDI parallel lighting path
+    std::unique_ptr<VolumetricReSTIRSystem> m_volumetricReSTIR;     // Volumetric ReSTIR (Phase 1 - experimental)
+    std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
 #ifdef ENABLE_DLSS
-    std::unique_ptr<DLSSSystem> m_dlssSystem;                    // DLSS 4.0 Ray Reconstruction (AI denoising)
+    std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)
 #endif
 
     // Timing
@@ -96,8 +98,9 @@ private:
     };
 
     enum class LightingSystem {
-        MultiLight,     // Multi-light brute force (Phase 3.5, good for <20 lights)
-        RTXDI           // NVIDIA RTXDI with ReSTIR (Phase 4, scales to 100+ lights)
+        MultiLight,        // Multi-light brute force (Phase 3.5, good for <20 lights)
+        RTXDI,             // NVIDIA RTXDI with ReSTIR (Phase 4, scales to 100+ lights)
+        VolumetricReSTIR   // Volumetric ReSTIR path tracing (Phase 1 - experimental)
     };
 
     struct Config {

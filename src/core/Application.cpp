@@ -8,6 +8,7 @@
 #include "../particles/ParticleRenderer_Gaussian.h"
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../lighting/RTXDILightingSystem.h"
+#include "../lighting/VolumetricReSTIRSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
@@ -238,6 +239,27 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("RTXDI Lighting System initialized successfully!");
         LOG_INFO("  Light grid: 30x30x30 cells (27,000 total)");
         LOG_INFO("  Ready for runtime switching (F3 key)");
+    }
+
+    // Initialize Volumetric ReSTIR system (Phase 1 - experimental)
+    LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
+    m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
+    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
+        LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
+        LOG_ERROR("  Volumetric ReSTIR will not be available");
+        m_volumetricReSTIR.reset();
+        // Don't force fallback - user can still use other lighting systems
+        if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
+            LOG_ERROR("  Startup mode was VolumetricReSTIR - falling back to Multi-Light");
+            m_lightingSystem = LightingSystem::MultiLight;
+        }
+    } else {
+        LOG_INFO("Volumetric ReSTIR System initialized successfully!");
+        LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
+                (m_width * m_height * 64 * 2) / (1024.0f * 1024.0f),
+                m_width, m_height);
+        LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
+        LOG_INFO("  Ready for testing (experimental)");
     }
 
     // Initialize blit pipeline (HDR→SDR conversion for Gaussian renderer)
