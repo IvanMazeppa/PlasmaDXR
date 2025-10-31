@@ -301,11 +301,17 @@ float3 ShadeFinalPath(Reservoir R) {
 ```
 
 #### Success Criteria (Phase 1)
+- [x] **COMPLETED 2025-10-31**: Basic infrastructure (reservoirs, buffers, pipeline integration)
+- [x] **COMPLETED 2025-10-31**: DLSS compatibility (writes to correct output texture)
+- [x] **COMPLETED 2025-10-31**: Shader compilation and dispatch working
+- [ ] **IN PROGRESS**: Volume Mip 2 texture population (CRITICAL BLOCKER)
 - [ ] Single-frame rendering (no reuse) produces low-noise image
 - [ ] Quality matches 4 spp baseline (M=4 random walks)
 - [ ] No patchwork artifacts (since no reuse yet)
 - [ ] Performance: 50-100ms @ 1080p
 - [ ] Visual validation: Smooth gradients, no fireflies
+
+**BRANCH**: 0.12.5 (infrastructure complete, awaiting volume texture population)
 
 ---
 

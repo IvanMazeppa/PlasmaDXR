@@ -79,6 +79,21 @@ public:
     void TemporalReuse(ID3D12GraphicsCommandList* commandList, const DirectX::XMFLOAT3& cameraPos);
 
     /**
+     * Populate Volume Mip 2 texture with particle density
+     *
+     * Splats particle density into 64³ voxel grid for piecewise-constant
+     * transmittance (T*). Should be called once per frame before GenerateCandidates.
+     *
+     * @param commandList Command list
+     * @param particleBuffer Particle data buffer
+     * @param particleCount Number of particles
+     */
+    void PopulateVolumeMip2(
+        ID3D12GraphicsCommandList* commandList,
+        ID3D12Resource* particleBuffer,
+        uint32_t particleCount);
+
+    /**
      * Shade the selected paths (final rendering)
      *
      * @param commandList Command list
@@ -180,6 +195,27 @@ private:
         DirectX::XMFLOAT4X4 invViewProjMatrix;
     };
 
+    /**
+     * Constants for volume population
+     */
+    struct VolumePopulationConstants {
+        uint32_t particleCount;
+        uint32_t volumeResolution;        // 64 for Mip 2
+        uint32_t padding0;
+        uint32_t padding1;
+
+        DirectX::XMFLOAT3 worldMin;       // Scene bounds min (-1500, -1500, -1500)
+        float padding2;
+
+        DirectX::XMFLOAT3 worldMax;       // Scene bounds max (+1500, +1500, +1500)
+        float padding3;
+
+        float extinctionScale;            // Scale factor for extinction (default: 0.001)
+        float padding4;
+        float padding5;
+        float padding6;
+    };
+
     // === Resource Creation ===
     bool CreateReservoirBuffers();
     bool CreatePiecewiseConstantVolume();
@@ -220,12 +256,21 @@ private:
     ComPtr<ID3D12Resource> m_volumeMip2;
     D3D12_CPU_DESCRIPTOR_HANDLE m_volumeMip2SRV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_volumeMip2SRV_GPU;  // Pre-computed GPU handle
+    D3D12_CPU_DESCRIPTOR_HANDLE m_volumeMip2UAV;      // For population pass
+    D3D12_GPU_DESCRIPTOR_HANDLE m_volumeMip2UAV_GPU;  // GPU handle for UAV
+
+    // Constant buffer for volume population
+    ComPtr<ID3D12Resource> m_volumePopConstantBuffer;
 
     // Shading pass descriptor table (reservoir SRV + output UAV, contiguous)
     D3D12_CPU_DESCRIPTOR_HANDLE m_shadingTableStart;
     D3D12_GPU_DESCRIPTOR_HANDLE m_shadingTableGPU;
 
     // === Compute Pipelines ===
+
+    // Volume Mip 2 population (particle density splatting)
+    ComPtr<ID3D12PipelineState> m_volumePopPSO;
+    ComPtr<ID3D12RootSignature> m_volumePopRS;
 
     // Phase 1: Path generation and RIS
     ComPtr<ID3D12PipelineState> m_pathGenerationPSO;
@@ -245,4 +290,7 @@ private:
 
     // === Statistics ===
     uint32_t m_frameCount = 0;
+
+    // Volume texture state tracking
+    bool m_volumeFirstFrame = true;  // Track first frame for correct state transitions
 };

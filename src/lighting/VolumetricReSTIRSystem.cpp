@@ -219,7 +219,26 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
 
     // Pre-compute GPU handle to avoid GetGPUHandle() call during rendering
     m_volumeMip2SRV_GPU = m_resources->GetGPUHandle(m_volumeMip2SRV);
-    LOG_INFO("Volume Mip 2 GPU handle: 0x{:016X}", m_volumeMip2SRV_GPU.ptr);
+    LOG_INFO("Volume Mip 2 SRV GPU handle: 0x{:016X}", m_volumeMip2SRV_GPU.ptr);
+
+    // Create UAV for population pass (RWTexture3D<float>)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+    uavDesc.Texture3D.MipSlice = 0;
+    uavDesc.Texture3D.FirstWSlice = 0;
+    uavDesc.Texture3D.WSize = volumeSize;
+
+    m_volumeMip2UAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_volumeMip2.Get(),
+        nullptr,
+        &uavDesc,
+        m_volumeMip2UAV
+    );
+
+    m_volumeMip2UAV_GPU = m_resources->GetGPUHandle(m_volumeMip2UAV);
+    LOG_INFO("Volume Mip 2 UAV GPU handle: 0x{:016X}", m_volumeMip2UAV_GPU.ptr);
 
     const float memoryMB = (volumeSize * volumeSize * volumeSize * 2) / (1024.0f * 1024.0f);
     LOG_INFO("Mip 2 volume created successfully ({:.2f} MB)", memoryMB);
@@ -296,6 +315,24 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     m_shadingConstantBuffer->SetName(L"Shading Constants");
     LOG_INFO("Shading constant buffer created (256 bytes)");
 
+    // Create constant buffer for volume population (256 bytes aligned)
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &cbDesc,  // Same size (256 bytes)
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_volumePopConstantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create volume population constant buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_volumePopConstantBuffer->SetName(L"VolumePopulation Constants");
+    LOG_INFO("Volume population constant buffer created (256 bytes)");
+
     return true;
 }
 
@@ -315,6 +352,80 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
 
     auto d3dDevice = m_device->GetDevice();
     HRESULT hr;
+
+    // ===================================================================
+    // Volume Population Pipeline
+    // ===================================================================
+
+    // Create root signature for volume population
+    {
+        CD3DX12_ROOT_PARAMETER1 rootParams[3];
+
+        // b0: VolumePopulationConstants (constant buffer descriptor)
+        rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // t0: Particle buffer (SRV, structured buffer)
+        rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // u0: Volume texture (UAV, RWTexture3D<float>) - MUST use descriptor table for typed 3D UAV
+        CD3DX12_DESCRIPTOR_RANGE1 uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        rootParams[2].InitAsDescriptorTable(1, &uavRange, D3D12_SHADER_VISIBILITY_ALL);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
+                            D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+
+        hr = D3D12SerializeVersionedRootSignature(&rootSigDesc, &signature, &error);
+        if (FAILED(hr)) {
+            if (error) {
+                LOG_ERROR("Volume population root signature serialization failed: {}",
+                         static_cast<const char*>(error->GetBufferPointer()));
+            }
+            return false;
+        }
+
+        hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                           IID_PPV_ARGS(&m_volumePopRS));
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create volume population root signature: 0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        m_volumePopRS->SetName(L"VolumetricReSTIR VolumePopulation RS");
+        LOG_INFO("Volume population root signature created");
+    }
+
+    // Load volume population shader and create PSO
+    {
+        std::ifstream shaderFile("shaders/volumetric_restir/populate_volume_mip2.dxil", std::ios::binary);
+        if (!shaderFile.is_open()) {
+            LOG_ERROR("Failed to load populate_volume_mip2.dxil");
+            LOG_ERROR("  Shader must be compiled first!");
+            return false;
+        }
+
+        std::vector<uint8_t> shaderBytecode((std::istreambuf_iterator<char>(shaderFile)),
+                                           std::istreambuf_iterator<char>());
+        shaderFile.close();
+        LOG_INFO("Loaded volume population shader: {} bytes", shaderBytecode.size());
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = m_volumePopRS.Get();
+        psoDesc.CS.pShaderBytecode = shaderBytecode.data();
+        psoDesc.CS.BytecodeLength = shaderBytecode.size();
+
+        hr = d3dDevice->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_volumePopPSO));
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create volume population PSO: 0x{:08X}", static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        m_volumePopPSO->SetName(L"VolumetricReSTIR VolumePopulation PSO");
+        LOG_INFO("Volume population PSO created");
+    }
 
     // ===================================================================
     // Path Generation Pipeline
@@ -630,6 +741,152 @@ void VolumetricReSTIRSystem::SpatialReuse(ID3D12GraphicsCommandList* commandList
  */
 void VolumetricReSTIRSystem::TemporalReuse(ID3D12GraphicsCommandList* commandList, const DirectX::XMFLOAT3& cameraPos) {
     // Phase 3 implementation pending
+}
+
+/**
+ * Populate Volume Mip 2 texture with particle density
+ *
+ * Splats particle density into 64³ voxel grid for piecewise-constant
+ * transmittance (T*). Should be called once per frame before GenerateCandidates.
+ *
+ * Algorithm:
+ * 1. Clear volume texture to zeros
+ * 2. For each particle, compute world-space AABB
+ * 3. Map AABB to voxel space
+ * 4. Dispatch compute shader to splat density
+ */
+void VolumetricReSTIRSystem::PopulateVolumeMip2(
+    ID3D12GraphicsCommandList* commandList,
+    ID3D12Resource* particleBuffer,
+    uint32_t particleCount)
+{
+    LOG_INFO("PopulateVolumeMip2: ENTRY (firstFrame={})", m_volumeFirstFrame);
+
+    // TODO: Re-enable after fixing PIX includes
+    // PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, "PopulateVolumeMip2");
+
+    // Transition volume texture to UAV state for writing
+    // First frame: texture created in UNORDERED_ACCESS, no transition needed
+    // Subsequent frames: transition from SRV (after previous frame read) to UAV
+    if (!m_volumeFirstFrame) {
+        LOG_INFO("PopulateVolumeMip2: Transitioning volume SRV->UAV");
+        D3D12_RESOURCE_BARRIER barrier = {};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = m_volumeMip2.Get();
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        commandList->ResourceBarrier(1, &barrier);
+        LOG_INFO("PopulateVolumeMip2: Transition SRV->UAV complete");
+    } else {
+        LOG_INFO("PopulateVolumeMip2: First frame - skipping SRV->UAV transition");
+    }
+
+    // Clear volume texture to zeros
+    // CRITICAL: Must clear before splatting to avoid reading uninitialized data
+    LOG_INFO("PopulateVolumeMip2: About to clear volume texture");
+    FLOAT clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    ID3D12DescriptorHeap* heapForClear = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    commandList->ClearUnorderedAccessViewFloat(
+        m_volumeMip2UAV_GPU,  // GPU descriptor handle
+        m_volumeMip2UAV,      // CPU descriptor handle
+        m_volumeMip2.Get(),   // Resource
+        clearColor,
+        0,
+        nullptr
+    );
+    LOG_INFO("PopulateVolumeMip2: Clear complete");
+
+    // Set descriptor heaps (required for descriptor table bindings)
+    LOG_INFO("PopulateVolumeMip2: Setting descriptor heaps");
+    ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
+    commandList->SetDescriptorHeaps(1, heaps);
+
+    // Set pipeline state and root signature
+    LOG_INFO("PopulateVolumeMip2: Setting PSO and root signature");
+    commandList->SetPipelineState(m_volumePopPSO.Get());
+    commandList->SetComputeRootSignature(m_volumePopRS.Get());
+    LOG_INFO("PopulateVolumeMip2: PSO and RS set");
+
+    // Upload constants
+    VolumePopulationConstants constants = {};
+    constants.particleCount = particleCount;
+    constants.volumeResolution = 64;  // Mip 2 resolution
+    constants.padding0 = 0;
+    constants.padding1 = 0;
+
+    // Scene bounds (matching Application.cpp RTXDI grid: -1500 to +1500)
+    constants.worldMin = DirectX::XMFLOAT3(-1500.0f, -1500.0f, -1500.0f);
+    constants.padding2 = 0.0f;
+    constants.worldMax = DirectX::XMFLOAT3(1500.0f, 1500.0f, 1500.0f);
+    constants.padding3 = 0.0f;
+
+    // Extinction scale (0.001 = very low extinction, mostly transparent medium)
+    constants.extinctionScale = 0.001f;
+    constants.padding4 = 0.0f;
+    constants.padding5 = 0.0f;
+    constants.padding6 = 0.0f;
+
+    // Map constant buffer and upload
+    void* mappedData = nullptr;
+    m_volumePopConstantBuffer->Map(0, nullptr, &mappedData);
+    memcpy(mappedData, &constants, sizeof(VolumePopulationConstants));
+    m_volumePopConstantBuffer->Unmap(0, nullptr);
+
+    // Bind resources
+    LOG_INFO("PopulateVolumeMip2: Binding resources");
+    // b0: Constant buffer
+    commandList->SetComputeRootConstantBufferView(0, m_volumePopConstantBuffer->GetGPUVirtualAddress());
+
+    // t0: Particle buffer (SRV)
+    commandList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
+
+    // u0: Volume texture (UAV) - bind as descriptor table
+    commandList->SetComputeRootDescriptorTable(2, m_volumeMip2UAV_GPU);
+    LOG_INFO("PopulateVolumeMip2: Resources bound");
+
+    // Dispatch compute shader (1 thread per particle, 64 threads per group)
+    uint32_t dispatchX = (particleCount + 63) / 64;
+    LOG_INFO("PopulateVolumeMip2: About to dispatch {} thread groups", dispatchX);
+    commandList->Dispatch(dispatchX, 1, 1);
+    LOG_INFO("PopulateVolumeMip2: Dispatch complete");
+
+    static bool loggedDispatch = false;
+    if (!loggedDispatch) {
+        LOG_INFO("VolumetricReSTIR PopulateVolumeMip2 dispatch: {} thread groups ({} particles, {} threads total)",
+                 dispatchX, particleCount, dispatchX * 64);
+        LOG_INFO("Volume Mip 2 resolution: 64³ (262,144 voxels)");
+        LOG_INFO("Scene bounds: [{}, {}, {}] to [{}, {}, {}]",
+                 constants.worldMin.x, constants.worldMin.y, constants.worldMin.z,
+                 constants.worldMax.x, constants.worldMax.y, constants.worldMax.z);
+        loggedDispatch = true;
+    }
+
+    // UAV barrier to ensure writes complete before reading in path generation
+    LOG_INFO("PopulateVolumeMip2: Adding UAV barrier");
+    D3D12_RESOURCE_BARRIER uavBarrier = {};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarrier.UAV.pResource = m_volumeMip2.Get();
+    commandList->ResourceBarrier(1, &uavBarrier);
+    LOG_INFO("PopulateVolumeMip2: UAV barrier complete");
+
+    // Transition volume texture back to SRV state for reading in shaders
+    LOG_INFO("PopulateVolumeMip2: Transitioning volume UAV->SRV");
+    D3D12_RESOURCE_BARRIER srvBarrier = {};
+    srvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    srvBarrier.Transition.pResource = m_volumeMip2.Get();
+    srvBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    srvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    srvBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &srvBarrier);
+    LOG_INFO("PopulateVolumeMip2: Transition UAV->SRV complete");
+
+    // Mark that first frame is done
+    m_volumeFirstFrame = false;
+    LOG_INFO("PopulateVolumeMip2: EXIT (firstFrame flag cleared)");
+
+    // TODO: Re-enable after fixing PIX includes
+    // PIXEndEvent(commandList);
 }
 
 /**

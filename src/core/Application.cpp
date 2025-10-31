@@ -838,6 +838,13 @@ void Application::Render() {
                     10000.0f  // Far plane
                 );
 
+                // Populate Volume Mip 2 with particle density (T* transmittance)
+                m_volumetricReSTIR->PopulateVolumeMip2(
+                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                    m_particleSystem->GetParticleBuffer(),
+                    m_config.particleCount
+                );
+
                 // Generate path candidates (Phase 1: RIS only)
                 m_volumetricReSTIR->GenerateCandidates(
                     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),

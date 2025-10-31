@@ -260,6 +260,18 @@ bool GenerateCandidatePath(
 
     const float maxRayDistance = 3000.0; // Maximum ray travel distance
 
+    // PHASE 1 STUB: Generate empty paths to test infrastructure
+    // TODO: Implement full random walk with volume sampling
+    // For now, just create zero-length paths to avoid GPU hangs
+    pathLength = 0;
+    flags = 0;
+
+    // Return false (no valid path) - allows pipeline to run without GPU hang
+    // This will result in black output, which is expected for Phase 1 stub
+    return false;
+
+    // DISABLED CODE BELOW - will be enabled in Phase 2 after volume population is validated
+    #if 0
     for (uint bounce = 0; bounce < g_maxBounces; bounce++) {
         // Sample distance along ray using regular tracking
         float sampledDist;
@@ -299,6 +311,7 @@ bool GenerateCandidatePath(
             break;
         }
     }
+    #endif
 
     // Mark as scattering path if we have at least one bounce
     if (pathLength > 0) {
