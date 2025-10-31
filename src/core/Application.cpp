@@ -295,23 +295,13 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // IMPORTANT: Initialize AFTER DLSS to get correct render resolution
     LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
 
-    // Determine render resolution (may differ from window size due to DLSS)
-    uint32_t renderWidth = m_width;
-    uint32_t renderHeight = m_height;
-
-    if (m_gaussianRenderer) {
-        // Gaussian renderer already adjusted for DLSS (if enabled)
-        // Use its dimensions for VolumetricReSTIR buffers
-        renderWidth = m_gaussianRenderer->GetRenderWidth();
-        renderHeight = m_gaussianRenderer->GetRenderHeight();
-        if (renderWidth != m_width || renderHeight != m_height) {
-            LOG_INFO("DLSS active - VolumetricReSTIR using render resolution: {}x{}",
-                     renderWidth, renderHeight);
-        }
-    }
+    // IMPORTANT: VolumetricReSTIR uses NATIVE resolution (not DLSS render resolution)
+    // This is because VolumetricReSTIR bypasses the Gaussian renderer (which handles DLSS)
+    // and writes directly to output, which must match backbuffer dimensions
+    LOG_INFO("Initializing VolumetricReSTIR at native resolution (DLSS bypassed): {}x{}", m_width, m_height);
 
     m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
-    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), renderWidth, renderHeight)) {
+    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
         LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
         LOG_ERROR("  Volumetric ReSTIR will not be available");
         m_volumetricReSTIR.reset();
@@ -323,10 +313,25 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     } else {
         LOG_INFO("Volumetric ReSTIR System initialized successfully!");
         LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
-                (renderWidth * renderHeight * 64 * 2) / (1024.0f * 1024.0f),
-                renderWidth, renderHeight);
+                (m_width * m_height * 64 * 2) / (1024.0f * 1024.0f),
+                m_width, m_height);
         LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
         LOG_INFO("  Ready for testing (experimental)");
+
+        // Pre-allocate descriptor for clear operation (prevents descriptor heap exhaustion)
+        // Use final output texture (DLSS upscaled if enabled, otherwise render-res)
+        m_volumetricReSTIRClearUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+        uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        uavDesc.Texture2D.MipSlice = 0;
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_gaussianRenderer->GetFinalOutputTexture(),  // DLSS upscaled or render-res
+            nullptr,
+            &uavDesc,
+            m_volumetricReSTIRClearUAV
+        );
+        LOG_INFO("  Pre-allocated clear UAV descriptor (final output texture)");
     }
 
     // Initialize ImGui
@@ -845,11 +850,16 @@ void Application::Render() {
                     m_frameCount  // Frame index for RNG seed
                 );
 
+                // Get final output texture (DLSS upscaled if enabled, otherwise render-res)
+                ID3D12Resource* finalOutputTexture = m_gaussianRenderer->GetFinalOutputTexture();
+                D3D12_GPU_DESCRIPTOR_HANDLE finalOutputUAV = m_gaussianRenderer->GetFinalOutputUAV();
+
                 // Shade selected paths to output texture
+                // Now writes to correct texture (DLSS upscaled if enabled)
                 m_volumetricReSTIR->ShadeSelectedPaths(
                     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                    m_gaussianRenderer->GetOutputTexture(),  // Write directly to Gaussian output UAV
-                    m_gaussianRenderer->GetOutputUAV(),      // GPU descriptor handle for UAV
+                    finalOutputTexture,  // Write to DLSS upscaled texture or render-res
+                    finalOutputUAV,      // GPU descriptor handle for UAV
                     m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,  // Particle TLAS
                     m_particleSystem->GetParticleBuffer(),
                     m_config.particleCount,
@@ -871,9 +881,15 @@ void Application::Render() {
             // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
             D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
 
-            // Transition Gaussian output (HDR) from UAV to SRV for sampling
+            // Transition output texture (HDR) from UAV to SRV for sampling
+            // For VolumetricReSTIR: use final output (DLSS upscaled if enabled)
+            // For Gaussian: use GetOutputTexture() (DLSS handles its own transitions)
+            ID3D12Resource* blitSourceTexture = (m_lightingSystem == LightingSystem::VolumetricReSTIR)
+                ? m_gaussianRenderer->GetFinalOutputTexture()
+                : m_gaussianRenderer->GetOutputTexture();
+
             blitBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            blitBarriers[0].Transition.pResource = m_gaussianRenderer->GetOutputTexture();
+            blitBarriers[0].Transition.pResource = blitSourceTexture;
             blitBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             blitBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             blitBarriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -899,16 +915,46 @@ void Application::Render() {
             cmdList->SetDescriptorHeaps(1, descriptorHeaps);
 
             // Bind HDR texture SRV (t0)
-            cmdList->SetGraphicsRootDescriptorTable(0, m_gaussianRenderer->GetOutputSRV());
+            D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = m_gaussianRenderer->GetOutputSRV();
+
+            // DEBUG: Log SRV binding
+            static bool loggedSRV = false;
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedSRV) {
+                LOG_INFO("VolumetricReSTIR: Binding output SRV 0x{:016X} to blit shader", srvHandle.ptr);
+                loggedSRV = true;
+            }
+
+            cmdList->SetGraphicsRootDescriptorTable(0, srvHandle);
 
             // Draw fullscreen triangle
             cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+            // DEBUG: Log blit draw call
+            static bool loggedDraw = false;
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedDraw) {
+                LOG_INFO("VolumetricReSTIR: About to DrawInstanced(3, 1, 0, 0) for blit");
+                loggedDraw = true;
+            }
+
             cmdList->DrawInstanced(3, 1, 0, 0);
+
+            static bool loggedDrawDone = false;
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedDrawDone) {
+                LOG_INFO("VolumetricReSTIR: DrawInstanced completed");
+                loggedDrawDone = true;
+            }
 
             // Transition Gaussian output back to UAV for next frame
             blitBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
             blitBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             cmdList->ResourceBarrier(1, &blitBarriers[0]);
+
+            // DEBUG: Log completion of blit pass
+            static bool loggedBlitComplete = false;
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedBlitComplete) {
+                LOG_INFO("VolumetricReSTIR: HDR->SDR blit pass completed successfully");
+                loggedBlitComplete = true;
+            }
 
         } else if (m_particleRenderer) {
             // Billboard path (current/stable)
@@ -948,16 +994,55 @@ void Application::Render() {
 
     // Close and execute
     cmdList->Close();
+
+    // DEBUG: Log before ExecuteCommandList
+    static bool loggedExecute = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedExecute) {
+        LOG_INFO("VolumetricReSTIR: About to ExecuteCommandList");
+        loggedExecute = true;
+    }
+
     m_device->ExecuteCommandList();
 
+    // DEBUG: Log after ExecuteCommandList
+    static bool loggedExecuteDone = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedExecuteDone) {
+        LOG_INFO("VolumetricReSTIR: ExecuteCommandList completed");
+        loggedExecuteDone = true;
+    }
+
     // Present
+    static bool loggedPresent = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedPresent) {
+        LOG_INFO("VolumetricReSTIR: About to Present");
+        loggedPresent = true;
+    }
+
     m_swapChain->Present(0);
+
+    static bool loggedPresentDone = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedPresentDone) {
+        LOG_INFO("VolumetricReSTIR: Present completed");
+        loggedPresentDone = true;
+    }
 
     // Reset upload heap for next frame (MUST be called before WaitForGPU)
     m_resources->ResetUploadHeap();
 
     // Wait for frame completion (simple sync for now)
+    static bool loggedWait = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedWait) {
+        LOG_INFO("VolumetricReSTIR: About to WaitForGPU");
+        loggedWait = true;
+    }
+
     m_device->WaitForGPU();
+
+    static bool loggedWaitDone = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedWaitDone) {
+        LOG_INFO("VolumetricReSTIR: WaitForGPU completed - frame finished!");
+        loggedWaitDone = true;
+    }
 
     m_frameCount++;
 

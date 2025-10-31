@@ -534,26 +534,17 @@ void VolumetricReSTIRSystem::GenerateCandidates(
         return;
     }
 
-    LOG_INFO("VolumetricReSTIR: GenerateCandidates starting...");
-    LOG_INFO("  Resolution: {}x{}", m_width, m_height);
-    LOG_INFO("  particleBVH: 0x{:016X}", reinterpret_cast<uint64_t>(particleBVH));
-    LOG_INFO("  particleBuffer: 0x{:016X}", reinterpret_cast<uint64_t>(particleBuffer));
-
     // PIX event marker
     // TODO: Re-enable after fixing PIX includes
     // PIXBeginEvent(commandList, PIX_COLOR_INDEX(10), "VolumetricReSTIR Path Generation");
 
-    LOG_INFO("VolumetricReSTIR: Setting pipeline state...");
-
     // CRITICAL: Set descriptor heaps (required for descriptor table bindings)
     ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
     commandList->SetDescriptorHeaps(1, heaps);
-    LOG_INFO("VolumetricReSTIR: Descriptor heaps set");
 
     // Set pipeline state
     commandList->SetPipelineState(m_pathGenerationPSO.Get());
     commandList->SetComputeRootSignature(m_pathGenerationRS.Get());
-    LOG_INFO("VolumetricReSTIR: Pipeline state set");
 
     // Prepare constants
     PathGenerationConstants constants = {};
@@ -574,41 +565,32 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     DirectX::XMMATRIX invViewProj = DirectX::XMMatrixInverse(nullptr, viewProj);
     DirectX::XMStoreFloat4x4(&constants.invViewProjMatrix, invViewProj);
 
-    LOG_INFO("VolumetricReSTIR: Uploading constants to constant buffer...");
     // Upload constants to constant buffer
     void* mappedData = nullptr;
     D3D12_RANGE readRange = { 0, 0 }; // Not reading, only writing
     m_pathGenConstantBuffer->Map(0, &readRange, &mappedData);
     memcpy(mappedData, &constants, sizeof(PathGenerationConstants));
     m_pathGenConstantBuffer->Unmap(0, nullptr);
-    LOG_INFO("VolumetricReSTIR: Constants uploaded");
 
-    LOG_INFO("VolumetricReSTIR: Binding resources...");
     // Bind resources
     // Root parameter 0: Constant buffer
     commandList->SetComputeRootConstantBufferView(0, m_pathGenConstantBuffer->GetGPUVirtualAddress());
 
     // Root parameter 1: t0 - Particle BLAS (SRV)
     commandList->SetComputeRootShaderResourceView(1, particleBVH->GetGPUVirtualAddress());
-    LOG_INFO("VolumetricReSTIR: Bound particle BLAS");
 
     // Root parameter 2: t1 - Particle buffer (SRV)
     commandList->SetComputeRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
-    LOG_INFO("VolumetricReSTIR: Bound particle buffer");
 
     // Root parameter 3: t2 - Volume Mip 2 (descriptor table)
-    LOG_INFO("VolumetricReSTIR: Binding volume Mip 2 (GPU handle: 0x{:016X})...", m_volumeMip2SRV_GPU.ptr);
     commandList->SetComputeRootDescriptorTable(3, m_volumeMip2SRV_GPU);
-    LOG_INFO("VolumetricReSTIR: Bound volume Mip 2");
 
     // Root parameter 4: u0 - Reservoir buffer (UAV)
     commandList->SetComputeRootUnorderedAccessView(4, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
-    LOG_INFO("VolumetricReSTIR: Bound reservoir buffer");
 
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
     uint32_t dispatchY = (m_height + 7) / 8;
-    LOG_INFO("VolumetricReSTIR: Dispatching {}x{} thread groups", dispatchX, dispatchY);
 
     // Log first dispatch for debugging
     static bool loggedFirstDispatch = false;
@@ -675,6 +657,13 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
         return;
     }
 
+    // Log first call to verify it's being called
+    static bool loggedFirstCall = false;
+    if (!loggedFirstCall) {
+        LOG_INFO("VolumetricReSTIR: ShadeSelectedPaths called for first time");
+        loggedFirstCall = true;
+    }
+
     // PIX event marker
     // TODO: Re-enable after fixing PIX includes
     // PIXBeginEvent(commandList, PIX_COLOR_INDEX(11), "VolumetricReSTIR Shading");
@@ -687,6 +676,10 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     barrierToSRV.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     barrierToSRV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     commandList->ResourceBarrier(1, &barrierToSRV);
+
+    // CRITICAL: Set descriptor heaps (required for descriptor table bindings)
+    ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
+    commandList->SetDescriptorHeaps(1, heaps);
 
     // Set pipeline state
     commandList->SetPipelineState(m_shadingPSO.Get());
@@ -762,16 +755,33 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
     uint32_t dispatchY = (m_height + 7) / 8;
+
+    // DEBUG: Log dispatch parameters on first call
+    static bool loggedDispatch = false;
+    if (!loggedDispatch) {
+        LOG_INFO("VolumetricReSTIR ShadeSelectedPaths dispatch: {}x{} thread groups ({}x{} pixels, {}x{} threads total)",
+                 dispatchX, dispatchY, m_width, m_height, dispatchX * 8, dispatchY * 8);
+        LOG_INFO("Output texture resource: 0x{:016X}", reinterpret_cast<uintptr_t>(outputTexture));
+        loggedDispatch = true;
+    }
+
     commandList->Dispatch(dispatchX, dispatchY, 1);
 
-    // Transition reservoir buffer back to UAV state
-    D3D12_RESOURCE_BARRIER barrierToUAV = {};
-    barrierToUAV.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrierToUAV.Transition.pResource = m_reservoirBuffer[m_currentBufferIndex].Get();
-    barrierToUAV.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    barrierToUAV.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    barrierToUAV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    commandList->ResourceBarrier(1, &barrierToUAV);
+    // CRITICAL: UAV barrier to ensure output texture writes are visible
+    D3D12_RESOURCE_BARRIER barriers[2] = {};
+
+    // Barrier 1: UAV barrier for output texture (ensure writes complete)
+    barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barriers[0].UAV.pResource = outputTexture;
+
+    // Barrier 2: Transition reservoir buffer back to UAV state
+    barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barriers[1].Transition.pResource = m_reservoirBuffer[m_currentBufferIndex].Get();
+    barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+    commandList->ResourceBarrier(2, barriers);
 
     // TODO: Re-enable after fixing PIX includes
     // PIXEndEvent(commandList);

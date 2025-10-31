@@ -1111,9 +1111,25 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     );
     m_upscaledOutputSRVGPU = m_resources->GetGPUHandle(m_upscaledOutputSRV);
 
+    // Create UAV for VolumetricReSTIR to write directly (bypasses DLSS)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    uavDesc.Texture2D.MipSlice = 0;
+
+    m_upscaledOutputUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_upscaledOutputTexture.Get(),
+        nullptr,
+        &uavDesc,
+        m_upscaledOutputUAV
+    );
+    m_upscaledOutputUAVGPU = m_resources->GetGPUHandle(m_upscaledOutputUAV);
+
     LOG_INFO("DLSS: Upscaled output texture created successfully");
     LOG_INFO("  Resolution: {}x{}", m_outputWidth, m_outputHeight);
     LOG_INFO("  SRV GPU handle: 0x{:016X}", m_upscaledOutputSRVGPU.ptr);
+    LOG_INFO("  UAV GPU handle: 0x{:016X} (for VolumetricReSTIR)", m_upscaledOutputUAVGPU.ptr);
 
     // Recreate motion vector buffer at render resolution
     LOG_INFO("DLSS: Recreating motion vector buffer at render resolution...");

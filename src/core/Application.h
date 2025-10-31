@@ -77,6 +77,7 @@ private:
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;     // RTXDI parallel lighting path
     std::unique_ptr<VolumetricReSTIRSystem> m_volumetricReSTIR;     // Volumetric ReSTIR (Phase 1 - experimental)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_volumetricReSTIRClearUAV = {};    // Pre-allocated descriptor for clear operation
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)

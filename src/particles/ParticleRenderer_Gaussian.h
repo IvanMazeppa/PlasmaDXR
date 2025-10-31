@@ -156,6 +156,26 @@ public:
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputUAV() const { return m_outputUAVGPU; }
 
+    // Get the actual output texture and UAV that should be written to
+    // (DLSS upscaled texture if DLSS is enabled, otherwise render-res texture)
+    ID3D12Resource* GetFinalOutputTexture() const {
+#ifdef ENABLE_DLSS
+        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputTexture) {
+            return m_upscaledOutputTexture.Get();
+        }
+#endif
+        return m_outputTexture.Get();
+    }
+
+    D3D12_GPU_DESCRIPTOR_HANDLE GetFinalOutputUAV() const {
+#ifdef ENABLE_DLSS
+        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputUAVGPU.ptr != 0) {
+            return m_upscaledOutputUAVGPU;
+        }
+#endif
+        return m_outputUAVGPU;
+    }
+
 #ifdef ENABLE_DLSS
     // Set DLSS system reference and calculate optimal render resolution
     void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height, int qualityMode = 1);
@@ -245,6 +265,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_upscaledOutputTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE m_upscaledOutputSRV;
     D3D12_GPU_DESCRIPTOR_HANDLE m_upscaledOutputSRVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_upscaledOutputUAV;      // For VolumetricReSTIR to write directly
+    D3D12_GPU_DESCRIPTOR_HANDLE m_upscaledOutputUAVGPU;  // GPU handle for UAV
 
     // Depth buffer for DLSS (R32_FLOAT, optional for SR)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthBuffer;
