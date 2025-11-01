@@ -143,7 +143,7 @@ float3 PCGRandomDirection(inout PCGState rng) {
 bool SampleDistanceRegular(
     float3 origin,
     float3 direction,
-    Texture3D<float> volumeMip2,
+    Texture3D<uint> volumeMip2,  // Changed from float - stored as uint for atomics
     SamplerState volumeSampler,
     float maxDistance,
     inout PCGState rng,
@@ -171,7 +171,13 @@ bool SampleDistanceRegular(
         }
 
         // Sample transmittance from Mip 2 (coarse grid, cheap lookup)
-        float extinction = 1.0 - volumeMip2.SampleLevel(volumeSampler, volumeUVW, 0);
+        // Volume stored as UINT for atomic operations - use Load() instead of SampleLevel()
+        // Convert UVW [0,1] to voxel coordinates [0, 63]
+        int3 voxelCoords = int3(volumeUVW * 64.0);
+        voxelCoords = clamp(voxelCoords, int3(0, 0, 0), int3(63, 63, 63));
+
+        uint extinctionUint = volumeMip2.Load(int4(voxelCoords, 0));
+        float extinction = 1.0 - asfloat(extinctionUint);
         extinction = max(extinction, 0.001); // Prevent division by zero
 
         // Sample distance within this voxel using exponential distribution

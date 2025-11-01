@@ -60,7 +60,8 @@ struct Particle {
 StructuredBuffer<Particle> g_particles : register(t1);
 
 // Piecewise-constant transmittance volume (Mip 2, coarse grid)
-Texture3D<float> g_volumeMip2 : register(t2);
+// IMPORTANT: Stored as UINT for atomic operations, convert to float with asfloat()
+Texture3D<uint> g_volumeMip2 : register(t2);
 SamplerState g_volumeSampler : register(s0);
 
 // Output: reservoir buffer (RWStructuredBuffer)

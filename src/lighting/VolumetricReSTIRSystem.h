@@ -141,6 +141,12 @@ public:
     uint32_t GetSpatialNeighbors() const { return m_spatialNeighbors; }
     float GetTemporalClampFactor() const { return m_temporalClampFactor; }
 
+    /**
+     * Read and log diagnostic counters from GPU
+     * Must be called after GPU has finished executing PopulateVolumeMip2
+     */
+    void ReadDiagnosticCounters();
+
 private:
     // === Phase 1: Data Structures ===
 
@@ -261,6 +267,13 @@ private:
 
     // Constant buffer for volume population
     ComPtr<ID3D12Resource> m_volumePopConstantBuffer;
+
+    // Diagnostic counter buffer for debugging PopulateVolumeMip2
+    // Counters: [0]=total threads, [1]=early returns, [2]=total voxel writes, [3]=max voxels per particle
+    ComPtr<ID3D12Resource> m_diagnosticCounterBuffer;       // GPU buffer (UAV)
+    ComPtr<ID3D12Resource> m_diagnosticCounterReadback;     // CPU readback buffer
+    D3D12_CPU_DESCRIPTOR_HANDLE m_diagnosticCounterUAV;     // UAV descriptor
+    D3D12_GPU_DESCRIPTOR_HANDLE m_diagnosticCounterUAV_GPU; // GPU handle for UAV
 
     // Shading pass descriptor table (reservoir SRV + output UAV, contiguous)
     D3D12_CPU_DESCRIPTOR_HANDLE m_shadingTableStart;

@@ -850,7 +850,8 @@ void Application::Render() {
                 );
 
                 // Populate Volume Mip 2 with particle density (T* transmittance)
-                // TEMPORARILY DISABLED TO TEST IF THIS IS CAUSING 2045 PARTICLE CRASH
+                // TEMPORARY DISABLE: Debugging shader execution issue - shader dispatches but writes nothing
+                // TODO: Fix root signature mismatch causing shader to not execute
                 // m_volumetricReSTIR->PopulateVolumeMip2(
                 //     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                 //     m_particleSystem->GetParticleBuffer(),
@@ -1061,6 +1062,14 @@ void Application::Render() {
     if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedWaitDone) {
         LOG_INFO("VolumetricReSTIR: WaitForGPU completed - frame finished!");
         loggedWaitDone = true;
+    }
+
+    // Read diagnostic counters on frame 1 for debugging (GPU work is guaranteed complete)
+    static bool readDiagnostics = false;
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !readDiagnostics) {
+        m_volumetricReSTIR->ReadDiagnosticCounters();
+        readDiagnostics = true;
+        LOG_INFO("Diagnostic counters read after first frame");
     }
 
     m_frameCount++;

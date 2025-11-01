@@ -158,9 +158,13 @@ bool VolumetricReSTIRSystem::CreateReservoirBuffers() {
  *
  * This is a 3D texture storing approximate transmittance for candidate generation.
  * Resolution: Typically 64×64×64 or 128×128×128
- * Format: R16_FLOAT (sufficient for [0,1] transmittance values)
+ * Format: R32_UINT (for atomic operations - prevents race conditions)
  *
- * Memory: 64³ × 2 bytes = 512 KB
+ * Memory: 64³ × 4 bytes = 1 MB
+ *
+ * IMPORTANT: Changed from R16_FLOAT to R32_UINT to fix GPU hang at >2044 particles.
+ * Multiple threads write to same voxel → race condition → hang at 2048 thread boundary.
+ * InterlockedMax in shader requires UINT format for atomic operations.
  */
 bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     // Mip 2 resolution (coarse grid for cheap T* lookups)
@@ -176,7 +180,7 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     volumeDesc.Height = volumeSize;
     volumeDesc.DepthOrArraySize = volumeSize;
     volumeDesc.MipLevels = 1;
-    volumeDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    volumeDesc.Format = DXGI_FORMAT_R32_UINT;  // Changed from R16_FLOAT for atomic operations
     volumeDesc.SampleDesc.Count = 1;
     volumeDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     volumeDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -202,9 +206,9 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
 
     m_volumeMip2->SetName(L"VolumetricReSTIR_VolumeMip2");
 
-    // Create SRV (Texture3D<float>)
+    // Create SRV (Texture3D<uint> - shader will convert back to float using asfloat)
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    srvDesc.Format = DXGI_FORMAT_R32_UINT;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture3D.MipLevels = 1;
@@ -221,9 +225,9 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     m_volumeMip2SRV_GPU = m_resources->GetGPUHandle(m_volumeMip2SRV);
     LOG_INFO("Volume Mip 2 SRV GPU handle: 0x{:016X}", m_volumeMip2SRV_GPU.ptr);
 
-    // Create UAV for population pass (RWTexture3D<float>)
+    // Create UAV for population pass (RWTexture3D<uint> for atomic operations)
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-    uavDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    uavDesc.Format = DXGI_FORMAT_R32_UINT;
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
     uavDesc.Texture3D.MipSlice = 0;
     uavDesc.Texture3D.FirstWSlice = 0;
@@ -240,7 +244,7 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     m_volumeMip2UAV_GPU = m_resources->GetGPUHandle(m_volumeMip2UAV);
     LOG_INFO("Volume Mip 2 UAV GPU handle: 0x{:016X}", m_volumeMip2UAV_GPU.ptr);
 
-    const float memoryMB = (volumeSize * volumeSize * volumeSize * 2) / (1024.0f * 1024.0f);
+    const float memoryMB = (volumeSize * volumeSize * volumeSize * 4) / (1024.0f * 1024.0f);  // 4 bytes per voxel (R32_UINT)
     LOG_INFO("Mip 2 volume created successfully ({:.2f} MB)", memoryMB);
 
     // Allocate descriptor table for shading pass (2 contiguous descriptors)
@@ -333,6 +337,87 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     m_volumePopConstantBuffer->SetName(L"VolumePopulation Constants");
     LOG_INFO("Volume population constant buffer created (256 bytes)");
 
+    // ========== Create Diagnostic Counter Buffer ==========
+    // 4 uint32 counters: [0]=total threads, [1]=early returns, [2]=total voxel writes, [3]=max voxels per particle
+    const uint32_t diagnosticCounterSize = 4 * sizeof(uint32_t);
+
+    D3D12_RESOURCE_DESC diagnosticDesc = {};
+    diagnosticDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    diagnosticDesc.Width = diagnosticCounterSize;
+    diagnosticDesc.Height = 1;
+    diagnosticDesc.DepthOrArraySize = 1;
+    diagnosticDesc.MipLevels = 1;
+    diagnosticDesc.Format = DXGI_FORMAT_UNKNOWN;
+    diagnosticDesc.SampleDesc.Count = 1;
+    diagnosticDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    diagnosticDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    D3D12_HEAP_PROPERTIES diagnosticHeapProps = {};
+    diagnosticHeapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    // Create GPU buffer
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &diagnosticHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &diagnosticDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_diagnosticCounterBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create diagnostic counter buffer: HRESULT 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_diagnosticCounterBuffer->SetName(L"VolumetricReSTIR_DiagnosticCounters");
+
+    // Create UAV for atomic operations
+    // Use RAW buffer format (ByteAddressBuffer equivalent) for RWBuffer<uint> in shader
+    D3D12_UNORDERED_ACCESS_VIEW_DESC diagnosticUAVDesc = {};
+    diagnosticUAVDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    diagnosticUAVDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+    diagnosticUAVDesc.Buffer.FirstElement = 0;
+    diagnosticUAVDesc.Buffer.NumElements = 4;
+    diagnosticUAVDesc.Buffer.StructureByteStride = 0;
+    diagnosticUAVDesc.Buffer.CounterOffsetInBytes = 0;
+    diagnosticUAVDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+
+    m_diagnosticCounterUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_diagnosticCounterBuffer.Get(),
+        nullptr,
+        &diagnosticUAVDesc,
+        m_diagnosticCounterUAV
+    );
+
+    m_diagnosticCounterUAV_GPU = m_resources->GetGPUHandle(m_diagnosticCounterUAV);
+
+    // Create readback buffer (for CPU to read GPU counters)
+    D3D12_HEAP_PROPERTIES readbackHeapProps = {};
+    readbackHeapProps.Type = D3D12_HEAP_TYPE_READBACK;
+
+    D3D12_RESOURCE_DESC readbackDesc = diagnosticDesc;
+    readbackDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &readbackHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&m_diagnosticCounterReadback)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create diagnostic counter readback buffer: HRESULT 0x{:08X}", static_cast<uint32_t>(hr));
+        return false;
+    }
+
+    m_diagnosticCounterReadback->SetName(L"VolumetricReSTIR_DiagnosticCounters_Readback");
+
+    LOG_INFO("Diagnostic counter buffer created (4 counters)");
+
     return true;
 }
 
@@ -359,7 +444,7 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
 
     // Create root signature for volume population
     {
-        CD3DX12_ROOT_PARAMETER1 rootParams[3];
+        CD3DX12_ROOT_PARAMETER1 rootParams[4];
 
         // b0: VolumePopulationConstants (constant buffer descriptor)
         rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
@@ -367,9 +452,12 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
         // t0: Particle buffer (SRV, structured buffer)
         rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
-        // u0: Volume texture (UAV, RWTexture3D<float>) - MUST use descriptor table for typed 3D UAV
-        CD3DX12_DESCRIPTOR_RANGE1 uavRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
-        rootParams[2].InitAsDescriptorTable(1, &uavRange, D3D12_SHADER_VISIBILITY_ALL);
+        // u0: Volume texture (UAV, RWTexture3D<uint>) - MUST use descriptor table for typed 3D UAV
+        CD3DX12_DESCRIPTOR_RANGE1 volumeUAVRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        rootParams[2].InitAsDescriptorTable(1, &volumeUAVRange, D3D12_SHADER_VISIBILITY_ALL);
+
+        // u1: Diagnostic counter buffer (UAV, RWByteAddressBuffer) - use root descriptor for direct GPU VA binding
+        rootParams[3].InitAsUnorderedAccessView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
         rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
@@ -832,6 +920,9 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     // u0: Volume texture (UAV) - bind as descriptor table
     commandList->SetComputeRootDescriptorTable(2, m_volumeMip2UAV_GPU);
 
+    // u1: Diagnostic counter buffer (UAV) - bind as root descriptor (direct GPU VA)
+    commandList->SetComputeRootUnorderedAccessView(3, m_diagnosticCounterBuffer->GetGPUVirtualAddress());
+
     // Dispatch compute shader (1 thread per particle, 64 threads per group)
     uint32_t dispatchX = (particleCount + 63) / 64;
     commandList->Dispatch(dispatchX, 1, 1);
@@ -866,8 +957,46 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     // Mark that first frame is done
     m_volumeFirstFrame = false;
 
+    // Copy diagnostic counters from GPU to readback buffer for CPU analysis
+    commandList->CopyResource(m_diagnosticCounterReadback.Get(), m_diagnosticCounterBuffer.Get());
+
     // TODO: Re-enable after fixing PIX includes
     // PIXEndEvent(commandList);
+}
+
+/**
+ * Read and log diagnostic counters from GPU
+ */
+void VolumetricReSTIRSystem::ReadDiagnosticCounters() {
+    if (!m_diagnosticCounterReadback) {
+        LOG_WARN("Diagnostic counter readback buffer not initialized");
+        return;
+    }
+
+    // Map readback buffer to read GPU counters
+    void* mappedData = nullptr;
+    D3D12_RANGE readRange = {0, 4 * sizeof(uint32_t)};
+    HRESULT hr = m_diagnosticCounterReadback->Map(0, &readRange, &mappedData);
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to map diagnostic counter readback buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        return;
+    }
+
+    uint32_t* counters = static_cast<uint32_t*>(mappedData);
+
+    LOG_INFO("========== PopulateVolumeMip2 Diagnostic Counters ==========");
+    LOG_INFO("  [0] Total threads executed: {}", counters[0]);
+    LOG_INFO("  [1] Early returns (bounds check): {}", counters[1]);
+    LOG_INFO("  [2] Total voxel writes: {}", counters[2]);
+    LOG_INFO("  [3] Max voxels written by single particle: {}", counters[3]);
+    LOG_INFO("  Active threads (0 - 1): {}", counters[0] - counters[1]);
+    LOG_INFO("  Avg voxels per active thread: {:.2f}",
+             counters[0] > counters[1] ? static_cast<float>(counters[2]) / (counters[0] - counters[1]) : 0.0f);
+    LOG_INFO("============================================================");
+
+    D3D12_RANGE writeRange = {0, 0}; // We didn't write anything
+    m_diagnosticCounterReadback->Unmap(0, &writeRange);
 }
 
 /**
