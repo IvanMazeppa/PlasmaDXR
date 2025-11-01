@@ -1,0 +1,29 @@
+{
+  "window": {
+    "width": 1920,
+    "height": 1080,
+    "fullscreen": false
+  },
+  "particles": {
+    "count": 2045,
+    "radius": 20.0,
+    "spawn_rate": 10.0
+  },
+  "rendering": {
+    "mode": "volumetric_restir",
+    "enable_dlss": false,
+    "enable_shadows": true
+  },
+  "volumetric_restir": {
+    "enabled": true,
+    "random_walks_per_pixel": 4,
+    "max_bounces": 3,
+    "spatial_neighbors": 3,
+    "enable_spatial_reuse": false,
+    "enable_temporal_reuse": false
+  },
+  "camera": {
+    "auto_rotate": false,
+    "initial_distance": 800.0
+  }
+}

@@ -108,6 +108,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         } else if (arg == "--multi-light") {
             m_lightingSystem = LightingSystem::MultiLight;
             LOG_INFO("Lighting system: Multi-Light (brute force)");
+        } else if (arg == "--restir") {
+            m_lightingSystem = LightingSystem::VolumetricReSTIR;
+            LOG_INFO("Lighting system: Volumetric ReSTIR (autonomous testing mode)");
         } else if (arg == "--dump-buffers") {
             m_enableBufferDump = true;
             // Check if next arg is a frame number (optional)
@@ -130,6 +133,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --particles <count>  : Set particle count");
             LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
             LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
+            LOG_INFO("  --restir             : Use Volumetric ReSTIR (Phase 1 - experimental)");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
         }
@@ -295,13 +299,20 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // IMPORTANT: Initialize AFTER DLSS to get correct render resolution
     LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
 
-    // IMPORTANT: VolumetricReSTIR uses NATIVE resolution (not DLSS render resolution)
-    // This is because VolumetricReSTIR bypasses the Gaussian renderer (which handles DLSS)
-    // and writes directly to output, which must match backbuffer dimensions
-    LOG_INFO("Initializing VolumetricReSTIR at native resolution (DLSS bypassed): {}x{}", m_width, m_height);
+    // IMPORTANT: VolumetricReSTIR uses REDUCED resolution for Phase 1 to avoid GPU timeout
+    // Phase 1 testing: 1/4 native resolution (640×360 @ 2560×1440)
+    // This reduces shader invocations from 3.6M to 230K, preventing TDR crashes
+    // Will be upscaled in later phases for production quality
+    uint32_t restirWidth = m_width / 4;
+    uint32_t restirHeight = m_height / 4;
+    LOG_INFO("Initializing VolumetricReSTIR at 1/4 resolution (Phase 1 testing): {}x{}", restirWidth, restirHeight);
+    LOG_INFO("  Native resolution: {}x{}", m_width, m_height);
+    LOG_INFO("  Shader invocations reduced from {:.1f}M to {:.1f}K",
+            (m_width * m_height) / 1000000.0f,
+            (restirWidth * restirHeight) / 1000.0f);
 
     m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
-    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
+    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), restirWidth, restirHeight)) {
         LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
         LOG_ERROR("  Volumetric ReSTIR will not be available");
         m_volumetricReSTIR.reset();
@@ -313,8 +324,8 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     } else {
         LOG_INFO("Volumetric ReSTIR System initialized successfully!");
         LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
-                (m_width * m_height * 64 * 2) / (1024.0f * 1024.0f),
-                m_width, m_height);
+                (restirWidth * restirHeight * 64 * 2) / (1024.0f * 1024.0f),
+                restirWidth, restirHeight);
         LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
         LOG_INFO("  Ready for testing (experimental)");
 
@@ -839,11 +850,12 @@ void Application::Render() {
                 );
 
                 // Populate Volume Mip 2 with particle density (T* transmittance)
-                m_volumetricReSTIR->PopulateVolumeMip2(
-                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                    m_particleSystem->GetParticleBuffer(),
-                    m_config.particleCount
-                );
+                // TEMPORARILY DISABLED TO TEST IF THIS IS CAUSING 2045 PARTICLE CRASH
+                // m_volumetricReSTIR->PopulateVolumeMip2(
+                //     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                //     m_particleSystem->GetParticleBuffer(),
+                //     m_config.particleCount
+                // );
 
                 // Generate path candidates (Phase 1: RIS only)
                 m_volumetricReSTIR->GenerateCandidates(
@@ -1531,6 +1543,22 @@ void Application::OnKeyPress(UINT8 key) {
     case VK_F6:
         m_useInScattering = !m_useInScattering;
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
+        break;
+
+    // F7: Toggle Volumetric ReSTIR (for autonomous testing)
+    case VK_F7:
+        if (m_volumetricReSTIR) {
+            // Toggle between VolumetricReSTIR and MultiLight
+            if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
+                m_lightingSystem = LightingSystem::MultiLight;
+                LOG_INFO("Volumetric ReSTIR: OFF (switched to MultiLight)");
+            } else {
+                m_lightingSystem = LightingSystem::VolumetricReSTIR;
+                LOG_INFO("Volumetric ReSTIR: ON");
+            }
+        } else {
+            LOG_INFO("Volumetric ReSTIR system not initialized");
+        }
         break;
 
     // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)

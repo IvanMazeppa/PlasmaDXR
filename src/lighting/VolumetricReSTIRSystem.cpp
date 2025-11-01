@@ -760,8 +760,6 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     ID3D12Resource* particleBuffer,
     uint32_t particleCount)
 {
-    LOG_INFO("PopulateVolumeMip2: ENTRY (firstFrame={})", m_volumeFirstFrame);
-
     // TODO: Re-enable after fixing PIX includes
     // PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, "PopulateVolumeMip2");
 
@@ -769,7 +767,6 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     // First frame: texture created in UNORDERED_ACCESS, no transition needed
     // Subsequent frames: transition from SRV (after previous frame read) to UAV
     if (!m_volumeFirstFrame) {
-        LOG_INFO("PopulateVolumeMip2: Transitioning volume SRV->UAV");
         D3D12_RESOURCE_BARRIER barrier = {};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barrier.Transition.pResource = m_volumeMip2.Get();
@@ -777,14 +774,10 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         commandList->ResourceBarrier(1, &barrier);
-        LOG_INFO("PopulateVolumeMip2: Transition SRV->UAV complete");
-    } else {
-        LOG_INFO("PopulateVolumeMip2: First frame - skipping SRV->UAV transition");
     }
 
     // Clear volume texture to zeros
     // CRITICAL: Must clear before splatting to avoid reading uninitialized data
-    LOG_INFO("PopulateVolumeMip2: About to clear volume texture");
     FLOAT clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     ID3D12DescriptorHeap* heapForClear = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     commandList->ClearUnorderedAccessViewFloat(
@@ -795,18 +788,14 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
         0,
         nullptr
     );
-    LOG_INFO("PopulateVolumeMip2: Clear complete");
 
     // Set descriptor heaps (required for descriptor table bindings)
-    LOG_INFO("PopulateVolumeMip2: Setting descriptor heaps");
     ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
     commandList->SetDescriptorHeaps(1, heaps);
 
     // Set pipeline state and root signature
-    LOG_INFO("PopulateVolumeMip2: Setting PSO and root signature");
     commandList->SetPipelineState(m_volumePopPSO.Get());
     commandList->SetComputeRootSignature(m_volumePopRS.Get());
-    LOG_INFO("PopulateVolumeMip2: PSO and RS set");
 
     // Upload constants
     VolumePopulationConstants constants = {};
@@ -834,7 +823,6 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     m_volumePopConstantBuffer->Unmap(0, nullptr);
 
     // Bind resources
-    LOG_INFO("PopulateVolumeMip2: Binding resources");
     // b0: Constant buffer
     commandList->SetComputeRootConstantBufferView(0, m_volumePopConstantBuffer->GetGPUVirtualAddress());
 
@@ -843,14 +831,12 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
 
     // u0: Volume texture (UAV) - bind as descriptor table
     commandList->SetComputeRootDescriptorTable(2, m_volumeMip2UAV_GPU);
-    LOG_INFO("PopulateVolumeMip2: Resources bound");
 
     // Dispatch compute shader (1 thread per particle, 64 threads per group)
     uint32_t dispatchX = (particleCount + 63) / 64;
-    LOG_INFO("PopulateVolumeMip2: About to dispatch {} thread groups", dispatchX);
     commandList->Dispatch(dispatchX, 1, 1);
-    LOG_INFO("PopulateVolumeMip2: Dispatch complete");
 
+    // Log dispatch info only once
     static bool loggedDispatch = false;
     if (!loggedDispatch) {
         LOG_INFO("VolumetricReSTIR PopulateVolumeMip2 dispatch: {} thread groups ({} particles, {} threads total)",
@@ -863,15 +849,12 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     }
 
     // UAV barrier to ensure writes complete before reading in path generation
-    LOG_INFO("PopulateVolumeMip2: Adding UAV barrier");
     D3D12_RESOURCE_BARRIER uavBarrier = {};
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarrier.UAV.pResource = m_volumeMip2.Get();
     commandList->ResourceBarrier(1, &uavBarrier);
-    LOG_INFO("PopulateVolumeMip2: UAV barrier complete");
 
     // Transition volume texture back to SRV state for reading in shaders
-    LOG_INFO("PopulateVolumeMip2: Transitioning volume UAV->SRV");
     D3D12_RESOURCE_BARRIER srvBarrier = {};
     srvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     srvBarrier.Transition.pResource = m_volumeMip2.Get();
@@ -879,11 +862,9 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     srvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     srvBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     commandList->ResourceBarrier(1, &srvBarrier);
-    LOG_INFO("PopulateVolumeMip2: Transition UAV->SRV complete");
 
     // Mark that first frame is done
     m_volumeFirstFrame = false;
-    LOG_INFO("PopulateVolumeMip2: EXIT (firstFrame flag cleared)");
 
     // TODO: Re-enable after fixing PIX includes
     // PIXEndEvent(commandList);

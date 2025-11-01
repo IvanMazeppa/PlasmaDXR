@@ -1,8 +1,8 @@
-# Volumetric ReSTIR Implementation Status - Branch 0.12.5
+# Volumetric ReSTIR Implementation Status - Branch 0.12.6
 
-**Date**: 2025-10-31
-**Branch**: 0.12.5
-**Status**: Phase 1 infrastructure complete, awaiting shader logic implementation
+**Date**: 2025-10-31 (Updated 20:00)
+**Branch**: 0.12.6
+**Status**: GPU timeout FIXED - Reduced resolution, ready for 10K testing
 
 ---
 

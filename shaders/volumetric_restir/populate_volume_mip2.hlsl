@@ -152,7 +152,30 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
     voxelMin = max(voxelMin, int3(0, 0, 0));
     voxelMax = min(voxelMax, int3(g_volumeResolution - 1, g_volumeResolution - 1, g_volumeResolution - 1));
 
-    // Splat density to all overlapping voxels
+    // CRITICAL: Limit AABB size to prevent GPU timeout at high particle counts
+    // At 2K+ particles with large radii, nested loop can write to 100+ voxels per particle
+    // = 200K+ voxel writes per frame → TDR crash
+    // Solution: Clamp to max 8×8×8 voxels per particle (512 voxels max)
+    int3 aabbSize = voxelMax - voxelMin + 1;
+    const int MAX_VOXELS_PER_AXIS = 8;
+
+    if (aabbSize.x > MAX_VOXELS_PER_AXIS) {
+        int3 center = (voxelMin + voxelMax) / 2;
+        voxelMin.x = center.x - MAX_VOXELS_PER_AXIS / 2;
+        voxelMax.x = center.x + MAX_VOXELS_PER_AXIS / 2;
+    }
+    if (aabbSize.y > MAX_VOXELS_PER_AXIS) {
+        int3 center = (voxelMin + voxelMax) / 2;
+        voxelMin.y = center.y - MAX_VOXELS_PER_AXIS / 2;
+        voxelMax.y = center.y + MAX_VOXELS_PER_AXIS / 2;
+    }
+    if (aabbSize.z > MAX_VOXELS_PER_AXIS) {
+        int3 center = (voxelMin + voxelMax) / 2;
+        voxelMin.z = center.z - MAX_VOXELS_PER_AXIS / 2;
+        voxelMax.z = center.z + MAX_VOXELS_PER_AXIS / 2;
+    }
+
+    // Splat density to all overlapping voxels (max 8×8×8 = 512 voxels per particle)
     for (int z = voxelMin.z; z <= voxelMax.z; z++) {
         for (int y = voxelMin.y; y <= voxelMax.y; y++) {
             for (int x = voxelMin.x; x <= voxelMax.x; x++) {
