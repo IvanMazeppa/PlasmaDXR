@@ -850,13 +850,13 @@ void Application::Render() {
                 );
 
                 // Populate Volume Mip 2 with particle density (T* transmittance)
-                // TEMPORARY DISABLE: Debugging shader execution issue - shader dispatches but writes nothing
-                // TODO: Fix root signature mismatch causing shader to not execute
-                // m_volumetricReSTIR->PopulateVolumeMip2(
-                //     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                //     m_particleSystem->GetParticleBuffer(),
-                //     m_config.particleCount
-                // );
+                // RE-ENABLED: Root signature verified correct (4/4 resources match DXIL)
+                // Testing with diagnostic tools to find shader execution issue
+                m_volumetricReSTIR->PopulateVolumeMip2(
+                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                    m_particleSystem->GetParticleBuffer(),
+                    m_config.particleCount
+                );
 
                 // Generate path candidates (Phase 1: RIS only)
                 m_volumetricReSTIR->GenerateCandidates(

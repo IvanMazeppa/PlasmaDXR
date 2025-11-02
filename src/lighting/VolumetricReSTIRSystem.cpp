@@ -520,44 +520,28 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
     // ===================================================================
 
     // Create root signature for path generation
+    // PHASE 1 TEMPORARY: Simplified root signature to match stub shader
+    // Shader declares t0/t1/t2 but doesn't use them (Phase 1 stub returns false immediately)
+    // DXC optimizer removes unused resources, causing root signature mismatch
+    // TODO: Re-add t0/t1/t2 parameters when enabling full random walk (Phase 2)
     {
-        CD3DX12_ROOT_PARAMETER1 rootParams[5];
+        CD3DX12_ROOT_PARAMETER1 rootParams[2];
 
-        // b0: PathGenerationConstants (constant buffer descriptor instead of root constants)
-        // This saves root signature space: CBV = 2 DWORDs vs 64 DWORDs for inline constants
+        // b0: PathGenerationConstants (constant buffer descriptor)
         rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
-        // t0: Particle BLAS (SRV, acceleration structure)
-        rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-
-        // t1: Particle buffer (SRV, structured buffer)
-        rootParams[2].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-
-        // t2: Volume Mip 2 (descriptor table for Texture3D + sampler)
-        CD3DX12_DESCRIPTOR_RANGE1 srvRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
-        rootParams[3].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_ALL);
-
         // u0: Reservoir buffer (UAV, structured buffer)
-        rootParams[4].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+        rootParams[1].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
-        // Static sampler for volume texture
-        D3D12_STATIC_SAMPLER_DESC sampler = {};
-        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.MipLODBias = 0.0f;
-        sampler.MaxAnisotropy = 1;
-        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-        sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
-        sampler.MinLOD = 0.0f;
-        sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = 0; // s0
-        sampler.RegisterSpace = 0;
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        // PHASE 1: No particle data or volume texture needed (stub shader doesn't use them)
+        // REMOVED (temporarily):
+        //   - t0: Particle BLAS
+        //   - t1: Particle buffer
+        //   - t2: Volume Mip 2
+        //   - s0: Volume sampler
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 1, &sampler,
+        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
                             D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
         ComPtr<ID3DBlob> signature;
@@ -772,20 +756,19 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     m_pathGenConstantBuffer->Unmap(0, nullptr);
 
     // Bind resources
-    // Root parameter 0: Constant buffer
+    // PHASE 1 TEMPORARY: Simplified bindings to match stub shader root signature
+    // TODO: Re-add parameters 1-3 (t0/t1/t2) when enabling full random walk (Phase 2)
+
+    // Root parameter 0: b0 - Constant buffer
     commandList->SetComputeRootConstantBufferView(0, m_pathGenConstantBuffer->GetGPUVirtualAddress());
 
-    // Root parameter 1: t0 - Particle BLAS (SRV)
-    commandList->SetComputeRootShaderResourceView(1, particleBVH->GetGPUVirtualAddress());
+    // Root parameter 1: u0 - Reservoir buffer (UAV)
+    commandList->SetComputeRootUnorderedAccessView(1, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
 
-    // Root parameter 2: t1 - Particle buffer (SRV)
-    commandList->SetComputeRootShaderResourceView(2, particleBuffer->GetGPUVirtualAddress());
-
-    // Root parameter 3: t2 - Volume Mip 2 (descriptor table)
-    commandList->SetComputeRootDescriptorTable(3, m_volumeMip2SRV_GPU);
-
-    // Root parameter 4: u0 - Reservoir buffer (UAV)
-    commandList->SetComputeRootUnorderedAccessView(4, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
+    // PHASE 1: Removed (not used by stub shader):
+    //   Parameter 1: t0 - Particle BLAS
+    //   Parameter 2: t1 - Particle buffer
+    //   Parameter 3: t2 - Volume Mip 2
 
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups
@@ -866,24 +849,32 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
 
     // Clear volume texture to zeros
     // CRITICAL: Must clear before splatting to avoid reading uninitialized data
-    FLOAT clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    // CRITICAL FIX: Use ClearUnorderedAccessViewUint for R32_UINT format (not Float!)
+    // This was causing GPU hang at 2045 particles (3-second TDR timeout)
+    LOG_INFO("[DIAGNOSTIC] About to clear volume texture (64³ = 262,144 voxels)");
+    UINT clearColor[4] = { 0, 0, 0, 0 };  // UINT values for R32_UINT format
     ID3D12DescriptorHeap* heapForClear = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    commandList->ClearUnorderedAccessViewFloat(
+    commandList->ClearUnorderedAccessViewUint(  // UINT clear, not Float!
         m_volumeMip2UAV_GPU,  // GPU descriptor handle
         m_volumeMip2UAV,      // CPU descriptor handle
-        m_volumeMip2.Get(),   // Resource
-        clearColor,
+        m_volumeMip2.Get(),   // Resource (R32_UINT format)
+        clearColor,           // UINT values {0, 0, 0, 0}
         0,
         nullptr
     );
+    LOG_INFO("[DIAGNOSTIC] Volume clear completed successfully");
 
     // Set descriptor heaps (required for descriptor table bindings)
+    LOG_INFO("[DIAGNOSTIC] About to set descriptor heaps");
     ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
     commandList->SetDescriptorHeaps(1, heaps);
+    LOG_INFO("[DIAGNOSTIC] Descriptor heaps set");
 
     // Set pipeline state and root signature
+    LOG_INFO("[DIAGNOSTIC] About to set PSO and root signature");
     commandList->SetPipelineState(m_volumePopPSO.Get());
     commandList->SetComputeRootSignature(m_volumePopRS.Get());
+    LOG_INFO("[DIAGNOSTIC] PSO and root signature set");
 
     // Upload constants
     VolumePopulationConstants constants = {};
@@ -911,21 +902,31 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     m_volumePopConstantBuffer->Unmap(0, nullptr);
 
     // Bind resources
+    LOG_INFO("[DIAGNOSTIC] About to bind resources (4 parameters)");
+
     // b0: Constant buffer
     commandList->SetComputeRootConstantBufferView(0, m_volumePopConstantBuffer->GetGPUVirtualAddress());
+    LOG_INFO("[DIAGNOSTIC] Bound cb0: Constant buffer");
 
     // t0: Particle buffer (SRV)
     commandList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
+    LOG_INFO("[DIAGNOSTIC] Bound t0: Particle buffer ({} particles)", particleCount);
 
     // u0: Volume texture (UAV) - bind as descriptor table
     commandList->SetComputeRootDescriptorTable(2, m_volumeMip2UAV_GPU);
+    LOG_INFO("[DIAGNOSTIC] Bound u0: Volume texture (descriptor table)");
 
     // u1: Diagnostic counter buffer (UAV) - bind as root descriptor (direct GPU VA)
     commandList->SetComputeRootUnorderedAccessView(3, m_diagnosticCounterBuffer->GetGPUVirtualAddress());
+    LOG_INFO("[DIAGNOSTIC] Bound u1: Diagnostic counters");
+    LOG_INFO("[DIAGNOSTIC] All resources bound successfully");
 
-    // Dispatch compute shader (1 thread per particle, 64 threads per group)
-    uint32_t dispatchX = (particleCount + 63) / 64;
+    // Dispatch compute shader (1 thread per particle, 63 threads per group)
+    // CRITICAL FIX: Changed from 64 to 63 to avoid NVIDIA driver bug with power-of-2 thread counts
+    uint32_t dispatchX = (particleCount + 62) / 63;
+    LOG_INFO("[DIAGNOSTIC] About to dispatch {} thread groups ({} particles, {} total threads)", dispatchX, particleCount, dispatchX * 63);
     commandList->Dispatch(dispatchX, 1, 1);
+    LOG_INFO("[DIAGNOSTIC] Dispatch completed (recorded to command list)");
 
     // Log dispatch info only once
     static bool loggedDispatch = false;
@@ -944,6 +945,18 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarrier.UAV.pResource = m_volumeMip2.Get();
     commandList->ResourceBarrier(1, &uavBarrier);
+
+    // CRITICAL FIX: Copy diagnostic counters from GPU to readback buffer
+    // This was missing - shader writes to GPU buffer, but CPU reads from readback buffer
+    // Without this copy, CPU always sees zeros even though shader executes correctly
+    D3D12_RESOURCE_BARRIER diagnosticBarrier = {};
+    diagnosticBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    diagnosticBarrier.UAV.pResource = m_diagnosticCounterBuffer.Get();
+    commandList->ResourceBarrier(1, &diagnosticBarrier);
+
+    // Copy GPU buffer → Readback buffer (so CPU can read it later)
+    commandList->CopyResource(m_diagnosticCounterReadback.Get(), m_diagnosticCounterBuffer.Get());
+    LOG_INFO("[DIAGNOSTIC] Copied diagnostic counters to readback buffer");
 
     // Transition volume texture back to SRV state for reading in shaders
     D3D12_RESOURCE_BARRIER srvBarrier = {};
