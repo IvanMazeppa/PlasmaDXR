@@ -8,6 +8,7 @@
 // Forward declarations
 class Device;
 class ResourceManager;
+class ProbeGridSystem;
 
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"  // Need full definition for DLSSQualityMode enum
@@ -110,6 +111,10 @@ public:
         uint32_t volumetricRTSamples;      // Number of light rays per sample point (4-32, default 8)
         float volumetricRTDistance;        // Max distance to search for emitters (100-1000, default 500)
         float volumetricRTAttenuation;     // Attenuation factor (0.00001-0.001, default 0.0001)
+
+        // === Phase 0.13.1 Probe Grid System ===
+        uint32_t useProbeGrid;             // Toggle probe grid lighting (replaces volumetric ReSTIR)
+        DirectX::XMFLOAT3 probeGridPadding2;  // Padding for alignment
         uint32_t useVolumetricRT;          // Toggle: 0=legacy per-particle, 1=volumetric per-sample
         float volumetricRTIntensity;       // Intensity boost for particle emission (50-500, default 200)
         DirectX::XMFLOAT3 volumetricRTPadding;  // Padding for GPU alignment
@@ -130,7 +135,8 @@ public:
                ID3D12Resource* rtLightingBuffer,
                ID3D12Resource* tlas,  // From RTLightingSystem!
                const RenderConstants& constants,
-               ID3D12Resource* rtxdiOutputBuffer = nullptr);  // RTXDI selected lights (optional)
+               ID3D12Resource* rtxdiOutputBuffer = nullptr,  // RTXDI selected lights (optional)
+               ProbeGridSystem* probeGridSystem = nullptr);  // Probe Grid (Phase 0.13.1)
 
     // Resize output textures and buffers when window size changes
     bool Resize(uint32_t newWidth, uint32_t newHeight);
@@ -140,6 +146,9 @@ public:
 
     // Get output texture to copy to backbuffer
     ID3D12Resource* GetOutputTexture() const { return m_outputTexture.Get(); }
+
+    // Get light buffer for probe grid system (Phase 0.13.1)
+    ID3D12Resource* GetLightBuffer() const { return m_lightBuffer.Get(); }
 
     // Get output SRV for blit pass (HDR→SDR conversion)
 #ifdef ENABLE_DLSS
@@ -209,6 +218,9 @@ private:
     // Constant buffer (replaces root constants to avoid 64 DWORD limit)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_constantBuffer;
     void* m_constantBufferMapped = nullptr;
+
+    // Probe Grid System (Phase 0.13.1)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_probeGridConstantBuffer;
 
     // Output texture (UAV) - bound via descriptor table (typed UAV requirement)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_outputTexture;

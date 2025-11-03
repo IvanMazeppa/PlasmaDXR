@@ -74,6 +74,7 @@ public:
      * @return GPU descriptor handle for probe buffer SRV
      */
     D3D12_GPU_DESCRIPTOR_HANDLE GetProbeBufferSRV() const { return m_probeBufferSRV_GPU; }
+    ID3D12Resource* GetProbeBuffer() const { return m_probeBuffer.Get(); }
 
     /**
      * Enable/disable probe grid system

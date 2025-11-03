@@ -4,6 +4,7 @@
 #include "../utils/Logger.h"
 #include "../utils/d3dx12/d3dx12.h"
 #include "../debug/pix3.h"
+#include "../lighting/ProbeGridSystem.h"
 #include <d3dcompiler.h>
 #include <fstream>
 
@@ -61,6 +62,29 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
 
     LOG_INFO("Created constant buffer: {} bytes (aligned from {} bytes)",
              constantBufferSize, sizeof(RenderConstants));
+
+    // Create probe grid constant buffer (Phase 0.13.1)
+    // This will be populated in Render() with ProbeGridSystem::GetProbeGridParams()
+    // For now, just allocate the buffer (params will be filled when probe grid is available)
+    const UINT probeGridCBSize = ((32 + 255) & ~255);  // ProbeGridParams is 32 bytes, align to 256
+    D3D12_HEAP_PROPERTIES uploadHeap2 = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    D3D12_RESOURCE_DESC probeGridBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(probeGridCBSize);
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadHeap2,
+        D3D12_HEAP_FLAG_NONE,
+        &probeGridBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_probeGridConstantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create probe grid constant buffer");
+        return false;
+    }
+
+    LOG_INFO("Created probe grid constant buffer: {} bytes (for ProbeGridParams)", probeGridCBSize);
 
     if (!CreateOutputTexture(screenWidth, screenHeight)) {
         return false;
@@ -485,19 +509,21 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[9];  // +1 for RTXDI output
-    rootParams[0].InitAsConstantBufferView(0);              // b0 - CBV (no DWORD limit!)
-    rootParams[1].InitAsShaderResourceView(0);              // t0 - particles (raw buffer is OK)
-    rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting (raw buffer is OK)
-    rootParams[3].InitAsShaderResourceView(2);              // t2 - TLAS (raw is OK)
-    rootParams[4].InitAsShaderResourceView(4);              // t4 - lights (raw buffer is OK)
+    CD3DX12_ROOT_PARAMETER1 rootParams[11];  // +2 for Probe Grid (b4, t7)
+    rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
+    rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
+    rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
+    rootParams[3].InitAsShaderResourceView(2);              // t2 - TLAS
+    rootParams[4].InitAsShaderResourceView(4);              // t4 - lights
     rootParams[5].InitAsDescriptorTable(1, &uavRanges[0]);  // u0 - output texture
     rootParams[6].InitAsDescriptorTable(1, &srvRanges[0]);  // t5 - previous shadow (SRV)
     rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]);  // u2 - current shadow (UAV)
     rootParams[8].InitAsDescriptorTable(1, &srvRanges[1]);  // t6 - RTXDI output (SRV)
+    rootParams[9].InitAsConstantBufferView(4);              // b4 - ProbeGridParams CBV (NEW!)
+    rootParams[10].InitAsShaderResourceView(7);             // t7 - ProbeGrid buffer (NEW!)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(9, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(11, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -623,7 +649,8 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        ID3D12Resource* rtLightingBuffer,
                                        ID3D12Resource* tlas,
                                        const RenderConstants& constants,
-                                       ID3D12Resource* rtxdiOutputBuffer) {
+                                       ID3D12Resource* rtxdiOutputBuffer,
+                                       ProbeGridSystem* probeGridSystem) {
     if (!cmdList || !particleBuffer || !rtLightingBuffer || !m_resources) {
         LOG_ERROR("Gaussian Render: null resource!");
         return;
@@ -757,6 +784,31 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         // Bind dummy descriptor (use previous shadow buffer as placeholder)
         // This is safe since shader won't read t6 when useRTXDI=0
         cmdList->SetComputeRootDescriptorTable(8, prevShadowSRVHandle);
+    }
+
+    // Root param 9 & 10: Probe Grid System (Phase 0.13.1)
+    if (probeGridSystem && m_probeGridConstantBuffer) {
+        // Upload probe grid parameters to constant buffer
+        ProbeGridSystem::ProbeGridParams params = probeGridSystem->GetProbeGridParams();
+
+        void* mappedData = nullptr;
+        HRESULT hr = m_probeGridConstantBuffer->Map(0, nullptr, &mappedData);
+        if (SUCCEEDED(hr)) {
+            memcpy(mappedData, &params, sizeof(ProbeGridSystem::ProbeGridParams));
+            m_probeGridConstantBuffer->Unmap(0, nullptr);
+        }
+
+        // Bind constant buffer (b4)
+        cmdList->SetComputeRootConstantBufferView(9, m_probeGridConstantBuffer->GetGPUVirtualAddress());
+
+        // Bind probe grid buffer (t7) - use GPU virtual address for root descriptor
+        cmdList->SetComputeRootShaderResourceView(10, probeGridSystem->GetProbeBuffer()->GetGPUVirtualAddress());
+    } else {
+        // Probe grid not available - bind dummy values
+        // This is safe since shader won't read when useProbeGrid=0
+        // Use constant buffer GPU address 0 (will be ignored)
+        cmdList->SetComputeRootConstantBufferView(9, 0);
+        cmdList->SetComputeRootShaderResourceView(10, 0);
     }
 
     // Dispatch (8x8 thread groups)

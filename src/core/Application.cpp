@@ -659,11 +659,14 @@ void Application::Render() {
     // Probe Grid Update Pass (Phase 0.13.1)
     // Reuses TLAS from RT lighting system (zero duplication!)
     if (m_probeGridSystem && m_rtLighting && m_particleSystem) {
-        // Get light buffer from multi-light system
-        // TODO: Create a proper light buffer structure when we add light controls
-        // For now, pass null and handle gracefully in shader
-        ID3D12Resource* lightBuffer = nullptr;  // Will be implemented with ImGui controls
+        // Get light buffer from Gaussian renderer (already populated with 13 lights)
+        ID3D12Resource* lightBuffer = nullptr;
         uint32_t lightCount = 0;
+
+        if (m_gaussianRenderer) {
+            lightBuffer = m_gaussianRenderer->GetLightBuffer();
+            lightCount = static_cast<uint32_t>(m_lights.size());  // 13 lights from Application.h:118
+        }
 
         m_probeGridSystem->UpdateProbes(
             cmdList,
@@ -851,6 +854,10 @@ void Application::Render() {
             gaussianConstants.volumetricRTSamples = m_volumetricRTSamples;
             gaussianConstants.volumetricRTDistance = m_volumetricRTDistance;
             gaussianConstants.volumetricRTAttenuation = m_volumetricRTAttenuation;
+
+            // Phase 0.13.1 Probe Grid System: Zero-atomic-contention volumetric lighting
+            gaussianConstants.useProbeGrid = 0u;  // TODO: Add ImGui toggle (Task 10)
+            gaussianConstants.probeGridPadding2 = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
             gaussianConstants.useVolumetricRT = m_useVolumetricRT ? 1u : 0u;
             gaussianConstants.volumetricRTIntensity = m_volumetricRTIntensity;
             gaussianConstants.volumetricRTPadding = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
@@ -936,7 +943,8 @@ void Application::Render() {
                                       rtLightingBuffer,
                                       m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
                                       gaussianConstants,
-                                      rtxdiOutput);  // Pass RTXDI output buffer
+                                      rtxdiOutput,  // RTXDI output buffer
+                                      m_probeGridSystem.get());  // Probe Grid System (Phase 0.13.1)
             }  // End else (standard Gaussian rendering)
 
             // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
