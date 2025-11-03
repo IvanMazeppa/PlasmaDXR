@@ -4,6 +4,10 @@
 #include "../utils/Logger.h"
 #include "../utils/d3dx12/d3dx12.h"
 
+#include <fstream>
+#include <vector>
+#include <d3dcompiler.h>
+
 bool ProbeGridSystem::Initialize(Device* device, ResourceManager* resources) {
     if (m_initialized) {
         LOG_WARN("ProbeGridSystem already initialized");
@@ -156,10 +160,96 @@ bool ProbeGridSystem::CreateProbeBuffer() {
 bool ProbeGridSystem::CreatePipelines() {
     LOG_INFO("Creating probe grid compute pipelines...");
 
-    // TODO: Create root signature and PSO for probe update shader
-    // This will be implemented in the next step (Day 2-3)
+    auto d3dDevice = m_device->GetDevice();
+    HRESULT hr;
 
-    LOG_WARN("Probe grid pipelines not yet implemented (Day 2-3 task)");
+    // ===================================================================
+    // Probe Update Pipeline
+    // ===================================================================
+
+    // Create root signature for probe update shader
+    {
+        CD3DX12_ROOT_PARAMETER1 rootParams[5];
+
+        // b0: ProbeUpdateConstants (constant buffer)
+        rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // t0: Particle buffer (SRV, structured buffer)
+        rootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // t1: Light buffer (SRV, structured buffer)
+        rootParams[2].InitAsShaderResourceView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // t2: Particle TLAS (SRV, raytracing acceleration structure)
+        rootParams[3].InitAsShaderResourceView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // u0: Probe buffer (UAV, structured buffer)
+        rootParams[4].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
+                            D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        hr = D3D12SerializeVersionedRootSignature(&rootSigDesc, &signature, &error);
+
+        if (FAILED(hr)) {
+            if (error) {
+                LOG_ERROR("Failed to serialize probe update root signature: {}",
+                          static_cast<char*>(error->GetBufferPointer()));
+            }
+            return false;
+        }
+
+        hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(),
+                                            signature->GetBufferSize(),
+                                            IID_PPV_ARGS(&m_updateProbeRS));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create probe update root signature! HRESULT: 0x{:08X}",
+                      static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        m_updateProbeRS->SetName(L"ProbeGridSystem::UpdateProbeRS");
+        LOG_INFO("Probe update root signature created");
+    }
+
+    // Load and create PSO
+    {
+        // Load compiled shader
+        std::ifstream shaderFile("shaders/probe_grid/update_probes.dxil", std::ios::binary);
+        if (!shaderFile) {
+            LOG_ERROR("Failed to open update_probes.dxil shader file!");
+            return false;
+        }
+
+        std::vector<uint8_t> shaderData((std::istreambuf_iterator<char>(shaderFile)),
+                                        std::istreambuf_iterator<char>());
+        shaderFile.close();
+
+        LOG_INFO("Loaded probe update shader: {} bytes", shaderData.size());
+
+        // Create PSO
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = m_updateProbeRS.Get();
+        psoDesc.CS.pShaderBytecode = shaderData.data();
+        psoDesc.CS.BytecodeLength = shaderData.size();
+
+        hr = d3dDevice->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_updateProbePSO));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create probe update PSO! HRESULT: 0x{:08X}",
+                      static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        m_updateProbePSO->SetName(L"ProbeGridSystem::UpdateProbePSO");
+        LOG_INFO("Probe update PSO created");
+    }
+
+    LOG_INFO("Probe grid pipelines created successfully");
     return true;
 }
 
