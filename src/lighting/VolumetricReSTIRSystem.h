@@ -81,7 +81,7 @@ public:
     /**
      * Populate Volume Mip 2 texture with particle density
      *
-     * Splats particle density into 64³ voxel grid for piecewise-constant
+     * Splats particle density into 32³ voxel grid for piecewise-constant
      * transmittance (T*). Should be called once per frame before GenerateCandidates.
      *
      * @param commandList Command list

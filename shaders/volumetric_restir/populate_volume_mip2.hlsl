@@ -152,13 +152,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint particleIdx = dispatchThreadID.x;
     uint dummy;
 
-    // DIAGNOSTIC TEST: Write a sentinel value to prove shader is executing
+    // DIAGNOSTIC TEST: Thread 0 writes volumeResolution to verify constant buffer
     if (particleIdx == 0) {
-        g_diagnosticCounters.Store(0, 0xDEADBEEF);  // Magic number to prove shader ran
+        // Write volumeResolution to counter[0] for verification
+        // Expected: 32 (if C++ updated correctly)
+        // Actual: Will tell us if shader is reading wrong value
+        g_diagnosticCounters.Store(0, g_volumeResolution);
     }
     GroupMemoryBarrierWithGroupSync();  // Ensure write completes
 
-    // Count total threads executed
+    // Count total threads executed (add to volumeResolution base)
     g_diagnosticCounters.InterlockedAdd(0, 1, dummy);  // Offset 0 = counter[0]
 
     // Bounds check
@@ -200,17 +203,20 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
     if (aabbSize.x > MAX_VOXELS_PER_AXIS) {
         int center = (voxelMin.x + voxelMax.x) / 2;
         voxelMin.x = max(center - MAX_VOXELS_PER_AXIS / 2, 0);
-        voxelMax.x = min(center + MAX_VOXELS_PER_AXIS / 2, g_volumeResolution - 1);
+        voxelMax.x = voxelMin.x + MAX_VOXELS_PER_AXIS - 1;  // FIX: Ensure exactly 8 voxels
+        voxelMax.x = min(voxelMax.x, g_volumeResolution - 1); // Clamp to bounds
     }
     if (aabbSize.y > MAX_VOXELS_PER_AXIS) {
         int center = (voxelMin.y + voxelMax.y) / 2;
         voxelMin.y = max(center - MAX_VOXELS_PER_AXIS / 2, 0);
-        voxelMax.y = min(center + MAX_VOXELS_PER_AXIS / 2, g_volumeResolution - 1);
+        voxelMax.y = voxelMin.y + MAX_VOXELS_PER_AXIS - 1;  // FIX: Ensure exactly 8 voxels
+        voxelMax.y = min(voxelMax.y, g_volumeResolution - 1); // Clamp to bounds
     }
     if (aabbSize.z > MAX_VOXELS_PER_AXIS) {
         int center = (voxelMin.z + voxelMax.z) / 2;
         voxelMin.z = max(center - MAX_VOXELS_PER_AXIS / 2, 0);
-        voxelMax.z = min(center + MAX_VOXELS_PER_AXIS / 2, g_volumeResolution - 1);
+        voxelMax.z = voxelMin.z + MAX_VOXELS_PER_AXIS - 1;  // FIX: Ensure exactly 8 voxels
+        voxelMax.z = min(voxelMax.z, g_volumeResolution - 1); // Clamp to bounds
     }
 
     // Splat density to all overlapping voxels (max 8×8×8 = 512 voxels per particle)

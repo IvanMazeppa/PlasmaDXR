@@ -29,23 +29,77 @@ public:
         Log(level, format);
     }
 
-    // Helper - convert value to string (specializations)
-    static std::string ToString(const char* value) {
+    // Helper - convert value to string with format specifier support
+    static std::string FormatValue(const char* value, const std::string& formatSpec) {
         return std::string(value);
     }
 
-    static std::string ToString(const std::string& value) {
+    static std::string FormatValue(const std::string& value, const std::string& formatSpec) {
         return value;
     }
 
-    static std::string ToString(bool value) {
+    static std::string FormatValue(bool value, const std::string& formatSpec) {
         return value ? "true" : "false";
     }
 
-    // Template for numeric types
+    // Template for numeric types with format specifier support
     template<typename T>
-    static std::string ToString(const T& value,
+    static std::string FormatValue(const T& value, const std::string& formatSpec,
         typename std::enable_if<std::is_arithmetic<T>::value>::type* = nullptr) {
+
+        // Empty format spec = default decimal
+        if (formatSpec.empty()) {
+            return std::to_string(value);
+        }
+
+        std::stringstream ss;
+
+        // Parse format specifier (e.g., ":08X", ":.2f", ":04X", ":016X")
+        if (formatSpec[0] == ':') {
+            std::string spec = formatSpec.substr(1);
+
+            // Hex formats: :08X, :04X, :016X
+            if (spec.find('X') != std::string::npos || spec.find('x') != std::string::npos) {
+                bool uppercase = (spec.find('X') != std::string::npos);
+
+                // Extract width (e.g., "08" from "08X")
+                size_t width = 0;
+                bool zeroPad = false;
+                if (spec.length() > 1) {
+                    if (spec[0] == '0') {
+                        zeroPad = true;
+                        width = std::stoi(spec.substr(0, spec.length() - 1));
+                    } else {
+                        width = std::stoi(spec.substr(0, spec.length() - 1));
+                    }
+                }
+
+                // Format as hex
+                ss << "0x";
+                if (zeroPad && width > 0) {
+                    ss << std::setfill('0') << std::setw(width);
+                }
+                if (uppercase) {
+                    ss << std::uppercase << std::hex << static_cast<uint64_t>(value);
+                } else {
+                    ss << std::hex << static_cast<uint64_t>(value);
+                }
+                return ss.str();
+            }
+
+            // Float formats: :.2f, :.3f
+            else if (spec.find('f') != std::string::npos) {
+                // Extract precision (e.g., "2" from ".2f")
+                size_t dotPos = spec.find('.');
+                if (dotPos != std::string::npos && dotPos + 1 < spec.length()) {
+                    int precision = std::stoi(spec.substr(dotPos + 1, spec.length() - dotPos - 2));
+                    ss << std::fixed << std::setprecision(precision) << static_cast<double>(value);
+                    return ss.str();
+                }
+            }
+        }
+
+        // Fallback: default decimal
         return std::to_string(value);
     }
 
@@ -53,7 +107,27 @@ public:
     template<typename T, typename... Args>
     static void LogFormat(Level level, const std::string& format, T value, Args... args) {
         std::string msg = format;
-        ReplaceFirst(msg, "{}", ToString(value));
+
+        // Find next placeholder (either {} or {:...})
+        size_t startPos = msg.find('{');
+        if (startPos != std::string::npos) {
+            size_t endPos = msg.find('}', startPos);
+            if (endPos != std::string::npos) {
+                // Extract placeholder including format specifier
+                std::string placeholder = msg.substr(startPos, endPos - startPos + 1);
+
+                // Extract format specifier (e.g., ":08X" from "{:08X}")
+                std::string formatSpec;
+                if (placeholder.length() > 2) {
+                    formatSpec = placeholder.substr(1, placeholder.length() - 2);
+                }
+
+                // Format value and replace placeholder
+                std::string formatted = FormatValue(value, formatSpec);
+                msg.replace(startPos, placeholder.length(), formatted);
+            }
+        }
+
         LogFormat(level, msg, args...);
     }
 

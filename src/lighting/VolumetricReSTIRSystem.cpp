@@ -157,10 +157,10 @@ bool VolumetricReSTIRSystem::CreateReservoirBuffers() {
  * Create piecewise-constant volume (Mip 2) for T* transmittance
  *
  * This is a 3D texture storing approximate transmittance for candidate generation.
- * Resolution: Typically 64×64×64 or 128×128×128
+ * Resolution: 32×32×32 (reduced from 64³ to prevent GPU timeout at 2045 particles)
  * Format: R32_UINT (for atomic operations - prevents race conditions)
  *
- * Memory: 64³ × 4 bytes = 1 MB
+ * Memory: 32³ × 4 bytes = 128 KB (8× smaller than 64³)
  *
  * IMPORTANT: Changed from R16_FLOAT to R32_UINT to fix GPU hang at >2044 particles.
  * Multiple threads write to same voxel → race condition → hang at 2048 thread boundary.
@@ -168,7 +168,8 @@ bool VolumetricReSTIRSystem::CreateReservoirBuffers() {
  */
 bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     // Mip 2 resolution (coarse grid for cheap T* lookups)
-    const uint32_t volumeSize = 64; // 64×64×64 grid
+    // REDUCED from 64³ to 32³ to prevent GPU timeout at 2045 particles
+    const uint32_t volumeSize = 32; // 32×32×32 grid (8× fewer voxels than 64³)
 
     LOG_INFO("Creating piecewise-constant volume (Mip 2):");
     LOG_INFO("  Resolution: {}³", volumeSize);
@@ -817,7 +818,7 @@ void VolumetricReSTIRSystem::TemporalReuse(ID3D12GraphicsCommandList* commandLis
 /**
  * Populate Volume Mip 2 texture with particle density
  *
- * Splats particle density into 64³ voxel grid for piecewise-constant
+ * Splats particle density into 32³ voxel grid for piecewise-constant
  * transmittance (T*). Should be called once per frame before GenerateCandidates.
  *
  * Algorithm:
@@ -851,7 +852,7 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     // CRITICAL: Must clear before splatting to avoid reading uninitialized data
     // CRITICAL FIX: Use ClearUnorderedAccessViewUint for R32_UINT format (not Float!)
     // This was causing GPU hang at 2045 particles (3-second TDR timeout)
-    LOG_INFO("[DIAGNOSTIC] About to clear volume texture (64³ = 262,144 voxels)");
+    LOG_INFO("[DIAGNOSTIC] About to clear volume texture (32³ = 32,768 voxels)");
     UINT clearColor[4] = { 0, 0, 0, 0 };  // UINT values for R32_UINT format
     ID3D12DescriptorHeap* heapForClear = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     commandList->ClearUnorderedAccessViewUint(  // UINT clear, not Float!
@@ -892,7 +893,7 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     // Upload constants
     VolumePopulationConstants constants = {};
     constants.particleCount = particleCount;
-    constants.volumeResolution = 64;  // Mip 2 resolution
+    constants.volumeResolution = 32;  // Mip 2 resolution (reduced from 64 for performance)
     constants.padding0 = 0;
     constants.padding1 = 0;
 
@@ -947,7 +948,7 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     if (!loggedDispatch) {
         LOG_INFO("VolumetricReSTIR PopulateVolumeMip2 dispatch: {} thread groups ({} particles, {} threads total)",
                  dispatchX, particleCount, dispatchX * 64);
-        LOG_INFO("Volume Mip 2 resolution: 64³ (262,144 voxels)");
+        LOG_INFO("Volume Mip 2 resolution: 32³ (32,768 voxels) - reduced from 64³ for performance");
         LOG_INFO("Scene bounds: [{}, {}, {}] to [{}, {}, {}]",
                  constants.worldMin.x, constants.worldMin.y, constants.worldMin.z,
                  constants.worldMax.x, constants.worldMax.y, constants.worldMax.z);
@@ -969,6 +970,8 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     commandList->ResourceBarrier(1, &diagnosticBarrier);
 
     // Copy GPU buffer → Readback buffer (so CPU can read it later)
+    // NOTE: Readback buffers are always in COPY_DEST state, no barrier needed
+    // WaitForGPU() in Application.cpp will ensure this copy completes before Map()
     commandList->CopyResource(m_diagnosticCounterReadback.Get(), m_diagnosticCounterBuffer.Get());
     LOG_INFO("[DIAGNOSTIC] Copied diagnostic counters to readback buffer");
 
@@ -1001,12 +1004,16 @@ void VolumetricReSTIRSystem::ReadDiagnosticCounters() {
     }
 
     // Map readback buffer to read GPU counters
+    // NOTE: This requires GPU work to be complete (WaitForGPU already called in Application.cpp)
     void* mappedData = nullptr;
     D3D12_RANGE readRange = {0, 4 * sizeof(uint32_t)};
     HRESULT hr = m_diagnosticCounterReadback->Map(0, &readRange, &mappedData);
 
     if (FAILED(hr)) {
-        LOG_ERROR("Failed to map diagnostic counter readback buffer: 0x{:08X}", static_cast<uint32_t>(hr));
+        // Format HRESULT as both hex and decimal for debugging
+        LOG_ERROR("Failed to map diagnostic counter readback buffer!");
+        LOG_ERROR("  HRESULT: 0x{:08X} (decimal: {})", static_cast<uint32_t>(hr), static_cast<int32_t>(hr));
+        LOG_ERROR("  This indicates GPU work may not be complete yet");
         return;
     }
 
