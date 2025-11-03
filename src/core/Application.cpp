@@ -856,7 +856,7 @@ void Application::Render() {
             gaussianConstants.volumetricRTAttenuation = m_volumetricRTAttenuation;
 
             // Phase 0.13.1 Probe Grid System: Zero-atomic-contention volumetric lighting
-            gaussianConstants.useProbeGrid = 0u;  // TODO: Add ImGui toggle (Task 10)
+            gaussianConstants.useProbeGrid = m_useProbeGrid;  // ImGui toggle in "Probe Grid (Phase 0.13.1)" section
             gaussianConstants.probeGridPadding2 = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
             gaussianConstants.useVolumetricRT = m_useVolumetricRT ? 1u : 0u;
             gaussianConstants.volumetricRTIntensity = m_volumetricRTIntensity;
@@ -3378,6 +3378,51 @@ void Application::RenderImGui() {
             ImGui::Text("Estimated cost: %.1f ms/frame", estimatedMs);
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
                               "Phase 1: No spatial/temporal reuse (noisy)");
+        }
+    }
+
+    // Hybrid Probe Grid System (Phase 0.13.1)
+    if (ImGui::CollapsingHeader("Probe Grid (Phase 0.13.1)")) {
+        if (m_probeGridSystem) {
+            bool useProbeGrid = (m_useProbeGrid != 0);
+            if (ImGui::Checkbox("Enable Probe Grid", &useProbeGrid)) {
+                m_useProbeGrid = useProbeGrid ? 1u : 0u;
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Zero-atomic-contention volumetric lighting\n"
+                                 "Pre-computes lighting at 32\u00b3 sparse grid\n"
+                                 "Particles interpolate via trilinear sampling\n"
+                                 "\n"
+                                 "Designed to avoid atomic contention issues\n"
+                                 "that plague Volumetric ReSTIR at 2045+ particles");
+            }
+
+            ImGui::Separator();
+            ImGui::Text("Grid Architecture:");
+            ImGui::BulletText("32\u00b3 = 32,768 probes");
+            ImGui::BulletText("Spacing: 93.75 units");
+            ImGui::BulletText("Coverage: -1500 to +1500 per axis");
+            ImGui::BulletText("Memory: 4.06 MB probe buffer");
+
+            ImGui::Separator();
+            ImGui::Text("Performance Characteristics:");
+            ImGui::BulletText("Zero atomic operations");
+            ImGui::BulletText("Temporal amortization: 1/4 probes/frame");
+            ImGui::BulletText("Update cost: ~0.5-1.0ms");
+            ImGui::BulletText("Query cost: ~0.2-0.3ms");
+
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f),
+                              "SUCCESS METRIC:");
+            ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f),
+                              "2045+ particles - NO CRASH");
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                              "(vs Volumetric ReSTIR which crashes)");
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                              "Probe Grid System not initialized");
         }
     }
 

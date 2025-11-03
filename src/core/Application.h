@@ -153,6 +153,9 @@ private:
     float m_volumetricRTAttenuation = 0.0001f; // Unused (kept for compatibility)
     float m_volumetricRTIntensity = 200.0f;  // Unused (kept for compatibility)
 
+    // === Hybrid Probe Grid System (Phase 0.13.1) ===
+    uint32_t m_useProbeGrid = 0u;            // Toggle probe grid lighting (0=disabled, 1=enabled)
+
     // === Dynamic Emission (RT-Driven Star Radiance) ===
     float m_rtEmissionStrength = 0.25f;      // Global emission multiplier (0.0-1.0)
     float m_rtEmissionThreshold = 22000.0f;  // Temperature cutoff for emission (K)
