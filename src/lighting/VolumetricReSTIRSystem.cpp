@@ -864,6 +864,19 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     );
     LOG_INFO("[DIAGNOSTIC] Volume clear completed successfully");
 
+    // Clear diagnostic counter buffer to zeros
+    // CRITICAL: Must clear before dispatch to avoid accumulation across frames
+    UINT clearCounters[4] = { 0, 0, 0, 0 };
+    commandList->ClearUnorderedAccessViewUint(
+        m_diagnosticCounterUAV_GPU,  // GPU descriptor handle
+        m_diagnosticCounterUAV,       // CPU descriptor handle
+        m_diagnosticCounterBuffer.Get(),  // Resource
+        clearCounters,                // UINT values {0, 0, 0, 0}
+        0,
+        nullptr
+    );
+    LOG_INFO("[DIAGNOSTIC] Diagnostic counters cleared");
+
     // Set descriptor heaps (required for descriptor table bindings)
     LOG_INFO("[DIAGNOSTIC] About to set descriptor heaps");
     ID3D12DescriptorHeap* heaps[] = { m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
@@ -889,8 +902,9 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     constants.worldMax = DirectX::XMFLOAT3(1500.0f, 1500.0f, 1500.0f);
     constants.padding3 = 0.0f;
 
-    // Extinction scale (0.001 = very low extinction, mostly transparent medium)
-    constants.extinctionScale = 0.001f;
+    // Extinction scale (1.0 = medium extinction, semi-opaque medium)
+    // INCREASED from 0.001 to 1.0 to ensure voxel writes above 0.0001 threshold
+    constants.extinctionScale = 1.0f;
     constants.padding4 = 0.0f;
     constants.padding5 = 0.0f;
     constants.padding6 = 0.0f;
@@ -998,6 +1012,7 @@ void VolumetricReSTIRSystem::ReadDiagnosticCounters() {
 
     uint32_t* counters = static_cast<uint32_t*>(mappedData);
 
+    // CRITICAL DEBUG: Print raw values immediately after mapping
     LOG_INFO("========== PopulateVolumeMip2 Diagnostic Counters ==========");
     LOG_INFO("  [0] Total threads executed: {}", counters[0]);
     LOG_INFO("  [1] Early returns (bounds check): {}", counters[1]);

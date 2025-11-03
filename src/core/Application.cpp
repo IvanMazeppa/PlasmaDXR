@@ -1064,12 +1064,10 @@ void Application::Render() {
         loggedWaitDone = true;
     }
 
-    // Read diagnostic counters on frame 1 for debugging (GPU work is guaranteed complete)
-    static bool readDiagnostics = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !readDiagnostics) {
+    // Read diagnostic counters for first 5 frames for debugging (GPU work is guaranteed complete)
+    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_frameCount < 5) {
+        LOG_INFO("=== Reading diagnostic counters for frame {} ===", m_frameCount);
         m_volumetricReSTIR->ReadDiagnosticCounters();
-        readDiagnostics = true;
-        LOG_INFO("Diagnostic counters read after first frame");
     }
 
     m_frameCount++;

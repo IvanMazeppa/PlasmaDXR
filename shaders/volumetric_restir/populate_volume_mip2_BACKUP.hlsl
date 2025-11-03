@@ -122,7 +122,7 @@ float ComputeDensityContribution(Particle particle, float3 voxelCenter) {
     float distance = length(offset);
 
     // Gaussian falloff: density = exp(-distance² / radius²)
-    float radius = max(particle.radius, 0.01);  // Safety: prevent division by zero
+    float radius = particle.radius;
     float falloff = exp(-distance * distance / (radius * radius));
 
     // Scale by extinction coefficient
