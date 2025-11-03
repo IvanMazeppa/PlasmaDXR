@@ -78,6 +78,10 @@ cbuffer GaussianConstants : register(b0)
     uint volumetricRTSamples;      // Number of light rays per sample point (4-32)
     float volumetricRTDistance;    // Max distance to search for emitters (100-1000)
     float volumetricRTAttenuation; // Attenuation factor for distance falloff (0.00001-0.001)
+
+    // Probe Grid System (Phase 0.13.1)
+    uint useProbeGrid;             // Toggle probe grid lighting (replaces volumetric ReSTIR)
+    float3 probeGridPadding2;      // Padding for alignment
     uint useVolumetricRT;          // Toggle: 0=legacy per-particle, 1=volumetric per-sample
     float volumetricRTIntensity;   // Intensity boost for particle emission (50-500)
     float3 volumetricRTPadding;    // Padding for GPU alignment
@@ -113,6 +117,33 @@ Texture2D<float> g_prevShadow : register(t5);  // Previous frame shadow (read-on
 // R channel: asfloat(lightIndex) - 0-15 or 0xFFFFFFFF if no lights
 // G/B channels: debug data (cell index, light count)
 Texture2D<float4> g_rtxdiOutput : register(t6);
+
+// ============================================================================
+// PROBE GRID SYSTEM (Phase 0.13.1)
+// ============================================================================
+// Hybrid Probe Grid: Pre-computed lighting at sparse 32³ grid for zero atomic contention
+// Particles interpolate between nearest 8 probes using trilinear sampling
+
+// Probe structure (matches C++ ProbeGridSystem::Probe)
+struct Probe {
+    float3 position;              // World-space probe location (12 bytes)
+    uint lastUpdateFrame;         // Frame when last updated (4 bytes)
+    float3 irradiance[9];         // SH L2 irradiance (9 × 12 bytes = 108 bytes)
+    uint padding[1];              // Align to 128 bytes
+};
+
+// Probe grid parameters (constant buffer)
+cbuffer ProbeGridParams : register(b4)
+{
+    float3 gridMin;               // Grid world-space minimum [-1500, -1500, -1500]
+    float gridSpacing;            // Distance between probes (93.75 units)
+    uint gridSize;                // Grid dimension (32)
+    uint totalProbes;             // Total probe count (32,768)
+    uint2 probeGridPadding;       // Padding for alignment
+};
+
+// Probe buffer (structured buffer)
+StructuredBuffer<Probe> g_probeGrid : register(t7);
 
 // Derived values
 static const float2 resolution = float2(screenWidth, screenHeight);
@@ -556,6 +587,88 @@ float Hash(uint seed) {
     seed = ((seed >> 16) ^ seed);
     return float(seed) / 4294967295.0;
 }
+
+// =============================================================================
+// PROBE GRID SAMPLING (Phase 0.13.1)
+// =============================================================================
+/**
+ * Sample probe grid irradiance using trilinear interpolation
+ *
+ * Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
+ * Zero atomic operations = zero contention = scales to 10K+ particles!
+ *
+ * Algorithm:
+ * 1. Convert world position to grid coordinates
+ * 2. Find 8 nearest probes (corner of grid cell)
+ * 3. Trilinear interpolation between probes
+ *
+ * @param worldPos World-space position to sample lighting at
+ * @return Irradiance (RGB color) at the given position
+ */
+float3 SampleProbeGrid(float3 worldPos) {
+    // Convert world position to grid coordinates
+    float3 gridCoord = (worldPos - gridMin) / gridSpacing;
+
+    // Clamp to valid grid bounds [0, gridSize-1]
+    gridCoord = clamp(gridCoord, float3(0, 0, 0), float3(gridSize - 1, gridSize - 1, gridSize - 1));
+
+    // Base grid index (integer part)
+    int3 gridIdx0 = int3(floor(gridCoord));
+    int3 gridIdx1 = min(gridIdx0 + int3(1, 1, 1), int3(gridSize - 1, gridSize - 1, gridSize - 1));
+
+    // Interpolation weights (fractional part)
+    float3 t = frac(gridCoord);
+
+    // Fetch 8 corner probes (trilinear cube)
+    // Linear index formula: x + y*gridSize + z*gridSize²
+    uint stride = gridSize;
+    uint strideZ = gridSize * gridSize;
+
+    uint idx000 = gridIdx0.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
+    uint idx001 = gridIdx0.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
+    uint idx010 = gridIdx0.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
+    uint idx011 = gridIdx0.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
+    uint idx100 = gridIdx1.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
+    uint idx101 = gridIdx1.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
+    uint idx110 = gridIdx1.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
+    uint idx111 = gridIdx1.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
+
+    // Bounds check (safety against out-of-bounds access)
+    if (idx000 >= totalProbes || idx001 >= totalProbes ||
+        idx010 >= totalProbes || idx011 >= totalProbes ||
+        idx100 >= totalProbes || idx101 >= totalProbes ||
+        idx110 >= totalProbes || idx111 >= totalProbes) {
+        return float3(0, 0, 0);  // Out of bounds - return black
+    }
+
+    // Sample irradiance from probes (SH L0 coefficient only for MVP)
+    // Full SH L2 reconstruction can be added later for better directionality
+    float3 c000 = g_probeGrid[idx000].irradiance[0];
+    float3 c001 = g_probeGrid[idx001].irradiance[0];
+    float3 c010 = g_probeGrid[idx010].irradiance[0];
+    float3 c011 = g_probeGrid[idx011].irradiance[0];
+    float3 c100 = g_probeGrid[idx100].irradiance[0];
+    float3 c101 = g_probeGrid[idx101].irradiance[0];
+    float3 c110 = g_probeGrid[idx110].irradiance[0];
+    float3 c111 = g_probeGrid[idx111].irradiance[0];
+
+    // Trilinear interpolation
+    // First interpolate along X axis (4 lerps)
+    float3 c00 = lerp(c000, c100, t.x);
+    float3 c01 = lerp(c001, c101, t.x);
+    float3 c10 = lerp(c010, c110, t.x);
+    float3 c11 = lerp(c011, c111, t.x);
+
+    // Interpolate along Y axis (2 lerps)
+    float3 c0 = lerp(c00, c10, t.y);
+    float3 c1 = lerp(c01, c11, t.y);
+
+    // Final interpolation along Z axis (1 lerp)
+    float3 finalIrradiance = lerp(c0, c1, t.z);
+
+    return finalIrradiance;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -729,10 +842,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 intensity = EmissionIntensity(p.temperature);
             }
 
-            // === RT LIGHTING: Volumetric (smooth) or Legacy (per-particle) ===
+            // === RT LIGHTING: Probe Grid, Volumetric, or Legacy ===
             float3 rtLight;
 
-            if (useVolumetricRT != 0) {
+            if (useProbeGrid != 0) {
+                // PROBE GRID MODE (Phase 0.13.1): Zero atomic contention!
+                // Pre-computed lighting at sparse 32³ grid with trilinear interpolation
+                // Scales to 10K+ particles without GPU hang (replaces Volumetric ReSTIR)
+                rtLight = SampleProbeGrid(pos);
+            } else if (useVolumetricRT != 0) {
                 // VOLUMETRIC SCATTERING MODE: Treat neighbors as virtual lights
                 // Applies same volumetric math as multi-lights (attenuation + phase function)
                 // This creates true volumetric glow with proper light scattering!

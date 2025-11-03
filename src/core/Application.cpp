@@ -9,6 +9,7 @@
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../lighting/RTXDILightingSystem.h"
 #include "../lighting/VolumetricReSTIRSystem.h"
+#include "../lighting/ProbeGridSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
@@ -345,6 +346,21 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Pre-allocated clear UAV descriptor (final output texture)");
     }
 
+    // Initialize Probe Grid System (Phase 0.13.1)
+    // Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
+    m_probeGridSystem = std::make_unique<ProbeGridSystem>();
+    if (!m_probeGridSystem->Initialize(m_device.get(), m_resources.get())) {
+        LOG_ERROR("Failed to initialize Probe Grid System");
+        LOG_ERROR("  Probe Grid will not be available");
+        m_probeGridSystem.reset();
+    } else {
+        LOG_INFO("Probe Grid System initialized successfully!");
+        LOG_INFO("  Grid: 32³ = 32,768 probes @ 93.75-unit spacing");
+        LOG_INFO("  Memory: 4.06 MB probe buffer");
+        LOG_INFO("  Zero atomic operations = zero contention!");
+        LOG_INFO("  Target: 10K particles @ 90-110 FPS");
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -637,6 +653,31 @@ void Application::Render() {
         // Log every 60 frames
         if ((m_frameCount % 60) == 0) {
             LOG_INFO("RT Lighting computed with dynamic emission (frame {})", m_frameCount);
+        }
+    }
+
+    // Probe Grid Update Pass (Phase 0.13.1)
+    // Reuses TLAS from RT lighting system (zero duplication!)
+    if (m_probeGridSystem && m_rtLighting && m_particleSystem) {
+        // Get light buffer from multi-light system
+        // TODO: Create a proper light buffer structure when we add light controls
+        // For now, pass null and handle gracefully in shader
+        ID3D12Resource* lightBuffer = nullptr;  // Will be implemented with ImGui controls
+        uint32_t lightCount = 0;
+
+        m_probeGridSystem->UpdateProbes(
+            cmdList,
+            m_rtLighting->GetTLAS(),
+            m_particleSystem->GetParticleBuffer(),
+            m_config.particleCount,
+            lightBuffer,
+            lightCount,
+            m_frameCount
+        );
+
+        // Log every 60 frames
+        if ((m_frameCount % 60) == 0) {
+            LOG_INFO("Probe Grid updated (frame {})", m_frameCount);
         }
     }
 

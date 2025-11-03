@@ -19,6 +19,7 @@ class ParticleRenderer;
 class RTLightingSystem_RayQuery;
 class RTXDILightingSystem;
 class VolumetricReSTIRSystem;
+class ProbeGridSystem;
 class ResourceManager;
 class AdaptiveQualitySystem;
 #ifdef ENABLE_DLSS
@@ -78,6 +79,7 @@ private:
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;     // RTXDI parallel lighting path
     std::unique_ptr<VolumetricReSTIRSystem> m_volumetricReSTIR;     // Volumetric ReSTIR (Phase 1 - experimental)
     D3D12_CPU_DESCRIPTOR_HANDLE m_volumetricReSTIRClearUAV = {};    // Pre-allocated descriptor for clear operation
+    std::unique_ptr<ProbeGridSystem> m_probeGridSystem;             // Probe Grid (Phase 0.13.1 - replaces ReSTIR)
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)

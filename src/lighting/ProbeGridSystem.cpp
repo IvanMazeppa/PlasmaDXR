@@ -266,9 +266,62 @@ void ProbeGridSystem::UpdateProbes(
         return;
     }
 
-    // TODO: Implement probe update dispatch
-    // This will be implemented after shader creation (Day 2-3)
+    // Set pipeline state and root signature
+    commandList->SetPipelineState(m_updateProbePSO.Get());
+    commandList->SetComputeRootSignature(m_updateProbeRS.Get());
 
+    // Prepare constant buffer data
+    ProbeUpdateConstants constants = {};
+    constants.gridMin = m_gridMin;
+    constants.gridSpacing = m_gridSpacing;
+    constants.gridSize = m_gridSize;
+    constants.raysPerProbe = m_raysPerProbe;
+    constants.particleCount = particleCount;
+    constants.lightCount = lightCount;
+    constants.frameIndex = frameIndex;
+    constants.updateInterval = m_updateInterval;
+    constants.padding0 = 0;
+    constants.padding1 = 0;
+
+    // Map constant buffer and upload
+    void* mappedData = nullptr;
+    HRESULT hr = m_updateConstantBuffer->Map(0, nullptr, &mappedData);
+    if (SUCCEEDED(hr)) {
+        memcpy(mappedData, &constants, sizeof(ProbeUpdateConstants));
+        m_updateConstantBuffer->Unmap(0, nullptr);
+    } else {
+        LOG_ERROR("Failed to map probe update constant buffer! HRESULT: 0x{:08X}", static_cast<uint32_t>(hr));
+        return;
+    }
+
+    // Bind shader resources to root signature
+    // Root parameter 0: b0 - ProbeUpdateConstants (constant buffer)
+    commandList->SetComputeRootConstantBufferView(0, m_updateConstantBuffer->GetGPUVirtualAddress());
+
+    // Root parameter 1: t0 - Particle buffer (SRV)
+    commandList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
+
+    // Root parameter 2: t1 - Light buffer (SRV)
+    commandList->SetComputeRootShaderResourceView(2, lightBuffer->GetGPUVirtualAddress());
+
+    // Root parameter 3: t2 - Particle TLAS (SRV)
+    commandList->SetComputeRootShaderResourceView(3, particleTLAS->GetGPUVirtualAddress());
+
+    // Root parameter 4: u0 - Probe buffer (UAV)
+    commandList->SetComputeRootUnorderedAccessView(4, m_probeBuffer->GetGPUVirtualAddress());
+
+    // Dispatch compute shader
+    // Thread groups: 4×4×4 (each group has 8×8×8 threads = 512 threads)
+    // Total threads: 4×4×4 × 8×8×8 = 64 × 512 = 32,768 threads (matches probe count)
+    commandList->Dispatch(4, 4, 4);
+
+    // UAV barrier to ensure probe writes complete before next pass
+    CD3DX12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_probeBuffer.Get());
+    commandList->ResourceBarrier(1, &uavBarrier);
+
+    // Update statistics
+    uint32_t totalProbes = m_gridSize * m_gridSize * m_gridSize;
+    m_probesUpdatedLastFrame = totalProbes / m_updateInterval;  // 32,768 / 4 = 8,192 probes
     m_frameCount++;
 }
 
