@@ -165,7 +165,7 @@ private:
     // Configuration
     bool m_enabled = true;
     uint32_t m_gridSize = 32;                // 32³ grid (32,768 probes)
-    uint32_t m_raysPerProbe = 16;            // Rays per probe (Fibonacci sphere) - reduced from 64 to avoid TDR at 2045+ particles
+    uint32_t m_raysPerProbe = 1;             // EXTREME TEST: 1 ray per probe to isolate GPU hang (was 16, original 64)
     uint32_t m_updateInterval = 4;           // Update 1/4 of grid per frame
 
     // World-space grid parameters

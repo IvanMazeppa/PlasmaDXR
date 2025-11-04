@@ -62,6 +62,12 @@ public:
     // Get acceleration structures (for reuse by Gaussian renderer)
     ID3D12Resource* GetTLAS() const { return m_topLevelAS.Get(); }
 
+    // Batching support (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
+    uint32_t GetBatchCount() const { return static_cast<uint32_t>(m_batches.size()); }
+    ID3D12Resource* GetBatchTLAS(uint32_t batchIdx) const {
+        return (batchIdx < m_batches.size()) ? m_batches[batchIdx].tlas.Get() : nullptr;
+    }
+
     // Settings
     void SetRaysPerParticle(uint32_t rays) { m_raysPerParticle = rays; }
     void SetMaxLightingDistance(float dist) { m_maxLightingDistance = dist; }
@@ -83,10 +89,30 @@ public:
     void SetDensityScaleMax(float max) { m_densityScaleMax = max; }
 
 private:
+    // Particle Batching (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
+    struct AccelerationBatch {
+        Microsoft::WRL::ComPtr<ID3D12Resource> aabbBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> blas;
+        Microsoft::WRL::ComPtr<ID3D12Resource> tlas;
+        Microsoft::WRL::ComPtr<ID3D12Resource> blasScratch;
+        Microsoft::WRL::ComPtr<ID3D12Resource> tlasScratch;
+        Microsoft::WRL::ComPtr<ID3D12Resource> instanceDesc;
+        uint32_t startIndex;
+        uint32_t count;
+        size_t blasSize;
+        size_t tlasSize;
+    };
+
     bool LoadShaders();
     bool CreateRootSignatures();
     bool CreatePipelineStates();
     bool CreateAccelerationStructures();
+
+    // Batching helpers
+    bool CreateBatchedAccelerationStructures();
+    void GenerateAABBsForBatch(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, AccelerationBatch& batch);
+    void BuildBatchBLAS(ID3D12GraphicsCommandList4* cmdList, AccelerationBatch& batch);
+    void BuildBatchTLAS(ID3D12GraphicsCommandList4* cmdList, AccelerationBatch& batch);
 
     void GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer);
     void BuildBLAS(ID3D12GraphicsCommandList4* cmdList);
@@ -145,4 +171,10 @@ private:
 
     size_t m_blasSize = 0;
     size_t m_tlasSize = 0;
+
+    // Particle Batching (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
+    // Split particles into groups of ~2000 to avoid driver bugs at specific particle counts
+    static constexpr uint32_t PARTICLES_PER_BATCH = 2000;
+    bool m_useBatching = true;  // Enable batching by default
+    std::vector<AccelerationBatch> m_batches;
 };

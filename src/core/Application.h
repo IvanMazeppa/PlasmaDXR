@@ -147,7 +147,7 @@ private:
     float m_densityScaleMax = 3.0f;          // Max density scale clamp (1.0-5.0)
 
     // === Spatial RT Interpolation (Phase 3.9) ===
-    bool m_useVolumetricRT = true;           // Enable spatial interpolation of RT lighting
+    bool m_useVolumetricRT = false;          // Enable spatial interpolation of RT lighting (DISABLED - interferes with probe grid)
     uint32_t m_volumetricRTSamples = 8;      // Number of neighbor particles to sample (4-32)
     float m_volumetricRTDistance = 200.0f;   // Smoothness radius for interpolation (100-400)
     float m_volumetricRTAttenuation = 0.0001f; // Unused (kept for compatibility)

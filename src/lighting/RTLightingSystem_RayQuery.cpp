@@ -36,9 +36,19 @@ bool RTLightingSystem_RayQuery::Initialize(Device* device, ResourceManager* reso
         return false;
     }
 
-    if (!CreateAccelerationStructures()) {
-        LOG_ERROR("Failed to create acceleration structures");
-        return false;
+    // Choose batching vs monolithic based on particle count (Phase 0.13.3)
+    if (m_useBatching && m_particleCount > PARTICLES_PER_BATCH) {
+        LOG_INFO("Using batched acceleration structures (particles={} > {})", m_particleCount, PARTICLES_PER_BATCH);
+        if (!CreateBatchedAccelerationStructures()) {
+            LOG_ERROR("Failed to create batched acceleration structures");
+            return false;
+        }
+    } else {
+        LOG_INFO("Using monolithic acceleration structures (particles={} <= {})", m_particleCount, PARTICLES_PER_BATCH);
+        if (!CreateAccelerationStructures()) {
+            LOG_ERROR("Failed to create acceleration structures");
+            return false;
+        }
     }
 
     LOG_INFO("RayQuery RT Lighting System initialized successfully");
@@ -203,8 +213,9 @@ bool RTLightingSystem_RayQuery::CreatePipelineStates() {
 bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
     // Create AABB buffer
     {
-        // Allocate +1 AABB for power-of-2 BVH workaround (see BuildBLAS for details)
-        size_t aabbBufferSize = (m_particleCount + 1) * 24;  // 6 floats (minXYZ, maxXYZ) = 24 bytes
+        // Allocate +4 AABBs for power-of-2 BVH workaround (see BuildBLAS for details)
+        // Need full leaf (4 primitives) to shift from 512 → 513 leaves
+        size_t aabbBufferSize = (m_particleCount + 4) * 24;  // 6 floats (minXYZ, maxXYZ) = 24 bytes
 
         ResourceManager::BufferDesc desc = {};
         desc.size = aabbBufferSize;
@@ -348,6 +359,168 @@ bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
     return true;
 }
 
+// ============================================================================
+// Particle Batching (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
+// ============================================================================
+
+bool RTLightingSystem_RayQuery::CreateBatchedAccelerationStructures() {
+    uint32_t numBatches = (m_particleCount + PARTICLES_PER_BATCH - 1) / PARTICLES_PER_BATCH;
+    m_batches.resize(numBatches);
+
+    LOG_INFO("=== Creating Batched Acceleration Structures ===");
+    LOG_INFO("  Total particles: {}", m_particleCount);
+    LOG_INFO("  Particles per batch: {}", PARTICLES_PER_BATCH);
+    LOG_INFO("  Number of batches: {}", numBatches);
+    LOG_INFO("  Reason: Mitigate GPU hang at 2045+ particles");
+
+    auto device = m_device->GetDevice();
+    D3D12_HEAP_PROPERTIES defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_HEAP_PROPERTIES uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+    for (uint32_t i = 0; i < numBatches; i++) {
+        AccelerationBatch& batch = m_batches[i];
+        batch.startIndex = i * PARTICLES_PER_BATCH;
+        batch.count = std::min(PARTICLES_PER_BATCH, m_particleCount - batch.startIndex);
+
+        LOG_INFO("  Batch {}: particles [{}, {})", i, batch.startIndex, batch.startIndex + batch.count);
+
+        // Create AABB buffer for this batch (+4 for power-of-2 padding)
+        {
+            size_t aabbBufferSize = (batch.count + 4) * 24;
+            ResourceManager::BufferDesc aabbDesc = {};
+            aabbDesc.size = aabbBufferSize;
+            aabbDesc.heapType = D3D12_HEAP_TYPE_DEFAULT;
+            aabbDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            aabbDesc.initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+            std::string batchName = "ParticleAABBs_Batch" + std::to_string(i);
+            batch.aabbBuffer = m_resources->CreateBuffer(batchName.c_str(), aabbDesc);
+            if (!batch.aabbBuffer) {
+                LOG_ERROR("Failed to create AABB buffer for batch {}", i);
+                return false;
+            }
+        }
+
+        // Get BLAS size requirements for this batch
+        {
+            D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
+            geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
+            geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+            geomDesc.AABBs.AABBCount = batch.count;
+            geomDesc.AABBs.AABBs.StrideInBytes = 24;
+
+            D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+            blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+            blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+            blasInputs.NumDescs = 1;
+            blasInputs.pGeometryDescs = &geomDesc;
+            blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+
+            D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO blasPrebuild = {};
+            device->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &blasPrebuild);
+
+            batch.blasSize = blasPrebuild.ResultDataMaxSizeInBytes;
+
+            // Create BLAS buffer
+            D3D12_RESOURCE_DESC blasDesc = CD3DX12_RESOURCE_DESC::Buffer(batch.blasSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+            HRESULT hr = device->CreateCommittedResource(
+                &defaultHeap, D3D12_HEAP_FLAG_NONE, &blasDesc,
+                D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+                nullptr, IID_PPV_ARGS(&batch.blas));
+
+            if (FAILED(hr)) {
+                LOG_ERROR("Failed to create BLAS for batch {}", i);
+                return false;
+            }
+
+            // Create BLAS scratch buffer
+            D3D12_RESOURCE_DESC scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(blasPrebuild.ScratchDataSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+            hr = device->CreateCommittedResource(
+                &defaultHeap, D3D12_HEAP_FLAG_NONE, &scratchDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr, IID_PPV_ARGS(&batch.blasScratch));
+
+            if (FAILED(hr)) {
+                LOG_ERROR("Failed to create BLAS scratch for batch {}", i);
+                return false;
+            }
+        }
+
+        // Get TLAS size requirements for this batch
+        {
+            D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS tlasInputs = {};
+            tlasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+            tlasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+            tlasInputs.NumDescs = 1;  // Single instance per batch
+            tlasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+
+            D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO tlasPrebuild = {};
+            device->GetRaytracingAccelerationStructurePrebuildInfo(&tlasInputs, &tlasPrebuild);
+
+            batch.tlasSize = tlasPrebuild.ResultDataMaxSizeInBytes;
+
+            // Create TLAS buffer
+            D3D12_RESOURCE_DESC tlasDesc = CD3DX12_RESOURCE_DESC::Buffer(batch.tlasSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+            HRESULT hr = device->CreateCommittedResource(
+                &defaultHeap, D3D12_HEAP_FLAG_NONE, &tlasDesc,
+                D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+                nullptr, IID_PPV_ARGS(&batch.tlas));
+
+            if (FAILED(hr)) {
+                LOG_ERROR("Failed to create TLAS for batch {}", i);
+                return false;
+            }
+
+            // Create TLAS scratch buffer
+            D3D12_RESOURCE_DESC scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(tlasPrebuild.ScratchDataSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+            hr = device->CreateCommittedResource(
+                &defaultHeap, D3D12_HEAP_FLAG_NONE, &scratchDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr, IID_PPV_ARGS(&batch.tlasScratch));
+
+            if (FAILED(hr)) {
+                LOG_ERROR("Failed to create TLAS scratch for batch {}", i);
+                return false;
+            }
+
+            // Create instance descriptor buffer
+            D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+            hr = device->CreateCommittedResource(
+                &uploadHeap, D3D12_HEAP_FLAG_NONE, &instanceDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr, IID_PPV_ARGS(&batch.instanceDesc));
+
+            if (FAILED(hr)) {
+                LOG_ERROR("Failed to create instance desc for batch {}", i);
+                return false;
+            }
+        }
+    }
+
+    // Create shared lighting output buffer (not batched)
+    {
+        size_t lightingBufferSize = m_particleCount * 16;
+        ResourceManager::BufferDesc lightingDesc = {};
+        lightingDesc.size = lightingBufferSize;
+        lightingDesc.heapType = D3D12_HEAP_TYPE_DEFAULT;
+        lightingDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        lightingDesc.initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+        m_lightingBuffer = m_resources->CreateBuffer("RTLightingOutput", lightingDesc);
+        if (!m_lightingBuffer) {
+            LOG_ERROR("Failed to create lighting output buffer");
+            return false;
+        }
+    }
+
+    float totalMemoryMB = (numBatches * 100) / 1024.0f;  // ~100KB per batch
+    LOG_INFO("=== Batched Acceleration Structures Created ===");
+    LOG_INFO("  Total batches: {}", numBatches);
+    LOG_INFO("  Estimated memory: {:.2f} MB", totalMemoryMB);
+    LOG_INFO("  Each batch <{} particles avoids driver bug", PARTICLES_PER_BATCH);
+    return true;
+}
+
 void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer) {
     cmdList->SetPipelineState(m_aabbGenPSO.Get());
     cmdList->SetComputeRootSignature(m_aabbGenRootSig.Get());
@@ -384,17 +557,20 @@ void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdLis
 void RTLightingSystem_RayQuery::BuildBLAS(ID3D12GraphicsCommandList4* cmdList) {
     // CRITICAL FIX: NVIDIA BVH traversal bug at power-of-2 leaf boundaries
     // At 2045 particles → 512 BVH leaves (2^9) → Driver bug causes GPU hang/TDR
-    // Workaround: Add 1 AABB padding when leaf count would be exactly power-of-2
+    // Workaround: Add enough AABBs to push leaf count past power-of-2 boundary
     // Assumes leaf size = 4 primitives/leaf (typical for PREFER_FAST_BUILD)
     uint32_t aabbCount = m_particleCount;
     uint32_t leafCount = (aabbCount + 3) / 4;  // Round up division by 4
     bool isPowerOf2 = (leafCount & (leafCount - 1)) == 0 && leafCount > 0;
 
     if (isPowerOf2 && leafCount >= 512) {
-        // Add 1 AABB to push leaf count past power-of-2 boundary
-        aabbCount++;
-        LOG_WARN("BVH leaf count {} is power-of-2 (particles={}), adding 1 padding AABB to avoid driver bug",
-                 leafCount, m_particleCount);
+        // Add 4 AABBs (one full leaf) to push leaf count to next level
+        // Example: 2045 particles → 512 leaves, add 4 → 2049 AABBs → 513 leaves
+        uint32_t paddingNeeded = 4;
+        aabbCount += paddingNeeded;
+        uint32_t newLeafCount = (aabbCount + 3) / 4;
+        LOG_WARN("BVH leaf count {} is power-of-2 (particles={}), adding {} padding AABBs → {} leaves",
+                 leafCount, m_particleCount, paddingNeeded, newLeafCount);
     }
 
     // Setup geometry desc

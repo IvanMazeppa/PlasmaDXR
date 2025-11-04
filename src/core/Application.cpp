@@ -656,11 +656,17 @@ void Application::Render() {
         }
     }
 
-    // Probe Grid Update Pass (Phase 0.13.2 - BVH FIX APPLIED)
-    // CRITICAL FIX: NVIDIA BVH traversal bug at power-of-2 leaf boundaries
-    // Root cause: At 2045 particles → 512 BVH leaves (2^9) → Driver hang
-    // Workaround: Add +1 AABB padding when leaf count is power-of-2 (see RTLightingSystem_RayQuery::BuildBLAS)
-    // This shifts leaf count from 512 → 513, avoiding the driver bug entirely
+    // CRITICAL FIX: Add explicit TLAS barrier before probe grid dispatch
+    // Ensures TLAS is in correct state after RT lighting build
+    if (m_probeGridSystem && m_rtLighting) {
+        D3D12_RESOURCE_BARRIER tlasBarrier = {};
+        tlasBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        tlasBarrier.UAV.pResource = m_rtLighting->GetTLAS();
+        cmdList->ResourceBarrier(1, &tlasBarrier);
+    }
+
+    // Probe Grid Update Pass (Phase 0.13.2 - Testing with Volumetric RT disabled + TLAS barrier)
+    // Volumetric spatial interpolation disabled at launch (may interfere)
     if (m_probeGridSystem && m_rtLighting && m_particleSystem) {
         ID3D12Resource* lightBuffer = nullptr;
         uint32_t lightCount = 0;

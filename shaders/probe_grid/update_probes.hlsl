@@ -244,7 +244,13 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
         q.TraceRayInline(g_particleTLAS, RAY_FLAG_NONE, 0xFF, ray);
 
         // Process all AABB candidates (procedural primitives require manual intersection testing)
-        while (q.Proceed()) {
+        // CRITICAL FIX: Add iteration limit to prevent infinite loops causing TDR timeout
+        uint iterationCount = 0;
+        const uint MAX_ITERATIONS = 1000;
+
+        while (q.Proceed() && iterationCount < MAX_ITERATIONS) {
+            iterationCount++;
+
             if (q.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
                 uint particleIdx = q.CandidatePrimitiveIndex();
 
@@ -267,6 +273,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
                     }
                 }
             }
+        }
+
+        // Diagnostic: If we hit the iteration limit, mark this probe with red (timeout)
+        if (iterationCount >= MAX_ITERATIONS) {
+            totalIrradiance = float3(10.0, 0.0, 0.0); // Bright red = timeout detected
         }
 
         // Check for committed hit (procedural primitive, not triangle!)
