@@ -186,7 +186,13 @@ float3 ComputeParticleLighting(float3 probePos, float3 particlePos, float radius
     float3 color = BlackbodyColor(temperature);
     float intensity = BlackbodyIntensity(temperature);
 
-    return color * intensity * attenuation;
+    // CRITICAL FIX: Probe grid needs 200× intensity boost for visibility
+    // Particles are self-emissive, but at 93.75-unit probe spacing, inverse square
+    // falloff makes them extremely dim without this multiplier.
+    // This matches the intensity scale used in the Gaussian renderer's RT lighting.
+    const float PROBE_INTENSITY_SCALE = 200.0;
+
+    return color * intensity * attenuation * PROBE_INTENSITY_SCALE;
 }
 
 //=============================================================================
@@ -236,15 +242,36 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
         // Trace ray using inline ray tracing (no atomic contention!)
         RayQuery<RAY_FLAG_NONE> q;
         q.TraceRayInline(g_particleTLAS, RAY_FLAG_NONE, 0xFF, ray);
-        q.Proceed();
 
-        // Check for particle hit
-        if (q.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+        // Process all AABB candidates (procedural primitives require manual intersection testing)
+        while (q.Proceed()) {
+            if (q.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
+                uint particleIdx = q.CandidatePrimitiveIndex();
+
+                if (particleIdx < g_particleCount) {
+                    Particle particle = g_particles[particleIdx];
+
+                    // Ray-ellipsoid intersection test (simplified sphere for probes)
+                    float3 oc = ray.Origin - particle.position;
+                    float radius = particle.radius;
+                    float b = dot(oc, ray.Direction);
+                    float c = dot(oc, oc) - radius * radius;
+                    float discriminant = b * b - c;
+
+                    if (discriminant >= 0.0) {
+                        float t = -b - sqrt(discriminant);
+                        if (t > ray.TMin && t < ray.TMax) {
+                            // Valid intersection - commit this hit
+                            q.CommitProceduralPrimitiveHit(t);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for committed hit (procedural primitive, not triangle!)
+        if (q.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) {
             // Get hit information
-            float hitT = q.CommittedRayT();
-            float3 hitPos = probePos + direction * hitT;
-
-            // Get particle index (primitive index in BLAS)
             uint particleIdx = q.CommittedPrimitiveIndex();
 
             if (particleIdx < g_particleCount) {

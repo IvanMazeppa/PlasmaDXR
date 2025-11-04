@@ -897,14 +897,17 @@ void Application::Render() {
                     10000.0f  // Far plane
                 );
 
-                // Populate Volume Mip 2 with particle density (T* transmittance)
-                // RE-ENABLED: Root signature verified correct (4/4 resources match DXIL)
-                // Testing with diagnostic tools to find shader execution issue
+                // DISABLED: Populate Volume Mip 2 causes crash at >2044 particles
+                // Known Issue: populate_volume_mip2.hlsl line 16-17 documents race condition
+                // at >2044 particles causing GPU hang/TDR timeout.
+                // TODO: Fix InterlockedMax atomic contention before re-enabling
+                /*
                 m_volumetricReSTIR->PopulateVolumeMip2(
                     reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                     m_particleSystem->GetParticleBuffer(),
                     m_config.particleCount
                 );
+                */
 
                 // Generate path candidates (Phase 1: RIS only)
                 m_volumetricReSTIR->GenerateCandidates(
