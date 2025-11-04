@@ -203,7 +203,8 @@ bool RTLightingSystem_RayQuery::CreatePipelineStates() {
 bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
     // Create AABB buffer
     {
-        size_t aabbBufferSize = m_particleCount * 24;  // 6 floats (minXYZ, maxXYZ) = 24 bytes
+        // Allocate +1 AABB for power-of-2 BVH workaround (see BuildBLAS for details)
+        size_t aabbBufferSize = (m_particleCount + 1) * 24;  // 6 floats (minXYZ, maxXYZ) = 24 bytes
 
         ResourceManager::BufferDesc desc = {};
         desc.size = aabbBufferSize;
@@ -375,14 +376,32 @@ void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdLis
     // UAV barrier
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_aabbBuffer.Get());
     cmdList->ResourceBarrier(1, &barrier);
+
+    // Note: Padding AABB for power-of-2 workaround is zero-initialized (degenerate AABB)
+    // Zero-sized AABB will never be hit by rays, effectively invisible
 }
 
 void RTLightingSystem_RayQuery::BuildBLAS(ID3D12GraphicsCommandList4* cmdList) {
+    // CRITICAL FIX: NVIDIA BVH traversal bug at power-of-2 leaf boundaries
+    // At 2045 particles → 512 BVH leaves (2^9) → Driver bug causes GPU hang/TDR
+    // Workaround: Add 1 AABB padding when leaf count would be exactly power-of-2
+    // Assumes leaf size = 4 primitives/leaf (typical for PREFER_FAST_BUILD)
+    uint32_t aabbCount = m_particleCount;
+    uint32_t leafCount = (aabbCount + 3) / 4;  // Round up division by 4
+    bool isPowerOf2 = (leafCount & (leafCount - 1)) == 0 && leafCount > 0;
+
+    if (isPowerOf2 && leafCount >= 512) {
+        // Add 1 AABB to push leaf count past power-of-2 boundary
+        aabbCount++;
+        LOG_WARN("BVH leaf count {} is power-of-2 (particles={}), adding 1 padding AABB to avoid driver bug",
+                 leafCount, m_particleCount);
+    }
+
     // Setup geometry desc
     D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
     geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
     geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-    geomDesc.AABBs.AABBCount = m_particleCount;
+    geomDesc.AABBs.AABBCount = aabbCount;  // May be particle count + 1 (padding)
     geomDesc.AABBs.AABBs.StartAddress = m_aabbBuffer->GetGPUVirtualAddress();
     geomDesc.AABBs.AABBs.StrideInBytes = 24;  // 6 floats
 

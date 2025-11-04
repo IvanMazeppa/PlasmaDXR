@@ -656,16 +656,18 @@ void Application::Render() {
         }
     }
 
-    // Probe Grid Update Pass (Phase 0.13.1)
-    // Reuses TLAS from RT lighting system (zero duplication!)
+    // Probe Grid Update Pass (Phase 0.13.2 - BVH FIX APPLIED)
+    // CRITICAL FIX: NVIDIA BVH traversal bug at power-of-2 leaf boundaries
+    // Root cause: At 2045 particles → 512 BVH leaves (2^9) → Driver hang
+    // Workaround: Add +1 AABB padding when leaf count is power-of-2 (see RTLightingSystem_RayQuery::BuildBLAS)
+    // This shifts leaf count from 512 → 513, avoiding the driver bug entirely
     if (m_probeGridSystem && m_rtLighting && m_particleSystem) {
-        // Get light buffer from Gaussian renderer (already populated with 13 lights)
         ID3D12Resource* lightBuffer = nullptr;
         uint32_t lightCount = 0;
 
         if (m_gaussianRenderer) {
             lightBuffer = m_gaussianRenderer->GetLightBuffer();
-            lightCount = static_cast<uint32_t>(m_lights.size());  // 13 lights from Application.h:118
+            lightCount = static_cast<uint32_t>(m_lights.size());
         }
 
         m_probeGridSystem->UpdateProbes(
@@ -678,7 +680,6 @@ void Application::Render() {
             m_frameCount
         );
 
-        // Log every 60 frames
         if ((m_frameCount % 60) == 0) {
             LOG_INFO("Probe Grid updated (frame {})", m_frameCount);
         }
