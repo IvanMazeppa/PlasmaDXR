@@ -389,11 +389,16 @@ bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
 
     // Create Direct RT AS (particles 2044+)
     if (directRTCount > 0) {
-        if (!CreateAccelerationStructureSet(m_directRTAS, directRTCount, "DirectRTAS")) {
+        // CRITICAL BUG FIX: Allocate AABB buffer for TOTAL particles, not just overflow
+        // GenerateAABBs_Dual() generates for ALL particles, BLAS reads from offset 2044
+        // This wastes memory but prevents buffer overrun at 3922+ particles
+        // TODO Phase 1.5: Add particle offset to shader for memory efficiency
+        if (!CreateAccelerationStructureSet(m_directRTAS, m_particleCount, "DirectRTAS")) {
             LOG_ERROR("Failed to create Direct RT acceleration structure set");
             return false;
         }
         m_directRTAS.startParticle = PROBE_GRID_PARTICLE_LIMIT;
+        m_directRTAS.particleCount = directRTCount;  // Override - actual count is less than buffer size
     } else {
         LOG_INFO("DirectRTAS: No overflow particles (total count <= 2044)");
     }
@@ -531,9 +536,9 @@ bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
             return false;
         }
 
-        // Create instance descs buffer
+        // Create instance descs buffer (2 instances for combined TLAS)
         D3D12_HEAP_PROPERTIES uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(2 * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
 
         hr = m_device->GetDevice()->CreateCommittedResource(
             &uploadHeapProps, D3D12_HEAP_FLAG_NONE, &instanceDesc,
@@ -801,6 +806,60 @@ void RTLightingSystem_RayQuery::BuildTLAS_ForSet(
     cmdList->ResourceBarrier(1, &barrier);
 }
 
+void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList) {
+    // Build a combined TLAS with TWO instances for full particle visibility
+    // Instance 0: Probe Grid BLAS (particles 0-2043)
+    // Instance 1: Direct RT BLAS (particles 2044+)
+
+    // Create instance descriptors array (2 instances)
+    D3D12_RAYTRACING_INSTANCE_DESC instances[2] = {};
+
+    // Instance 0: Probe Grid BLAS
+    instances[0].InstanceID = 0;
+    instances[0].InstanceMask = 0xFF;
+    instances[0].InstanceContributionToHitGroupIndex = 0;
+    instances[0].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+    instances[0].Transform[0][0] = 1.0f;
+    instances[0].Transform[1][1] = 1.0f;
+    instances[0].Transform[2][2] = 1.0f;
+    instances[0].AccelerationStructure = m_probeGridAS.blas->GetGPUVirtualAddress();
+
+    // Instance 1: Direct RT BLAS
+    instances[1].InstanceID = 1;
+    instances[1].InstanceMask = 0xFF;
+    instances[1].InstanceContributionToHitGroupIndex = 0;
+    instances[1].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+    instances[1].Transform[0][0] = 1.0f;
+    instances[1].Transform[1][1] = 1.0f;
+    instances[1].Transform[2][2] = 1.0f;
+    instances[1].AccelerationStructure = m_directRTAS.blas->GetGPUVirtualAddress();
+
+    // Upload instance descriptors to legacy instance buffer
+    void* mappedData = nullptr;
+    m_instanceDescsBuffer->Map(0, nullptr, &mappedData);
+    memcpy(mappedData, instances, sizeof(instances));
+    m_instanceDescsBuffer->Unmap(0, nullptr);
+
+    // Build combined TLAS (2 instances)
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS tlasInputs = {};
+    tlasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+    tlasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+    tlasInputs.NumDescs = 2;  // TWO instances
+    tlasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    tlasInputs.InstanceDescs = m_instanceDescsBuffer->GetGPUVirtualAddress();
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC tlasDesc = {};
+    tlasDesc.Inputs = tlasInputs;
+    tlasDesc.DestAccelerationStructureData = m_topLevelAS->GetGPUVirtualAddress();
+    tlasDesc.ScratchAccelerationStructureData = m_tlasScratch->GetGPUVirtualAddress();
+
+    cmdList->BuildRaytracingAccelerationStructure(&tlasDesc, 0, nullptr);
+
+    // UAV barrier
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_topLevelAS.Get());
+    cmdList->ResourceBarrier(1, &barrier);
+}
+
 // ============================================================================
 // MONOLITHIC BUILD FUNCTIONS (Original Implementation)
 // ============================================================================
@@ -941,27 +1000,24 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
         BuildTLAS_ForSet(cmdList, m_directRTAS);
     }
 
-    // 4. Dispatch lighting compute shader
-    // NOTE: For Phase 1, use legacy monolithic lighting path
-    // Phase 1.5 will implement separate lighting for each AS set
-    // For now, just use probe grid TLAS (proven working from screenshots)
-    DispatchRayQueryLighting(cmdList, particleBuffer, cameraPosition);
-
     // ========================================================================
-    // LEGACY: Monolithic AS pipeline (DISABLED)
+    // COMBINED TLAS (Phase 1 - All Particles Visible)
     // ========================================================================
-    // Keeping for reference during migration, will remove after Phase 1 testing
-    /*
-    // 1. Generate AABBs from particle positions
-    GenerateAABBs(cmdList, particleBuffer);
+    // Build a COMBINED TLAS with TWO instances:
+    //   Instance 0: Probe Grid BLAS (particles 0-2043)
+    //   Instance 1: Direct RT BLAS (particles 2044+)
+    // This allows Gaussian renderer to trace ONE TLAS but see ALL particles
+    // Avoids 2045 crash while maintaining full visibility
 
-    // 2. Build BLAS from AABBs
-    BuildBLAS(cmdList);
+    // 4. Build combined TLAS (only if we have overflow particles)
+    if (directRTCount > 0) {
+        BuildCombinedTLAS(cmdList);
+    } else {
+        // <=2044 particles: Use probe grid TLAS directly
+        // Already built above, nothing to do
+    }
 
-    // 3. Build TLAS from BLAS
-    BuildTLAS(cmdList);
-
-    // 4. Dispatch RayQuery lighting compute shader
+    // 5. Dispatch lighting compute shader (uses probe grid TLAS for lighting)
+    // TODO Phase 2: Use probe grid for volumetric GI, direct RT for overflow lighting
     DispatchRayQueryLighting(cmdList, particleBuffer, cameraPosition);
-    */
 }

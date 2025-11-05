@@ -62,13 +62,16 @@ public:
     ID3D12Resource* GetLightingBuffer() const { return m_lightingBuffer.Get(); }
 
     // Get acceleration structures (for reuse by Gaussian renderer)
-    // Phase 1: Returns probe grid TLAS (first 2044 particles)
-    // TODO Phase 1.5: Update Gaussian renderer to handle both AS sets
+    // Phase 1: Returns appropriate TLAS based on particle count
+    // <=2044 particles: Probe grid TLAS (single BLAS)
+    // >2044 particles: Combined TLAS (2 BLAS instances)
     ID3D12Resource* GetTLAS() const {
-        if (m_probeGridAS.tlas) {
-            return m_probeGridAS.tlas.Get();  // Probe grid TLAS (proven working)
+        // If combined TLAS exists (>2044 particles), return it
+        if (m_topLevelAS && m_directRTAS.tlas) {
+            return m_topLevelAS.Get();  // Combined TLAS (2 instances)
         }
-        return m_topLevelAS.Get();  // Fallback to legacy (during migration)
+        // Otherwise return probe grid TLAS (<=2044 particles)
+        return m_probeGridAS.tlas.Get();  // Single instance TLAS
     }
 
     // Dual AS support (Phase 1)
@@ -128,6 +131,7 @@ private:
     void GenerateAABBs_Dual(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, uint32_t totalParticleCount);
     void BuildBLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, uint32_t particleOffset);
     void BuildTLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet);
+    void BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList);  // Combined TLAS with 2 instances for full visibility
 
     // Legacy functions (will be removed after migration)
     void GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer);
