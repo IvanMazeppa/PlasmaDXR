@@ -8,7 +8,7 @@
 
   "_comment_rendering": "=== RENDERING CONFIGURATION ===",
   "rendering": {
-    "particleCount": 10000,
+    "particleCount": 2045,
     "_particleCount_note": "Number of particles in simulation (10K-100K recommended)",
 
     "renderer": "Gaussian",

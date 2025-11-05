@@ -667,7 +667,8 @@ void Application::Render() {
 
     // Probe Grid Update Pass (Phase 0.13.2 - Testing with Volumetric RT disabled + TLAS barrier)
     // Volumetric spatial interpolation disabled at launch (may interfere)
-    if (m_probeGridSystem && m_rtLighting && m_particleSystem) {
+    // TEMPORARY: Disabled to test if probe grid causes frame 1 crash with mixed geometry BLAS
+    if (false && m_probeGridSystem && m_rtLighting && m_particleSystem) {
         ID3D12Resource* lightBuffer = nullptr;
         uint32_t lightCount = 0;
 

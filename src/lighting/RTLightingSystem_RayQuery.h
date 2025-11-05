@@ -3,6 +3,8 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <DirectXMath.h>
+#include <vector>
+#include <string>
 
 // RTLightingSystem using DXR 1.1 RayQuery (Inline Raytracing)
 // Simpler than traditional DXR pipeline - no state objects or SBT needed
@@ -60,13 +62,18 @@ public:
     ID3D12Resource* GetLightingBuffer() const { return m_lightingBuffer.Get(); }
 
     // Get acceleration structures (for reuse by Gaussian renderer)
-    ID3D12Resource* GetTLAS() const { return m_topLevelAS.Get(); }
-
-    // Batching support (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
-    uint32_t GetBatchCount() const { return static_cast<uint32_t>(m_batches.size()); }
-    ID3D12Resource* GetBatchTLAS(uint32_t batchIdx) const {
-        return (batchIdx < m_batches.size()) ? m_batches[batchIdx].tlas.Get() : nullptr;
+    // Phase 1: Returns probe grid TLAS (first 2044 particles)
+    // TODO Phase 1.5: Update Gaussian renderer to handle both AS sets
+    ID3D12Resource* GetTLAS() const {
+        if (m_probeGridAS.tlas) {
+            return m_probeGridAS.tlas.Get();  // Probe grid TLAS (proven working)
+        }
+        return m_topLevelAS.Get();  // Fallback to legacy (during migration)
     }
+
+    // Dual AS support (Phase 1)
+    ID3D12Resource* GetProbeGridTLAS() const { return m_probeGridAS.tlas.Get(); }
+    ID3D12Resource* GetDirectRTTLAS() const { return m_directRTAS.tlas.Get(); }
 
     // Settings
     void SetRaysPerParticle(uint32_t rays) { m_raysPerParticle = rays; }
@@ -89,31 +96,40 @@ public:
     void SetDensityScaleMax(float max) { m_densityScaleMax = max; }
 
 private:
-    // Particle Batching (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
-    struct AccelerationBatch {
-        Microsoft::WRL::ComPtr<ID3D12Resource> aabbBuffer;
-        Microsoft::WRL::ComPtr<ID3D12Resource> blas;
-        Microsoft::WRL::ComPtr<ID3D12Resource> tlas;
-        Microsoft::WRL::ComPtr<ID3D12Resource> blasScratch;
-        Microsoft::WRL::ComPtr<ID3D12Resource> tlasScratch;
-        Microsoft::WRL::ComPtr<ID3D12Resource> instanceDesc;
-        uint32_t startIndex;
-        uint32_t count;
-        size_t blasSize;
-        size_t tlasSize;
+    // ========================================================================
+    // Dual AS Architecture - Type Definitions (Phase 1)
+    // ========================================================================
+    struct AccelerationStructureSet {
+        Microsoft::WRL::ComPtr<ID3D12Resource> aabbBuffer;          // Per-particle AABBs
+        Microsoft::WRL::ComPtr<ID3D12Resource> lightingBuffer;      // Per-particle lighting output
+        Microsoft::WRL::ComPtr<ID3D12Resource> blas;                // Bottom-level AS
+        Microsoft::WRL::ComPtr<ID3D12Resource> tlas;                // Top-level AS
+        Microsoft::WRL::ComPtr<ID3D12Resource> blasScratch;         // BLAS build scratch
+        Microsoft::WRL::ComPtr<ID3D12Resource> tlasScratch;         // TLAS build scratch
+        Microsoft::WRL::ComPtr<ID3D12Resource> instanceDesc;        // TLAS instance descriptor
+        uint32_t startParticle;                                     // First particle in this set
+        uint32_t particleCount;                                     // Number of particles in this set
+        size_t blasSize;                                            // BLAS size in bytes
+        size_t tlasSize;                                            // TLAS size in bytes
     };
 
+    static constexpr uint32_t PROBE_GRID_PARTICLE_LIMIT = 2044;    // Max particles before bug threshold
+
+    // ========================================================================
+    // Private Functions
+    // ========================================================================
     bool LoadShaders();
     bool CreateRootSignatures();
     bool CreatePipelineStates();
     bool CreateAccelerationStructures();
 
-    // Batching helpers
-    bool CreateBatchedAccelerationStructures();
-    void GenerateAABBsForBatch(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, AccelerationBatch& batch);
-    void BuildBatchBLAS(ID3D12GraphicsCommandList4* cmdList, AccelerationBatch& batch);
-    void BuildBatchTLAS(ID3D12GraphicsCommandList4* cmdList, AccelerationBatch& batch);
+    // Dual AS helpers (Phase 1)
+    bool CreateAccelerationStructureSet(AccelerationStructureSet& asSet, uint32_t particleCount, const std::string& namePrefix);
+    void GenerateAABBs_Dual(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, uint32_t totalParticleCount);
+    void BuildBLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, uint32_t particleOffset);
+    void BuildTLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet);
 
+    // Legacy functions (will be removed after migration)
     void GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer);
     void BuildBLAS(ID3D12GraphicsCommandList4* cmdList);
     void BuildTLAS(ID3D12GraphicsCommandList4* cmdList);
@@ -158,11 +174,19 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_aabbGenPSO;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_rayQueryLightingPSO;
 
-    // Buffers
+    // Buffers (LEGACY - will be removed after migration)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_aabbBuffer;          // Per-particle AABBs
     Microsoft::WRL::ComPtr<ID3D12Resource> m_lightingBuffer;      // Per-particle lighting output
 
-    // Acceleration Structures
+    // ============================================================================
+    // Dual AS Members (Phase 1 - ACTIVE)
+    // ============================================================================
+    AccelerationStructureSet m_probeGridAS;   // AS #1: Particles 0-2043 (Probe Grid volumetric GI)
+    AccelerationStructureSet m_directRTAS;    // AS #2: Particles 2044+ (Direct RT lighting)
+
+    // ============================================================================
+    // Legacy Acceleration Structures (Phase 0 - WILL BE REMOVED AFTER MIGRATION)
+    // ============================================================================
     Microsoft::WRL::ComPtr<ID3D12Resource> m_bottomLevelAS;       // BLAS for particles
     Microsoft::WRL::ComPtr<ID3D12Resource> m_topLevelAS;          // TLAS
     Microsoft::WRL::ComPtr<ID3D12Resource> m_blasScratch;
@@ -171,10 +195,4 @@ private:
 
     size_t m_blasSize = 0;
     size_t m_tlasSize = 0;
-
-    // Particle Batching (Phase 0.13.3 - Probe Grid 2045 Crash Mitigation)
-    // Split particles into groups of ~2000 to avoid driver bugs at specific particle counts
-    static constexpr uint32_t PARTICLES_PER_BATCH = 2000;
-    bool m_useBatching = true;  // Enable batching by default
-    std::vector<AccelerationBatch> m_batches;
 };
