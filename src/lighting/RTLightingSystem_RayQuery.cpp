@@ -105,7 +105,7 @@ bool RTLightingSystem_RayQuery::CreateRootSignatures() {
     // u0: RWStructuredBuffer<AABB> particleAABBs
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[3];
-        rootParams[0].InitAsConstants(10, 0);  // b0: AABBConstants (10 DWORDs - Phase 1.5 adaptive radius)
+        rootParams[0].InitAsConstants(12, 0);  // b0: AABBConstants (12 DWORDs - Phase 1.5: added particleOffset + padding1)
         rootParams[1].InitAsShaderResourceView(0);  // t0: particles
         rootParams[2].InitAsUnorderedAccessView(0);  // u0: AABBs
 
@@ -576,6 +576,8 @@ void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdLis
     struct AABBConstants {
         uint32_t particleCount;
         float particleRadius;
+        uint32_t particleOffset;        // Phase 1.5: Start reading from this particle index
+        uint32_t padding1;
         uint32_t enableAdaptiveRadius;
         float adaptiveInnerZone;
         float adaptiveOuterZone;
@@ -583,10 +585,12 @@ void RTLightingSystem_RayQuery::GenerateAABBs(ID3D12GraphicsCommandList4* cmdLis
         float adaptiveOuterScale;
         float densityScaleMin;
         float densityScaleMax;
-        float padding;
+        float padding2;
     } constants = {
         m_particleCount,
         m_particleRadius,
+        0,                              // Offset = 0 for legacy path
+        0,
         m_enableAdaptiveRadius ? 1u : 0u,
         m_adaptiveInnerZone,
         m_adaptiveOuterZone,
@@ -639,6 +643,8 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
         struct AABBConstants {
             uint32_t particleCount;
             float particleRadius;
+            uint32_t particleOffset;        // Phase 1.5: Start reading from this particle index
+            uint32_t padding1;
             uint32_t enableAdaptiveRadius;
             float adaptiveInnerZone;
             float adaptiveOuterZone;
@@ -646,10 +652,12 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             float adaptiveOuterScale;
             float densityScaleMin;
             float densityScaleMax;
-            float padding;
+            float padding2;
         } probeGridConstants = {
             probeGridCount,
             m_particleRadius,
+            0,                              // Offset = 0 (start at particle 0)
+            0,
             m_enableAdaptiveRadius ? 1u : 0u,
             m_adaptiveInnerZone,
             m_adaptiveOuterZone,
@@ -673,18 +681,18 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
     // ========================================================================
     // Dispatch 2: Direct RT AS (particles 2044+)
     // ========================================================================
-    // NOTE: Current shader limitation - it reads particles[index] directly
-    // For Phase 1, we'll generate AABBs for ALL particles but BLAS will only use the overflow portion
-    // TODO Phase 1.5: Add particle offset support to shader for efficiency
+    // Phase 1.5 FIX: Shader now supports particleOffset - reads particles 2044-9999, not 0-9999
+    // This eliminates duplicate particles and ensures runtime controls work uniformly
     if (directRTCount > 0) {
         // Bind Direct RT AABB buffer (u0)
         cmdList->SetComputeRootUnorderedAccessView(2, m_directRTAS.aabbBuffer->GetGPUVirtualAddress());
 
-        // Constants for direct RT - NOTE: We need to process particles 2044+ but write starting at index 0
-        // For now, generate full count and let BLAS builder handle offset
+        // Constants for direct RT - reads overflow particles only (2044+)
         struct AABBConstants {
             uint32_t particleCount;
             float particleRadius;
+            uint32_t particleOffset;        // Phase 1.5: Start reading from this particle index
+            uint32_t padding1;
             uint32_t enableAdaptiveRadius;
             float adaptiveInnerZone;
             float adaptiveOuterZone;
@@ -692,10 +700,12 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             float adaptiveOuterScale;
             float densityScaleMin;
             float densityScaleMax;
-            float padding;
+            float padding2;
         } directRTConstants = {
-            totalParticleCount,  // Generate for ALL particles, BLAS will offset
+            directRTCount,                   // CRITICAL FIX: Only overflow count, not total!
             m_particleRadius,
+            PROBE_GRID_PARTICLE_LIMIT,       // Offset = 2044 (skip first 2044 particles)
+            0,
             m_enableAdaptiveRadius ? 1u : 0u,
             m_adaptiveInnerZone,
             m_adaptiveOuterZone,
@@ -707,8 +717,8 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
         };
         cmdList->SetComputeRoot32BitConstants(0, sizeof(directRTConstants) / 4, &directRTConstants, 0);
 
-        // Dispatch
-        uint32_t threadGroups = (totalParticleCount + 255) / 256;
+        // Dispatch - CRITICAL FIX: dispatch for overflow count only
+        uint32_t threadGroups = (directRTCount + 255) / 256;
         cmdList->Dispatch(threadGroups, 1, 1);
 
         // UAV barrier

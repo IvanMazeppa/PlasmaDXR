@@ -9,6 +9,10 @@ cbuffer AABBConstants : register(b0)
     uint particleCount;
     float particleRadius;  // Base particle radius for Gaussian sizing
 
+    // Phase 1.5 - Dual AS Particle Offset (CRITICAL FIX)
+    uint particleOffset;           // Start reading from this particle index (0 for probe grid, 2044 for Direct RT)
+    uint padding1;                 // Alignment
+
     // Phase 1.5 Adaptive Particle Radius
     uint enableAdaptiveRadius;     // Toggle for density/distance-based radius scaling
     float adaptiveInnerZone;       // Distance threshold for inner shrinking
@@ -17,7 +21,7 @@ cbuffer AABBConstants : register(b0)
     float adaptiveOuterScale;      // Max scale for outer sparse regions
     float densityScaleMin;         // Min density scale clamp
     float densityScaleMax;         // Max density scale clamp
-    float padding;                 // Padding for alignment
+    float padding2;                // Padding for alignment
 };
 
 StructuredBuffer<Particle> particles : register(t0);
@@ -40,8 +44,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (particleIndex >= particleCount)
         return;
 
-    // Read particle
-    Particle p = particles[particleIndex];
+    // Read particle with offset (0 for probe grid, 2044 for Direct RT)
+    // CRITICAL: This ensures Direct RT reads particles 2044-9999, not 0-9999 (no duplicates!)
+    Particle p = particles[particleIndex + particleOffset];
 
     // Compute Gaussian AABB (conservative, axis-aligned bound)
     // Use maximum anisotropic bounds for conservative AABB (true, 3.0 max strength)
