@@ -667,8 +667,26 @@ void Application::Render() {
 
     // Probe Grid Update Pass (Phase 2 - Re-enabled with Dual AS Architecture)
     // Grid bounds: -1500 to +1500 (full world coverage)
-    // Uses combined TLAS (sees all particles for complete lighting)
+    // CRITICAL: Uses PROBE GRID TLAS ONLY (particles 0-2043) to avoid instance offset issues
+    // Overflow particles (2044+) use direct RT lighting instead of probe grid
     if (m_useProbeGrid && m_probeGridSystem && m_rtLighting && m_particleSystem) {
+        // Log probe grid update periodically (first frame + every 60 frames)
+        bool shouldLog = (m_frameCount == 0) || ((m_frameCount % 60) == 0);
+        if (shouldLog) {
+            LOG_INFO("=== PROBE GRID UPDATE START ===");
+            LOG_INFO("  Total particles: {}", m_config.particleCount);
+        }
+
+        // DEBUGGING: Ensure particle buffer is in correct state before probe grid reads it
+        // Transition from UAV (physics write) to SRV (probe grid read)
+        D3D12_RESOURCE_BARRIER particleReadBarrier = {};
+        particleReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        particleReadBarrier.Transition.pResource = m_particleSystem->GetParticleBuffer();
+        particleReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        particleReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        particleReadBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &particleReadBarrier);
+
         ID3D12Resource* lightBuffer = nullptr;
         uint32_t lightCount = 0;
 
@@ -677,19 +695,52 @@ void Application::Render() {
             lightCount = static_cast<uint32_t>(m_lights.size());
         }
 
+        // Use probe grid TLAS specifically (not combined TLAS) to avoid particle index offset issues
+        // Probe grid only lights first 2043 particles; overflow particles use direct RT lighting
+        // CRITICAL: Use 2043 (not 2044) to avoid edge case crash at exactly 2045 total particles
+        uint32_t probeGridParticleCount = std::min(m_config.particleCount, 2043u);
+
+        if (shouldLog) {
+            LOG_INFO("  Probe grid particles: {}", probeGridParticleCount);
+            LOG_INFO("  Probe grid TLAS: 0x{:016x}",
+                     m_rtLighting->GetProbeGridTLAS()->GetGPUVirtualAddress());
+            LOG_INFO("  Direct RT TLAS: 0x{:016x}",
+                     m_rtLighting->GetDirectRTTLAS() ?
+                         m_rtLighting->GetDirectRTTLAS()->GetGPUVirtualAddress() : 0);
+            LOG_INFO("  Frame: {}", m_frameCount);
+        }
+
         m_probeGridSystem->UpdateProbes(
             cmdList,
-            m_rtLighting->GetTLAS(),
+            m_rtLighting->GetProbeGridTLAS(),  // FIXED: Use probe grid TLAS, not combined TLAS
             m_particleSystem->GetParticleBuffer(),
-            m_config.particleCount,
+            probeGridParticleCount,             // FIXED: Only first 2043 particles
             lightBuffer,
             lightCount,
             m_frameCount
         );
 
-        if ((m_frameCount % 60) == 0) {
-            LOG_INFO("Probe Grid updated (frame {})", m_frameCount);
+        // CRITICAL: UAV barrier on probe buffer after compute shader writes
+        // The probe grid update shader writes to the probe buffer (UAV)
+        // The Gaussian renderer reads from it (SRV) later in the frame
+        // Without this barrier, we get a race condition → GPU hang/crash
+        D3D12_RESOURCE_BARRIER probeBarrier = {};
+        probeBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        probeBarrier.UAV.pResource = m_probeGridSystem->GetProbeBuffer();
+        cmdList->ResourceBarrier(1, &probeBarrier);
+
+        if (shouldLog) {
+            LOG_INFO("=== PROBE GRID UPDATE COMPLETE ===");
         }
+
+        // DEBUGGING: Transition particle buffer back to UAV for next physics update
+        D3D12_RESOURCE_BARRIER particleWriteBarrier = {};
+        particleWriteBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        particleWriteBarrier.Transition.pResource = m_particleSystem->GetParticleBuffer();
+        particleWriteBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        particleWriteBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        particleWriteBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &particleWriteBarrier);
     }
 
     // Transition particle buffer from UAV to SRV for rendering

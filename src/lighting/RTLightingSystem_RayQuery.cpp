@@ -1002,12 +1002,38 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
     if (probeGridCount > 0) {
         BuildBLAS_ForSet(cmdList, m_probeGridAS, 0);  // No offset for first 2044 particles
         BuildTLAS_ForSet(cmdList, m_probeGridAS);
+
+        // DEBUGGING: Log probe grid TLAS info once at startup (2045+ particles only)
+        static bool loggedProbeGridTLAS = false;
+        if (particleCount >= 2045 && !loggedProbeGridTLAS) {
+            LOG_INFO("=== Probe Grid TLAS Verification ===");
+            LOG_INFO("  Probe Grid BLAS: 0x{:016x}",
+                     m_probeGridAS.blas->GetGPUVirtualAddress());
+            LOG_INFO("  Probe Grid TLAS: 0x{:016x}",
+                     m_probeGridAS.tlas->GetGPUVirtualAddress());
+            LOG_INFO("  Probe Grid particles: {} (0-{})", probeGridCount, probeGridCount - 1);
+            LOG_INFO("  Is single-instance TLAS: YES");
+            loggedProbeGridTLAS = true;
+        }
     }
 
     // 3. Build Direct RT AS (particles 2044+)
     if (directRTCount > 0) {
         BuildBLAS_ForSet(cmdList, m_directRTAS, PROBE_GRID_PARTICLE_LIMIT);  // Offset to skip first 2044
         BuildTLAS_ForSet(cmdList, m_directRTAS);
+
+        // DEBUGGING: Log direct RT TLAS info once at startup (2045+ particles only)
+        static bool loggedDirectRTTLAS = false;
+        if (particleCount >= 2045 && !loggedDirectRTTLAS) {
+            LOG_INFO("  Direct RT BLAS: 0x{:016x}",
+                     m_directRTAS.blas->GetGPUVirtualAddress());
+            LOG_INFO("  Direct RT TLAS: 0x{:016x}",
+                     m_directRTAS.tlas->GetGPUVirtualAddress());
+            LOG_INFO("  Direct RT particles: {} ({}-{})",
+                     directRTCount, PROBE_GRID_PARTICLE_LIMIT, particleCount - 1);
+            LOG_INFO("  Is single-instance TLAS: YES");
+            loggedDirectRTTLAS = true;
+        }
     }
 
     // ========================================================================
