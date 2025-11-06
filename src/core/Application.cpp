@@ -3449,6 +3449,10 @@ void Application::RenderImGui() {
             bool useProbeGrid = (m_useProbeGrid != 0);
             if (ImGui::Checkbox("Enable Probe Grid", &useProbeGrid)) {
                 m_useProbeGrid = useProbeGrid ? 1u : 0u;
+                LOG_INFO("Probe Grid {} (Frame: {}, Particles: {})",
+                         useProbeGrid ? "ENABLED" : "DISABLED",
+                         m_frameCount,
+                         m_config.particleCount);
             }
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");

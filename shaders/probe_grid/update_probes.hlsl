@@ -186,11 +186,11 @@ float3 ComputeParticleLighting(float3 probePos, float3 particlePos, float radius
     float3 color = BlackbodyColor(temperature);
     float intensity = BlackbodyIntensity(temperature);
 
-    // CRITICAL FIX: Probe grid needs 200× intensity boost for visibility
+    // CRITICAL FIX: Probe grid needs intensity boost for visibility
     // Particles are self-emissive, but at 93.75-unit probe spacing, inverse square
     // falloff makes them extremely dim without this multiplier.
-    // This matches the intensity scale used in the Gaussian renderer's RT lighting.
-    const float PROBE_INTENSITY_SCALE = 200.0;
+    // Reduced from 5000.0 to 800.0 to avoid overexposure in dense particle regions
+    const float PROBE_INTENSITY_SCALE = 800.0;
 
     return color * intensity * attenuation * PROBE_INTENSITY_SCALE;
 }

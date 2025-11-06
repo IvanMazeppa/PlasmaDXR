@@ -164,14 +164,14 @@ private:
 
     // Configuration
     bool m_enabled = true;
-    uint32_t m_gridSize = 32;                // 32³ grid (32,768 probes)
-    uint32_t m_raysPerProbe = 1;             // EXTREME TEST: 1 ray per probe to isolate GPU hang (was 16, original 64)
+    uint32_t m_gridSize = 48;                // 48³ grid (110,592 probes) - Phase 2 resolution upgrade
+    uint32_t m_raysPerProbe = 16;            // Phase 2: Increased from 1 to 16 for quality (original was 64)
     uint32_t m_updateInterval = 4;           // Update 1/4 of grid per frame
 
     // World-space grid parameters
     DirectX::XMFLOAT3 m_gridMin = DirectX::XMFLOAT3(-1500.0f, -1500.0f, -1500.0f);
     DirectX::XMFLOAT3 m_gridMax = DirectX::XMFLOAT3(1500.0f, 1500.0f, 1500.0f);
-    float m_gridSpacing = 93.75f;            // 3000 / 32 = 93.75 units per cell
+    float m_gridSpacing = 62.5f;             // 3000 / 48 = 62.5 units per cell
 
     // GPU Resources
     ComPtr<ID3D12Resource> m_probeBuffer;
