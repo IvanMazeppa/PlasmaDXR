@@ -842,25 +842,38 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 intensity = EmissionIntensity(p.temperature);
             }
 
-            // === RT LIGHTING: Probe Grid, Volumetric, or Legacy ===
-            float3 rtLight;
+            // === RT LIGHTING: Probe Grid + Direct RT (ADDITIVE COMBINATION) ===
+            // Phase 2 Fix: Enable BOTH probe grid AND inline RayQuery simultaneously
+            // Probe grid provides volumetric ambient scattering in dense regions
+            // Direct RT provides particle-to-particle illumination everywhere
 
+            float3 probeGridLight = float3(0, 0, 0);
+            float3 directRTLight = float3(0, 0, 0);
+
+            // Sample probe grid if enabled (volumetric ambient scattering)
             if (useProbeGrid != 0) {
                 // PROBE GRID MODE (Phase 0.13.1): Zero atomic contention!
-                // Pre-computed lighting at sparse 32³ grid with trilinear interpolation
-                // Scales to 10K+ particles without GPU hang (replaces Volumetric ReSTIR)
-                rtLight = SampleProbeGrid(pos);
-            } else if (useVolumetricRT != 0) {
+                // Pre-computed lighting at sparse 48³ grid with trilinear interpolation
+                // Scales to 10K+ particles without GPU hang
+                probeGridLight = SampleProbeGrid(pos);
+            }
+
+            // Sample direct RT lighting (always active when RT lighting enabled)
+            if (useVolumetricRT != 0) {
                 // VOLUMETRIC SCATTERING MODE: Treat neighbors as virtual lights
                 // Applies same volumetric math as multi-lights (attenuation + phase function)
                 // This creates true volumetric glow with proper light scattering!
-                rtLight = InterpolateRTLighting(pos, hit.particleIdx, ray.Direction, scatteringG);
+                directRTLight = InterpolateRTLighting(pos, hit.particleIdx, ray.Direction, scatteringG);
             } else {
                 // LEGACY MODE: Per-particle lookup (billboard-era)
                 // Fast but causes discrete brightness jumps
                 // Kept for comparison and fallback
-                rtLight = g_rtLighting[hit.particleIdx].rgb;
+                directRTLight = g_rtLighting[hit.particleIdx].rgb;
             }
+
+            // Combine both sources (additive for maximum flexibility)
+            // rtLightingStrength will multiply the combined result
+            float3 rtLight = probeGridLight + directRTLight;
 
             // === CRITICAL FIX: Physical emission is self-emitting, not lit ===
             // Physical emission (blackbody radiation) should NOT be modulated by external lighting
