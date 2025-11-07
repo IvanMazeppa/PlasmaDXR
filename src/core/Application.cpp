@@ -3476,15 +3476,15 @@ void Application::RenderImGui() {
             // Rays per probe slider (discrete values)
             uint32_t raysPerProbe = m_probeGridSystem->GetRaysPerProbe();
             int raysIndex = 0;
-            const int rayOptions[] = {1, 4, 8, 16, 32, 64};
-            const char* rayLabels[] = {"1 ray", "4 rays", "8 rays", "16 rays", "32 rays", "64 rays"};
-            for (int i = 0; i < 6; i++) {
+            const int rayOptions[] = {1, 4, 8, 16, 32, 64, 128};
+            const char* rayLabels[] = {"1 ray", "4 rays", "8 rays", "16 rays", "32 rays", "64 rays", "128 rays"};
+            for (int i = 0; i < 7; i++) {
                 if (rayOptions[i] == (int)raysPerProbe) {
                     raysIndex = i;
                     break;
                 }
             }
-            if (ImGui::Combo("Rays Per Probe", &raysIndex, rayLabels, 6)) {
+            if (ImGui::Combo("Rays Per Probe", &raysIndex, rayLabels, 7)) {
                 m_probeGridSystem->SetRaysPerProbe(rayOptions[raysIndex]);
             }
             ImGui::SameLine();
@@ -3493,7 +3493,8 @@ void Application::RenderImGui() {
                 ImGui::SetTooltip("Quality vs performance trade-off\n"
                                  "1-4 rays = Performance (some flashing)\n"
                                  "8-16 rays = Balanced (default)\n"
-                                 "32-64 rays = Quality (smooth, expensive)");
+                                 "32-64 rays = Quality (smooth)\n"
+                                 "128 rays = Maximum quality (very smooth)");
             }
 
             ImGui::Separator();
