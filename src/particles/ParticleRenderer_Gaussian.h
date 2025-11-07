@@ -202,6 +202,10 @@ private:
     bool CreatePipeline();
     bool CreateOutputTexture(uint32_t width, uint32_t height);
 
+    // Phase 1: Screen-Space Shadow Depth Buffer
+    bool CreateDepthPrePassPipeline();
+    bool CreateShadowDepthBuffer(uint32_t width, uint32_t height);
+
 #ifdef ENABLE_DLSS
     bool CreateMotionVectorPipeline();
 #endif
@@ -249,6 +253,19 @@ private:
     // RTXDI output buffer cache (to prevent descriptor leak)
     D3D12_CPU_DESCRIPTOR_HANDLE m_rtxdiSRV = {};                  // Cached SRV for RTXDI output
     D3D12_GPU_DESCRIPTOR_HANDLE m_rtxdiSRVGPU = {};               // Cached GPU handle
+
+    // === Phase 1: Screen-Space Shadow Depth Buffer ===
+    // Depth pre-pass buffer for screen-space contact shadows (R32_UINT)
+    // Stores particle depth (as uint) for screen-space ray marching occlusion tests
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowDepthBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_shadowDepthUAV;                 // UAV for depth pre-pass write
+    D3D12_GPU_DESCRIPTOR_HANDLE m_shadowDepthUAVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_shadowDepthSRV;                 // SRV for screen-space shadow read
+    D3D12_GPU_DESCRIPTOR_HANDLE m_shadowDepthSRVGPU;
+
+    // Depth pre-pass compute pipeline
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_depthPrePassPSO;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_depthPrePassRS;
 
 #ifdef ENABLE_DLSS
     // DLSS Super Resolution system (lazy feature creation)
