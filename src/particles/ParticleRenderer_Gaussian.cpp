@@ -510,17 +510,20 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t4: StructuredBuffer<Light> g_lights (multi-light system)
     // t5: Texture2D<float> g_prevShadow (PCSS temporal shadow - previous frame, descriptor table)
     // t6: Texture2D<float4> g_rtxdiOutput (RTXDI selected lights - optional, descriptor table)
+    // t7: StructuredBuffer<Probe> g_probeGrid (probe grid buffer)
+    // t8: Texture2D<uint> g_shadowDepth (Phase 2: screen-space shadow depth, descriptor table)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u2: RWTexture2D<float> g_currShadow (PCSS temporal shadow - current frame, descriptor table)
-    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[2];
+    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[3];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // t5: Texture2D (prev shadow)
     srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // t6: Texture2D (RTXDI output)
+    srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // t8: Texture2D (depth buffer)
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[11];  // +2 for Probe Grid (b4, t7)
+    CD3DX12_ROOT_PARAMETER1 rootParams[12];  // +3 for Probe Grid (b4, t7) and depth (t8)
     rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
@@ -530,11 +533,12 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[6].InitAsDescriptorTable(1, &srvRanges[0]);  // t5 - previous shadow (SRV)
     rootParams[7].InitAsDescriptorTable(1, &uavRanges[1]);  // u2 - current shadow (UAV)
     rootParams[8].InitAsDescriptorTable(1, &srvRanges[1]);  // t6 - RTXDI output (SRV)
-    rootParams[9].InitAsConstantBufferView(4);              // b4 - ProbeGridParams CBV (NEW!)
-    rootParams[10].InitAsShaderResourceView(7);             // t7 - ProbeGrid buffer (NEW!)
+    rootParams[9].InitAsConstantBufferView(4);              // b4 - ProbeGridParams CBV
+    rootParams[10].InitAsShaderResourceView(7);             // t7 - ProbeGrid buffer
+    rootParams[11].InitAsDescriptorTable(1, &srvRanges[2]); // t8 - Shadow depth buffer (Phase 2)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(11, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(12, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -822,6 +826,14 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         cmdList->SetComputeRootShaderResourceView(10, 0);
     }
 
+    // Root param 11: Shadow depth buffer (t8) - Phase 2 screen-space shadows
+    D3D12_GPU_DESCRIPTOR_HANDLE depthSRVHandle = m_shadowDepthSRVGPU;
+    if (depthSRVHandle.ptr == 0) {
+        LOG_ERROR("Shadow depth SRV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(11, depthSRVHandle);
+
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
     uint32_t dispatchY = (constants.screenHeight + 7) / 8;
@@ -930,6 +942,73 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
     // PCSS: Swap shadow buffers for next frame (ping-pong temporal filtering)
     m_currentShadowIndex = 1 - m_currentShadowIndex;
+}
+
+// ===========================================================================================
+// Phase 2: Depth Pre-Pass Rendering
+// ===========================================================================================
+void ParticleRenderer_Gaussian::RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,
+                                                   ID3D12Resource* particleBuffer,
+                                                   const RenderConstants& constants) {
+    if (!cmdList || !particleBuffer || !m_depthPrePassPSO) {
+        return;  // Silently skip if not initialized
+    }
+
+    // Set depth pre-pass pipeline
+    cmdList->SetPipelineState(m_depthPrePassPSO.Get());
+    cmdList->SetComputeRootSignature(m_depthPrePassRS.Get());
+
+    // Create constant buffer data for depth pre-pass
+    struct DepthPrePassConstants {
+        DirectX::XMFLOAT4X4 viewProj;
+        uint32_t screenWidth;
+        uint32_t screenHeight;
+        uint32_t particleCount;
+        float padding;
+    };
+
+    DepthPrePassConstants depthConstants = {};
+    depthConstants.viewProj = constants.viewProj;
+    depthConstants.screenWidth = constants.screenWidth;
+    depthConstants.screenHeight = constants.screenHeight;
+    depthConstants.particleCount = constants.particleCount;
+    depthConstants.padding = 0.0f;
+
+    // Upload constants inline (small constant buffer, no need for persistent mapping)
+    cmdList->SetComputeRoot32BitConstants(0, sizeof(DepthPrePassConstants) / 4,
+                                          &depthConstants, 0);
+
+    // Bind particle buffer (t0)
+    cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
+
+    // Bind depth buffer UAV (u0) - descriptor table
+    ID3D12DescriptorHeap* heap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (heap) {
+        cmdList->SetDescriptorHeaps(1, &heap);
+    }
+    cmdList->SetComputeRootDescriptorTable(2, m_shadowDepthUAVGPU);
+
+    // Clear depth buffer to far plane (1.0 = max depth)
+    // We'll use the compute shader to initialize it via atomic min
+    // First clear: UAV clear
+    UINT clearValue[4] = { 0x3F800000, 0, 0, 0 };  // 1.0f as uint (far plane)
+    cmdList->ClearUnorderedAccessViewUint(
+        m_shadowDepthUAVGPU,
+        m_shadowDepthUAV,
+        m_shadowDepthBuffer.Get(),
+        clearValue,
+        0, nullptr
+    );
+
+    // Dispatch depth pre-pass (256 threads per group, process all particles)
+    uint32_t dispatchX = (constants.particleCount + 255) / 256;
+    cmdList->Dispatch(dispatchX, 1, 1);
+
+    // UAV barrier: ensure depth writes complete before Gaussian rendering
+    D3D12_RESOURCE_BARRIER uavBarrier = {};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarrier.UAV.pResource = m_shadowDepthBuffer.Get();
+    cmdList->ResourceBarrier(1, &uavBarrier);
 }
 
 void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {

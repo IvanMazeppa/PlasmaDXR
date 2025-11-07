@@ -902,6 +902,11 @@ void Application::Render() {
             gaussianConstants.volumetricRTIntensity = m_volumetricRTIntensity;
             gaussianConstants.volumetricRTPadding = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 
+            // Phase 2: Screen-Space Contact Shadows
+            gaussianConstants.useScreenSpaceShadows = m_useScreenSpaceShadows ? 1u : 0u;
+            gaussianConstants.ssSteps = m_ssSteps;
+            gaussianConstants.ssPadding = DirectX::XMFLOAT2(0.0f, 0.0f);
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -980,6 +985,14 @@ void Application::Render() {
                 );
             } else {
                 // Standard Gaussian volumetric rendering
+
+                // Phase 2: Depth pre-pass for screen-space shadows
+                if (m_useScreenSpaceShadows) {
+                    m_gaussianRenderer->RenderDepthPrePass(cmdList,
+                                                          m_particleSystem->GetParticleBuffer(),
+                                                          gaussianConstants);
+                }
+
                 // Render to UAV texture
                 m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
                                       m_particleSystem->GetParticleBuffer(),
@@ -2823,7 +2836,47 @@ void Application::RenderImGui() {
 
     // Rendering features
     if (ImGui::CollapsingHeader("Rendering Features", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Shadow Rays (F5)", &m_useShadowRays);
+        // Phase 2: Screen-Space Contact Shadows (NEW!)
+        ImGui::Checkbox("Screen-Space Shadows", &m_useScreenSpaceShadows);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Phase 2: Contact-hardening screen-space shadows\n"
+                             "Ray marches through depth buffer\n"
+                             "Sharper near contact, softer at distance\n"
+                             "Works with all lighting modes (probe grid, inline RQ, RTXDI)");
+        }
+
+        // Shadow quality control (indented under screen-space shadows)
+        if (m_useScreenSpaceShadows) {
+            ImGui::Indent();
+            int ssSteps = static_cast<int>(m_ssSteps);
+            if (ImGui::SliderInt("Shadow Quality", &ssSteps, 8, 32)) {
+                m_ssSteps = static_cast<uint32_t>(ssSteps);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Ray march steps (more = better quality)\n"
+                                 "8 = Fast (low quality)\n"
+                                 "16 = Balanced (default)\n"
+                                 "32 = High Quality (slower)");
+            }
+
+            // Show performance hint based on quality
+            if (m_ssSteps <= 8) {
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "Fast mode (8 steps)");
+            } else if (m_ssSteps <= 16) {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Balanced mode (16 steps)");
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "Quality mode (32 steps)");
+            }
+            ImGui::Unindent();
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Legacy PCSS System (being replaced):");
+        ImGui::Checkbox("PCSS Shadow Rays (F5)", &m_useShadowRays);
 
         // PCSS shadow quality controls (indented under Shadow Rays)
         if (m_useShadowRays) {

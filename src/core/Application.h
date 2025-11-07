@@ -273,7 +273,9 @@ private:
     float m_redshiftStrength = 1.0f;       // 0.0-5.0 (multiplier)
 
     // Gaussian RT system toggles
-    bool m_useShadowRays = true;           // F5 to toggle
+    bool m_useShadowRays = false;          // F5 to toggle (PCSS - disabled by default, replaced by screen-space)
+    bool m_useScreenSpaceShadows = false;  // Phase 2: Screen-space contact shadows (disabled until debug complete)
+    uint32_t m_ssSteps = 16;               // Screen-space shadow quality: 8=fast, 16=balanced, 32=quality
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     LightingSystem m_lightingSystem = LightingSystem::MultiLight;  // --multi-light (default) or --rtxdi
     bool m_debugRTXDISelection = false;    // DEBUG: Visualize RTXDI light selection (rainbow colors)

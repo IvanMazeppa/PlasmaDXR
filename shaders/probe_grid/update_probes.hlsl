@@ -7,7 +7,7 @@
  * 3. Accumulating lighting from all lights
  * 4. Storing simplified spherical harmonics (RGB irradiance for MVP)
  *
- * Architecture: Zero atomic operations = zero contention!
+ * ArchitecturEEEEEEEEEEEEEEEEEEEEEEEEEe: Zero atomic operations = zero contention!
  * Each probe writes to ITS OWN memory location (no conflicts).
  *
  * Performance: ~0.5-1.0ms per frame (amortized over 4 frames)
@@ -19,16 +19,16 @@
 
 cbuffer ProbeUpdateConstants : register(b0) {
     float3 g_gridMin;              // Grid world-space minimum
-    float g_gridSpacing;           // Distance between probes (93.75 units for 32³)
+    float g_gridSpacing;           // Distance between probes (62.5 units for 48³)
 
-    uint g_gridSize;               // Grid dimension (32)
-    uint g_raysPerProbe;           // Rays to cast per probe (64)
+    uint g_gridSize;               // Grid dimension (48)
+    uint g_raysPerProbe;           // Rays to cast per probe (16)
     uint g_particleCount;          // Number of particles
     uint g_lightCount;             // Number of lights
 
     uint g_frameIndex;             // Frame counter for temporal amortization
     uint g_updateInterval;         // Frames between full grid updates (4)
-    uint g_padding0;
+    float g_probeIntensity;        // Runtime intensity multiplier (200-2000, default 800)
     uint g_padding1;
 };
 
@@ -187,12 +187,12 @@ float3 ComputeParticleLighting(float3 probePos, float3 particlePos, float radius
     float intensity = BlackbodyIntensity(temperature);
 
     // CRITICAL FIX: Probe grid needs intensity boost for visibility
-    // Particles are self-emissive, but at 93.75-unit probe spacing, inverse square
+    // Particles are self-emissive, but at 62.5-unit probe spacing (48³ grid), inverse square
     // falloff makes them extremely dim without this multiplier.
-    // Reduced from 5000.0 to 800.0 to avoid overexposure in dense particle regions
-    const float PROBE_INTENSITY_SCALE = 800.0;
+    // Now runtime-configurable via g_probeIntensity (default 800.0)
+    // Range: 200-2000 (200=dim ambient, 800=balanced, 2000=bright volumetric glow)
 
-    return color * intensity * attenuation * PROBE_INTENSITY_SCALE;
+    return color * intensity * attenuation * g_probeIntensity;
 }
 
 //=============================================================================

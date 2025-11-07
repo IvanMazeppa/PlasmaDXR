@@ -118,6 +118,11 @@ public:
         uint32_t useVolumetricRT;          // Toggle: 0=legacy per-particle, 1=volumetric per-sample
         float volumetricRTIntensity;       // Intensity boost for particle emission (50-500, default 200)
         DirectX::XMFLOAT3 volumetricRTPadding;  // Padding for GPU alignment
+
+        // === Phase 2: Screen-Space Contact Shadows ===
+        uint32_t useScreenSpaceShadows;    // Toggle screen-space shadow system
+        uint32_t ssSteps;                  // Ray march steps (8=fast, 16=balanced, 32=quality)
+        DirectX::XMFLOAT2 ssPadding;       // Padding for alignment
     };
 
 public:
@@ -137,6 +142,11 @@ public:
                const RenderConstants& constants,
                ID3D12Resource* rtxdiOutputBuffer = nullptr,  // RTXDI selected lights (optional)
                ProbeGridSystem* probeGridSystem = nullptr);  // Probe Grid (Phase 0.13.1)
+
+    // Phase 2: Render depth pre-pass for screen-space shadows
+    void RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,
+                           ID3D12Resource* particleBuffer,
+                           const RenderConstants& constants);
 
     // Resize output textures and buffers when window size changes
     bool Resize(uint32_t newWidth, uint32_t newHeight);
