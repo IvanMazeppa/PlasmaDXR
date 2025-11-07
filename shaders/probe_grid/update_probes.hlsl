@@ -7,7 +7,7 @@
  * 3. Accumulating lighting from all lights
  * 4. Storing simplified spherical harmonics (RGB irradiance for MVP)
  *
- * ArchitecturEEEEEEEEEEEEEEEEEEEEEEEEEe: Zero atomic operations = zero contention!
+ * Architecture: Zero atomic operations = zero contention!
  * Each probe writes to ITS OWN memory location (no conflicts).
  *
  * Performance: ~0.5-1.0ms per frame (amortized over 4 frames)
