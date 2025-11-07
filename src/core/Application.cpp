@@ -670,12 +670,7 @@ void Application::Render() {
     // CRITICAL: Uses PROBE GRID TLAS ONLY (particles 0-2043) to avoid instance offset issues
     // Overflow particles (2044+) use direct RT lighting instead of probe grid
     if (m_useProbeGrid && m_probeGridSystem && m_rtLighting && m_particleSystem) {
-        // Log probe grid update periodically (first frame + every 60 frames)
-        bool shouldLog = (m_frameCount == 0) || ((m_frameCount % 60) == 0);
-        if (shouldLog) {
-            LOG_INFO("=== PROBE GRID UPDATE START ===");
-            LOG_INFO("  Total particles: {}", m_config.particleCount);
-        }
+        // Probe grid update (Phase 2 complete - logging removed for performance)
 
         // DEBUGGING: Ensure particle buffer is in correct state before probe grid reads it
         // Transition from UAV (physics write) to SRV (probe grid read)
@@ -700,16 +695,6 @@ void Application::Render() {
         // CRITICAL: Use 2043 (not 2044) to avoid edge case crash at exactly 2045 total particles
         uint32_t probeGridParticleCount = std::min(m_config.particleCount, 2043u);
 
-        if (shouldLog) {
-            LOG_INFO("  Probe grid particles: {}", probeGridParticleCount);
-            LOG_INFO("  Probe grid TLAS: 0x{:016x}",
-                     m_rtLighting->GetProbeGridTLAS()->GetGPUVirtualAddress());
-            LOG_INFO("  Direct RT TLAS: 0x{:016x}",
-                     m_rtLighting->GetDirectRTTLAS() ?
-                         m_rtLighting->GetDirectRTTLAS()->GetGPUVirtualAddress() : 0);
-            LOG_INFO("  Frame: {}", m_frameCount);
-        }
-
         m_probeGridSystem->UpdateProbes(
             cmdList,
             m_rtLighting->GetProbeGridTLAS(),  // FIXED: Use probe grid TLAS, not combined TLAS
@@ -728,10 +713,6 @@ void Application::Render() {
         probeBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
         probeBarrier.UAV.pResource = m_probeGridSystem->GetProbeBuffer();
         cmdList->ResourceBarrier(1, &probeBarrier);
-
-        if (shouldLog) {
-            LOG_INFO("=== PROBE GRID UPDATE COMPLETE ===");
-        }
 
         // DEBUGGING: Transition particle buffer back to UAV for next physics update
         D3D12_RESOURCE_BARRIER particleWriteBarrier = {};
@@ -3263,8 +3244,11 @@ void Application::RenderImGui() {
                               "  - Reads g_rtLighting[] from 3-8 neighbors at sample point\n"
                               "  - Distance-weighted blending creates smooth gradients\n"
                               "  - Eliminates discrete jumps without recomputing lighting!\n\n"
-                              "Enabled: Multi-light quality smoothness\n"
-                              "Disabled: Legacy per-particle lookup (faster but jumpy)");
+                              "REQUIRED FOR:\n"
+                              "  - PCSS soft shadows for inline RayQuery\n"
+                              "  - Henyey-Greenstein phase function for p2p lighting\n\n"
+                              "Enabled: Multi-light quality smoothness + PCSS + phase\n"
+                              "Disabled: Legacy per-particle lookup (faster but jumpy, no PCSS/phase)");
         }
 
         if (m_useVolumetricRT) {
@@ -3473,10 +3457,50 @@ void Application::RenderImGui() {
             ImGui::BulletText("Memory: 4.06 MB probe buffer");
 
             ImGui::Separator();
+            ImGui::Text("Runtime Controls:");
+
+            // Probe intensity slider
+            float probeIntensity = m_probeGridSystem->GetProbeIntensity();
+            if (ImGui::SliderFloat("Probe Intensity", &probeIntensity, 200.0f, 2000.0f, "%.0f")) {
+                m_probeGridSystem->SetProbeIntensity(probeIntensity);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Volumetric glow strength\n"
+                                 "200 = Subtle ambient\n"
+                                 "800 = Balanced (default)\n"
+                                 "2000 = Bright volumetric effect");
+            }
+
+            // Rays per probe slider (discrete values)
+            uint32_t raysPerProbe = m_probeGridSystem->GetRaysPerProbe();
+            int raysIndex = 0;
+            const int rayOptions[] = {1, 4, 8, 16, 32, 64};
+            const char* rayLabels[] = {"1 ray", "4 rays", "8 rays", "16 rays", "32 rays", "64 rays"};
+            for (int i = 0; i < 6; i++) {
+                if (rayOptions[i] == (int)raysPerProbe) {
+                    raysIndex = i;
+                    break;
+                }
+            }
+            if (ImGui::Combo("Rays Per Probe", &raysIndex, rayLabels, 6)) {
+                m_probeGridSystem->SetRaysPerProbe(rayOptions[raysIndex]);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Quality vs performance trade-off\n"
+                                 "1-4 rays = Performance (some flashing)\n"
+                                 "8-16 rays = Balanced (default)\n"
+                                 "32-64 rays = Quality (smooth, expensive)");
+            }
+
+            ImGui::Separator();
             ImGui::Text("Performance Characteristics:");
             ImGui::BulletText("Zero atomic operations");
             ImGui::BulletText("Temporal amortization: 1/4 probes/frame");
-            ImGui::BulletText("Update cost: ~0.5-1.0ms");
+            ImGui::BulletText("Update cost: ~1.0-2.0ms (48^3 grid)");
             ImGui::BulletText("Query cost: ~0.2-0.3ms");
 
             ImGui::Separator();

@@ -438,8 +438,8 @@ float3 ComputeInScattering(float3 pos, float3 viewDir, uint skipIdx) {
 // Benefit: Eliminates discrete jumps, creates smooth volumetric glow
 // Phase 3.9: Volumetric RT Lighting with Proper Scattering
 // Treats neighbor particles as virtual lights using g_rtLighting[] as intensity
-// Applies SAME volumetric math as multi-lights: distance attenuation + phase function
-float3 InterpolateRTLighting(float3 worldPos, uint skipIdx, float3 viewDir, float phaseG) {
+// Applies SAME volumetric math as multi-lights: distance attenuation + phase function + PCSS
+float3 InterpolateRTLighting(float3 worldPos, uint skipIdx, float3 viewDir, float phaseG, uint2 pixelPos) {
     float3 totalLight = float3(0, 0, 0);
 
     // Number of interpolation samples (runtime configurable)
@@ -506,15 +506,23 @@ float3 InterpolateRTLighting(float3 worldPos, uint skipIdx, float3 viewDir, floa
             float normalizedDist = lightDist / maxDistance;
             float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
 
-            // 2. Phase function (Henyey-Greenstein for anisotropic scattering, line 856 in multi-light)
+            // 2. Phase function (Henyey-Greenstein for anisotropic scattering)
             float phase = 1.0;
             if (usePhaseFunction != 0) {
                 float cosTheta = dot(-viewDir, lightDir);
                 phase = HenyeyGreenstein(cosTheta, phaseG);
             }
 
-            // 3. Accumulate light contribution (same formula as multi-lights line 866!)
-            float3 lightContribution = lightColor * attenuation * phase;
+            // 3. PCSS soft shadow (NEW: integrate with multi-light shadow system!)
+            float shadowTerm = 1.0;
+            if (useShadowRays != 0) {
+                // Treat neighbor particle as light source with radius
+                // Use particle radius (particleRadius constant) for soft shadow sampling
+                shadowTerm = CastPCSSShadowRay(worldPos, neighborPos, particleRadius, pixelPos, shadowRaysPerLight);
+            }
+
+            // 4. Accumulate light contribution with shadow term (same as multi-lights!)
+            float3 lightContribution = lightColor * attenuation * phase * shadowTerm;
             totalLight += lightContribution;
         }
     }
@@ -861,9 +869,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Sample direct RT lighting (always active when RT lighting enabled)
             if (useVolumetricRT != 0) {
                 // VOLUMETRIC SCATTERING MODE: Treat neighbors as virtual lights
-                // Applies same volumetric math as multi-lights (attenuation + phase function)
+                // Applies same volumetric math as multi-lights (attenuation + phase function + PCSS)
                 // This creates true volumetric glow with proper light scattering!
-                directRTLight = InterpolateRTLighting(pos, hit.particleIdx, ray.Direction, scatteringG);
+                directRTLight = InterpolateRTLighting(pos, hit.particleIdx, ray.Direction, scatteringG, pixelPos);
             } else {
                 // LEGACY MODE: Per-particle lookup (billboard-era)
                 // Fast but causes discrete brightness jumps

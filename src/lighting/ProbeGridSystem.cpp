@@ -280,7 +280,7 @@ void ProbeGridSystem::UpdateProbes(
     constants.lightCount = lightCount;
     constants.frameIndex = frameIndex;
     constants.updateInterval = m_updateInterval;
-    constants.padding0 = 0;
+    constants.probeIntensity = m_probeIntensity;  // Runtime configurable (200-2000)
     constants.padding1 = 0;
 
     // Map constant buffer and upload

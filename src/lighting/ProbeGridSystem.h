@@ -88,10 +88,12 @@ public:
     void SetGridSize(uint32_t size);
     void SetRaysPerProbe(uint32_t rays) { m_raysPerProbe = rays; }
     void SetUpdateInterval(uint32_t frames) { m_updateInterval = frames; }
+    void SetProbeIntensity(float intensity) { m_probeIntensity = intensity; }
 
     uint32_t GetGridSize() const { return m_gridSize; }
     uint32_t GetRaysPerProbe() const { return m_raysPerProbe; }
     uint32_t GetUpdateInterval() const { return m_updateInterval; }
+    float GetProbeIntensity() const { return m_probeIntensity; }
 
     /**
      * Get probe grid parameters for shader binding
@@ -142,14 +144,14 @@ private:
         DirectX::XMFLOAT3 gridMin;           // Grid world-space minimum
         float gridSpacing;                   // Distance between probes
 
-        uint32_t gridSize;                   // Grid dimension (32)
-        uint32_t raysPerProbe;               // Rays to cast per probe (64)
+        uint32_t gridSize;                   // Grid dimension (48)
+        uint32_t raysPerProbe;               // Rays to cast per probe (16)
         uint32_t particleCount;              // Number of particles
         uint32_t lightCount;                 // Number of lights
 
         uint32_t frameIndex;                 // Frame counter for temporal amortization
         uint32_t updateInterval;             // Frames between full grid updates (4)
-        uint32_t padding0;
+        float probeIntensity;                // Intensity multiplier (200-2000, runtime configurable)
         uint32_t padding1;
     };
 
@@ -167,6 +169,7 @@ private:
     uint32_t m_gridSize = 48;                // 48³ grid (110,592 probes) - Phase 2 resolution upgrade
     uint32_t m_raysPerProbe = 16;            // Phase 2: Increased from 1 to 16 for quality (original was 64)
     uint32_t m_updateInterval = 4;           // Update 1/4 of grid per frame
+    float m_probeIntensity = 800.0f;         // Intensity multiplier (200-2000, runtime configurable)
 
     // World-space grid parameters
     DirectX::XMFLOAT3 m_gridMin = DirectX::XMFLOAT3(-1500.0f, -1500.0f, -1500.0f);
