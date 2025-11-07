@@ -950,11 +950,49 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 void ParticleRenderer_Gaussian::RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,
                                                    ID3D12Resource* particleBuffer,
                                                    const RenderConstants& constants) {
-    if (!cmdList || !particleBuffer || !m_depthPrePassPSO) {
+    if (!cmdList || !particleBuffer || !m_depthPrePassPSO || !m_depthClearPSO) {
         return;  // Silently skip if not initialized
     }
 
-    // Set depth pre-pass pipeline
+    // === STEP 1: Clear depth buffer to far plane (1.0) ===
+    // This prevents garbage data in empty pixels from causing false occlusions
+
+    cmdList->SetPipelineState(m_depthClearPSO.Get());
+    cmdList->SetComputeRootSignature(m_depthClearRS.Get());
+
+    // Bind descriptor heap
+    ID3D12DescriptorHeap* heap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (heap) {
+        cmdList->SetDescriptorHeaps(1, &heap);
+    }
+
+    // Set clear constants (width, height)
+    struct ClearConstants {
+        uint32_t width;
+        uint32_t height;
+        uint32_t padding[2];
+    };
+
+    ClearConstants clearConsts = { constants.screenWidth, constants.screenHeight, {0, 0} };
+    cmdList->SetComputeRoot32BitConstants(0, 4, &clearConsts, 0);
+
+    // Bind depth buffer UAV
+    cmdList->SetComputeRootDescriptorTable(1, m_shadowDepthUAVGPU);
+
+    // Dispatch clear (8x8 thread groups)
+    uint32_t clearDispatchX = (constants.screenWidth + 7) / 8;
+    uint32_t clearDispatchY = (constants.screenHeight + 7) / 8;
+    cmdList->Dispatch(clearDispatchX, clearDispatchY, 1);
+
+    // UAV barrier before depth pre-pass
+    D3D12_RESOURCE_BARRIER clearBarrier = {};
+    clearBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    clearBarrier.UAV.pResource = m_shadowDepthBuffer.Get();
+    cmdList->ResourceBarrier(1, &clearBarrier);
+
+    // === STEP 2: Depth pre-pass ===
+    // Write particle depths using atomic min
+
     cmdList->SetPipelineState(m_depthPrePassPSO.Get());
     cmdList->SetComputeRootSignature(m_depthPrePassRS.Get());
 
@@ -981,24 +1019,13 @@ void ParticleRenderer_Gaussian::RenderDepthPrePass(ID3D12GraphicsCommandList* cm
     // Bind particle buffer (t0)
     cmdList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
 
-    // Bind depth buffer UAV (u0) - descriptor table
-    ID3D12DescriptorHeap* heap = m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    if (heap) {
-        cmdList->SetDescriptorHeaps(1, &heap);
-    }
+    // Bind depth buffer UAV (u0) - descriptor table (heap already bound above)
     cmdList->SetComputeRootDescriptorTable(2, m_shadowDepthUAVGPU);
 
-    // Clear depth buffer to far plane (1.0 = max depth)
-    // We'll use the compute shader to initialize it via atomic min
-    // First clear: UAV clear
-    UINT clearValue[4] = { 0x3F800000, 0, 0, 0 };  // 1.0f as uint (far plane)
-    cmdList->ClearUnorderedAccessViewUint(
-        m_shadowDepthUAVGPU,
-        m_shadowDepthUAV,
-        m_shadowDepthBuffer.Get(),
-        clearValue,
-        0, nullptr
-    );
+    // NOTE: ClearUnorderedAccessViewUint removed - was causing crashes
+    // The shader uses InterlockedMin which will overwrite any garbage data with correct depths
+    // First frame may have artifacts but subsequent frames will be correct
+    // TODO: Implement proper initialization pass if needed
 
     // Dispatch depth pre-pass (256 threads per group, process all particles)
     uint32_t dispatchX = (constants.particleCount + 255) / 256;
@@ -1392,9 +1419,73 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         m_shadowUAVGPU[i] = m_resources->GetGPUHandle(m_shadowUAV[i]);
     }
 
+    // Recreate screen-space shadow depth buffer at render resolution (Phase 2)
+    LOG_INFO("DLSS: Recreating screen-space shadow depth buffer at render resolution...");
+    m_shadowDepthBuffer.Reset();
+
+    D3D12_RESOURCE_DESC depthDesc = {};
+    depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    depthDesc.Width = m_renderWidth;
+    depthDesc.Height = m_renderHeight;
+    depthDesc.DepthOrArraySize = 1;
+    depthDesc.MipLevels = 1;
+    depthDesc.Format = DXGI_FORMAT_R32_UINT;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.SampleDesc.Quality = 0;
+    depthDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &depthDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_shadowDepthBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("DLSS: Failed to recreate shadow depth buffer");
+        return;
+    }
+
+    m_shadowDepthBuffer->SetName(L"ShadowDepthBuffer_Render");
+
+    // Recreate UAV for depth pre-pass
+    D3D12_UNORDERED_ACCESS_VIEW_DESC depthUavDesc = {};
+    depthUavDesc.Format = DXGI_FORMAT_R32_UINT;
+    depthUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+    depthUavDesc.Texture2D.MipSlice = 0;
+
+    m_shadowDepthUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_shadowDepthBuffer.Get(),
+        nullptr,
+        &depthUavDesc,
+        m_shadowDepthUAV
+    );
+    m_shadowDepthUAVGPU = m_resources->GetGPUHandle(m_shadowDepthUAV);
+
+    // Recreate SRV for screen-space shadow shader
+    D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
+    depthSrvDesc.Format = DXGI_FORMAT_R32_UINT;
+    depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    depthSrvDesc.Texture2D.MipLevels = 1;
+    depthSrvDesc.Texture2D.MostDetailedMip = 0;
+
+    m_shadowDepthSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_shadowDepthBuffer.Get(),
+        &depthSrvDesc,
+        m_shadowDepthSRV
+    );
+    m_shadowDepthSRVGPU = m_resources->GetGPUHandle(m_shadowDepthSRV);
+
     LOG_INFO("DLSS: All buffers recreated successfully at optimal resolutions");
-    LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color, shadows)", m_renderWidth, m_renderHeight);
+    LOG_INFO("  Render buffers: {}x{} (motion vectors, depth, color, shadows, screen-space depth)", m_renderWidth, m_renderHeight);
     LOG_INFO("  Shadow buffer size: {} MB per buffer", (m_renderWidth * m_renderHeight * 2) / (1024 * 1024));
+    LOG_INFO("  Screen-space depth buffer: {} MB", (m_renderWidth * m_renderHeight * 4) / (1024 * 1024));
     LOG_INFO("  Output buffer: {}x{} (upscaled result)", m_outputWidth, m_outputHeight);
 
     // Mark feature for recreation with new parameters
@@ -1504,15 +1595,15 @@ bool ParticleRenderer_Gaussian::CreateDepthPrePassPipeline() {
     LOG_INFO("Loaded depth pre-pass shader: {} bytes", shaderData.size());
 
     // Create root signature for depth pre-pass
-    // b0: DepthPrePassConstants (view-proj matrix, screen size, particle count)
+    // b0: DepthPrePassConstants (view-proj matrix, screen size, particle count) - root constants
     // t0: StructuredBuffer<Particle> g_particles (particle positions and radii)
-    // u0: RWTexture2D<float> g_depthBuffer (depth output)
+    // u0: RWTexture2D<uint> g_depthBuffer (depth output)
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-    uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<float>
+    uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<uint>
 
     CD3DX12_ROOT_PARAMETER1 rootParams[3];
-    rootParams[0].InitAsConstantBufferView(0);              // b0 - DepthPrePassConstants
+    rootParams[0].InitAsConstants(20, 0);                   // b0 - DepthPrePassConstants (20 DWORDs = 80 bytes)
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsDescriptorTable(1, &uavRange);      // u0 - depth buffer UAV
 
@@ -1548,6 +1639,68 @@ bool ParticleRenderer_Gaussian::CreateDepthPrePassPipeline() {
     }
 
     m_depthPrePassPSO->SetName(L"DepthPrePassPSO");
+
+    // === Create depth buffer clear pipeline ===
+    LOG_INFO("Creating depth buffer clear pipeline...");
+
+    // Load clear shader
+    std::ifstream clearShaderFile("shaders/shadows/depth_buffer_clear.dxil", std::ios::binary);
+    if (!clearShaderFile.is_open()) {
+        LOG_ERROR("Failed to load depth_buffer_clear.dxil");
+        return false;
+    }
+
+    std::vector<char> clearShaderData((std::istreambuf_iterator<char>(clearShaderFile)), std::istreambuf_iterator<char>());
+    Microsoft::WRL::ComPtr<ID3DBlob> clearShader;
+    hr = D3DCreateBlob(clearShaderData.size(), &clearShader);
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create clear shader blob");
+        return false;
+    }
+    memcpy(clearShader->GetBufferPointer(), clearShaderData.data(), clearShaderData.size());
+
+    // Create root signature for clear (simpler than pre-pass)
+    // b0: ClearConstants (width, height)
+    // u0: RWTexture2D<uint> g_depthBuffer
+
+    CD3DX12_DESCRIPTOR_RANGE1 clearUavRange;
+    clearUavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<uint>
+
+    CD3DX12_ROOT_PARAMETER1 clearRootParams[2];
+    clearRootParams[0].InitAsConstants(4, 0);                    // b0 - ClearConstants (4 DWORDs: width, height, padding)
+    clearRootParams[1].InitAsDescriptorTable(1, &clearUavRange); // u0 - depth buffer UAV
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC clearRootSigDesc;
+    clearRootSigDesc.Init_1_1(2, clearRootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    Microsoft::WRL::ComPtr<ID3DBlob> clearSignature, clearError;
+    hr = D3DX12SerializeVersionedRootSignature(&clearRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &clearSignature, &clearError);
+    if (FAILED(hr)) {
+        if (clearError) {
+            LOG_ERROR("Clear root signature serialization failed: {}", (char*)clearError->GetBufferPointer());
+        }
+        return false;
+    }
+
+    hr = m_device->GetDevice()->CreateRootSignature(0, clearSignature->GetBufferPointer(), clearSignature->GetBufferSize(),
+                                                     IID_PPV_ARGS(&m_depthClearRS));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create clear root signature");
+        return false;
+    }
+
+    // Create clear PSO
+    D3D12_COMPUTE_PIPELINE_STATE_DESC clearPsoDesc = {};
+    clearPsoDesc.pRootSignature = m_depthClearRS.Get();
+    clearPsoDesc.CS = CD3DX12_SHADER_BYTECODE(clearShader.Get());
+
+    hr = m_device->GetDevice()->CreateComputePipelineState(&clearPsoDesc, IID_PPV_ARGS(&m_depthClearPSO));
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create depth clear PSO");
+        return false;
+    }
+
+    m_depthClearPSO->SetName(L"DepthClearPSO");
 
     LOG_INFO("Depth pre-pass pipeline created successfully");
     return true;

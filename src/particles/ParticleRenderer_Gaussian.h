@@ -277,6 +277,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_depthPrePassPSO;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_depthPrePassRS;
 
+    // Depth buffer clear pipeline (initialization before pre-pass)
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_depthClearPSO;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_depthClearRS;
+
 #ifdef ENABLE_DLSS
     // DLSS Super Resolution system (lazy feature creation)
     DLSSSystem* m_dlssSystem = nullptr;       // Not owned (pointer to Application's DLSSSystem)
