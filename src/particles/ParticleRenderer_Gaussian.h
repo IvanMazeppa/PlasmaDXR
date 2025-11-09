@@ -122,7 +122,8 @@ public:
         // === Phase 2: Screen-Space Contact Shadows ===
         uint32_t useScreenSpaceShadows;    // Toggle screen-space shadow system
         uint32_t ssSteps;                  // Ray march steps (8=fast, 16=balanced, 32=quality)
-        DirectX::XMFLOAT2 ssPadding;       // Padding for alignment
+        uint32_t debugScreenSpaceShadows;  // Debug visualization (0=off, 1=show shadow coverage)
+        float ssPadding;                   // Padding for alignment
     };
 
 public:

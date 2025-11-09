@@ -89,7 +89,8 @@ cbuffer GaussianConstants : register(b0)
     // === Phase 2: Screen-Space Contact Shadows ===
     uint useScreenSpaceShadows;    // Toggle screen-space shadow system
     uint ssSteps;                  // Ray march steps (8=fast, 16=balanced, 32=quality)
-    float2 ssPadding;              // Padding for alignment
+    uint debugScreenSpaceShadows;  // Debug visualization (0=off, 1=show shadow coverage)
+    float ssPadding;               // Padding for alignment
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -1121,6 +1122,32 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                         if (useScreenSpaceShadows != 0) {
                             // Screen-space contact shadows - ray march through depth buffer
                             shadowTerm = ScreenSpaceShadow(pos, lightDir, lightDist, ssSteps);
+
+                            // DEBUG VISUALIZATION: Override lighting with shadow debug colors
+                            if (debugScreenSpaceShadows != 0 && lightIdx == 0) {
+                                // Enhanced debug visualization with dramatic color gradient:
+                                // shadowTerm: 1.0 = fully lit (bright green)
+                                //           : 0.5-0.8 = partial shadow (yellow/orange gradient)
+                                //           : 0.0 = fully shadowed (bright red)
+
+                                float3 debugColor;
+                                if (shadowTerm < 0.5) {
+                                    // Heavy shadow: Red to orange (0.0-0.5)
+                                    float t = shadowTerm / 0.5;
+                                    debugColor = float3(1.0, t * 0.5, 0.0);  // Red → orange
+                                } else if (shadowTerm < 0.8) {
+                                    // Partial shadow: Orange to yellow (0.5-0.8)
+                                    float t = (shadowTerm - 0.5) / 0.3;
+                                    debugColor = float3(1.0, 0.5 + t * 0.5, 0.0);  // Orange → yellow
+                                } else {
+                                    // Mostly lit: Yellow to green (0.8-1.0)
+                                    float t = (shadowTerm - 0.8) / 0.2;
+                                    debugColor = float3(1.0 - t, 1.0, 0.0);  // Yellow → green
+                                }
+
+                                totalLighting = debugColor * 500.0;  // 10× boost for visibility
+                                break;  // Only show first light
+                            }
                         }
                         else if (useShadowRays != 0) {
                             // Legacy PCSS shadow rays (being replaced)

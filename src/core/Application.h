@@ -276,6 +276,7 @@ private:
     bool m_useShadowRays = false;          // F5 to toggle (PCSS - disabled by default, replaced by screen-space)
     bool m_useScreenSpaceShadows = true;   // Phase 2: Screen-space contact shadows (NEW!)
     uint32_t m_ssSteps = 16;               // Screen-space shadow quality: 8=fast, 16=balanced, 32=quality
+    bool m_debugScreenSpaceShadows = false; // Debug visualization: red=shadow, green=lit
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
     LightingSystem m_lightingSystem = LightingSystem::MultiLight;  // --multi-light (default) or --rtxdi
     bool m_debugRTXDISelection = false;    // DEBUG: Visualize RTXDI light selection (rainbow colors)

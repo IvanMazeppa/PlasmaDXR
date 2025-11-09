@@ -905,7 +905,8 @@ void Application::Render() {
             // Phase 2: Screen-Space Contact Shadows
             gaussianConstants.useScreenSpaceShadows = m_useScreenSpaceShadows ? 1u : 0u;
             gaussianConstants.ssSteps = m_ssSteps;
-            gaussianConstants.ssPadding = DirectX::XMFLOAT2(0.0f, 0.0f);
+            gaussianConstants.debugScreenSpaceShadows = m_debugScreenSpaceShadows ? 1u : 0u;
+            gaussianConstants.ssPadding = 0.0f;
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -2871,6 +2872,20 @@ void Application::RenderImGui() {
             } else {
                 ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "Quality mode (32 steps)");
             }
+
+            // Debug visualization toggle
+            ImGui::Separator();
+            ImGui::Checkbox("Debug Visualization", &m_debugScreenSpaceShadows);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Visualize shadow coverage:\n"
+                                 "Green = Fully lit (shadowTerm = 1.0)\n"
+                                 "Red = Fully shadowed (shadowTerm = 0.0)\n"
+                                 "Yellow = Partial shadow\n"
+                                 "Uses first light only for clarity");
+            }
+
             ImGui::Unindent();
         }
 

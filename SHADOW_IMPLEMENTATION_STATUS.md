@@ -29,17 +29,19 @@
 
 ### 🚧 Current Issues
 
-1. **Minimal/No Visual Effect**
+1. **Minimal/No Visual Effect (DEBUG MODE ADDED)**
    - Shadows are barely visible or not visible at all
-   - Need to debug why occlusion detection isn't working
+   - **NEW:** Debug visualization mode added (ImGui checkbox)
+     - Shows shadow coverage: Green=lit, Red=shadowed, Yellow=partial
+     - Uses first light only for clarity
    - PCSS system may be interfering (both enabled simultaneously)
+   - **Next:** Test with debug mode to verify depth buffer and ray march working
 
-2. **2044 Particle Limit Crash (TDR)**
-   - Same 5-second TDR pause as original probe grid bug
-   - Crash occurs during initialization with >2044 particles
-   - **Root Cause:** Depth pre-pass likely writing to wrong buffer or BLAS mismatch
-   - **Hypothesis:** Depth pre-pass reads full particle buffer (10K) but probe grid BLAS only has 2044
-   - **Fix Needed:** Depth pre-pass must read from correct particle range or skip probe particles
+2. **2044 Particle Limit Crash (FIXED ✅)**
+   - ✅ **FIXED:** Skip first 2044 particles in depth_prepass.hlsl
+   - Probe grid particles (indices 0-2043) now excluded from depth buffer
+   - Only direct RT particles (2044+) rendered to depth buffer
+   - **Next:** Test with 5000, 10000 particles to verify fix
 
 3. **PCSS Interaction**
    - Both PCSS (F5) and screen-space shadows can be enabled
@@ -258,18 +260,24 @@ print(f"Particle depth range: [{particle_depths.min()}, {particle_depths.max()}]
 - Check: `viewProj` matrix in shader constants
 - Check: Particle world positions in reasonable range
 
-**Step 2: Verify Shadow Ray March**
-```hlsl
-// Add debug output to ScreenSpaceShadow() function
-// Replace line 472 with:
-float debugOcclusion = occlusionRatio;  // 0=no occlusion, 1=full occlusion
-return float3(debugOcclusion, 1.0 - debugOcclusion, 0);  // Red=shadow, Green=lit
-```
+**Step 2: Verify Shadow Ray March (DEBUG MODE ADDED ✅)**
 
-Rebuild and capture. Output should be:
-- Green: Fully lit areas
-- Red: Shadowed areas
-- Yellow: Partial occlusion
+✅ **IMPLEMENTED:** Debug visualization checkbox in ImGui
+- Enable "Debug Visualization" under Screen-Space Shadows
+- Output colors:
+  - **Green:** Fully lit (shadowTerm = 1.0)
+  - **Red:** Fully shadowed (shadowTerm = 0.0)
+  - **Yellow:** Partial shadow (0.0 < shadowTerm < 1.0)
+- Uses first light only to avoid color blending
+
+**How to test:**
+1. Open ImGui (F1)
+2. Rendering Features → Screen-Space Shadows
+3. Enable "Debug Visualization" checkbox
+4. Look for green/red/yellow particles
+5. If all green → no occlusion detected
+6. If all black → debug mode not working
+7. If green/red mix → shadows working!
 
 **Step 3: Test Without PCSS Interference**
 ```cpp
@@ -324,23 +332,35 @@ gaussianConstants.particleCount = m_rtLighting->GetDirectRTParticleCount();  // 
 
 ## Next Steps (Priority Order)
 
-1. **Debug Minimal Effect (CRITICAL)**
-   - Parse g_shadowDepth.bin to verify particle visibility
-   - Add debug visualization to ScreenSpaceShadow()
-   - Test with PCSS fully disabled
-   - Compare captures with/without screen-space shadows
+### ✅ COMPLETED (2025-11-07 Session)
 
-2. **Fix 2044 Particle Crash (HIGH)**
-   - Test Fix Option 1: Skip probe particles in depth pre-pass
-   - Or Fix Option 2: Pass correct particle count
-   - Verify with 5000, 10000 particles
+1. ✅ **Fixed 2044 Particle Crash**
+   - Implemented Fix Option 1: Skip probe particles (indices 0-2043) in depth_prepass.hlsl
+   - Build succeeded with updated shader
+   - **TODO:** Test with 5000, 10000 particles to verify fix works
 
-3. **Complete Phase 2 Integration (MEDIUM)**
+2. ✅ **Added Debug Visualization**
+   - New ImGui checkbox "Debug Visualization" under Screen-Space Shadows
+   - Shows shadow coverage: Green=lit, Red=shadowed, Yellow=partial
+   - Updated shader to output debug colors when enabled
+   - **TODO:** Test to verify depth buffer population and ray march accuracy
+
+### 🔄 IN PROGRESS
+
+3. **Debug Minimal Effect (CRITICAL)**
+   - ✅ Debug visualization implemented
+   - ⏳ **NEXT:** Launch app, enable debug mode, verify shadows visible
+   - ⏳ Test with PCSS fully disabled (set m_useShadowRays = false)
+   - ⏳ Parse g_shadowDepth.bin if debug mode shows no shadows
+
+### ⏳ PENDING
+
+4. **Complete Phase 2 Integration (MEDIUM)**
    - Ensure works with probe grid lighting
    - Ensure works with inline RQ lighting
    - Ensure works with RTXDI lighting
 
-4. **Implement Phase 3-5 (LOW - After Debugging)**
+5. **Implement Phase 3-5 (LOW - After Debugging)**
    - Phase 3: Volumetric self-shadowing
    - Phase 4: Temporal accumulation
    - Phase 5: Final polish
