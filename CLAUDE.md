@@ -10,15 +10,20 @@ The user is named Ben.
 
 **PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
 
-**Current Status (2025-10-29):**
-- **NVIDIA DLSS 3.7** - Super Resolution + Ray Reconstruction ✅ COMPLETE
+**Current Status (2025-11-09):**
+- **RT Engine Breakthrough** - First working volumetric RT lighting system ✅ COMPLETE (Phase 2.6)
+- **Physical Emission Hybrid System** - Artistic/physical blend mode ✅ COMPLETE (Phase 2.5)
+- **Multi-Light System** - 13 lights with dynamic control ✅ COMPLETE (Phase 3.5)
+- **PCSS Soft Shadows** - Temporal filtering at 115-120 FPS ✅ COMPLETE (Phase 3.6)
+- **NVIDIA DLSS 3.7** - Super Resolution operational (Ray Reconstruction shelved) ✅ COMPLETE
 - **Variable Refresh Rate** - Tearing mode support ✅ COMPLETE
-- RTXDI M5 (Phase 2) - Temporal accumulation with ping-pong buffers
-- PINN ML Physics - Python training complete, C++ integration in progress
+- **Screen-Space Contact Shadows** - Depth pre-pass system ✅ COMPLETE (Phase 2)
+- RTXDI M5 (Phase 2) - Temporal accumulation with ping-pong buffers 🔄 IN PROGRESS
+- PINN ML Physics - Python training complete, C++ integration in progress 🔄 IN PROGRESS
 - Adaptive Particle Radius (Phase 1.5) - Camera-distance adaptive sizing ✅ COMPLETE
-- MCP server operational with 4 tools (performance analysis, PIX analysis, ML screenshot comparison, screenshot listing)
+- MCP server operational with 5 tools (performance, PIX analysis, ML comparison, screenshot listing, visual quality assessment)
 - F2 screenshot capture system ✅ COMPLETE
-- God rays system SHELVED (marked for deactivation)
+- God rays system ⚠️ SHELVED (performance/quality issues)
 - 30×30×30 spatial grid covering 3000×3000×3000 unit world space
 
 **Core Technology Stack:**
@@ -42,6 +47,13 @@ start PlasmaDX-Clean.sln
 # Or build from command line
 MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
 MSBuild PlasmaDX-Clean.sln /p:Configuration=DebugPIX /p:Platform=x64
+
+# Quick rebuild (most common during development)
+MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64 /t:Rebuild
+
+# Clean build from scratch
+MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64 /t:Clean
+MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64 /t:Build
 ```
 
 ### Two Build Configurations
@@ -62,6 +74,9 @@ Shaders are compiled automatically during build via CMake custom commands. The b
 **Manual shader compilation (if needed):**
 ```bash
 dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo particle_physics.dxil
+
+# For DXR raytracing shaders (lib_6_3)
+dxc.exe -T lib_6_3 shaders/rtxdi/rtxdi_raygen.hlsl -Fo shaders/rtxdi/rtxdi_raygen.dxil
 ```
 
 ### ONNX Runtime (ML Features) - Optional
@@ -904,15 +919,21 @@ logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log
 
 ## Reference Documentation
 
+**Critical development documentation:**
+- `MASTER_ROADMAP_V2.md` - **AUTHORITATIVE** current roadmap and development status
+- `PARTICLE_FLASHING_ROOT_CAUSE_ANALYSIS.md` - 14,000-word visual quality investigation
+- `SHADOW_RTXDI_IMPLEMENTATION_ROADMAP.md` - RTXDI integration guide (890 lines)
+- `BUILD_GUIDE.md` - Quick build reference for Debug vs DebugPIX configurations
+- `PCSS_IMPLEMENTATION_SUMMARY.md` - PCSS soft shadows technical details
+
 **In-repo documentation:**
 - `README.md` - Project overview, features, controls
-- `BUILD_GUIDE.md` - Build configuration details
 - `configs/README.md` - Configuration system reference
 - `PHYSICS_PORT_ANALYSIS.md` - Physics feature porting plan
 - `PIX/docs/QUICK_REFERENCE.md` - PIX capture system guide
 - `ml/PINN_README.md` - PINN training and integration guide
 - `PINN_IMPLEMENTATION_SUMMARY.md` - PINN implementation overview
-- `PCSS_IMPLEMENTATION_SUMMARY.md` - PCSS soft shadows technical details
+- `DYNAMIC_EMISSION_IMPLEMENTATION.md` - Physical emission hybrid system details
 
 **External references:**
 - [DirectX 12 Programming Guide](https://docs.microsoft.com/en-us/windows/win32/direct3d12/)
@@ -927,29 +948,41 @@ logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log
 
 ## Immediate Next Steps for Development
 
+**Recently completed (Phase 0-3.6):**
+1. ✅ RT Engine Breakthrough - First working volumetric RT lighting (Phase 2.6)
+2. ✅ Physical Emission Hybrid System - Artistic/physical blend mode (Phase 2.5)
+3. ✅ Multi-Light System - 13 lights with dynamic control (Phase 3.5)
+4. ✅ PCSS Soft Shadows - Temporal filtering @ 115-120 FPS (Phase 3.6)
+5. ✅ NVIDIA DLSS 3.7 Super Resolution (Ray Reconstruction shelved)
+6. ✅ MCP server with 5 tools (added visual quality assessment)
+7. ✅ F2 screenshot capture system
+8. ✅ Variable refresh rate support
+9. ✅ Screen-Space Contact Shadows (Phase 2)
+
 **Current sprint priorities:**
-1. ✅ PINN Python training pipeline (COMPLETE)
-2. ✅ MCP server with 4 tools (COMPLETE)
-3. ✅ F2 screenshot capture system (COMPLETE)
-4. ✅ NVIDIA DLSS 3.7 Integration (COMPLETE)
-5. ✅ Variable refresh rate support (COMPLETE)
-6. 🔄 C++ ONNX Runtime integration (IN PROGRESS)
-7. 🔄 RTXDI M5 temporal accumulation (IN PROGRESS)
-8. ⏳ RT-based star radiance enhancements (scintillation, coronas, spikes) - 1-2 weeks
-9. ⏳ Hybrid physics mode (PINN + traditional) - 2-3 days
-10. ⏳ Disable god rays feature (add toggle, default OFF) - 1 hour
+1. 🔄 RTXDI M5 temporal accumulation (IN PROGRESS - Phase 4.1)
+2. 🔄 C++ ONNX Runtime integration for PINN (IN PROGRESS - Phase 5)
+3. ⏳ RT-based star radiance enhancements (scintillation, coronas, spikes) - 1-2 weeks
+4. ⏳ Hybrid physics mode (PINN + traditional) - 2-3 days
 
-**Roadmap (see MASTER_ROADMAP_V2.md for full details):**
-- **Recently Completed:** Phase 7 - NVIDIA DLSS 3.7 Super Resolution ✅ (Ray Reconstruction shelved - G-buffer incompatibility)
-- **Current:** Phase 5 - PINN ML Integration (Python ✅, C++ 🔄)
-- **Current:** RTXDI M5 - Temporal Accumulation (ping-pong buffers 🔄)
-- **Next:** Star Radiance Enhancements (RT-driven dynamic emission, scintillation, coronas)
-- **Next:** Phase 6 - Custom Denoising (temporal filtering, not DLSS-RR)
-- **Future:** Phase 8 - VR/AR Support (instanced stereo rendering)
-- **Long-term:** Kerr metric (rotating black holes), multi-BH systems
+**Deferred (Low Priority):**
+- Fix non-working features (in-scattering F6, Doppler shift R, gravitational redshift G)
+- Physics controls UI improvements
+- Particle add/remove system (useful for testing)
+- God rays system (shelved indefinitely - performance/quality issues)
 
+**Roadmap (see MASTER_ROADMAP_V2.md for authoritative details):**
+- **Phase 3.5-3.6:** Multi-light + PCSS ✅ COMPLETE
+- **Phase 4 (Current):** RTXDI M5 + Shadow Quality 🔄 IN PROGRESS
+- **Phase 5 (Current):** PINN ML Integration (Python ✅, C++ 🔄)
+- **Phase 6 (Next):** Custom Temporal Denoising (not DLSS-RR)
+- **Phase 7 (Future):** Enhanced Star Radiance Effects
+- **Phase 8 (Long-term):** Celestial Body System (heterogeneous particles, LOD, material-aware RT)
+- **Phase 9 (Long-term):** VR/AR Support (instanced stereo rendering)
 ---
 
-**Last Updated:** 2025-10-29
-**Project Version:** 0.11.14
+**Last Updated:** 2025-11-09
+**Project Version:** 0.14.4 (Based on git branch)
 **Documentation maintained by:** Claude Code sessions
+
+**Note:** See `MASTER_ROADMAP_V2.md` for the most up-to-date development status and detailed technical implementation plans.

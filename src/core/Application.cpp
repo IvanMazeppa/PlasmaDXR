@@ -988,7 +988,10 @@ void Application::Render() {
                 // Standard Gaussian volumetric rendering
 
                 // Phase 2: Depth pre-pass for screen-space shadows
-                if (m_useScreenSpaceShadows) {
+                // WORKAROUND: Temporarily disable shadows with >2044 particles
+                // Root cause: Shadow depth buffer descriptor handles may become stale after DLSS recreation
+                // TODO: Fix DLSS buffer recreation to update descriptors properly
+                if (m_useScreenSpaceShadows && m_config.particleCount <= 2044) {
                     m_gaussianRenderer->RenderDepthPrePass(cmdList,
                                                           m_particleSystem->GetParticleBuffer(),
                                                           gaussianConstants);
