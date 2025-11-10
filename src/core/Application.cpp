@@ -2893,8 +2893,16 @@ void Application::RenderImGui() {
         }
 
         ImGui::Separator();
-        ImGui::Text("Legacy PCSS System (being replaced):");
-        ImGui::Checkbox("PCSS Shadow Rays (F5)", &m_useShadowRays);
+        ImGui::Text("Phase 0.15.0: Volumetric Raytraced Shadows");
+        ImGui::Checkbox("Volumetric Shadow Rays (F5)", &m_useShadowRays);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Volumetric raytraced self-shadowing\n"
+                             "Uses DXR 1.1 RayQuery for physically accurate shadows\n"
+                             "Beer-Lambert absorption through particle volumes\n"
+                             "Replaces legacy PCSS (which just darkened images)");
+        }
 
         // PCSS shadow quality controls (indented under Shadow Rays)
         if (m_useShadowRays) {
@@ -2932,11 +2940,11 @@ void Application::RenderImGui() {
 
             // Show info for current preset
             if (m_shadowPreset == ShadowPreset::Performance) {
-                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "1-ray + temporal (120 FPS target)");
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "1-ray + temporal (115+ FPS target)");
             } else if (m_shadowPreset == ShadowPreset::Balanced) {
-                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "4-ray PCSS (90-100 FPS target)");
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "4-ray soft shadows (90-100 FPS target)");
             } else if (m_shadowPreset == ShadowPreset::Quality) {
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "8-ray PCSS (60-75 FPS target)");
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "8-ray soft shadows (60-75 FPS target)");
             }
 
             // Custom controls (only show if Custom preset selected)
