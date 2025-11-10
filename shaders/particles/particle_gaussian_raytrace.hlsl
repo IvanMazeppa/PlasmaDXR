@@ -229,8 +229,8 @@ float ComputeVolumetricShadowOcclusion(
     shadowRay.TMax = lightDistance - SHADOW_BIAS;
 
     // Initialize ray query for inline raytracing
-    RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES |
-             RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+    // NOTE: Do NOT use RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES - we WANT to hit particles!
+    RayQuery<RAY_FLAG_NONE> query;
 
     query.TraceRayInline(
         g_particleBVH,             // Reuse existing TLAS
@@ -280,6 +280,9 @@ float ComputeVolumetricShadowOcclusion(
             // Accumulate opacity (blend with existing opacity)
             shadowOpacity += attenuation * (1.0 - shadowOpacity);
 
+            // Commit this procedural primitive hit
+            query.CommitProceduralPrimitiveHit(tHit);
+
             hitCount++;
 
             // Early out if fully occluded or hit limit reached
@@ -290,8 +293,6 @@ float ComputeVolumetricShadowOcclusion(
             }
         }
     }
-
-    query.CommitProceduralPrimitiveHit(shadowOpacity);
 
     // Return shadow factor (0 = fully shadowed, 1 = fully lit)
     return 1.0 - saturate(shadowOpacity);

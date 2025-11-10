@@ -2,7 +2,8 @@
 
 **Branch**: 0.15.0
 **Date**: 2025-11-09
-**Status**: ✅ COMPLETE - Build successful, ready for testing
+**Status**: ✅ COMPLETE - Critical bug fixed, ready for testing
+**Bug Fix**: 2025-11-10 - Fixed RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES preventing shadows
 
 ---
 
