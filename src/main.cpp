@@ -28,7 +28,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
         // PIX will be initialized by Application after loading config
 
-        // Parse command line into argc/argv
+        // Parse command line into argc/argvsss
         int argc = 0;
         char** argv = nullptr;
         if (lpCmdLine && lpCmdLine[0]) {

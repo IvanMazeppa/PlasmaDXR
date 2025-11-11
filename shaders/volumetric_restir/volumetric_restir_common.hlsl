@@ -16,7 +16,7 @@
 //=============================================================================
 
 /**
- * Path vertex: (distance, direction) pair
+ * Path ve rtex: (distance, direction) pair
  *
  * Stores path implicitly as distances and directions from camera.
  * Reconstructing position: x_i = x_{i-1} + z_i * ω_i

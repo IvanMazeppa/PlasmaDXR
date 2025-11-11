@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '\nFILE=\"$TOOL_INPUT_FILE_PATH\"\n\n# Auto-compile HLSL shaders\nif [[ \"$FILE\" == *.hlsl ]]; then\n  echo \"🔨 Auto-compiling shader: $FILE\"\n  \n  # Determine shader type by path and content\n  if [[ \"$FILE\" == *\"/rtxdi/\"* ]] || [[ \"$FILE\" == *\"raygen\"* ]] || [[ \"$FILE\" == *\"miss\"* ]] || [[ \"$FILE\" == *\"intersection\"* ]]; then\n    # DXR raytracing shaders use lib_6_3\n    SHADER_TYPE=\"lib_6_3\"\n    echo \"  Type: DXR Library (lib_6_3)\"\n  else\n    # Compute shaders use cs_6_5\n    SHADER_TYPE=\"cs_6_5\"\n    echo \"  Type: Compute Shader (cs_6_5)\"\n  fi\n  \n  # Compile shader\n  DXC=\"/mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/dxc.exe\"\n  if [[ \"$SHADER_TYPE\" == \"lib_6_3\" ]]; then\n    \"$DXC\" -T \"$SHADER_TYPE\" \"$FILE\" -Fo \"${FILE%.hlsl}.dxil\" 2>&1\n  else\n    \"$DXC\" -T \"$SHADER_TYPE\" -E main \"$FILE\" -Fo \"${FILE%.hlsl}.dxil\" 2>&1\n  fi\n  \n  RESULT=$?\n  if [ $RESULT -eq 0 ]; then\n    echo \"  ✅ Shader compiled successfully: ${FILE%.hlsl}.dxil\"\n  else\n    echo \"  ⚠️  Shader compilation failed (exit code: $RESULT)\"\n  fi\nfi\n\n# Auto-build project after C++ changes\nif [[ \"$FILE\" =~ \\.(cpp|h)$ ]]; then\n  echo \"🔨 Auto-building PlasmaDX-Clean after editing: $FILE\"\n  \n  MSBUILD=\"/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\"\n  SOLUTION=\"$CLAUDE_PROJECT_DIR/PlasmaDX-Clean.sln\"\n  \n  echo \"  Solution: $SOLUTION\"\n  echo \"  Building...\"\n  \n  \"$MSBUILD\" \"$SOLUTION\" /p:Configuration=Debug /p:Platform=x64 /t:Build /nologo /v:minimal /clp:ErrorsOnly 2>&1\n  \n  RESULT=$?\n  if [ $RESULT -eq 0 ]; then\n    echo \"  ✅ Build succeeded\"\n  else\n    echo \"  ⚠️  Build failed (exit code: $RESULT)\"\n  fi\nfi\n'",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}
