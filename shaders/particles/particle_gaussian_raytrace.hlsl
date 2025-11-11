@@ -1255,8 +1255,27 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             } else {
                 // LEGACY MODE: Per-particle lookup (billboard-era)
                 // Fast but causes discrete brightness jumps
-                // Kept for comparison and fallback
+                // Phase 0.15.2: Add shadow support to legacy RT lighting
                 directRTLight = g_rtLighting[hit.particleIdx].rgb;
+
+                // Apply volumetric shadows if enabled (Phase 0.15.2)
+                if (useShadowRays != 0 && length(directRTLight) > 0.001) {
+                    // Get the RT-lit particle position (treat it as a virtual light source)
+                    Particle rtParticle = g_particles[hit.particleIdx];
+                    float3 particlePos = rtParticle.position;
+
+                    // Cast shadow ray from current position to RT-lit particle
+                    float shadowTerm = CastPCSSShadowRay(
+                        pos,                  // Current sample point
+                        particlePos,          // RT-lit particle position (virtual light)
+                        particleRadius,       // Light radius for soft shadows
+                        pixelPos,             // Pixel coordinate for temporal filtering
+                        shadowRaysPerLight    // Shadow quality (1/4/8 rays)
+                    );
+
+                    // Modulate RT lighting by shadow term
+                    directRTLight *= shadowTerm;
+                }
             }
 
             // Combine both sources (additive for maximum flexibility)
