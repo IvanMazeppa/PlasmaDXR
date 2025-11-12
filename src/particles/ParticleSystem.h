@@ -49,6 +49,22 @@ public:
         uint32_t materialType;         // 4 bytes  (offset 44) - ParticleMaterialType enum
     };  // Total: 48 bytes (16-byte aligned ✓)
 
+    // Material properties for each material type
+    // Sprint 1: 5 material types, each with distinct visual properties
+    // GPU constant buffer: 320 bytes (5 materials × 64 bytes)
+    struct MaterialTypeProperties {
+        DirectX::XMFLOAT3 albedo;             // 12 bytes - Base surface/volume color (RGB)
+        float opacity;                        // 4 bytes  - Opacity multiplier (0-1)
+        float emissionMultiplier;             // 4 bytes  - Emission strength multiplier
+        float scatteringCoefficient;          // 4 bytes  - Volumetric scattering (higher = more scattering)
+        float phaseG;                         // 4 bytes  - Henyey-Greenstein phase function (-1 to 1)
+        float padding[9];                     // 36 bytes - Padding to 64 bytes for alignment
+    };  // Total: 64 bytes per material
+
+    struct MaterialPropertiesConstants {
+        MaterialTypeProperties materials[5];  // 5 types × 64 bytes = 320 bytes
+    };  // Total: 320 bytes
+
 public:
     ParticleSystem() = default;
     ~ParticleSystem();
@@ -62,6 +78,9 @@ public:
     // Get particle buffer for rendering
     ID3D12Resource* GetParticleBuffer() const { return m_particleBuffer.Get(); }
     uint32_t GetParticleCount() const { return m_particleCount; }
+
+    // Sprint 1: Material System accessors
+    ID3D12Resource* GetMaterialPropertiesBuffer() const { return m_materialPropertiesBuffer.Get(); }
 
     // Runtime active particle count control
     uint32_t GetActiveParticleCount() const { return m_activeParticleCount; }
@@ -130,6 +149,10 @@ private:
     void InitializeAccretionDisk_CPU();  // CPU-based initialization for PINN mode
     bool CreateComputePipeline();
 
+    // Sprint 1: Material System Helper Methods
+    void InitializeMaterialProperties();    // Set up 5 material presets with vibrant colors
+    bool CreateMaterialPropertiesBuffer();  // Create and upload GPU constant buffer
+
     // PINN Physics Helper Methods
     void UpdatePhysics_GPU(float deltaTime, float totalTime);
     void UpdatePhysics_PINN(float deltaTime, float totalTime);
@@ -144,6 +167,10 @@ private:
     uint32_t m_particleCount = 0;           // Maximum particle count (buffer size)
     uint32_t m_activeParticleCount = 0;     // Active particle count (runtime adjustable)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_particleBuffer;  // GPU-initialized by physics shader
+
+    // Sprint 1: Material System
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_materialPropertiesBuffer;  // Material properties constant buffer (320 bytes)
+    MaterialPropertiesConstants m_materialProperties;                    // CPU-side material properties
 
     // Physics compute pipeline
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_computeRootSignature;

@@ -63,6 +63,14 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
         return false;
     }
 
+    // Sprint 1: Initialize Material System
+    InitializeMaterialProperties();  // Set up vibrant material presets
+    if (!CreateMaterialPropertiesBuffer()) {
+        LOG_ERROR("Failed to create material properties buffer");
+        return false;
+    }
+    LOG_INFO("Material system initialized: 5 material types with distinct properties");
+
     // Initialize PINN ML Physics System (optional)
     m_pinnPhysics = new PINNPhysicsSystem();
     // Path relative to project root (working directory)
@@ -606,4 +614,103 @@ ParticleSystem::PINNMetrics ParticleSystem::GetPINNMetrics() const {
         metrics.avgBatchTimeMs = pinnMetrics.avgBatchTimeMs;
     }
     return metrics;
+}
+
+// ============================================================================
+// Sprint 1: Material System Implementation
+// ============================================================================
+
+void ParticleSystem::InitializeMaterialProperties() {
+    // Initialize 5 material type presets with VIBRANT, SPECTACULAR colors
+    // Goal: Transform muted brown appearance into exciting galactic core visuals
+
+    // Material 0: PLASMA (Legacy - hot accretion disk plasma)
+    // Vibrant orange/red, high emission, forward scattering
+    m_materialProperties.materials[0].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot orange/red
+    m_materialProperties.materials[0].opacity = 0.6f;                 // Semi-transparent
+    m_materialProperties.materials[0].emissionMultiplier = 2.5f;      // Strong self-emission
+    m_materialProperties.materials[0].scatteringCoefficient = 1.5f;   // Moderate scattering
+    m_materialProperties.materials[0].phaseG = 0.3f;                  // Slightly forward scattering
+
+    // Material 1: STAR_MAIN_SEQUENCE (Brilliant white/yellow stars)
+    // Intense white light with yellow tint, maximum emission
+    m_materialProperties.materials[1].albedo = DirectX::XMFLOAT3(1.0f, 0.95f, 0.7f);  // Brilliant white-yellow
+    m_materialProperties.materials[1].opacity = 0.9f;                 // Nearly opaque
+    m_materialProperties.materials[1].emissionMultiplier = 8.0f;      // VERY high emission (stars glow!)
+    m_materialProperties.materials[1].scatteringCoefficient = 0.5f;   // Low scattering (self-luminous)
+    m_materialProperties.materials[1].phaseG = 0.0f;                  // Isotropic
+
+    // Material 2: GAS_CLOUD (Wispy nebula clouds - purples, blues, pinks)
+    // Colorful, low density, backward scattering creates wispy appearance
+    m_materialProperties.materials[2].albedo = DirectX::XMFLOAT3(0.4f, 0.6f, 0.95f);  // Vibrant blue/purple
+    m_materialProperties.materials[2].opacity = 0.3f;                 // Very transparent (wispy)
+    m_materialProperties.materials[2].emissionMultiplier = 0.8f;      // Gentle glow
+    m_materialProperties.materials[2].scatteringCoefficient = 2.5f;   // High scattering (diffuse)
+    m_materialProperties.materials[2].phaseG = -0.4f;                 // Backward scattering (rim lighting)
+
+    // Material 3: ROCKY_BODY (Asteroids, rocky particles)
+    // Deep grey/brown, minimal emission, absorbs light
+    m_materialProperties.materials[3].albedo = DirectX::XMFLOAT3(0.35f, 0.32f, 0.3f);  // Deep grey
+    m_materialProperties.materials[3].opacity = 1.0f;                 // Fully opaque
+    m_materialProperties.materials[3].emissionMultiplier = 0.05f;     // Almost no emission
+    m_materialProperties.materials[3].scatteringCoefficient = 0.3f;   // Low scattering (solid)
+    m_materialProperties.materials[3].phaseG = 0.2f;                  // Slight forward scatter
+
+    // Material 4: ICY_BODY (Comets, icy moons - bright reflective blues/whites)
+    // Brilliant white/blue, highly reflective, backward scattering creates bright rims
+    m_materialProperties.materials[4].albedo = DirectX::XMFLOAT3(0.9f, 0.95f, 1.0f);  // Bright icy blue-white
+    m_materialProperties.materials[4].opacity = 0.85f;                // Mostly opaque
+    m_materialProperties.materials[4].emissionMultiplier = 0.3f;      // Minimal emission
+    m_materialProperties.materials[4].scatteringCoefficient = 3.0f;   // Very high scattering (reflective)
+    m_materialProperties.materials[4].phaseG = -0.6f;                 // Strong backward scatter (rim glow)
+
+    // Zero out padding to avoid undefined behavior
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 9; j++) {
+            m_materialProperties.materials[i].padding[j] = 0.0f;
+        }
+    }
+
+    LOG_INFO("[Material System] Initialized 5 vibrant material presets:");
+    LOG_INFO("  0: PLASMA          - Hot orange/red, emission 2.5×");
+    LOG_INFO("  1: STAR            - Brilliant white-yellow, emission 8.0×");
+    LOG_INFO("  2: GAS_CLOUD       - Wispy blue/purple, backward scatter");
+    LOG_INFO("  3: ROCKY_BODY      - Deep grey, minimal emission");
+    LOG_INFO("  4: ICY_BODY        - Bright blue-white, reflective");
+}
+
+bool ParticleSystem::CreateMaterialPropertiesBuffer() {
+    // Create upload buffer for material properties (320 bytes)
+    size_t bufferSize = sizeof(MaterialPropertiesConstants);
+
+    CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &uploadProps,
+        D3D12_HEAP_FLAG_NONE,
+        &bufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,  // Upload heap starts in GENERIC_READ
+        nullptr,
+        IID_PPV_ARGS(&m_materialPropertiesBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("[Material System] Failed to create material properties buffer: {}", static_cast<int>(hr));
+        return false;
+    }
+
+    // Map and upload material data
+    void* mappedData = nullptr;
+    hr = m_materialPropertiesBuffer->Map(0, nullptr, &mappedData);
+    if (FAILED(hr)) {
+        LOG_ERROR("[Material System] Failed to map material properties buffer: {}", static_cast<int>(hr));
+        return false;
+    }
+
+    memcpy(mappedData, &m_materialProperties, bufferSize);
+    m_materialPropertiesBuffer->Unmap(0, nullptr);
+
+    LOG_INFO("[Material System] Material properties buffer created and uploaded ({} bytes)", bufferSize);
+    return true;
 }

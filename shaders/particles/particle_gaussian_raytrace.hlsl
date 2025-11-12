@@ -94,6 +94,26 @@ cbuffer GaussianConstants : register(b0)
     float ssPadding;               // Padding for alignment
 };
 
+// ============================================================================
+// SPRINT 1: MATERIAL SYSTEM (Phase 2)
+// ============================================================================
+
+// Material properties for each material type (matches C++ MaterialTypeProperties)
+struct MaterialTypeProperties {
+    float3 albedo;                  // 12 bytes - Surface/volume color (RGB)
+    float opacity;                  // 4 bytes  - Opacity multiplier (0-1)
+    float emissionMultiplier;       // 4 bytes  - Emission strength multiplier
+    float scatteringCoefficient;    // 4 bytes  - Volumetric scattering coefficient
+    float phaseG;                   // 4 bytes  - Henyey-Greenstein phase function parameter (-1 to 1)
+    float padding[9];               // 36 bytes - Padding to 64 bytes
+};  // Total: 64 bytes per material
+
+// Material properties constant buffer (5 material types × 64 bytes = 320 bytes)
+cbuffer MaterialProperties : register(b1)
+{
+    MaterialTypeProperties g_materials[5];  // PLASMA, STAR, GAS_CLOUD, ROCKY, ICY
+};
+
 // Light structure for multi-light system (64 bytes with god ray parameters)
 struct Light {
     // Base properties (32 bytes)
