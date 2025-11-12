@@ -523,7 +523,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[12];  // +3 for Probe Grid (b4, t7) and depth (t8)
+    CD3DX12_ROOT_PARAMETER1 rootParams[13];  // +4 for Probe Grid (b4, t7), depth (t8), and materials (b1)
     rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
@@ -536,9 +536,10 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[9].InitAsConstantBufferView(4);              // b4 - ProbeGridParams CBV
     rootParams[10].InitAsShaderResourceView(7);             // t7 - ProbeGrid buffer
     rootParams[11].InitAsDescriptorTable(1, &srvRanges[2]); // t8 - Shadow depth buffer (Phase 2)
+    rootParams[12].InitAsConstantBufferView(1);             // b1 - MaterialProperties CBV (Phase 3: Material System)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(12, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(13, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -665,7 +666,8 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        ID3D12Resource* tlas,
                                        const RenderConstants& constants,
                                        ID3D12Resource* rtxdiOutputBuffer,
-                                       ProbeGridSystem* probeGridSystem) {
+                                       ProbeGridSystem* probeGridSystem,
+                                       ID3D12Resource* materialPropertiesBuffer) {
     if (!cmdList || !particleBuffer || !rtLightingBuffer || !m_resources) {
         LOG_ERROR("Gaussian Render: null resource!");
         return;
@@ -833,6 +835,14 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         return;
     }
     cmdList->SetComputeRootDescriptorTable(11, depthSRVHandle);
+
+    // Root param 12: Material properties constant buffer (b1) - Phase 3: Material System
+    if (materialPropertiesBuffer) {
+        cmdList->SetComputeRootConstantBufferView(12, materialPropertiesBuffer->GetGPUVirtualAddress());
+    } else {
+        LOG_WARN("Material properties buffer is null - binding dummy CBV");
+        cmdList->SetComputeRootConstantBufferView(12, 0);
+    }
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;

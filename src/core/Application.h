@@ -462,7 +462,64 @@ private:
             std::string modelPath;
             bool adaptiveQualityEnabled = false;
             float adaptiveTargetFPS = 0.0f;
+
+            // PINN hybrid mode details (Phase 5)
+            bool hybridModeEnabled = false;
+            float hybridThresholdRISCO = 10.0f;  // × R_ISCO
         } mlQuality;
+
+        // === MATERIAL SYSTEM (Phase 5 / Sprint 1) ===
+
+        struct MaterialSystem {
+            bool enabled = false;
+            int particleStructSizeBytes = 32;  // 32=legacy, 48=material system
+            int materialTypesCount = 1;         // 1=legacy, 5+=material system
+
+            struct MaterialTypeDistribution {
+                int plasmaCount = 0;
+                int starCount = 0;
+                int gasCount = 0;
+                int rockyCount = 0;
+                int icyCount = 0;
+            } distribution;
+        } materialSystem;
+
+        // === ADAPTIVE PARTICLE RADIUS (Phase 1.5 - COMPLETE) ===
+
+        struct AdaptiveRadius {
+            bool enabled = false;
+            float innerZoneDistance = 150.0f;
+            float outerZoneDistance = 800.0f;
+            float innerScaleMultiplier = 0.3f;
+            float outerScaleMultiplier = 3.0f;
+            float densityScaleMin = 0.5f;
+            float densityScaleMax = 1.5f;
+        } adaptiveRadius;
+
+        // === DLSS INTEGRATION (Phase 7 - PARTIAL) ===
+
+        struct DLSSConfig {
+            bool enabled = false;
+            std::string qualityMode;  // "Performance", "Balanced", "Quality", "UltraPerformance"
+            int internalResolutionWidth = 0;
+            int internalResolutionHeight = 0;
+            int outputResolutionWidth = 0;
+            int outputResolutionHeight = 0;
+            bool motionVectorsEnabled = false;
+        } dlss;
+
+        // === DYNAMIC EMISSION (Phase 3.8 - COMPLETE) ===
+
+        struct DynamicEmission {
+            float emissionStrength = 0.25f;
+            float temperatureThreshold = 22000.0f;  // Kelvin
+            float rtSuppressionFactor = 0.7f;
+            float temporalModulationRate = 0.03f;
+        } dynamicEmission;
+
+        // === PERFORMANCE FEATURES ===
+
+        bool variableRefreshRateEnabled = false;  // Tearing mode (Phase 3)
 
         // === METADATA ===
 

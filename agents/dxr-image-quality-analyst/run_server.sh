@@ -7,9 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Change to the agent directory
 cd "$SCRIPT_DIR"
 
-# Use the project root venv (which has all packages installed)
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$PROJECT_ROOT/venv/bin/activate"
+# Use the local venv in the agent directory
+source "$SCRIPT_DIR/venv/bin/activate"
 
-# Run the flat MCP server directly
+# Run the MCP server directly
 exec python rtxdi_server.py

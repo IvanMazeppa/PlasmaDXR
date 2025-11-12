@@ -142,7 +142,8 @@ public:
                ID3D12Resource* tlas,  // From RTLightingSystem!
                const RenderConstants& constants,
                ID3D12Resource* rtxdiOutputBuffer = nullptr,  // RTXDI selected lights (optional)
-               ProbeGridSystem* probeGridSystem = nullptr);  // Probe Grid (Phase 0.13.1)
+               ProbeGridSystem* probeGridSystem = nullptr,   // Probe Grid (Phase 0.13.1)
+               ID3D12Resource* materialPropertiesBuffer = nullptr);  // Material System (Phase 3)
 
     // Phase 2: Render depth pre-pass for screen-space shadows
     void RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,

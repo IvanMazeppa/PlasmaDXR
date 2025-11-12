@@ -1144,10 +1144,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 accumulatedColor = float3(0, 0, 0);
     float logTransmittance = 0.0;  // Log-space accumulation for numerical stability
 
-    // Volumetric lighting parameters (used in multi-light loop)
-    const float scatteringG = 0.7;      // Henyey-Greenstein g parameter for phase function
-    const float extinction = 1.0;       // Extinction coefficient for volume rendering
-
     // PCSS temporal filtering: Accumulate shadows across all volume march steps
     float currentShadowAccum = 0.0;
     float shadowSampleCount = 0.0;
@@ -1159,6 +1155,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
         HitRecord hit = hits[i];
         Particle p = g_particles[hit.particleIdx];
+
+        // =========================================================================
+        // PHASE 3: MATERIAL SYSTEM - Get per-particle material properties
+        // =========================================================================
+        MaterialTypeProperties mat = g_materials[p.materialType];
+
+        // Material-specific volumetric lighting parameters
+        float scatteringG = mat.phaseG;                  // Henyey-Greenstein phase function (-1 to 1)
+        float extinction = mat.opacity;                   // Opacity/extinction coefficient
+        float scatteringCoeff = mat.scatteringCoefficient; // Volumetric scattering strength
 
         // Gaussian parameters (with anisotropic control + adaptive radius)
         float3 scale = ComputeGaussianScale(
@@ -1202,7 +1208,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             // Higher threshold to skip low-density regions that cause flickering
             if (density < 0.01) continue;
 
-            // === HYBRID EMISSION MODEL: Blend artistic + physical ===
+            // === HYBRID EMISSION MODEL: Blend artistic + physical + material albedo ===
             float3 emission;
             float intensity;
 
@@ -1219,6 +1225,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
                 // Apply emission strength to physical emission
                 physicalEmission = lerp(float3(0.5, 0.5, 0.5), physicalEmission, emissionStrength);
+
+                // Phase 3: Blend with material albedo for color diversity
+                physicalEmission = lerp(physicalEmission, mat.albedo, 0.3);  // 30% material color blend
 
                 // Optional Doppler shift (only on physical component)
                 if (useDopplerShift != 0) {
@@ -1242,12 +1251,16 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
                 // Blend: 0.0 = pure artistic (warm colors), 1.0 = pure physical (accurate blues)
                 emission = lerp(artisticEmission, physicalEmission, finalBlend);
-                intensity = EmissionIntensity(p.temperature);
+
+                // Phase 3: Apply material-specific emission multiplier
+                intensity = EmissionIntensity(p.temperature) * mat.emissionMultiplier;
             } else {
-                // Standard temperature-based color (artistic)
-                emission = TemperatureToEmission(p.temperature);
-                // Intensity based on temperature (emissionStrength applied separately at final composition)
-                intensity = EmissionIntensity(p.temperature);
+                // Standard temperature-based color (artistic) blended with material albedo
+                float3 temperatureColor = TemperatureToEmission(p.temperature);
+                emission = lerp(temperatureColor, mat.albedo, 0.5);  // 50% material albedo blend
+
+                // Phase 3: Apply material-specific emission multiplier
+                intensity = EmissionIntensity(p.temperature) * mat.emissionMultiplier;
             }
 
             // === RT LIGHTING: Probe Grid + Direct RT (ADDITIVE COMBINATION) ===
@@ -1494,12 +1507,12 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 }
 
                 // FIXED: Separate self-emission glow from external lighting
-                // Self-emission: Particle's blackbody glow (controlled by emissionStrength)
+                // Self-emission: Particle's blackbody glow (Phase 3: uses material emission multiplier)
                 float3 selfEmission = emission * intensity * emissionStrength;
 
-                // Apply subtle particle color to external lighting
-                // This prevents complete color wash-out while avoiding blown-out emission colors
-                float3 particleAlbedo = lerp(float3(1, 1, 1), emission, 0.15);  // Only 15% emission tint
+                // Phase 3: Use material albedo for scattering color (not emission color)
+                // This gives particles realistic scattering properties based on material type
+                float3 particleAlbedo = lerp(float3(1, 1, 1), mat.albedo, scatteringCoeff * 0.3);  // Material-driven scattering
 
                 // Combine all lighting sources
                 float3 externalLight = (ambientBase + rtExternalLight + multiLightContribution) * particleAlbedo;
