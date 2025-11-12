@@ -672,7 +672,7 @@ All draw calls and compute dispatches are wrapped with PIX event markers. Use PI
 
 **Status:** Operational with 4 tools
 
-**Location:** `agents/rtxdi-quality-analyzer/`
+**Location:** `agents/dxr-image-quality-analyst/`
 
 **Server:** `rtxdi_server.py` (flat structure with SDK 0.1.4)
 
@@ -691,7 +691,7 @@ The server uses lazy loading for PyTorch and LPIPS to avoid MCP timeout (30-seco
 
 **Running the server:**
 ```bash
-cd agents/rtxdi-quality-analyzer
+cd agents/dxr-image-quality-analyst
 ./run_server.sh
 ```
 
