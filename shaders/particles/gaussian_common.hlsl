@@ -1,12 +1,19 @@
 // 3D Gaussian Splatting Common Functions
 // Shared between AABB generation and ray tracing
 
+// Extended particle structure (48 bytes, 16-byte aligned)
+// Sprint 1: Material System Implementation
 struct Particle {
-    float3 position;
-    float temperature;
-    float3 velocity;
-    float density;
-};
+    // === LEGACY FIELDS (32 bytes) - DO NOT REORDER ===
+    float3 position;       // 12 bytes (offset 0)
+    float temperature;     // 4 bytes  (offset 12)
+    float3 velocity;       // 12 bytes (offset 16)
+    float density;         // 4 bytes  (offset 28)
+
+    // === NEW FIELDS (16 bytes) ===
+    float3 albedo;         // 12 bytes (offset 32) - Surface/volume color
+    uint materialType;     // 4 bytes  (offset 44) - 0=PLASMA, 1=STAR, 2=GAS_CLOUD, 3=ROCKY, 4=ICY
+};  // Total: 48 bytes (16-byte aligned ✓)
 
 // Compute Gaussian scale from particle properties (with anisotropy control)
 // Phase 1.5: Added adaptive radius parameters

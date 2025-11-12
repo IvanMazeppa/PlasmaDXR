@@ -129,6 +129,9 @@ void ParticleSystem::InitializeAccretionDisk_CPU() {
         m_cpuVelocities[i].x = -orbitalSpeed * sinf(angle);
         m_cpuVelocities[i].y = 0.0f;  // No initial vertical velocity
         m_cpuVelocities[i].z = orbitalSpeed * cosf(angle);
+
+        // NOTE: albedo and materialType will be initialized in UploadParticleData
+        // when particles are copied to GPU (Particle struct includes these fields)
     }
 
     LOG_INFO("[PINN] CPU-initialized {} particles in accretion disk", m_particleCount);
@@ -488,6 +491,11 @@ void ParticleSystem::UploadParticleData(
         particles[i].position = positions[i];
         particles[i].velocity = velocities[i];
         // Keep temperature and density from GPU (PINN doesn't modify these)
+
+        // Sprint 1: Initialize new material system fields
+        // Default to PLASMA material with warm orange albedo (backward compatible)
+        particles[i].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot plasma orange/red
+        particles[i].materialType = static_cast<uint32_t>(ParticleMaterialType::PLASMA);  // Type 0
     }
 
     uploadBuffer->Unmap(0, nullptr);

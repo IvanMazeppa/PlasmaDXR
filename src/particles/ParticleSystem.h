@@ -24,12 +24,30 @@ public:
     static constexpr float DISK_THICKNESS = 50.0f;
     static constexpr float INITIAL_ANGULAR_MOMENTUM = 100.0f;
 
-    struct Particle {
-        DirectX::XMFLOAT3 position;
-        float temperature;
-        DirectX::XMFLOAT3 velocity;
-        float density;
+    // Material type enumeration for diverse particle rendering
+    // Sprint 1: MVP with 5 material types (PLASMA must be index 0 for backward compatibility)
+    enum class ParticleMaterialType : uint32_t {
+        PLASMA = 0,              // Legacy - accretion disk plasma (hot orange/red)
+        STAR_MAIN_SEQUENCE = 1,  // G-type stars (Sun-like) - 5800K, high emission
+        GAS_CLOUD = 2,           // Nebulae - wispy, low density, colorful
+        ROCKY_BODY = 3,          // Asteroids, rocky particles - grey, low emission
+        ICY_BODY = 4,            // Comets, icy particles - white/blue, reflective
+        // Future: STAR_GIANT, STAR_NEUTRON, DUST_CLOUD (Phase 2)
     };
+
+    // Extended particle structure (48 bytes, 16-byte aligned)
+    // CRITICAL: First 32 bytes MUST match legacy layout for backward compatibility
+    struct Particle {
+        // === LEGACY FIELDS (32 bytes) - DO NOT REORDER ===
+        DirectX::XMFLOAT3 position;    // 12 bytes (offset 0)
+        float temperature;             // 4 bytes  (offset 12)
+        DirectX::XMFLOAT3 velocity;    // 12 bytes (offset 16)
+        float density;                 // 4 bytes  (offset 28)
+
+        // === NEW FIELDS (16 bytes) ===
+        DirectX::XMFLOAT3 albedo;      // 12 bytes (offset 32) - Surface/volume color
+        uint32_t materialType;         // 4 bytes  (offset 44) - ParticleMaterialType enum
+    };  // Total: 48 bytes (16-byte aligned ✓)
 
 public:
     ParticleSystem() = default;
