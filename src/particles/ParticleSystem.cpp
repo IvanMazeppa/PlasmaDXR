@@ -626,11 +626,12 @@ void ParticleSystem::InitializeMaterialProperties() {
 
     // Material 0: PLASMA (Legacy - hot accretion disk plasma)
     // Vibrant orange/red, high emission, forward scattering
+    // FIX: Increased opacity/scattering to restore volumetric appearance (was too thin at 0.6)
     m_materialProperties.materials[0].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot orange/red
-    m_materialProperties.materials[0].opacity = 0.6f;                 // Semi-transparent
+    m_materialProperties.materials[0].opacity = 1.0f;                 // Fully volumetric (was 0.6 - too thin)
     m_materialProperties.materials[0].emissionMultiplier = 2.5f;      // Strong self-emission
-    m_materialProperties.materials[0].scatteringCoefficient = 1.5f;   // Moderate scattering
-    m_materialProperties.materials[0].phaseG = 0.3f;                  // Slightly forward scattering
+    m_materialProperties.materials[0].scatteringCoefficient = 2.5f;   // Higher scattering (was 1.5 - too weak)
+    m_materialProperties.materials[0].phaseG = 0.7f;                  // Strong forward scatter (was 0.3 - too mild)
 
     // Material 1: STAR_MAIN_SEQUENCE (Brilliant white/yellow stars)
     // Intense white light with yellow tint, maximum emission

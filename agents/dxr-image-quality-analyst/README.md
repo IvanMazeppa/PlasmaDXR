@@ -475,3 +475,45 @@ LPIPS correctly identifies Modification B as more significant.
 **Last Updated:** 2025-11-12
 **Agent Version:** 1.21.0
 **Status:** ✅ Fully Operational - ML Visual Analysis Ready
+
+---
+
+## CRITICAL BUG FIX (v1.21.1)
+
+**Date:** 2025-11-12
+**Severity:** CRITICAL
+
+### Metadata Parsing Phantom "0 Lights" Bug
+
+**Problem:** Agent reported "ZERO LIGHTS ACTIVE" when 13 lights were actually working. Nearly caused phantom bug hunt.
+
+**Root Cause:** Code looked for `r['light_count']` instead of nested `r['lights']['count']`.
+
+**Fix Applied:**
+- Fixed nested metadata structure parsing (lights, rtxdi, shadows, physical_effects)
+- Added `validate_metadata()` function with auto-fix
+- Added validation warnings displayed before analysis
+- All nested structures now use safe `.get()` chains
+
+**Impact:** Prevents future phantom bug hunts caused by metadata parsing errors.
+
+**Restart Required:** MCP server must be restarted to load fixed code.
+
+See `METADATA_BUG_FIX_2025-11-12.md` for complete details.
+
+---
+
+## CHANGELOG (Updated)
+
+### v1.21.1 (2025-11-12) - CRITICAL BUG FIX
+- ✅ **CRITICAL:** Fixed nested metadata structure parsing
+- ✅ Added metadata validation with auto-fix
+- ✅ Added validation warnings
+- ✅ Prevents phantom "0 lights" bug
+
+### v1.21.0 (2025-11-12)
+- ✅ Added ML visual comparison (PyTorch + LPIPS)
+- ✅ Extended metadata schema (5 new sections)
+- ✅ Renamed from rtxdi-quality-analyzer to dxr-image-quality-analyst
+- ⚠️ **BUG:** Metadata parsing broken (fixed in v1.21.1)
+

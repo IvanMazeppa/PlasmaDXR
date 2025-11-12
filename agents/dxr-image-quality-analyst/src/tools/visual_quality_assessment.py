@@ -83,6 +83,55 @@ class VisualQualityAssessment:
         with open(annotation_file, 'w') as f:
             json.dump(assessment, f, indent=2)
 
+    def validate_metadata(self, metadata: Dict[str, Any], screenshot_path: str) -> Dict[str, str]:
+        """
+        Validate metadata structure and detect common issues.
+
+        Returns dict of warnings (empty if no issues).
+        """
+        warnings = {}
+
+        # Check schema version
+        if metadata.get('schema_version') != "2.0":
+            warnings['schema'] = f"Metadata schema is {metadata.get('schema_version', 'unknown')}, expected 2.0"
+
+        # Validate rendering section
+        if 'rendering' in metadata:
+            r = metadata['rendering']
+
+            # Check lights (CRITICAL - prevents phantom "0 lights" bug)
+            lights = r.get('lights', {})
+            light_count = lights.get('count', 0)
+
+            if light_count == 0:
+                # Extra validation: check if light_list exists but count is wrong
+                light_list = lights.get('light_list', [])
+                if len(light_list) > 0:
+                    warnings['lights_mismatch'] = f"CRITICAL: Metadata shows 0 lights but light_list has {len(light_list)} entries! Using light_list length instead."
+                    # Auto-fix by returning corrected count
+                    warnings['lights_corrected'] = str(len(light_list))
+                else:
+                    warnings['lights_zero'] = "WARNING: Metadata shows 0 lights. Verify if accurate or metadata bug."
+
+            # Check nested structure presence (CRITICAL - prevents crashes)
+            required_nested = ['rtxdi', 'shadows', 'lights']
+            for key in required_nested:
+                if key not in r:
+                    warnings[f'missing_{key}'] = f"Missing required nested structure: rendering.{key}"
+
+        # Validate performance section
+        if 'performance' in metadata:
+            p = metadata['performance']
+            fps = p.get('fps', 0)
+
+            # Sanity check: FPS too low or too high
+            if fps < 1 and fps != 0:
+                warnings['fps_suspicious'] = f"FPS is {fps:.1f} - suspiciously low, check if metadata is stale"
+            elif fps > 300:
+                warnings['fps_unrealistic'] = f"FPS is {fps:.1f} - suspiciously high, check if metadata is accurate"
+
+        return warnings
+
     def prepare_analysis_context(self, screenshot_path: str,
                                   comparison_mode: bool = False,
                                   before_path: Optional[str] = None) -> str:
@@ -245,32 +294,79 @@ def assess_screenshot_quality(screenshot_path: str,
         try:
             metadata = json.load(open(metadata_path, 'r'))
 
+            # CRITICAL: Validate metadata structure first
+            validation_warnings = assessor.validate_metadata(metadata, screenshot_path)
+
             # Append metadata section to context
             context += "\n\n## SCREENSHOT METADATA (Phase 1 Enhancement)\n\n"
+
+            # Show validation warnings if any (CRITICAL for phantom bug prevention)
+            if validation_warnings:
+                context += "**⚠️  METADATA VALIDATION WARNINGS:**\n"
+                for warning_type, warning_msg in validation_warnings.items():
+                    if 'lights_corrected' in warning_type:
+                        # Auto-fix applied, use corrected value
+                        context += f"  - Auto-fixed: Using light count = {warning_msg} (from light_list length)\n"
+                    else:
+                        context += f"  - {warning_msg}\n"
+                context += "\n"
+
             context += "The screenshot was captured with the following configuration:\n\n"
 
             # Rendering configuration
             if 'rendering' in metadata:
                 r = metadata['rendering']
                 context += "**Rendering Configuration:**\n"
-                rtxdi_status = "M5 ENABLED" if r.get('rtxdi_m5_enabled') else (
-                    "M4 ONLY (M5 disabled)" if r.get('rtxdi_enabled') else "DISABLED"
-                )
+
+                # RTXDI status (nested structure)
+                rtxdi = r.get('rtxdi', {})
+                rtxdi_enabled = rtxdi.get('enabled', False)
+                m4_enabled = rtxdi.get('m4_enabled', False)
+                m5_enabled = rtxdi.get('m5_enabled', False)
+
+                if m5_enabled:
+                    rtxdi_status = "M5 ENABLED"
+                elif m4_enabled:
+                    rtxdi_status = "M4 ONLY (M5 disabled)"
+                elif rtxdi_enabled:
+                    rtxdi_status = "ENABLED (legacy)"
+                else:
+                    rtxdi_status = "DISABLED"
+
                 context += f"- RTXDI Status: `{rtxdi_status}`\n"
 
-                if r.get('rtxdi_enabled') and not r.get('rtxdi_m5_enabled'):
+                if rtxdi_enabled and not m5_enabled:
                     context += "  ⚠️ **CRITICAL:** M5 temporal accumulation is disabled - expect visible patchwork pattern!\n"
 
-                context += f"- Temporal Blend Factor: `{r.get('temporal_blend_factor', 0.0):.3f}`\n"
-                context += f"- Shadow Rays Per Light: `{r.get('shadow_rays_per_light', 1)}`\n"
+                context += f"- Temporal Blend Factor: `{rtxdi.get('temporal_blend_factor', 0.0):.3f}`\n"
 
-                if r.get('shadow_rays_per_light', 1) == 1:
+                # Shadows (nested structure)
+                shadows = r.get('shadows', {})
+                shadow_rays_per_light = shadows.get('rays_per_light', 1)
+                context += f"- Shadow Rays Per Light: `{shadow_rays_per_light}`\n"
+
+                if shadow_rays_per_light == 1:
                     context += "  ℹ️ Using Performance preset (1-ray + temporal filtering)\n"
 
-                context += f"- Light Count: `{r.get('light_count', 0)}` lights\n"
-                context += f"- Phase Function: `{'ENABLED' if r.get('use_phase_function') else 'DISABLED'}`\n"
-                context += f"- Shadow Rays: `{'ENABLED' if r.get('use_shadow_rays') else 'DISABLED'}`\n"
-                context += f"- In-Scattering: `{'ENABLED' if r.get('use_in_scattering') else 'DISABLED'}`\n\n"
+                # CRITICAL FIX: Lights are nested under r['lights']['count'], not r['light_count']
+                lights = r.get('lights', {})
+                light_count = lights.get('count', 0)
+                context += f"- Light Count: `{light_count}` lights\n"
+
+                # Validation: Warn if light count seems wrong
+                if light_count == 0:
+                    context += "  ⚠️ **CRITICAL VALIDATION WARNING:** Metadata shows 0 lights. Verify if this is accurate or a metadata bug!\n"
+                    context += "  ⚠️ Check metadata JSON file directly before concluding lights are disabled.\n"
+
+                # Physical effects (nested structure)
+                physical_effects = metadata.get('physical_effects', {})
+                phase_function = physical_effects.get('phase_function', {})
+                context += f"- Phase Function: `{'ENABLED' if phase_function.get('enabled', False) else 'DISABLED'}`\n"
+
+                # Feature status (nested structure)
+                feature_status = metadata.get('feature_status', {}).get('working', {})
+                context += f"- Shadow Rays: `{'ENABLED' if feature_status.get('shadow_rays', False) else 'DISABLED'}`\n"
+                context += f"- In-Scattering: `{'ENABLED (deprecated)' if metadata.get('feature_status', {}).get('deprecated', {}).get('in_scattering', False) else 'DISABLED'}`\n\n"
 
             # Performance metrics
             if 'performance' in metadata:
