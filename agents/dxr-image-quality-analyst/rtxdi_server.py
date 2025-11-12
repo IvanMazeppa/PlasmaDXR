@@ -31,7 +31,7 @@ PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/mnt/d/Users/dilli/AndroidStudioProjec
 PIX_PATH = os.getenv("PIX_PATH", "/mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64")
 
 # Create MCP server at module level (like pix-debug)
-server = Server("rtxdi-quality-analyzer")
+server = Server("dxr-image-quality-analyst")
 
 
 def load_screenshot_metadata(screenshot_path: str) -> dict:

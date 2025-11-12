@@ -1,5 +1,5 @@
 #!/bin/bash
-# RTXDI Quality Analyzer MCP Server Launcher
+# DXR Image Quality Analyst MCP Server Launcher
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
