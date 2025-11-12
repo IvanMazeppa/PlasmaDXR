@@ -287,6 +287,69 @@ def assess_screenshot_quality(screenshot_path: str,
                 context += f"- Distance: `{c.get('distance', 0):.1f}` units\n"
                 context += f"- Height: `{c.get('height', 0):.1f}` units\n\n"
 
+            # Material System (Phase 5 / Sprint 1)
+            if 'material_system' in metadata:
+                ms = metadata['material_system']
+                context += "**Material System (Phase 5 / Sprint 1):**\n"
+                context += f"- Status: `{'ENABLED' if ms.get('enabled') else 'DISABLED (legacy)'}`\n"
+                context += f"- Particle Struct Size: `{ms.get('particle_struct_size_bytes', 32)} bytes`"
+                if ms.get('particle_struct_size_bytes', 32) == 32:
+                    context += " (legacy 32-byte struct)\n"
+                else:
+                    context += " (extended struct with material properties)\n"
+                context += f"- Material Types: `{ms.get('material_types_count', 1)}`\n"
+
+                if ms.get('enabled'):
+                    dist = ms.get('distribution', {})
+                    context += "  - Distribution:\n"
+                    context += f"    - Plasma: {dist.get('plasma', 0)} particles\n"
+                    context += f"    - Star: {dist.get('star', 0)} particles\n"
+                    context += f"    - Gas: {dist.get('gas', 0)} particles\n"
+                    context += f"    - Rocky: {dist.get('rocky', 0)} particles\n"
+                    context += f"    - Icy: {dist.get('icy', 0)} particles\n"
+                    context += "  ℹ️ Material-aware rendering active (distinct albedo, emission, scattering per type)\n"
+                context += "\n"
+
+            # Adaptive Particle Radius (Phase 1.5 - COMPLETE)
+            if 'adaptive_radius' in metadata:
+                ar = metadata['adaptive_radius']
+                context += "**Adaptive Particle Radius (Phase 1.5 - COMPLETE):**\n"
+                context += f"- Status: `{'ENABLED' if ar.get('enabled') else 'DISABLED'}`\n"
+                if ar.get('enabled'):
+                    context += f"- Inner Zone Distance: `{ar.get('inner_zone_distance', 150.0):.1f}` units (shrink to {ar.get('inner_scale_multiplier', 0.3):.0%})\n"
+                    context += f"- Outer Zone Distance: `{ar.get('outer_zone_distance', 800.0):.1f}` units (grow to {ar.get('outer_scale_multiplier', 3.0):.0%})\n"
+                    context += "  ℹ️ Particles dynamically resize based on camera distance for optimal visual quality\n"
+                context += "\n"
+
+            # DLSS Integration (Phase 7 - PARTIAL)
+            if 'dlss' in metadata:
+                dlss = metadata['dlss']
+                context += "**DLSS Integration (Phase 7 - PARTIAL):**\n"
+                context += f"- Status: `{'ENABLED' if dlss.get('enabled') else 'DISABLED'}`\n"
+                if dlss.get('enabled'):
+                    context += f"- Quality Mode: `{dlss.get('quality_mode', 'Unknown')}`\n"
+                    context += f"- Internal Resolution: `{dlss.get('internal_resolution', 'N/A')}`\n"
+                    context += f"- Output Resolution: `{dlss.get('output_resolution', 'N/A')}`\n"
+                    context += f"- Motion Vectors: `{'ENABLED' if dlss.get('motion_vectors_enabled') else 'DISABLED'}`\n"
+                    context += "  ℹ️ AI upscaling active - rendering at lower internal resolution\n"
+                context += "\n"
+
+            # Dynamic Emission (Phase 3.8 - COMPLETE)
+            if 'dynamic_emission' in metadata:
+                de = metadata['dynamic_emission']
+                context += "**Dynamic Emission (Phase 3.8 - COMPLETE):**\n"
+                context += f"- Emission Strength: `{de.get('emission_strength', 0.25):.3f}`\n"
+                context += f"- Temperature Threshold: `{de.get('temperature_threshold', 22000.0):.0f}K` (only hot particles emit)\n"
+                context += f"- RT Suppression Factor: `{de.get('rt_suppression_factor', 0.7):.3f}` (emission dims when RT-lit)\n"
+                context += f"- Temporal Modulation Rate: `{de.get('temporal_modulation_rate', 0.03):.3f}` (subtle pulsing)\n"
+                context += "  ℹ️ RT-driven dynamic emission active (stars breathe, shadows emit more)\n\n"
+
+            # Variable Refresh Rate
+            if 'variable_refresh_rate_enabled' in metadata:
+                vrr = metadata['variable_refresh_rate_enabled']
+                if vrr:
+                    context += "**Variable Refresh Rate:** `ENABLED` (tearing mode for unlocked FPS)\n\n"
+
             # Configuration-specific recommendations
             context += "## CONFIG-SPECIFIC RECOMMENDATIONS\n\n"
             context += "Based on the captured metadata, provide SPECIFIC recommendations that reference:\n"

@@ -2237,6 +2237,49 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.mlQuality.modelPath = "";
     meta.mlQuality.adaptiveQualityEnabled = m_enableAdaptiveQuality;
     meta.mlQuality.adaptiveTargetFPS = m_adaptiveTargetFPS;
+    meta.mlQuality.hybridModeEnabled = false;  // TODO: Link to PINN hybrid mode when implemented
+    meta.mlQuality.hybridThresholdRISCO = 10.0f;  // Default from CLAUDE.md
+
+    // === MATERIAL SYSTEM (Phase 5 / Sprint 1) ===
+    // NOTE: These fields default to legacy values until material system is implemented
+    meta.materialSystem.enabled = false;  // TODO: Link to material system when implemented
+    meta.materialSystem.particleStructSizeBytes = 32;  // Legacy particle struct
+    meta.materialSystem.materialTypesCount = 1;  // Only PLASMA in legacy system
+    meta.materialSystem.distribution.plasmaCount = static_cast<int>(m_config.particleCount);
+    meta.materialSystem.distribution.starCount = 0;
+    meta.materialSystem.distribution.gasCount = 0;
+    meta.materialSystem.distribution.rockyCount = 0;
+    meta.materialSystem.distribution.icyCount = 0;
+
+    // === ADAPTIVE PARTICLE RADIUS (Phase 1.5 - COMPLETE) ===
+    // NOTE: These should be linked to actual adaptive radius system when UI is exposed
+    meta.adaptiveRadius.enabled = false;  // TODO: Link to m_enableAdaptiveRadius when exposed
+    meta.adaptiveRadius.innerZoneDistance = 150.0f;  // Defaults from CLAUDE.md
+    meta.adaptiveRadius.outerZoneDistance = 800.0f;
+    meta.adaptiveRadius.innerScaleMultiplier = 0.3f;
+    meta.adaptiveRadius.outerScaleMultiplier = 3.0f;
+    meta.adaptiveRadius.densityScaleMin = 0.5f;
+    meta.adaptiveRadius.densityScaleMax = 1.5f;
+
+    // === DLSS INTEGRATION (Phase 7 - PARTIAL) ===
+    // NOTE: These should be linked to actual DLSS system when active
+    meta.dlss.enabled = false;  // TODO: Link to DLSS system when implemented
+    meta.dlss.qualityMode = "Disabled";
+    meta.dlss.internalResolutionWidth = m_width;
+    meta.dlss.internalResolutionHeight = m_height;
+    meta.dlss.outputResolutionWidth = m_width;
+    meta.dlss.outputResolutionHeight = m_height;
+    meta.dlss.motionVectorsEnabled = false;
+
+    // === DYNAMIC EMISSION (Phase 3.8 - COMPLETE) ===
+    // NOTE: These should be linked to actual dynamic emission parameters when exposed
+    meta.dynamicEmission.emissionStrength = 0.25f;  // Defaults from CLAUDE.md
+    meta.dynamicEmission.temperatureThreshold = 22000.0f;
+    meta.dynamicEmission.rtSuppressionFactor = 0.7f;
+    meta.dynamicEmission.temporalModulationRate = 0.03f;
+
+    // === PERFORMANCE FEATURES ===
+    meta.variableRefreshRateEnabled = false;  // TODO: Link to tearing mode when implemented
 
     // === METADATA ===
 
@@ -2390,8 +2433,58 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "    \"pinn_enabled\": %s,\n", meta.mlQuality.pinnEnabled ? "true" : "false");
     fprintf(file, "    \"model_path\": \"%s\",\n", meta.mlQuality.modelPath.c_str());
     fprintf(file, "    \"adaptive_quality_enabled\": %s,\n", meta.mlQuality.adaptiveQualityEnabled ? "true" : "false");
-    fprintf(file, "    \"adaptive_target_fps\": %.1f\n", meta.mlQuality.adaptiveTargetFPS);
-    fprintf(file, "  }\n");
+    fprintf(file, "    \"adaptive_target_fps\": %.1f,\n", meta.mlQuality.adaptiveTargetFPS);
+    fprintf(file, "    \"hybrid_mode_enabled\": %s,\n", meta.mlQuality.hybridModeEnabled ? "true" : "false");
+    fprintf(file, "    \"hybrid_threshold_risco\": %.1f\n", meta.mlQuality.hybridThresholdRISCO);
+    fprintf(file, "  },\n");
+
+    // === MATERIAL SYSTEM (Phase 5 / Sprint 1) ===
+    fprintf(file, "  \"material_system\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.materialSystem.enabled ? "true" : "false");
+    fprintf(file, "    \"particle_struct_size_bytes\": %d,\n", meta.materialSystem.particleStructSizeBytes);
+    fprintf(file, "    \"material_types_count\": %d,\n", meta.materialSystem.materialTypesCount);
+    fprintf(file, "    \"distribution\": {\n");
+    fprintf(file, "      \"plasma\": %d,\n", meta.materialSystem.distribution.plasmaCount);
+    fprintf(file, "      \"star\": %d,\n", meta.materialSystem.distribution.starCount);
+    fprintf(file, "      \"gas\": %d,\n", meta.materialSystem.distribution.gasCount);
+    fprintf(file, "      \"rocky\": %d,\n", meta.materialSystem.distribution.rockyCount);
+    fprintf(file, "      \"icy\": %d\n", meta.materialSystem.distribution.icyCount);
+    fprintf(file, "    }\n");
+    fprintf(file, "  },\n");
+
+    // === ADAPTIVE PARTICLE RADIUS (Phase 1.5 - COMPLETE) ===
+    fprintf(file, "  \"adaptive_radius\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.adaptiveRadius.enabled ? "true" : "false");
+    fprintf(file, "    \"inner_zone_distance\": %.1f,\n", meta.adaptiveRadius.innerZoneDistance);
+    fprintf(file, "    \"outer_zone_distance\": %.1f,\n", meta.adaptiveRadius.outerZoneDistance);
+    fprintf(file, "    \"inner_scale_multiplier\": %.2f,\n", meta.adaptiveRadius.innerScaleMultiplier);
+    fprintf(file, "    \"outer_scale_multiplier\": %.2f,\n", meta.adaptiveRadius.outerScaleMultiplier);
+    fprintf(file, "    \"density_scale_min\": %.2f,\n", meta.adaptiveRadius.densityScaleMin);
+    fprintf(file, "    \"density_scale_max\": %.2f\n", meta.adaptiveRadius.densityScaleMax);
+    fprintf(file, "  },\n");
+
+    // === DLSS INTEGRATION (Phase 7 - PARTIAL) ===
+    fprintf(file, "  \"dlss\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.dlss.enabled ? "true" : "false");
+    fprintf(file, "    \"quality_mode\": \"%s\",\n", meta.dlss.qualityMode.c_str());
+    fprintf(file, "    \"internal_resolution\": \"%dx%d\",\n",
+            meta.dlss.internalResolutionWidth, meta.dlss.internalResolutionHeight);
+    fprintf(file, "    \"output_resolution\": \"%dx%d\",\n",
+            meta.dlss.outputResolutionWidth, meta.dlss.outputResolutionHeight);
+    fprintf(file, "    \"motion_vectors_enabled\": %s\n", meta.dlss.motionVectorsEnabled ? "true" : "false");
+    fprintf(file, "  },\n");
+
+    // === DYNAMIC EMISSION (Phase 3.8 - COMPLETE) ===
+    fprintf(file, "  \"dynamic_emission\": {\n");
+    fprintf(file, "    \"emission_strength\": %.3f,\n", meta.dynamicEmission.emissionStrength);
+    fprintf(file, "    \"temperature_threshold\": %.1f,\n", meta.dynamicEmission.temperatureThreshold);
+    fprintf(file, "    \"rt_suppression_factor\": %.3f,\n", meta.dynamicEmission.rtSuppressionFactor);
+    fprintf(file, "    \"temporal_modulation_rate\": %.3f\n", meta.dynamicEmission.temporalModulationRate);
+    fprintf(file, "  },\n");
+
+    // === PERFORMANCE FEATURES ===
+    fprintf(file, "  \"variable_refresh_rate_enabled\": %s\n", meta.variableRefreshRateEnabled ? "true" : "false");
+
     fprintf(file, "}\n");
 
     fclose(file);

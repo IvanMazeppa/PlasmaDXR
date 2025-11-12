@@ -389,11 +389,28 @@ async def compare_screenshots_ml(
     img_before = comparator.load_image(before)
     img_after = comparator.load_image(after)
 
-    # Check dimensions match
+    # Check dimensions match - auto-resize if needed
+    resize_warning = None
     if img_before.shape != img_after.shape:
-        return {
-            "error": f"Image dimensions mismatch: {img_before.shape} vs {img_after.shape}",
-            "suggestion": "Images must have same dimensions for comparison"
+        # Auto-resize to smallest common dimensions
+        target_h = min(img_before.shape[0], img_after.shape[0])
+        target_w = min(img_before.shape[1], img_after.shape[1])
+
+        # Preserve original dimensions for warning message
+        original_before = f"{img_before.shape[1]}x{img_before.shape[0]}"
+        original_after = f"{img_after.shape[1]}x{img_after.shape[0]}"
+
+        # Resize using high-quality Lanczos interpolation
+        img_before = cv2.resize(img_before, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+        img_after = cv2.resize(img_after, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+
+        # Store warning for report
+        resize_warning = {
+            "resized": True,
+            "original_before": original_before,
+            "original_after": original_after,
+            "common_size": f"{target_w}x{target_h}",
+            "message": f"⚠️  Images resized from {original_before} and {original_after} to {target_w}x{target_h} for comparison"
         }
 
     # Compute all metrics
@@ -447,6 +464,10 @@ async def compare_screenshots_ml(
         "model": "LPIPS VGG (pre-trained on ImageNet)"
     }
 
+    # Add resize warning if images were resized
+    if resize_warning:
+        results["resize_warning"] = resize_warning
+
     return results
 
 
@@ -475,6 +496,19 @@ def format_comparison_report(results: Dict[str, Any]) -> str:
     lines.append(f"Size:   {results['metadata']['image_size']}")
     lines.append(f"Model:  {results['metadata']['model']}")
     lines.append("")
+
+    # Resize warning (if applicable)
+    if "resize_warning" in results:
+        rw = results["resize_warning"]
+        lines.append("⚠️  IMAGE RESIZE WARNING")
+        lines.append("-" * 80)
+        lines.append(rw["message"])
+        lines.append(f"  Original 'before': {rw['original_before']}")
+        lines.append(f"  Original 'after':  {rw['original_after']}")
+        lines.append(f"  Resized to:        {rw['common_size']}")
+        lines.append("  Note: Images were resized using Lanczos interpolation for comparison.")
+        lines.append("        For pixel-perfect analysis, ensure both images are the same size.")
+        lines.append("")
 
     # Overall similarity
     lines.append("=" * 80)
