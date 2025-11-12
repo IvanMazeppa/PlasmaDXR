@@ -389,15 +389,34 @@ async def compare_screenshots_ml(
     img_before = comparator.load_image(before)
     img_after = comparator.load_image(after)
 
-    # Check dimensions match
+    # Check dimensions match - auto-resize if needed
+    resize_warning = None
     if img_before.shape != img_after.shape:
-        return {
-            "error": f"Image dimensions mismatch: {img_before.shape} vs {img_after.shape}",
-            "suggestion": "Images must have same dimensions for comparison"
+        # Auto-resize to smallest common dimensions
+        target_h = min(img_before.shape[0], img_after.shape[0])
+        target_w = min(img_before.shape[1], img_after.shape[1])
+
+        original_before = f"{img_before.shape[1]}x{img_before.shape[0]}"
+        original_after = f"{img_after.shape[1]}x{img_after.shape[0]}"
+
+        # Resize using high-quality Lanczos interpolation
+        img_before = cv2.resize(img_before, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+        img_after = cv2.resize(img_after, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+
+        resize_warning = {
+            "resized": True,
+            "original_before": original_before,
+            "original_after": original_after,
+            "common_size": f"{target_w}x{target_h}",
+            "message": f"⚠️  Images resized from {original_before} and {original_after} to {target_w}x{target_h} for comparison"
         }
 
     # Compute all metrics
     results = {}
+
+    # Add resize warning if applicable
+    if resize_warning:
+        results["resize_warning"] = resize_warning
 
     # Traditional metrics
     results["traditional"] = comparator.traditional_metrics(img_before, img_after)

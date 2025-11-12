@@ -8,6 +8,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The user is named Ben.
 
+### Feedback Philosophy: Brutal Honesty
+
+**CRITICAL:** When providing feedback, code reviews, or analysis (especially from autonomous agents), **brutal honesty is strongly preferred over sugar-coating**.
+
+✅ **Good:** "ZERO LIGHTS ACTIVE - this is catastrophic, cannot assess visual quality"
+❌ **Bad:** "Lighting could use some refinement to improve visual quality"
+
+✅ **Good:** "Ray-ellipsoid intersection broken at `particle_gaussian_raytrace.hlsl:234` - returning NaN"
+❌ **Bad:** "Gaussian rendering needs improvement"
+
+✅ **Good:** "19 FPS with ZERO lights is nonsensical - something burning GPU cycles for no benefit. Investigate immediately."
+❌ **Bad:** "Performance is a bit slow, consider optimization"
+
+**Why:** Sugar-coated responses have caused problems by hiding critical issues. Direct, specific language accelerates debugging and saves development time. AI's tendency to "please the user" is counterproductive for technical work.
+
+**Apply to:** Code reviews, visual quality assessments, performance analysis, bug reports, architectural feedback.
+
+---
+
 **PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
 
 **Current Status (2025-11-09):**
