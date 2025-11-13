@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The user is named Ben.
+The user is named Ben, he is a novice programmer but has some experience with C++, Java and Python. The user has high-functioning autism and so tends to develop a very strong interest in a technical field, and so this has blossomed into a passion project for Ben. He has a very strong interest in AI, ML and LLMs, and is leveraging these tools to create thi experimental raytracing engine. 
 
 ### Feedback Philosophy: Brutal Honesty
 
@@ -19,7 +19,7 @@ The user is named Ben.
 
 ---
 
-**PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware.
+**PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware. As this is an experiment into various RT technologies, RT lighting, shadowing (etc) should always be the first choice when deciding on a solution for an upgrade, but ONLY if RT is appropriate. RT should never be forced in just for the sake of using it, it should always benefit the project and impove image quality.
 
 **Current Status (2025-11-12):**
 - **Primary Renderer:** Gaussian volumetric RT lighting (particle_gaussian_raytrace.hlsl) ✅ ACTIVE
