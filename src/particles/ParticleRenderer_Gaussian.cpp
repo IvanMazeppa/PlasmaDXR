@@ -217,6 +217,73 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
                  i, m_shadowSRVGPU[i].ptr, m_shadowUAVGPU[i].ptr);
     }
 
+    // === PRIORITY 1 FIX: Create temporal color accumulation buffers (eliminates flashing) ===
+    // R16G16B16A16_FLOAT format: 64-bit HDR color per pixel (8MB @ 1080p per buffer)
+    LOG_INFO("Creating temporal color accumulation buffers...");
+    LOG_INFO("  Resolution: {}x{} pixels", screenWidth, screenHeight);
+    LOG_INFO("  Format: R16G16B16A16_FLOAT (64-bit HDR per pixel)");
+    LOG_INFO("  Buffer size: {} MB per buffer", (screenWidth * screenHeight * 8) / (1024 * 1024));
+    LOG_INFO("  Total memory: {} MB (2x buffers)", (screenWidth * screenHeight * 16) / (1024 * 1024));
+
+    D3D12_RESOURCE_DESC colorTexDesc = {};
+    colorTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    colorTexDesc.Width = screenWidth;
+    colorTexDesc.Height = screenHeight;
+    colorTexDesc.DepthOrArraySize = 1;
+    colorTexDesc.MipLevels = 1;
+    colorTexDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;  // HDR color format
+    colorTexDesc.SampleDesc.Count = 1;
+    colorTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    for (int i = 0; i < 2; i++) {
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &colorTexDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_colorBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create color buffer {}", i);
+            return false;
+        }
+
+        // Create SRV (for reading previous frame color - t9)
+        D3D12_SHADER_RESOURCE_VIEW_DESC colorSrvDesc = {};
+        colorSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        colorSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        colorSrvDesc.Texture2D.MipLevels = 1;
+
+        m_colorSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_colorBuffer[i].Get(),
+            &colorSrvDesc,
+            m_colorSRV[i]
+        );
+        m_colorSRVGPU[i] = m_resources->GetGPUHandle(m_colorSRV[i]);
+
+        // Create UAV (for writing current frame color - u3)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC colorUavDesc = {};
+        colorUavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        colorUavDesc.Texture2D.MipSlice = 0;
+
+        m_colorUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_colorBuffer[i].Get(),
+            nullptr,
+            &colorUavDesc,
+            m_colorUAV[i]
+        );
+        m_colorUAVGPU[i] = m_resources->GetGPUHandle(m_colorUAV[i]);
+
+        LOG_INFO("Created color buffer {}: SRV=0x{:016X}, UAV=0x{:016X}",
+                 i, m_colorSRVGPU[i].ptr, m_colorUAVGPU[i].ptr);
+    }
+
 #ifdef ENABLE_DLSS
     // Create motion vector buffer for DLSS Ray Reconstruction (RG16_FLOAT)
     LOG_INFO("Creating motion vector buffer for DLSS...");
@@ -512,18 +579,22 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // t6: Texture2D<float4> g_rtxdiOutput (RTXDI selected lights - optional, descriptor table)
     // t7: StructuredBuffer<Probe> g_probeGrid (probe grid buffer)
     // t8: Texture2D<uint> g_shadowDepth (Phase 2: screen-space shadow depth, descriptor table)
+    // t9: Texture2D<float4> g_prevColor (PRIORITY 1 FIX: temporal color - previous frame, descriptor table)
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u2: RWTexture2D<float> g_currShadow (PCSS temporal shadow - current frame, descriptor table)
-    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[3];
+    // u3: RWTexture2D<float4> g_currColor (PRIORITY 1 FIX: temporal color - current frame, descriptor table)
+    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[4];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // t5: Texture2D (prev shadow)
     srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // t6: Texture2D (RTXDI output)
     srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // t8: Texture2D (depth buffer)
+    srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // t9: Texture2D (prev color - PRIORITY 1 FIX)
 
-    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[2];
+    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[3];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
+    uavRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);  // u3: RWTexture2D (current color - PRIORITY 1 FIX)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[13];  // +4 for Probe Grid (b4, t7), depth (t8), and materials (b1)
+    CD3DX12_ROOT_PARAMETER1 rootParams[15];  // +2 for temporal color accumulation (t9, u3)
     rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
@@ -537,9 +608,11 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[10].InitAsShaderResourceView(7);             // t7 - ProbeGrid buffer
     rootParams[11].InitAsDescriptorTable(1, &srvRanges[2]); // t8 - Shadow depth buffer (Phase 2)
     rootParams[12].InitAsConstantBufferView(1);             // b1 - MaterialProperties CBV (Phase 3: Material System)
+    rootParams[13].InitAsDescriptorTable(1, &srvRanges[3]); // t9 - Previous color (SRV - PRIORITY 1 FIX)
+    rootParams[14].InitAsDescriptorTable(1, &uavRanges[2]); // u3 - Current color (UAV - PRIORITY 1 FIX)
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(13, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(15, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -844,18 +917,38 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         cmdList->SetComputeRootConstantBufferView(12, 0);
     }
 
+    // === PRIORITY 1 FIX: Bind temporal color accumulation buffers ===
+    // Root param 13: Bind previous frame's color buffer (SRV descriptor table - t9)
+    uint32_t prevColorIndex = 1 - m_currentColorIndex;  // Ping-pong
+    D3D12_GPU_DESCRIPTOR_HANDLE prevColorSRVHandle = m_colorSRVGPU[prevColorIndex];
+    if (prevColorSRVHandle.ptr == 0) {
+        LOG_ERROR("Previous color SRV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(13, prevColorSRVHandle);
+
+    // Root param 14: Bind current frame's color buffer (UAV descriptor table - u3)
+    D3D12_GPU_DESCRIPTOR_HANDLE currentColorUAVHandle = m_colorUAVGPU[m_currentColorIndex];
+    if (currentColorUAVHandle.ptr == 0) {
+        LOG_ERROR("Current color UAV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(14, currentColorUAVHandle);
+
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
     uint32_t dispatchY = (constants.screenHeight + 7) / 8;
     cmdList->Dispatch(dispatchX, dispatchY, 1);
 
     // Add UAV barriers to ensure compute shader completes before next frame
-    D3D12_RESOURCE_BARRIER uavBarriers[2] = {};
+    D3D12_RESOURCE_BARRIER uavBarriers[3] = {};
     uavBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarriers[0].UAV.pResource = m_outputTexture.Get();
     uavBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarriers[1].UAV.pResource = m_shadowBuffer[m_currentShadowIndex].Get();
-    cmdList->ResourceBarrier(2, uavBarriers);
+    uavBarriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarriers[2].UAV.pResource = m_colorBuffer[m_currentColorIndex].Get();  // PRIORITY 1 FIX
+    cmdList->ResourceBarrier(3, uavBarriers);
 
 #ifdef ENABLE_DLSS
     // DLSS Super Resolution: AI upscaling from render resolution to output resolution
@@ -952,6 +1045,9 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
     // PCSS: Swap shadow buffers for next frame (ping-pong temporal filtering)
     m_currentShadowIndex = 1 - m_currentShadowIndex;
+
+    // PRIORITY 1 FIX: Swap color buffers for next frame (ping-pong temporal accumulation)
+    m_currentColorIndex = 1 - m_currentColorIndex;
 }
 
 // ===========================================================================================
@@ -1427,6 +1523,67 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
             m_shadowUAV[i]
         );
         m_shadowUAVGPU[i] = m_resources->GetGPUHandle(m_shadowUAV[i]);
+    }
+
+    // === PRIORITY 1 FIX: Recreate temporal color accumulation buffers at render resolution ===
+    LOG_INFO("DLSS: Recreating temporal color accumulation buffers at render resolution...");
+    for (int i = 0; i < 2; i++) {
+        m_colorBuffer[i].Reset();
+
+        D3D12_RESOURCE_DESC colorTexDesc = {};
+        colorTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        colorTexDesc.Width = m_renderWidth;
+        colorTexDesc.Height = m_renderHeight;
+        colorTexDesc.DepthOrArraySize = 1;
+        colorTexDesc.MipLevels = 1;
+        colorTexDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorTexDesc.SampleDesc.Count = 1;
+        colorTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &colorTexDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr,
+            IID_PPV_ARGS(&m_colorBuffer[i])
+        );
+
+        if (FAILED(hr)) {
+            LOG_ERROR("DLSS: Failed to recreate color buffer {}", i);
+            m_dlssSystem = nullptr;
+            return;
+        }
+
+        // Recreate SRV
+        D3D12_SHADER_RESOURCE_VIEW_DESC colorSrvDesc = {};
+        colorSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        colorSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        colorSrvDesc.Texture2D.MipLevels = 1;
+
+        m_colorSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateShaderResourceView(
+            m_colorBuffer[i].Get(),
+            &colorSrvDesc,
+            m_colorSRV[i]
+        );
+        m_colorSRVGPU[i] = m_resources->GetGPUHandle(m_colorSRV[i]);
+
+        // Recreate UAV
+        D3D12_UNORDERED_ACCESS_VIEW_DESC colorUavDesc = {};
+        colorUavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        colorUavDesc.Texture2D.MipSlice = 0;
+
+        m_colorUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        m_device->GetDevice()->CreateUnorderedAccessView(
+            m_colorBuffer[i].Get(),
+            nullptr,
+            &colorUavDesc,
+            m_colorUAV[i]
+        );
+        m_colorUAVGPU[i] = m_resources->GetGPUHandle(m_colorUAV[i]);
     }
 
     // Recreate screen-space shadow depth buffer at render resolution (Phase 2)

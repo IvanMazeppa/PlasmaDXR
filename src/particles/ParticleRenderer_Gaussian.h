@@ -262,6 +262,14 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_shadowUAVGPU[2];
     uint32_t m_currentShadowIndex = 0;                            // Which buffer is current (0 or 1)
 
+    // PRIORITY 1 FIX: Temporal color accumulation (eliminates flashing)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_colorBuffer[2];      // Ping-pong color buffers (R16G16B16A16_FLOAT)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_colorSRV[2];                    // SRV for reading previous color (t9)
+    D3D12_GPU_DESCRIPTOR_HANDLE m_colorSRVGPU[2];
+    D3D12_CPU_DESCRIPTOR_HANDLE m_colorUAV[2];                    // UAV for writing current color (u3)
+    D3D12_GPU_DESCRIPTOR_HANDLE m_colorUAVGPU[2];
+    uint32_t m_currentColorIndex = 0;                             // Which buffer is current (0 or 1)
+
     // RTXDI output buffer cache (to prevent descriptor leak)
     D3D12_CPU_DESCRIPTOR_HANDLE m_rtxdiSRV = {};                  // Cached SRV for RTXDI output
     D3D12_GPU_DESCRIPTOR_HANDLE m_rtxdiSRVGPU = {};               // Cached GPU handle

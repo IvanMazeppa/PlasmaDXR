@@ -145,6 +145,10 @@ Texture2D<float> g_prevShadow : register(t5);  // Previous frame shadow (read-on
 // G/B channels: debug data (cell index, light count)
 Texture2D<float4> g_rtxdiOutput : register(t6);
 
+// TEMPORAL COLOR ACCUMULATION (Priority 1 Fix - eliminates flashing)
+// Previous frame color for temporal stability (read-only)
+Texture2D<float4> g_prevColor : register(t9);
+
 // ============================================================================
 // PROBE GRID SYSTEM (Phase 0.13.1)
 // ============================================================================
@@ -198,6 +202,9 @@ RWTexture2D<float4> g_output : register(u0);
 
 // PCSS: Current frame shadow buffer (write-only)
 RWTexture2D<float> g_currShadow : register(u2);
+
+// TEMPORAL COLOR ACCUMULATION: Current frame color (for next frame's temporal blend)
+RWTexture2D<float4> g_currColor : register(u3);
 
 // ==============================================================================
 // VOLUMETRIC RAYTRACED SHADOW SYSTEM (Phase 0.15.0)
@@ -1623,5 +1630,25 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         finalColor = float3(0.3, 0.3, 0.3);
     }
 
-    g_output[pixelPos] = float4(finalColor, 1.0);
+    // === PRIORITY 1 FIX: TEMPORAL COLOR ACCUMULATION ===
+    // Eliminates flashing caused by per-frame random sampling in RayQuery lighting
+    // Uses exponential moving average (EMA) for smooth temporal convergence
+    if (enableTemporalFiltering != 0) {
+        // Read previous frame's color
+        float3 prevColor = g_prevColor[pixelPos].rgb;
+
+        // Blend current frame with previous frame (10% new, 90% history)
+        // This gives ~67ms convergence time @ 120 FPS (same as shadow temporal)
+        float3 blendedColor = lerp(prevColor, finalColor, temporalBlend);
+
+        // Write blended result to output
+        g_output[pixelPos] = float4(blendedColor, 1.0);
+
+        // Write current frame to temporal buffer (for next frame's blend)
+        g_currColor[pixelPos] = float4(finalColor, 1.0);
+    } else {
+        // No temporal filtering - write current frame directly
+        g_output[pixelPos] = float4(finalColor, 1.0);
+        g_currColor[pixelPos] = float4(finalColor, 1.0);
+    }
 }
