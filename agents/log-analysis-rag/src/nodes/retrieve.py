@@ -31,7 +31,7 @@ def get_retriever() -> PlasmaDXHybridRetriever:
         )
 
         # Load documents and initialize retrievers
-        _retriever.load_all()
+        _retriever.load_documents()
 
         print(f"✅ Retriever initialized with {len(_retriever.documents)} documents")
 
@@ -60,7 +60,7 @@ def retrieve_node(state: GraphState) -> GraphState:
 
     # Retrieve documents
     try:
-        docs = retriever.query(question, top_k=20)
+        docs = retriever.retrieve(question)
 
         print(f"Retrieved {len(docs)} documents")
 

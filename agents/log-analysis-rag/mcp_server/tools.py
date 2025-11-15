@@ -65,25 +65,24 @@ async def ingest_logs_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         log_files = list(Path(path).glob("*.log"))[:max_files]
         pix_files = list(Path(f"{PIX_DIR}/Captures").glob("*.csv")) if include_pix else []
 
-        result = {
-            "status": "success",
-            "logs_ingested": len(log_files),
-            "pix_events_ingested": len(pix_files),
-            "total_documents": len(log_files) + len(pix_files),
-            "path": path,
-            "include_pix": include_pix
-        }
+        # Re-initialize retriever with new path
+        retriever.log_dirs = [path]
+        if include_pix:
+            retriever.log_dirs.extend([f"{PIX_DIR}/buffer_dumps"])
 
-        # TODO: Actual ingestion logic (placeholder for now)
-        # retriever.ingest_logs(log_files, pix_files)
+        # Load documents
+        retriever.load_documents()
+
+        # Count document types
+        logs_count = len([d for d in retriever.documents if 'log' in d.metadata.get('type', '')])
+        pix_count = len([d for d in retriever.documents if 'pix' in d.metadata.get('type', '')])
 
         return {
             "content": [{
                 "type": "text",
-                "text": f"✅ Ingested {result['total_documents']} documents\n" +
-                        f"  • Logs: {result['logs_ingested']}\n" +
-                        f"  • PIX events: {result['pix_events_ingested']}\n" +
-                        f"  • Path: {result['path']}"
+                "text": f"✅ Ingested {len(retriever.documents)} documents from {path}\n" +
+                        f"  • Logs: {logs_count}\n" +
+                        f"  • PIX: {pix_count}"
             }]
         }
 
@@ -136,20 +135,10 @@ async def diagnose_issue_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         }
 
         # Run workflow
-        # TODO: Execute workflow and collect results
-        # result = workflow.invoke(initial_state)
-
-        # Placeholder response
-        result = {
-            "root_cause": "Workflow execution not yet implemented",
-            "evidence": ["Placeholder evidence"],
-            "suggested_fix": "Implement workflow.invoke()",
-            "confidence": 0.5,
-            "file_line": "N/A"
-        }
+        result = workflow.invoke(initial_state)
 
         # Filter by confidence threshold
-        if result["confidence"] < confidence_threshold:
+        if result.get('confidence', 0.0) < confidence_threshold:
             return {
                 "content": [{
                     "type": "text",
@@ -162,16 +151,17 @@ async def diagnose_issue_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         report = f"""
 🔍 **Diagnostic Report**
 
-**Root Cause:** {result['root_cause']}
+**Diagnosis:** {result.get('generation', 'No diagnosis produced')}
 
-**Evidence:**
-{chr(10).join(f'  • {e}' for e in result['evidence'])}
+**Confidence:** {result.get('confidence', 0.0):.2f}
 
-**Suggested Fix:**
-{result['suggested_fix']}
-  📍 {result['file_line']}
+**Evidence (File:Line References):**
+{chr(10).join(f'  • {ref}' for ref in result.get('file_line_refs', ['No references']))}
 
-**Confidence:** {result['confidence']:.2f}
+**Recommended Specialist:** {result.get('recommended_specialist') or 'None (handle locally)'}
+
+**Related Artifacts:**
+{chr(10).join(f'  • {art}' for art in result.get('artifact_paths', ['No artifacts']))}
 """
 
         return {
@@ -219,25 +209,19 @@ async def query_logs_tool(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         retriever = get_retriever()
 
-        # TODO: Actual retrieval logic
-        # results = retriever.search(semantic_query, top_k=top_k, filters=filters)
+        # Ensure documents loaded
+        if not retriever.documents:
+            retriever.load_documents()
 
-        # Placeholder
-        results = [
-            {
-                "content": "Placeholder log entry",
-                "metadata": {"file": "example.log", "line": 42},
-                "score": 0.95
-            }
-        ]
+        # Query using hybrid retriever
+        docs = retriever.retrieve(semantic_query)[:top_k]
 
         # Format results
-        formatted = f"🔎 **Query:** {semantic_query}\n\n"
-        formatted += f"**Results:** {len(results)} / {top_k}\n\n"
-
-        for i, result in enumerate(results, 1):
-            formatted += f"{i}. **{result['metadata']['file']}:{result['metadata']['line']}** (score: {result['score']:.2f})\n"
-            formatted += f"   {result['content']}\n\n"
+        formatted = f"🔎 **Query:** {semantic_query}\n\n**Results:** {len(docs)}\n\n"
+        for i, doc in enumerate(docs, 1):
+            meta = doc.metadata
+            formatted += f"{i}. **{meta.get('source', '?')}:{meta.get('line', '?')}**\n"
+            formatted += f"   {doc.page_content[:150]}...\n\n"
 
         return {
             "content": [{

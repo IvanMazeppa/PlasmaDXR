@@ -290,8 +290,28 @@ Environment Variables (from .env):
 """)
 
 
+async def run_mcp_server():
+    """Run MCP server in stdio mode (for MCP clients)"""
+    from mcp.server.stdio import stdio_server
+
+    mcp_server = create_mcp_server()
+
+    async with stdio_server() as (read_stream, write_stream):
+        await mcp_server.run(
+            read_stream,
+            write_stream,
+            mcp_server.create_initialization_options()
+        )
+
+
 async def main():
     """Main entry point"""
+    # Detect if running as MCP server (no TTY = launched by MCP client)
+    if not sys.stdin.isatty():
+        # Run MCP server in stdio mode
+        await run_mcp_server()
+        return
+
     # Check for NVIDIA API key
     if not os.getenv("NVIDIA_API_KEY"):
         print("⚠️  Warning: NVIDIA_API_KEY not set in .env")
@@ -305,6 +325,9 @@ async def main():
         print_usage()
     elif sys.argv[1] in ("--interactive", "-i"):
         await interactive_mode()
+    elif sys.argv[1] == "--server":
+        # Explicit server mode
+        await run_mcp_server()
     elif sys.argv[1] == "--ingest":
         path = sys.argv[2] if len(sys.argv) > 2 else os.getenv("LOG_DIR")
         await run_query(f"Ingest logs from {path} using the ingest_logs tool")

@@ -12,10 +12,10 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent))
 
-from graph import get_workflow, GraphState
+from src.graph import get_workflow, GraphState
 
 
 def test_diagnostic_workflow(question: str):
