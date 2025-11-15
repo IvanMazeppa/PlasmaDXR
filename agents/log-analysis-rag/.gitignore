@@ -1,0 +1,37 @@
+# Environment variables (contains NVIDIA_API_KEY - NEVER commit this!)
+.env
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Vector store data (can be large, regenerate from logs)
+ml/rag_store/chroma_db/
+
+# Session outputs and logs
+logs/
+*.log
+SESSION_SUMMARY_*.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary test outputs
+test_*.py
+scratch/
+temp/
