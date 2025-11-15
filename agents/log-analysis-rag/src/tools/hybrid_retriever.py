@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
 from langchain_community.vectorstores import FAISS
 from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
 from langchain_core.documents import Document
