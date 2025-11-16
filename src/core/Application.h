@@ -135,7 +135,7 @@ private:
     float m_rtLightingIntensity = 1.0f;
     float m_rtMaxDistance = 100.0f;  // Updated to match shader (max 400 via ImGui)
     float m_rtParticleRadius = 5.0f;   // Updated to match shader
-    float m_rtMinAmbient = 0.05f;     // Global ambient term (0.0-0.2) - Phase 1 lighting fix
+    float m_rtMinAmbient = 0.0f;     // Global ambient term (DISABLED for probe grid focus)
 
     // === Adaptive Particle Radius System (Phase 1.5) ===
     bool m_enableAdaptiveRadius = true;      // Toggle for density/distance-based radius scaling
@@ -154,10 +154,10 @@ private:
     float m_volumetricRTIntensity = 200.0f;  // Unused (kept for compatibility)
 
     // === Hybrid Probe Grid System (Phase 0.13.1) ===
-    uint32_t m_useProbeGrid = 0u;            // Toggle probe grid lighting (0=disabled, 1=enabled)
+    uint32_t m_useProbeGrid = 1u;            // Toggle probe grid lighting (1=enabled by default for diagnostics)
 
-    // === Dynamic Emission (RT-Driven Star Radiance) ===
-    float m_rtEmissionStrength = 0.25f;      // Global emission multiplier (0.0-1.0)
+    // === Dynamic Emission (RT-Driven Star Radiance) - DISABLED ===
+    float m_rtEmissionStrength = 0.0f;      // Global emission multiplier (DISABLED - not working as intended)
     float m_rtEmissionThreshold = 22000.0f;  // Temperature cutoff for emission (K)
     float m_rtEmissionSuppression = 0.7f;    // How much RT lighting suppresses emission (0.0-1.0)
     float m_rtEmissionTemporalRate = 0.03f;  // Temporal modulation frequency (0.0-0.1)
@@ -166,10 +166,10 @@ private:
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
 
-    // Enhancement toggles and strengths
+    // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;
-    float m_emissionStrength = 1.0f;       // 0.0-5.0
-    float m_emissionBlendFactor = 1.0f;    // 0.0-1.0 (0=artistic, 1=physical)
+    float m_emissionStrength = 0.0f;       // 0.0-5.0 (DISABLED)
+    float m_emissionBlendFactor = 0.0f;    // 0.0-1.0 (0=artistic, 1=physical) (DISABLED)
 
     // Multi-light system (Phase 3.5)
     std::vector<ParticleRenderer_Gaussian::Light> m_lights;  // Active lights (max 16)

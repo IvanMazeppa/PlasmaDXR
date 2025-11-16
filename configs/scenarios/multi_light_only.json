@@ -1,0 +1,95 @@
+{
+  "profile": "multi_light_baseline",
+  "_description": "Multi-light ONLY (16 lights) - Quality reference for scattering comparison",
+
+  "rendering": {
+    "particleCount": 10000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080
+  },
+
+  "lighting": {
+    "_comment": "Additive lighting systems - enable/disable independently",
+    "multiLight": {
+      "enabled": true,
+      "lightCount": 16,
+      "preset": "stellar_ring",
+      "intensity": 1.0
+    },
+    "probeGrid": {
+      "enabled": false,
+      "gridSize": 32,
+      "raysPerProbe": 16,
+      "intensity": 800.0,
+      "updateInterval": 4
+    },
+    "rtxdi": {
+      "enabled": false,
+      "mode": "M5",
+      "temporalWeight": 0.9
+    }
+  },
+
+  "effects": {
+    "_comment": "Inline RayQuery effects (complementary to lighting systems)",
+    "shadowRays": {
+      "enabled": true,
+      "preset": "balanced",
+      "raysPerPixel": 4,
+      "temporalFiltering": true
+    },
+    "inScattering": {
+      "enabled": true,
+      "strength": 1.0
+    },
+    "phaseFunction": {
+      "enabled": true,
+      "strength": 5.0,
+      "henyeyGreenstein": true
+    },
+    "volumetric": {
+      "anisotropicGaussians": true,
+      "anisotropyStrength": 1.0,
+      "adaptiveRadius": true,
+      "rtParticleToParticle": true,
+      "rtLightingStrength": 2.0
+    }
+  },
+
+  "physics": {
+    "innerRadius": 10.0,
+    "outerRadius": 300.0,
+    "diskThickness": 50.0,
+    "timeStep": 0.008333,
+    "physicsEnabled": true,
+    "blackHoleMass": 4300000.0,
+    "alphaViscosity": 0.1
+  },
+
+  "camera": {
+    "startDistance": 800.0,
+    "startHeight": 400.0,
+    "startAngle": 0.0,
+    "startPitch": -0.3,
+    "moveSpeed": 100.0,
+    "rotateSpeed": 0.5,
+    "particleSize": 20.0
+  },
+
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": false,
+    "showFPS": true,
+    "showParticleStats": true
+  },
+
+  "screenshot": {
+    "_comment": "Automated screenshot capture for comparison",
+    "autoCapture": false,
+    "captureFrame": 120,
+    "outputPrefix": "multi_light_",
+    "outputFormat": "bmp"
+  }
+}

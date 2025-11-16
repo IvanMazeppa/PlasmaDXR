@@ -311,9 +311,17 @@ void ProbeGridSystem::UpdateProbes(
     commandList->SetComputeRootUnorderedAccessView(4, m_probeBuffer->GetGPUVirtualAddress());
 
     // Dispatch compute shader
-    // Thread groups: 4×4×4 (each group has 8×8×8 threads = 512 threads)
-    // Total threads: 4×4×4 × 8×8×8 = 64 × 512 = 32,768 threads (matches probe count)
-    commandList->Dispatch(4, 4, 4);
+    // Calculate thread groups dynamically based on grid size
+    // Each thread group handles 8×8×8 threads (from shader [numthreads(8,8,8)])
+    // For 48³ grid: 48/8 = 6 groups per dimension → Dispatch(6, 6, 6)
+    uint32_t numGroupsX = (m_gridSize + 7) / 8;  // Ceiling division
+    uint32_t numGroupsY = (m_gridSize + 7) / 8;
+    uint32_t numGroupsZ = (m_gridSize + 7) / 8;
+
+    commandList->Dispatch(numGroupsX, numGroupsY, numGroupsZ);
+
+    LOG_INFO("Dispatching probe update: ({}, {}, {}) thread groups for {}³ grid ({} total probes)",
+             numGroupsX, numGroupsY, numGroupsZ, m_gridSize, m_gridSize * m_gridSize * m_gridSize);
 
     // UAV barrier to ensure probe writes complete before next pass
     CD3DX12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_probeBuffer.Get());
@@ -321,7 +329,7 @@ void ProbeGridSystem::UpdateProbes(
 
     // Update statistics
     uint32_t totalProbes = m_gridSize * m_gridSize * m_gridSize;
-    m_probesUpdatedLastFrame = totalProbes / m_updateInterval;  // 32,768 / 4 = 8,192 probes
+    m_probesUpdatedLastFrame = totalProbes / m_updateInterval;  // For 48³: 110,592 / 4 = 27,648 probes/frame
     m_frameCount++;
 }
 

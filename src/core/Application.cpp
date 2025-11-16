@@ -1879,6 +1879,24 @@ void Application::OnMouseMove(int dx, int dy) {
 
 void Application::DumpGPUBuffers() {
     LOG_INFO("\n=== DUMPING GPU BUFFERS (Frame {}) ===", m_frameCount);
+    LOG_INFO("Output directory: {}", m_dumpOutputDir);
+
+    // Log current rendering configuration
+    LOG_INFO("\n--- Rendering Configuration ---");
+    LOG_INFO("  Particles: {}", m_particleSystem ? m_particleSystem->GetParticleCount() : 0);
+    LOG_INFO("  RT Lighting: {}", m_enableRTLighting ? "ENABLED" : "DISABLED");
+    if (m_probeGridSystem) {
+        LOG_INFO("  Probe Grid: ENABLED");
+        LOG_INFO("    Grid size: {}³ ({} total probes)",
+                 m_probeGridSystem->GetGridSize(),
+                 m_probeGridSystem->GetGridSize() * m_probeGridSystem->GetGridSize() * m_probeGridSystem->GetGridSize());
+        LOG_INFO("    Rays per probe: {}", m_probeGridSystem->GetRaysPerProbe());
+        LOG_INFO("    Update interval: {} frames", m_probeGridSystem->GetUpdateInterval());
+        LOG_INFO("    Probe intensity: {}", m_probeGridSystem->GetProbeIntensity());
+    } else {
+        LOG_INFO("  Probe Grid: DISABLED");
+    }
+    LOG_INFO("--- End Configuration ---\n");
 
     // Create output directory
     std::filesystem::create_directories(m_dumpOutputDir);
@@ -1893,6 +1911,18 @@ void Application::DumpGPUBuffers() {
         auto rtBuffer = m_rtLighting->GetLightingBuffer();
         if (rtBuffer) {
             DumpBufferToFile(rtBuffer, "g_rtLighting");
+        }
+    }
+
+    // Dump Probe Grid buffers if enabled (Phase 0.13.1)
+    if (m_probeGridSystem) {
+        auto probeBuffer = m_probeGridSystem->GetProbeBuffer();
+        if (probeBuffer) {
+            DumpBufferToFile(probeBuffer, "g_probeGrid");
+            LOG_INFO("  Probe grid: {} probes, {} rays/probe, intensity {}",
+                     m_probeGridSystem->GetGridSize() * m_probeGridSystem->GetGridSize() * m_probeGridSystem->GetGridSize(),
+                     m_probeGridSystem->GetRaysPerProbe(),
+                     m_probeGridSystem->GetProbeIntensity());
         }
     }
 
@@ -3105,18 +3135,21 @@ void Application::RenderImGui() {
                 m_rtLighting->SetMaxLightingDistance(m_rtMaxDistance);
             }
         }
-        ImGui::SliderFloat("Global Ambient", &m_rtMinAmbient, 0.0f, 0.2f, "%.3f");
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Minimum ambient light for all particles\n"
-                              "Prevents particles from being completely black\n"
-                              "\n"
-                              "0.000 = Pure black when unlit (original)\n"
-                              "0.050 = Subtle ambient glow (recommended)\n"
-                              "0.100 = Brighter ambient\n"
-                              "0.200 = Maximum ambient");
-        }
+        // DISABLED: Global Ambient (focusing on probe grid RT lighting)
+        // ImGui::SliderFloat("Global Ambient", &m_rtMinAmbient, 0.0f, 0.2f, "%.3f");
+        // if (ImGui::IsItemHovered()) {
+        //     ImGui::SetTooltip("Minimum ambient light for all particles\n"
+        //                       "Prevents particles from being completely black\n"
+        //                       "\n"
+        //                       "0.000 = Pure black when unlit (original)\n"
+        //                       "0.050 = Subtle ambient glow (recommended)\n"
+        //                       "0.100 = Brighter ambient\n"
+        //                       "0.200 = Maximum ambient");
+        // }
 
-        // === Dynamic Emission (RT-Driven Star Radiance) ===
+        // === DISABLED: Dynamic Emission (RT-Driven Star Radiance) ===
+        // Not working as intended - focusing on probe grid RT lighting
+        /*
         ImGui::Separator();
         ImGui::Text("Dynamic Emission (RT-Driven)");
         ImGui::SameLine();
@@ -3241,6 +3274,7 @@ void Application::RenderImGui() {
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("More glow, aesthetic starfield look");
         }
+        */
 
         // === Phase 1.5 Adaptive Particle Radius (Fix overlap artifacts) ===
         ImGui::Separator();
@@ -3599,20 +3633,21 @@ void Application::RenderImGui() {
 
     // Physical effects
     if (ImGui::CollapsingHeader("Physical Effects")) {
-        ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
-        if (m_usePhysicalEmission) {
-            ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
-            ImGui::SliderFloat("Artistic ↔ Physical Blend", &m_emissionBlendFactor, 0.0f, 1.0f);
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("0.0 = Pure artistic (warm colors)\n"
-                                 "1.0 = Pure physical (accurate blackbody)\n"
-                                 "Auto-blends based on temperature:\n"
-                                 "  Cool (<8000K): Stays artistic\n"
-                                 "  Hot (>18000K): Goes physical");
-            }
-        }
+        // DISABLED: Physical Emission (focusing on RT lighting)
+        // ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
+        // if (m_usePhysicalEmission) {
+        //     ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
+        //     ImGui::SliderFloat("Artistic ↔ Physical Blend", &m_emissionBlendFactor, 0.0f, 1.0f);
+        //     ImGui::SameLine();
+        //     ImGui::TextDisabled("(?)");
+        //     if (ImGui::IsItemHovered()) {
+        //         ImGui::SetTooltip("0.0 = Pure artistic (warm colors)\n"
+        //                          "1.0 = Pure physical (accurate blackbody)\n"
+        //                          "Auto-blends based on temperature:\n"
+        //                          "  Cool (<8000K): Stays artistic\n"
+        //                          "  Hot (>18000K): Goes physical");
+        //     }
+        // }
         ImGui::Checkbox("Doppler Shift (R)", &m_useDopplerShift);
         if (m_useDopplerShift) {
             ImGui::SliderFloat("Doppler Strength (Ctrl/Shift+R)", &m_dopplerStrength, 0.0f, 5.0f);

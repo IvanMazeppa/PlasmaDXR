@@ -179,19 +179,42 @@ float3 ComputeParticleLighting(float3 probePos, float3 particlePos, float radius
     float3 offset = probePos - particlePos;
     float distance = length(offset);
 
-    // Inverse square falloff with radius
-    float attenuation = (radius * radius) / max(distance * distance, 0.01);
+    // VOLUMETRIC ATTENUATION (NOT inverse-square!)
+    // Problem: Inverse-square (r²/d²) is too aggressive for volumetric scattering
+    // At 2000 units: (50²/2000²) × 2000 intensity = 1.25 - far too dim!
+    //
+    // Solution: Hybrid attenuation optimized for volumetric probe grid:
+    // - Close range (<200 units): Inverse-square prevents over-brightness
+    // - Mid range (200-800 units): Linear falloff maintains visibility
+    // - Far range (>800 units): Constant floor for ambient contribution
+
+    float attenuation;
+    float normalizedRadius = radius / 50.0; // Normalize to default particle size
+
+    if (distance < 200.0) {
+        // Close range: Inverse-square with radius scaling
+        attenuation = (radius * radius) / max(distance * distance, 0.01);
+    }
+    else if (distance < 800.0) {
+        // Mid range: Linear falloff
+        // At 200 units: matches inverse-square
+        // At 800 units: smoothly transitions to far range
+        float invSqAtTransition = (radius * radius) / (200.0 * 200.0); // ~0.0625 for r=50
+        float linearFalloff = invSqAtTransition * (1.0 - (distance - 200.0) / 600.0);
+        attenuation = max(linearFalloff, 0.01);
+    }
+    else {
+        // Far range: Constant ambient floor (prevents complete darkness)
+        // This ensures probes at grid edges still receive volumetric scattering
+        attenuation = 0.01 * normalizedRadius;
+    }
 
     // Blackbody emission
     float3 color = BlackbodyColor(temperature);
     float intensity = BlackbodyIntensity(temperature);
 
-    // CRITICAL FIX: Probe grid needs intensity boost for visibility
-    // Particles are self-emissive, but at 62.5-unit probe spacing (48³ grid), inverse square
-    // falloff makes them extremely dim without this multiplier.
-    // Now runtime-configurable via g_probeIntensity (default 800.0)
-    // Range: 200-2000 (200=dim ambient, 800=balanced, 2000=bright volumetric glow)
-
+    // Runtime intensity multiplier (200-2000, default 800)
+    // Now much more effective with volumetric attenuation!
     return color * intensity * attenuation * g_probeIntensity;
 }
 
@@ -237,7 +260,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
         ray.Origin = probePos;
         ray.Direction = direction;
         ray.TMin = 0.01;
-        ray.TMax = 200.0; // Max influence distance (2× particle radius typically)
+        ray.TMax = 2000.0; // Max influence distance - increased from 200 to 2000 to cover 3000-unit grid (BUG FIX!)
 
         // Trace ray using inline ray tracing (no atomic contention!)
         RayQuery<RAY_FLAG_NONE> q;
