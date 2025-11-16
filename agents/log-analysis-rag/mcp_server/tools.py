@@ -66,9 +66,9 @@ async def ingest_logs_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         pix_files = list(Path(f"{PIX_DIR}/Captures").glob("*.csv")) if include_pix else []
 
         # Re-initialize retriever with new path
-        retriever.log_dirs = [path]
+        retriever.log_dirs = [Path(path)]
         if include_pix:
-            retriever.log_dirs.extend([f"{PIX_DIR}/buffer_dumps"])
+            retriever.log_dirs.extend([Path(f"{PIX_DIR}/buffer_dumps")])
 
         # Load documents
         retriever.load_documents()
