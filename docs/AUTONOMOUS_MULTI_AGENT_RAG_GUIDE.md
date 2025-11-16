@@ -52,6 +52,86 @@ A multi-agent diagnostic and development system for PlasmaDX that uses:
 
 ---
 
+## Mission-Control: Autonomous Strategic Orchestrator ✅
+
+**Status**: OPERATIONAL (2025-11-16)
+
+**Architecture**: Autonomous agent with ClaudeSDKClient (NOT MCP server)
+
+**Location**: `agents/mission-control/autonomous_agent.py`
+
+### What This Is
+
+Mission-Control is an autonomous AI agent with independent reasoning capabilities. It is NOT just a tool router - it has its own Claude instance that makes strategic decisions, coordinates specialist tools, and adapts its approach based on evidence.
+
+**Key Distinction:**
+- **What it's NOT**: An MCP tool server (those are the specialists like dxr-image-quality-analyst)
+- **What it IS**: An autonomous agent with ClaudeSDKClient that coordinates those MCP tool servers
+
+### Proof of Autonomous Reasoning
+
+The agent demonstrates genuine autonomous decision-making:
+
+1. **Independent Tool Selection**: Decides which specialist tools to call based on the problem, not pre-scripted rules
+2. **Strategic Pivots**: When one approach fails (e.g., log search), immediately tries alternative approaches (codebase search + grep)
+3. **Information Synthesis**: Gathers evidence from multiple sources and synthesizes cross-domain analysis
+4. **Strategic Engagement**: Asks follow-up questions to clarify goals and priorities
+5. **Evidence-Based Recommendations**: Makes data-driven suggestions backed by metrics and artifacts
+
+**Test Results:**
+- ✅ **Test 1** (Tool Inventory): Agent autonomously organized 9 tool suites by domain, asked strategic follow-up question
+- ✅ **Test 2** (Probe Grid Analysis): Multi-tool coordination, retrieved real data (32³ grid, 3.35 MB memory, 0.5-1.0ms update cost), made strategic pivot when log search failed
+
+### Usage
+
+```bash
+cd agents/mission-control
+
+# Interactive mode (best for testing autonomous reasoning)
+python autonomous_agent.py
+
+# HTTP bridge mode (for Claude Code integration)
+python http_bridge.py
+
+# Single query mode
+python autonomous_agent.py "Analyze RTXDI M5 visual quality"
+
+# Quick start launcher (choose mode interactively)
+./quick_start.sh
+```
+
+### Integration Options
+
+1. **Standalone**: Run `autonomous_agent.py` directly for interactive testing
+2. **Claude Code**: Run `http_bridge.py` and call via HTTP endpoints
+3. **Council Agents**: Future multi-agent network will call via HTTP (planned)
+
+### Coordinated Specialist Tools
+
+Mission-Control has access to 6 specialist MCP tool servers (38+ tools):
+
+**Rendering Specialists:**
+- **path-and-probe**: Probe grid lighting analysis (6 tools)
+- **dxr-shadow-engineer**: Shadow technique research and performance analysis
+
+**Materials Specialists:**
+- **gaussian-analyzer**: 3D Gaussian structure analysis (5 tools)
+- **material-system-engineer**: Codebase operations and shader generation (9 tools)
+
+**Diagnostics Specialists:**
+- **dxr-image-quality-analyst**: LPIPS comparison, visual quality assessment (5 tools)
+- **log-analysis-rag**: RAG-based log/buffer search, autonomous diagnosis (6 tools)
+- **pix-debug**: Buffer validation, GPU hang diagnosis (7 tools)
+
+### Next Steps
+
+- ⏳ Create first council agent (Rendering Council as template)
+- ⏳ Multi-agent HTTP communication (mission-control → councils → specialists)
+- ⏳ End-to-end autonomous workflow testing
+- ⏳ Nightly autonomous QA pipeline
+
+---
+
 ## System Overview
 
 ### Architecture Diagram

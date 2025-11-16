@@ -14,9 +14,14 @@ Owner: Orchestrator (mission-control)
 
 ## Tiered Structure
 1) Orchestration & Governance
-- mission-control (in‑process SDK server)
+- mission-control (Autonomous Agent with ClaudeSDKClient) ✅ OPERATIONAL
+  - **Implementation**: Autonomous AI agent with independent reasoning (NOT just tool router)
+  - **Location**: `agents/mission-control/autonomous_agent.py`
+  - **Capabilities**: Strategic decision-making, multi-agent coordination, quality gate enforcement
+  - **Coordinates**: 6 specialist MCP tool servers (38+ tools across rendering, materials, diagnostics)
+  - **Integration**: HTTP bridge (`http_bridge.py`) for Claude Code, direct Python for standalone
+  - **Proven**: Autonomous tool selection, strategic pivots, evidence-based recommendations
   - Plans sprints, assigns tasks, aggregates QA, produces session summaries.
-  - Tools: dispatch_plan, record_decision, trigger_review, publish_summary.
 
 - knowledge-archivist (in‑process SDK server)
   - Maintains registry of artifacts (docs, configs, screenshots, PIX, logs), and cross‑links to tickets.

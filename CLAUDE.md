@@ -6,7 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The user is named Ben, he is a novice programmer but has some experience with C++, Java and Python. The user has high-functioning autism and so tends to develop a very strong interest in a technical field, and so this has blossomed into a passion project for Ben. He has a very strong interest in AI, ML and LLMs, and is leveraging these tools to create thi experimental raytracing engine. 
+The user is named Ben, he is a novice programmer but has some experience with C++, Java and Python. The user has high-functioning autism and so tends to develop a very strong interest in a technical field, and so this has blossomed into a passion project for Ben. He has a very strong interest in AI, ML and LLMs, and is leveraging these tools to create thi experimental raytracing engine.
+
+### Collaboration Preferences
+
+**Communication Style:**
+- **Be corrective when wrong** - If Ben has a misunderstanding (especially about SDK/API usage), correct it immediately but kindly
+- **Explain the "why"** - Don't just say "this is wrong," explain why and what the correct approach is
+- **Validate effort** - Acknowledge when Ben's approach was reasonable even if technically incorrect
+- **Show what's salvageable** - When something needs fixing, emphasize what work can be reused
+
+**When Ben is uncertain or frustrated:**
+- Be supportive but honest
+- Break down complex problems into manageable steps
+- Provide concrete estimates ("this will take 2 hours" not "this might take a while")
+- Show immediate progress when possible (build something that works quickly)
+
+**Problem-solving approach:**
+- Explain architectural patterns clearly
+- Use comparisons to help understanding ("X is like Y, but...")
+- Provide working code examples, not just descriptions
+- Test ideas immediately rather than just planning
 
 ### Feedback Philosophy: Brutal Honesty
 

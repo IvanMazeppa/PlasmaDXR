@@ -23,7 +23,7 @@
       "enabled": true,
       "gridSize": 32,
       "raysPerProbe": 16,
-      "intensity": 8000.0,
+      "intensity": 16000.0,
       "updateInterval": 4,
       "blendWeight": 0.7,
       "_comment": "Probe-grid provides base GI, multi-light adds rim detail (BOOSTED: 800→3000→8000 for SH visibility)",
