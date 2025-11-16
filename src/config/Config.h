@@ -69,6 +69,29 @@ namespace Config {
         float redshiftStrength = 1.0f;
     };
 
+    struct LightingConfig {
+        // Primary lighting system (mutually exclusive)
+        std::string system = "MultiLight";  // "MultiLight", "RTXDI", or "VolumetricReSTIR"
+
+        // Multi-light settings
+        bool multiLightEnabled = true;
+        uint32_t lightCount = 16;
+        std::string multiLightPreset = "stellar_ring";
+        float multiLightIntensity = 1.0f;
+
+        // Probe grid settings (additive/complementary system)
+        bool probeGridEnabled = false;
+        uint32_t probeGridSize = 32;
+        uint32_t raysPerProbe = 16;
+        float probeGridIntensity = 800.0f;
+        uint32_t probeUpdateInterval = 4;
+
+        // RTXDI settings
+        bool rtxdiEnabled = false;
+        std::string rtxdiMode = "M5";
+        float rtxdiTemporalWeight = 0.9f;
+    };
+
     struct PhysicsConfig {
         float innerRadius = 10.0f;
         float outerRadius = 300.0f;
@@ -112,6 +135,7 @@ namespace Config {
 
         RenderingConfig rendering;
         FeaturesConfig features;
+        LightingConfig lighting;
         PhysicsConfig physics;
         CameraConfig camera;
         DebugConfig debug;

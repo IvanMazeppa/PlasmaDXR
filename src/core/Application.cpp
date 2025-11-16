@@ -94,6 +94,22 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_useGravitationalRedshift = appConfig.features.useGravitationalRedshift;
     m_redshiftStrength = appConfig.features.redshiftStrength;
 
+    // Apply lighting config
+    if (appConfig.lighting.system == "MultiLight") {
+        m_lightingSystem = LightingSystem::MultiLight;
+        LOG_INFO("Lighting system: Multi-Light (from config)");
+    } else if (appConfig.lighting.system == "RTXDI") {
+        m_lightingSystem = LightingSystem::RTXDI;
+        LOG_INFO("Lighting system: RTXDI (from config)");
+    } else if (appConfig.lighting.system == "VolumetricReSTIR") {
+        m_lightingSystem = LightingSystem::VolumetricReSTIR;
+        LOG_INFO("Lighting system: Volumetric ReSTIR (from config)");
+    }
+
+    // Apply probe grid config (additive system)
+    m_useProbeGrid = appConfig.lighting.probeGridEnabled ? 1u : 0u;
+    LOG_INFO("Probe Grid: {}", m_useProbeGrid ? "ENABLED" : "DISABLED");
+
     // Parse command-line argument overrides (these override config file)
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];

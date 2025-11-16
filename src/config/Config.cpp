@@ -158,9 +158,35 @@ bool ConfigManager::Initialize(int argc, char** argv) {
 }
 
 bool ConfigManager::LoadFromFile(const std::string& filepath) {
-    std::ifstream file(filepath);
+    // Try multiple search paths to handle different working directories
+    std::vector<std::string> searchPaths = {
+        filepath,                                    // 1. Exact path specified
+        "configs/" + filepath,                        // 2. configs/ subdirectory
+        "../../../" + filepath,                       // 3. Project root (from build/bin/Debug/)
+        "../../../configs/" + std::filesystem::path(filepath).filename().string()  // 4. Project configs/ folder
+    };
+
+    std::string resolvedPath;
+    for (const auto& path : searchPaths) {
+        if (std::filesystem::exists(path)) {
+            resolvedPath = path;
+            LOG_INFO("Found config at: {}", path);
+            break;
+        }
+    }
+
+    if (resolvedPath.empty()) {
+        LOG_ERROR("Config file not found in any search path: {}", filepath);
+        LOG_ERROR("Searched paths:");
+        for (const auto& path : searchPaths) {
+            LOG_ERROR("  - {}", path);
+        }
+        return false;
+    }
+
+    std::ifstream file(resolvedPath);
     if (!file.is_open()) {
-        LOG_ERROR("Failed to open config file: {}", filepath);
+        LOG_ERROR("Failed to open config file: {}", resolvedPath);
         return false;
     }
 
@@ -169,6 +195,7 @@ bool ConfigManager::LoadFromFile(const std::string& filepath) {
     std::string json = buffer.str();
     file.close();
 
+    m_config.configFilePath = resolvedPath;  // Store resolved path
     return ParseJSON(json);
 }
 
@@ -232,6 +259,49 @@ bool ConfigManager::ParseJSON(const std::string& json) {
 
         m_config.features.useGravitationalRedshift = GetJSONBool(featuresJSON, "useGravitationalRedshift", m_config.features.useGravitationalRedshift);
         m_config.features.redshiftStrength = GetJSONFloat(featuresJSON, "redshiftStrength", m_config.features.redshiftStrength);
+    }
+
+    // Parse lighting section
+    std::string lightingJSON = GetJSONObject(json, "lighting");
+    if (!lightingJSON.empty()) {
+        // Primary lighting system
+        std::string systemName = GetJSONValue(lightingJSON, "system");
+        if (!systemName.empty()) {
+            m_config.lighting.system = systemName;
+        }
+
+        // Multi-light settings
+        std::string multiLightJSON = GetJSONObject(lightingJSON, "multiLight");
+        if (!multiLightJSON.empty()) {
+            m_config.lighting.multiLightEnabled = GetJSONBool(multiLightJSON, "enabled", m_config.lighting.multiLightEnabled);
+            m_config.lighting.lightCount = GetJSONInt(multiLightJSON, "lightCount", m_config.lighting.lightCount);
+            std::string preset = GetJSONValue(multiLightJSON, "preset");
+            if (!preset.empty()) {
+                m_config.lighting.multiLightPreset = preset;
+            }
+            m_config.lighting.multiLightIntensity = GetJSONFloat(multiLightJSON, "intensity", m_config.lighting.multiLightIntensity);
+        }
+
+        // Probe grid settings
+        std::string probeGridJSON = GetJSONObject(lightingJSON, "probeGrid");
+        if (!probeGridJSON.empty()) {
+            m_config.lighting.probeGridEnabled = GetJSONBool(probeGridJSON, "enabled", m_config.lighting.probeGridEnabled);
+            m_config.lighting.probeGridSize = GetJSONInt(probeGridJSON, "gridSize", m_config.lighting.probeGridSize);
+            m_config.lighting.raysPerProbe = GetJSONInt(probeGridJSON, "raysPerProbe", m_config.lighting.raysPerProbe);
+            m_config.lighting.probeGridIntensity = GetJSONFloat(probeGridJSON, "intensity", m_config.lighting.probeGridIntensity);
+            m_config.lighting.probeUpdateInterval = GetJSONInt(probeGridJSON, "updateInterval", m_config.lighting.probeUpdateInterval);
+        }
+
+        // RTXDI settings
+        std::string rtxdiJSON = GetJSONObject(lightingJSON, "rtxdi");
+        if (!rtxdiJSON.empty()) {
+            m_config.lighting.rtxdiEnabled = GetJSONBool(rtxdiJSON, "enabled", m_config.lighting.rtxdiEnabled);
+            std::string mode = GetJSONValue(rtxdiJSON, "mode");
+            if (!mode.empty()) {
+                m_config.lighting.rtxdiMode = mode;
+            }
+            m_config.lighting.rtxdiTemporalWeight = GetJSONFloat(rtxdiJSON, "temporalWeight", m_config.lighting.rtxdiTemporalWeight);
+        }
     }
 
     // Parse physics section

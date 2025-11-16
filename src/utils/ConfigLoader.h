@@ -15,7 +15,7 @@ struct RenderingConfig {
     std::string renderer = "Gaussian";  // "Gaussian" or "Billboard"
     bool enableRT = true;
     bool preferMeshShaders = true;
-    float baseParticleRadius = 50.0f;
+    float baseParticleRadius = 15.0f;  // Changed from 50.0 to match user baseline (2025-11-16)
 };
 
 struct CameraConfig {
