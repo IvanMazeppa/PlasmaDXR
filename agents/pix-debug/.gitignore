@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# PIX Captures (large binary files)
+*.wpix
+
+# Buffer dumps (can be regenerated)
+buffer_dumps/
+*.bin
+
+# Analysis outputs
+analysis_*.txt
+*.csv

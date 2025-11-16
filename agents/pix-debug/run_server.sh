@@ -1,0 +1,1 @@
+run_mcp_server.sh

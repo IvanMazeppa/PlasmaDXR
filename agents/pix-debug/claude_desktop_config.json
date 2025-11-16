@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "pix-debug": {
+      "command": "/mnt/d/Users/dilli/AndroidStudioProjects/Agility_SDI_DXR_MCP/pix-debugging-agent-v4/venv/bin/python",
+      "args": [
+        "/mnt/d/Users/dilli/AndroidStudioProjects/Agility_SDI_DXR_MCP/pix-debugging-agent-v4/mcp_server.py"
+      ],
+      "env": {
+        "PIXTOOL_PATH": "/mnt/c/Program Files/Microsoft PIX/2509.25/pixtool.exe",
+        "PLASMA_DX_PATH": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean",
+        "BUFFER_DUMP_DIR": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/PIX/buffer_dumps",
+        "PIX_CAPTURES_DIR": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/PIX/Captures"
+      }
+    }
+  }
+}
