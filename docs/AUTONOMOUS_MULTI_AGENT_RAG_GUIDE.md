@@ -444,6 +444,35 @@ Organized directory:
 - ✅ Fixed probe grid dispatch mismatch (32³ → 48³)
 - ✅ Simplified lighting system (disabled ambient, physical emission, dynamic emission)
 - ✅ Created this consolidated guide
+- ✅ Multi-agent Gaussian analysis (2025-11-16) - 3 agents in parallel
+- ✅ Default particle radius fix (50.0 → 15.0) - quality of life improvement
+
+### 🔴 CRITICAL DISCOVERY (2025-11-16)
+
+**Root Cause Identified: Lighting Scattering Problem**
+
+The core visual quality issue is NOT the Gaussian particle structure - it's that **inline RayQuery lighting cannot scatter light volumetrically**.
+
+**Current RT Lighting Issues:**
+- `RTLightingSystem_RayQuery.cpp` simply brightens particles when hit by rays
+- No proper Beer-Lambert absorption integration
+- No Henyey-Greenstein phase function scattering
+- Results in: Violent flashes, no atmospheric glow, isolated particles
+
+**What Works:**
+- ✅ Multi-light system - Proper volumetric scattering, beautiful results
+- ❌ But: Only 72 FPS (target: 90+)
+
+**What Might Work:**
+- ⚠️ Probe-grid - Could provide volumetric ambient illumination if dim lighting issue fixed
+- Status: Dispatch fixed, ray distance fixed, but still extremely dim
+
+**Recommended Solution:**
+- Fix probe-grid dim lighting issue (PRIORITY)
+- Hybrid approach: Probe-grid (ambient) + 4-6 selective multi-lights (rim lighting)
+- Expected: 90+ FPS with 90%+ multi-light visual quality
+
+See: `docs/SESSION_HANDOFF_2025-11-16.md` for complete analysis
 
 ---
 

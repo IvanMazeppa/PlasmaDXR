@@ -21,7 +21,7 @@
       "enabled": true,
       "gridSize": 32,
       "raysPerProbe": 16,
-      "intensity": 800.0,
+      "intensity": 3000.0,
       "updateInterval": 4,
       "coverage": {
         "min": [-1500, -1500, -1500],

@@ -1004,10 +1004,54 @@ float Hash(uint seed) {
 }
 
 // =============================================================================
+// SPHERICAL HARMONICS L2 RECONSTRUCTION
+// =============================================================================
+
+/**
+ * Evaluate SH L2 basis functions (same as update_probes.hlsl)
+ */
+void EvaluateSH_L2(float3 dir, out float sh[9]) {
+    dir = normalize(dir);
+    float x = dir.x, y = dir.y, z = dir.z;
+    float x2 = x * x, y2 = y * y, z2 = z * z;
+
+    sh[0] = 0.282095;                      // Band 0
+    sh[1] = 0.488603 * y;                  // Band 1
+    sh[2] = 0.488603 * z;
+    sh[3] = 0.488603 * x;
+    sh[4] = 1.092548 * x * y;              // Band 2
+    sh[5] = 1.092548 * y * z;
+    sh[6] = 0.315392 * (3.0 * z2 - 1.0);
+    sh[7] = 1.092548 * x * z;
+    sh[8] = 0.546274 * (x2 - y2);
+}
+
+/**
+ * Reconstruct irradiance from SH coefficients for a given direction
+ *
+ * @param shCoeffs Array of 9 RGB SH coefficients from a probe
+ * @param direction Normalized direction to evaluate lighting
+ * @return Reconstructed RGB irradiance for that direction
+ */
+float3 ReconstructSH_L2(float3 shCoeffs[9], float3 direction) {
+    // Evaluate basis functions for this direction
+    float shBasis[9];
+    EvaluateSH_L2(direction, shBasis);
+
+    // Dot product: sum of (coefficient × basis) for all 9 terms
+    float3 irradiance = float3(0, 0, 0);
+    for (uint i = 0; i < 9; i++) {
+        irradiance += shCoeffs[i] * shBasis[i];
+    }
+
+    return irradiance;
+}
+
+// =============================================================================
 // PROBE GRID SAMPLING (Phase 0.13.1)
 // =============================================================================
 /**
- * Sample probe grid irradiance using trilinear interpolation
+ * Sample probe grid irradiance using trilinear interpolation with FULL SH L2 reconstruction
  *
  * Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
  * Zero atomic operations = zero contention = scales to 10K+ particles!
@@ -1015,12 +1059,14 @@ float Hash(uint seed) {
  * Algorithm:
  * 1. Convert world position to grid coordinates
  * 2. Find 8 nearest probes (corner of grid cell)
- * 3. Trilinear interpolation between probes
+ * 3. Reconstruct directional irradiance from SH L2 coefficients for each probe
+ * 4. Trilinear interpolation between reconstructed values
  *
  * @param worldPos World-space position to sample lighting at
+ * @param viewDir Normalized view direction (for directional scattering)
  * @return Irradiance (RGB color) at the given position
  */
-float3 SampleProbeGrid(float3 worldPos) {
+float3 SampleProbeGrid(float3 worldPos, float3 viewDir) {
     // Convert world position to grid coordinates
     float3 gridCoord = (worldPos - gridMin) / gridSpacing;
 
@@ -1056,16 +1102,18 @@ float3 SampleProbeGrid(float3 worldPos) {
         return float3(0, 0, 0);  // Out of bounds - return black
     }
 
-    // Sample irradiance from probes (SH L0 coefficient only for MVP)
-    // Full SH L2 reconstruction can be added later for better directionality
-    float3 c000 = g_probeGrid[idx000].irradiance[0];
-    float3 c001 = g_probeGrid[idx001].irradiance[0];
-    float3 c010 = g_probeGrid[idx010].irradiance[0];
-    float3 c011 = g_probeGrid[idx011].irradiance[0];
-    float3 c100 = g_probeGrid[idx100].irradiance[0];
-    float3 c101 = g_probeGrid[idx101].irradiance[0];
-    float3 c110 = g_probeGrid[idx110].irradiance[0];
-    float3 c111 = g_probeGrid[idx111].irradiance[0];
+    // FULL SH L2 RECONSTRUCTION for directional lighting!
+    // For each of the 8 corner probes, reconstruct irradiance for the view direction
+    // This enables proper Henyey-Greenstein phase function scattering!
+
+    float3 c000 = ReconstructSH_L2(g_probeGrid[idx000].irradiance, viewDir);
+    float3 c001 = ReconstructSH_L2(g_probeGrid[idx001].irradiance, viewDir);
+    float3 c010 = ReconstructSH_L2(g_probeGrid[idx010].irradiance, viewDir);
+    float3 c011 = ReconstructSH_L2(g_probeGrid[idx011].irradiance, viewDir);
+    float3 c100 = ReconstructSH_L2(g_probeGrid[idx100].irradiance, viewDir);
+    float3 c101 = ReconstructSH_L2(g_probeGrid[idx101].irradiance, viewDir);
+    float3 c110 = ReconstructSH_L2(g_probeGrid[idx110].irradiance, viewDir);
+    float3 c111 = ReconstructSH_L2(g_probeGrid[idx111].irradiance, viewDir);
 
     // Trilinear interpolation
     // First interpolate along X axis (4 lerps)
@@ -1283,7 +1331,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // PROBE GRID MODE (Phase 0.13.1): Zero atomic contention!
                 // Pre-computed lighting at sparse 48³ grid with trilinear interpolation
                 // Scales to 10K+ particles without GPU hang
-                probeGridLight = SampleProbeGrid(pos);
+                // NOW WITH FULL SH L2 RECONSTRUCTION for directional scattering!
+                probeGridLight = SampleProbeGrid(pos, ray.Direction);
             }
 
             // Sample direct RT lighting (always active when RT lighting enabled)
