@@ -8,7 +8,7 @@
 
 ## Your Vision Statement (Verbatim)
 
-> "I'd still prefer to have highly specialised agents coordinated by a layer of orchestrators with a single acting agent that works in a supervised-autonomous fashion, with skills implemented strategically. I've found that i have the most success with robust planning from multiple agents researching and implementing with claude acting as the orchestrator. I wanted to expand this workflow and include log analysis RAG, highly specialised agents, and an organised hierarchy with robust error handling, debugging, log analysis, ML based visual analysis, physics simulations and more ideas i've been thinking of."
+> "I'd still prefer to have highly specialised agents coordinated y a layer of orchestrators with a single acting agent that works in a supervised-autonomous fashion, with skills implemented strategically. I've found that i have the most success with robust planning from multiple agents researching and implementing with claude acting as the orchestrator. I wanted to expand this workflow and include log analysis RAG, highly specialised agents, and an organised hierarchy with robust error handling, debugging, log analysis, ML based visual analysis, physics simulations and more ideas i've been thinking of."
 
 **Assessment**: This is **architecturally excellent** and **70% built already**.
 

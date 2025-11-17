@@ -51,7 +51,7 @@ def load_screenshot_metadata(screenshot_path: str) -> dict:
 
 async def list_recent_screenshots(limit: int = 10) -> str:
     """List recent screenshots from project directory"""
-    screenshots_dir = Path(PROJECT_ROOT) / "screenshots"
+    screenshots_dir = Path(PROJECT_ROOT) / "build" / "bin" / "Debug" / "screenshots"
 
     if not screenshots_dir.exists():
         return "No screenshots directory found. Use F2 to capture screenshots."
