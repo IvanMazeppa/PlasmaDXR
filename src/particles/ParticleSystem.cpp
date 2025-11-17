@@ -450,6 +450,11 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
     // Step 3: Upload updated CPU particles to GPU for rendering
     UploadParticleData(m_cpuPositions, m_cpuVelocities);
 
+    // CRITICAL: Execute command list immediately to complete the upload
+    // Without this, the particle buffer is left in an invalid state and causes GPU crash
+    m_device->ExecuteCommandList();
+    m_device->WaitForGPU();  // Ensure upload completes before next frame
+
     // Log performance metrics every 60 frames
     static int s_pinnUpdateCount = 0;
     s_pinnUpdateCount++;

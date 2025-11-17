@@ -1245,23 +1245,35 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         float stepSize = (tEnd - tStart) / float(steps);
 
         for (uint step = 0; step < steps; step++) {
-            // Add sub-pixel jitter to reduce temporal aliasing
-            // Uses pixel position as seed for consistent per-pixel randomness
-            float jitter = frac(sin(dot(float2(pixelPos), float2(12.9898, 78.233))) * 43758.5453);
-            float t = tStart + (step + jitter) * stepSize;
+            // CRITICAL FIX: Sub-pixel jitter REMOVED - it caused temporal instability (shuddering)
+            // When combined with numerical instability at large radii, jitter amplified the cube artifact
+            // Fixed sampling at step centers provides stable, consistent ray marching
+            float t = tStart + (step + 0.5) * stepSize;  // Sample at step center for stability
             float3 pos = ray.Origin + ray.Direction * t;
 
             // Evaluate Gaussian density at this point
             float density = EvaluateGaussianDensity(pos, p.position, scale, rotation, p.density);
 
-            // Enhanced spherical falloff for better 3D appearance
-            float3 toCenter = pos - p.position;
-            float distFromCenter = length(toCenter) / length(scale);
-            float sphericalFalloff = exp(-distFromCenter * distFromCenter * 2.5); // Slightly softer (was 3.0)
-            density *= sphericalFalloff * densityMultiplier;
+            // CRITICAL FIX: Removed double exponential falloff!
+            // EvaluateGaussianDensity() already applies exp(-0.5 * dist²) in gaussian_common.hlsl:220
+            // The extra sphericalFalloff exp(-distFromCenter²) caused double exponential = over-darkening
+            // Now density is correctly modulated only by the density multiplier
+            density *= densityMultiplier;
 
-            // Higher threshold to skip low-density regions that cause flickering
-            if (density < 0.01) continue;
+            // CRITICAL FIX: Smooth density threshold prevents hard edges
+            // Hard cutoff (density < 0.01) caused visible "banding" at particle edges
+            // Smooth falloff via smoothstep creates gradual transparency
+            float densityThreshold = 0.01;
+            float smoothWidth = 0.02;  // Transition width
+            float densityWeight = smoothstep(densityThreshold - smoothWidth,
+                                              densityThreshold + smoothWidth,
+                                              density);
+
+            // Early skip for truly empty regions (still needed for performance)
+            if (densityWeight < 0.001) continue;
+
+            // Modulate density by smooth weight
+            density *= densityWeight;
 
             // === HYBRID EMISSION MODEL: Blend artistic + physical + material albedo ===
             float3 emission;

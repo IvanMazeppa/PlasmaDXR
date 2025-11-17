@@ -83,9 +83,12 @@ float3 ComputeGaussianScale(
 
     if (useAnisotropic) {
         // Ellipsoid: stretch along velocity direction for motion blur effect
-        float speedFactor = length(p.velocity) / 100.0; // Normalize velocity
-        speedFactor = 1.0 + (speedFactor - 1.0) * anisotropyStrength; // Apply strength
-        speedFactor = clamp(speedFactor, 1.0, 3.0); // FIXED: Cap at 3.0 regardless of strength (was 3.0 * anisotropyStrength)
+        // Particle velocities range 0-20 units/sec, normalize to 0-1 range
+        // CRITICAL FIX: Previous formula produced values < 1.0 which got clamped, preventing any stretch
+        // Correct formula: 1.0 (no stretch) to 3.0 (max stretch) based on velocity
+        float normalizedSpeed = length(p.velocity) / 20.0; // 0-1 range
+        float speedFactor = 1.0 + normalizedSpeed * 2.0 * anisotropyStrength; // 1.0 to 3.0 range
+        speedFactor = clamp(speedFactor, 1.0, 3.0); // Defensive clamp
 
         // Perpendicular radii (circular cross-section)
         float perpRadius = radius;
@@ -127,11 +130,14 @@ float3x3 ComputeGaussianRotation(float3 velocity) {
     float3 right = normalize(cross(temp, forward)); // X-axis
     float3 up = cross(forward, right); // Y-axis
 
-    // Build rotation matrix (columns are basis vectors)
+    // Build rotation matrix (COLUMN-MAJOR - basis vectors are COLUMNS)
+    // CORRECTIVE FIX: REVERTED to original form - the row-major version was WRONG
+    // Column-major is CORRECT for HLSL's mul() semantics with vector*matrix multiplication
+    // This properly transforms rays FROM world space TO Gaussian local space
     return float3x3(
-        right.x, up.x, forward.x,
-        right.y, up.y, forward.y,
-        right.z, up.z, forward.z
+        right.x, up.x, forward.x,   // First column (x-axis in world space)
+        right.y, up.y, forward.y,   // Second column (y-axis in world space)
+        right.z, up.z, forward.z    // Third column (z-axis in world space)
     );
 }
 
@@ -160,7 +166,9 @@ AABB ComputeGaussianAABB(
     );
 
     // Conservative bound: max of all axes (axis-aligned)
-    float maxRadius = max(scale.x, max(scale.y, scale.z)) * 3.0; // 3 std devs
+    // CRITICAL FIX: 4σ padding for anisotropic Gaussians (3σ insufficient for ellipsoids)
+    // 3σ = 99.7% for spherical, but anisotropic can stretch 3× → need 4σ = 99.99% coverage
+    float maxRadius = max(scale.x, max(scale.y, scale.z)) * 4.0; // 4 std devs
 
     AABB result;
     result.minPoint = p.position - maxRadius;
@@ -170,6 +178,8 @@ AABB ComputeGaussianAABB(
 
 // Ray-Gaussian intersection using analytic method
 // Returns t values for entry and exit (or -1 if no hit)
+// CRITICAL FIX: Uses Kahan's numerically stable quadratic formula to prevent
+// catastrophic cancellation at large radii (>150.0) which caused cube artifacts
 float2 RayGaussianIntersection(
     float3 rayOrigin,
     float3 rayDir,
@@ -185,7 +195,7 @@ float2 RayGaussianIntersection(
     localOrigin /= scale;
     localDir /= scale;
 
-    // Now intersect ray with unit sphere
+    // Now intersect ray with unit sphere: a*t² + b*t + c = 0
     float a = dot(localDir, localDir);
     float b = 2.0 * dot(localOrigin, localDir);
     float c = dot(localOrigin, localOrigin) - 1.0;
@@ -193,9 +203,29 @@ float2 RayGaussianIntersection(
     float discriminant = b * b - 4.0 * a * c;
     if (discriminant < 0.0) return float2(-1, -1);
 
+    // KAHAN'S NUMERICALLY STABLE QUADRATIC FORMULA
+    // Prevents catastrophic cancellation when |b| >> sqrt(discriminant)
+    // Standard formula: t = (-b ± sqrt(discriminant)) / (2a) UNSTABLE!
+    // Kahan's formula: Compute one root stably, derive second via Vieta's relation
     float sqrtDisc = sqrt(discriminant);
-    float t1 = (-b - sqrtDisc) / (2.0 * a);
-    float t2 = (-b + sqrtDisc) / (2.0 * a);
+
+    // Compute the more numerically stable root first
+    // If b > 0: use (-b - sqrt(disc)) to avoid subtraction of similar magnitudes
+    // If b < 0: use (-b + sqrt(disc)) for same reason
+    float q = (b > 0.0)
+        ? -0.5 * (b + sqrtDisc)  // b > 0: avoid cancellation in (-b - sqrt)
+        : -0.5 * (b - sqrtDisc); // b < 0: avoid cancellation in (-b + sqrt)
+
+    // Two roots via Vieta's formulas: t1*t2 = c/a, t1+t2 = -b/a
+    float t1 = q / a;        // First root (stable)
+    float t2 = c / q;        // Second root via Vieta (c/a = t1*t2 => t2 = c/(a*t1) = c/q)
+
+    // Ensure t1 <= t2 (near hit first)
+    if (t1 > t2) {
+        float temp = t1;
+        t1 = t2;
+        t2 = temp;
+    }
 
     return float2(t1, t2);
 }
