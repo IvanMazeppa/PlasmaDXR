@@ -268,6 +268,29 @@ bool VolumetricReSTIRSystem::CreatePiecewiseConstantVolume() {
     // Note: table[1] (output UAV) will be set dynamically in ShadeSelectedPaths()
     LOG_INFO("Shading descriptor table allocated (2 descriptors)");
 
+    // Allocate descriptor table for path generation (3 contiguous SRVs)
+    // [0]: t0 - RaytracingAccelerationStructure (BVH)
+    // [1]: t1 - StructuredBuffer<Particle>
+    // [2]: t2 - Texture3D<uint> (volume)
+    m_pathGenSrvTableCPU = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE pathGenSlot1 = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    D3D12_CPU_DESCRIPTOR_HANDLE pathGenSlot2 = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_pathGenSrvTableGPU = m_resources->GetGPUHandle(m_pathGenSrvTableCPU);
+
+    // Verify contiguity
+    if (pathGenSlot1.ptr != m_pathGenSrvTableCPU.ptr + descriptorSize ||
+        pathGenSlot2.ptr != pathGenSlot1.ptr + descriptorSize) {
+        LOG_WARN("Path gen descriptor table slots are not contiguous!");
+    }
+
+    // Copy volume Mip 2 SRV to table[2] - this is permanent
+    D3D12_CPU_DESCRIPTOR_HANDLE volumeSlot = m_pathGenSrvTableCPU;
+    volumeSlot.ptr += 2 * descriptorSize;
+    m_device->GetDevice()->CopyDescriptorsSimple(1, volumeSlot, m_volumeMip2SRV,
+                                                  D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    LOG_INFO("Path generation descriptor table allocated (3 SRVs)");
+
     // Create constant buffer for path generation (256 bytes aligned)
     D3D12_HEAP_PROPERTIES uploadHeapProps = {};
     uploadHeapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -521,28 +544,36 @@ bool VolumetricReSTIRSystem::CreatePipelines() {
     // ===================================================================
 
     // Create root signature for path generation
-    // PHASE 1 TEMPORARY: Simplified root signature to match stub shader
-    // Shader declares t0/t1/t2 but doesn't use them (Phase 1 stub returns false immediately)
-    // DXC optimizer removes unused resources, causing root signature mismatch
-    // TODO: Re-add t0/t1/t2 parameters when enabling full random walk (Phase 2)
+    // FIX 2025-11-19: Full root signature for BVH-based path generation
+    // Shader uses RayQuery against particle BVH instead of volumetric grid
     {
-        CD3DX12_ROOT_PARAMETER1 rootParams[2];
+        CD3DX12_ROOT_PARAMETER1 rootParams[3];
 
-        // b0: PathGenerationConstants (constant buffer descriptor)
+        // Slot 0: b0 - PathGenerationConstants (constant buffer)
         rootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
 
-        // u0: Reservoir buffer (UAV, structured buffer)
-        rootParams[1].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+        // Slot 1: Descriptor table for SRVs (t0, t1, t2)
+        // t0: RaytracingAccelerationStructure (particle BVH)
+        // t1: StructuredBuffer<Particle> (particle data)
+        // t2: Texture3D<uint> (volume mip 2 - unused but declared)
+        CD3DX12_DESCRIPTOR_RANGE1 srvRanges[1];
+        srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        rootParams[1].InitAsDescriptorTable(1, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
 
-        // PHASE 1: No particle data or volume texture needed (stub shader doesn't use them)
-        // REMOVED (temporarily):
-        //   - t0: Particle BLAS
-        //   - t1: Particle buffer
-        //   - t2: Volume Mip 2
-        //   - s0: Volume sampler
+        // Slot 2: u0 - Reservoir buffer (UAV)
+        rootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+
+        // Static sampler for s0 (volume sampler - unused but declared)
+        CD3DX12_STATIC_SAMPLER_DESC staticSampler(
+            0,  // s0
+            D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP
+        );
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
+        rootSigDesc.Init_1_1(_countof(rootParams), rootParams, 1, &staticSampler,
                             D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
         ComPtr<ID3DBlob> signature;
@@ -757,19 +788,43 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     m_pathGenConstantBuffer->Unmap(0, nullptr);
 
     // Bind resources
-    // PHASE 1 TEMPORARY: Simplified bindings to match stub shader root signature
-    // TODO: Re-add parameters 1-3 (t0/t1/t2) when enabling full random walk (Phase 2)
+    // FIX 2025-11-19: Full bindings for BVH-based path generation
+
+    // Create SRVs for BVH and particle buffer in descriptor table
+    UINT descriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    // Table[0]: t0 - RaytracingAccelerationStructure SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC bvhSrvDesc = {};
+    bvhSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    bvhSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+    bvhSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    bvhSrvDesc.RaytracingAccelerationStructure.Location = particleBVH->GetGPUVirtualAddress();
+    m_device->GetDevice()->CreateShaderResourceView(nullptr, &bvhSrvDesc, m_pathGenSrvTableCPU);
+
+    // Table[1]: t1 - StructuredBuffer<Particle> SRV
+    D3D12_CPU_DESCRIPTOR_HANDLE particleSlot = m_pathGenSrvTableCPU;
+    particleSlot.ptr += descriptorSize;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC particleSrvDesc = {};
+    particleSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    particleSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    particleSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    particleSrvDesc.Buffer.FirstElement = 0;
+    particleSrvDesc.Buffer.NumElements = particleCount;
+    particleSrvDesc.Buffer.StructureByteStride = 48;  // sizeof(Particle) in shader
+    particleSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    m_device->GetDevice()->CreateShaderResourceView(particleBuffer, &particleSrvDesc, particleSlot);
+
+    // Note: Table[2] (volume Mip 2) was set during initialization
 
     // Root parameter 0: b0 - Constant buffer
     commandList->SetComputeRootConstantBufferView(0, m_pathGenConstantBuffer->GetGPUVirtualAddress());
 
-    // Root parameter 1: u0 - Reservoir buffer (UAV)
-    commandList->SetComputeRootUnorderedAccessView(1, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
+    // Root parameter 1: Descriptor table (t0, t1, t2 SRVs)
+    commandList->SetComputeRootDescriptorTable(1, m_pathGenSrvTableGPU);
 
-    // PHASE 1: Removed (not used by stub shader):
-    //   Parameter 1: t0 - Particle BLAS
-    //   Parameter 2: t1 - Particle buffer
-    //   Parameter 3: t2 - Volume Mip 2
+    // Root parameter 2: u0 - Reservoir buffer (UAV)
+    commandList->SetComputeRootUnorderedAccessView(2, m_reservoirBuffer[m_currentBufferIndex]->GetGPUVirtualAddress());
 
     // Dispatch compute shader
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups

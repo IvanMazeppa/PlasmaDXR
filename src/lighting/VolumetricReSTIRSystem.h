@@ -279,6 +279,10 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_shadingTableStart;
     D3D12_GPU_DESCRIPTOR_HANDLE m_shadingTableGPU;
 
+    // Path generation descriptor table (t0=BVH, t1=particles, t2=volume - 3 SRVs)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_pathGenSrvTableCPU;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_pathGenSrvTableGPU;
+
     // === Compute Pipelines ===
 
     // Volume Mip 2 population (particle density splatting)

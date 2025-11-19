@@ -36,18 +36,14 @@ cbuffer ShadingConstants : register(b0) {
 // Particle acceleration structure
 RaytracingAccelerationStructure g_particleBVH : register(t0);
 
-// Particle data
+// Particle data (48 bytes, matches ParticleSystem.h)
 struct Particle {
-    float3 position;
-    float radius;
-    float3 velocity;
-    float temperature;
-    float3 ellipsoidAxis1;
-    float padding0;
-    float3 ellipsoidAxis2;
-    float padding1;
-    float3 ellipsoidAxis3;
-    float padding2;
+    float3 position;       // 12 bytes (offset 0)
+    float temperature;     // 4 bytes  (offset 12)
+    float3 velocity;       // 12 bytes (offset 16)
+    float density;         // 4 bytes  (offset 28)
+    float3 albedo;         // 12 bytes (offset 32)
+    uint materialType;     // 4 bytes  (offset 44)
 };
 StructuredBuffer<Particle> g_particles : register(t1);
 
@@ -60,6 +56,51 @@ RWTexture2D<float4> g_outputTexture : register(u0);
 //=============================================================================
 // Shading Helpers
 //=============================================================================
+
+/**
+ * Ray-sphere intersection test
+ *
+ * @param rayOrigin Ray origin
+ * @param rayDir Ray direction (normalized)
+ * @param sphereCenter Sphere center
+ * @param sphereRadius Sphere radius
+ * @param[out] hitT Distance to hit (nearest intersection)
+ * @return true if hit, false if miss
+ */
+bool RaySphereIntersection(
+    float3 rayOrigin,
+    float3 rayDir,
+    float3 sphereCenter,
+    float sphereRadius,
+    out float hitT)
+{
+    float3 oc = rayOrigin - sphereCenter;
+    float a = dot(rayDir, rayDir);
+    float b = 2.0 * dot(oc, rayDir);
+    float c = dot(oc, oc) - sphereRadius * sphereRadius;
+    float discriminant = b * b - 4.0 * a * c;
+
+    if (discriminant < 0.0) {
+        hitT = 0.0;
+        return false;
+    }
+
+    float sqrtD = sqrt(discriminant);
+    float t0 = (-b - sqrtD) / (2.0 * a);
+    float t1 = (-b + sqrtD) / (2.0 * a);
+
+    // Return nearest positive hit
+    if (t0 > 0.001) {
+        hitT = t0;
+        return true;
+    } else if (t1 > 0.001) {
+        hitT = t1;
+        return true;
+    }
+
+    hitT = 0.0;
+    return false;
+}
 
 /**
  * Query particle along path segment
@@ -86,7 +127,20 @@ bool QueryParticleFromRay(float3 origin, float3 direction, float distance, out u
     // Find the closest hit (which should match the generated vertex)
     while (q.Proceed()) {
         if (q.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
-            q.CommitProceduralPrimitiveHit(q.CandidateProceduralPrimitiveNonOpaque());
+            // FIX 2025-11-19: Must perform actual intersection test for procedural primitives
+            uint particleIdx = q.CandidatePrimitiveIndex();
+            Particle p = g_particles[particleIdx];
+
+            // Ray-sphere intersection using particle position
+            // FIX 2025-11-19: Use 50.0 to match particle radius setting (was 10.0, causing tiny particles)
+            float sphereRadius = 50.0;
+            float intersectT;
+            if (RaySphereIntersection(origin, direction, p.position, sphereRadius, intersectT)) {
+                // Valid intersection within ray bounds
+                if (intersectT >= ray.TMin && intersectT <= ray.TMax) {
+                    q.CommitProceduralPrimitiveHit(intersectT);
+                }
+            }
         }
     }
 
@@ -125,7 +179,8 @@ float3 EvaluateParticleEmission(Particle particle) {
     }
 
     // Intensity (Stefan-Boltzmann law, T⁴)
-    float intensity = pow(temp / 10000.0, 4.0) * 0.1;
+    // FIX 2025-11-19: Increased from 0.1 to 10.0 for visibility (was way too dim)
+    float intensity = pow(temp / 10000.0, 4.0) * 10.0;
 
     return color * intensity;
 }
@@ -144,7 +199,8 @@ float3 EvaluateTransmittance(float3 start, float3 end) {
     float distance = length(end - start);
 
     // Extinction coefficient (constant for Phase 1)
-    float extinction = 0.001; // Very low extinction (mostly transparent medium)
+    // FIX 2025-11-19: Increased from 0.001 to 0.01 for better volumetric feel
+    float extinction = 0.01;
 
     // Beer-Lambert law
     float transmittance = exp(-extinction * distance);
@@ -201,8 +257,9 @@ float3 EvaluatePathContribution(
             float3 emission = EvaluateParticleEmission(particle);
 
             // Evaluate phase function
+            // FIX 2025-11-19: Reduced g from 0.7 to 0.3 for more isotropic scattering
             float cosTheta = dot(-currentDir, vertex.omega);
-            float phase = HenyeyGreenstein(cosTheta, 0.7);
+            float phase = HenyeyGreenstein(cosTheta, 0.3);
 
             // Evaluate transmittance along this segment
             float3 transmittance = EvaluateTransmittance(prevPos, currentPos);

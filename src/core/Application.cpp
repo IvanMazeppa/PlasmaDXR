@@ -337,13 +337,13 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // IMPORTANT: Initialize AFTER DLSS to get correct render resolution
     LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
 
-    // IMPORTANT: VolumetricReSTIR uses REDUCED resolution for Phase 1 to avoid GPU timeout
-    // Phase 1 testing: 1/4 native resolution (640×360 @ 2560×1440)
-    // This reduces shader invocations from 3.6M to 230K, preventing TDR crashes
-    // Will be upscaled in later phases for production quality
-    uint32_t restirWidth = m_width / 4;
-    uint32_t restirHeight = m_height / 4;
-    LOG_INFO("Initializing VolumetricReSTIR at 1/4 resolution (Phase 1 testing): {}x{}", restirWidth, restirHeight);
+    // FIX 2025-11-19: Use FULL resolution for Phase 1 testing
+    // The 1/4 resolution was causing frozen output because ShadeSelectedPaths
+    // only wrote to a small corner of the native-resolution output texture.
+    // TODO: Add proper output texture + upscaling in Phase 2
+    uint32_t restirWidth = m_width;
+    uint32_t restirHeight = m_height;
+    LOG_INFO("Initializing VolumetricReSTIR at FULL resolution (Phase 1 testing): {}x{}", restirWidth, restirHeight);
     LOG_INFO("  Native resolution: {}x{}", m_width, m_height);
     LOG_INFO("  Shader invocations reduced from {:.1f}M to {:.1f}K",
             (m_width * m_height) / 1000000.0f,
