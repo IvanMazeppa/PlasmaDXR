@@ -1,18 +1,11 @@
 /**
  * Volumetric ReSTIR - Path Generation Shader (Phase 1)
  *
- * Generates M candidate paths per pixel using regular tracking and
+ * Generates M candidate paths per pixel using direct BVH regular tracking and
  * performs weighted reservoir sampling (RIS) to select the best path.
  *
- * This is the Phase 1 implementation: RIS only, no spatial/temporal reuse yet.
- *
- * Algorithm:
- * 1. For each pixel: reconstruct camera ray
- * 2. Generate M=4 random walks through volume
- * 3. Use regular tracking (distance sampling with Mip 2)
- * 4. Compute importance weight w = f̂(λ) / p(λ)
- * 5. Weighted reservoir sampling → select 1 winner
- * 6. Store winner in reservoir buffer
+ * FIX 2025-11-19: Replaced volumetric grid sampling (atomic contention) with 
+ * direct RayQuery against particle BVH.
  */
 
 #include "volumetric_restir_common.hlsl"
@@ -60,7 +53,7 @@ struct Particle {
 StructuredBuffer<Particle> g_particles : register(t1);
 
 // Piecewise-constant transmittance volume (Mip 2, coarse grid)
-// IMPORTANT: Stored as UINT for atomic operations, convert to float with asfloat()
+// UNUSED IN FIX: We use BVH instead
 Texture3D<uint> g_volumeMip2 : register(t2);
 SamplerState g_volumeSampler : register(s0);
 
@@ -171,8 +164,6 @@ float3 EvaluateParticleEmission(Particle particle) {
  * - Emission at scatter vertices
  * - Phase function alignment
  * - Transmittance along path
- *
- * This is the "ideal" PDF we want to importance sample.
  */
 float ComputeTargetPDF(
     PathVertex vertices[3],
@@ -234,7 +225,7 @@ float ComputeSourcePDF(
 /**
  * Generate one candidate path using random walk
  *
- * Performs regular tracking (distance sampling with Mip 2 volume) to generate
+ * Performs regular tracking (distance sampling with BVH RayQuery) to generate
  * a random path through the participating medium.
  *
  * @param rayOrigin Camera ray origin
@@ -261,66 +252,44 @@ bool GenerateCandidatePath(
 
     const float maxRayDistance = 3000.0; // Maximum ray travel distance
 
-    // PHASE 1 STUB: Generate empty paths to test infrastructure
-    // TODO: Implement full random walk with volume sampling
-    // For now, just create zero-length paths to avoid GPU hangs
-    pathLength = 0;
-    flags = 0;
-
-    // Return false (no valid path) - allows pipeline to run without GPU hang
-    // This will result in black output, which is expected for Phase 1 stub
-    return false;
-
-    // DISABLED CODE BELOW - will be enabled in Phase 2 after volume population is validated
-    #if 0
-    for (uint bounce = 0; bounce < g_maxBounces; bounce++) {
-        // Sample distance along ray using regular tracking
-        float sampledDist;
-        float pdf;
-
-        if (!SampleDistanceRegular(
-            currentPos,
-            currentDir,
-            g_volumeMip2,
-            g_volumeSampler,
-            maxRayDistance,
-            rng,
-            sampledDist,
-            pdf))
-        {
-            // Ray escaped volume or hit max distance
+    // Use hardware RayQuery to find next scattering event
+    // This replaces the expensive/crashy volumetric grid marching
+    
+    // Single bounce for Phase 1 stability
+    // We can increase this later
+    const uint maxBounces = 1; 
+    
+    for (uint bounce = 0; bounce < maxBounces; bounce++) {
+        uint hitIdx;
+        float hitDist;
+        
+        if (QueryNearestParticle(currentPos, currentDir, maxRayDistance, hitIdx, hitDist)) {
+            // We hit a particle! This is a valid candidate path.
+            
+            // Move to hit position
+            currentPos += currentDir * hitDist;
+            
+            // Sample a new direction (Phase function)
+            float3 newDir = SampleHenyeyGreenstein(-currentDir, 0.5, rng);
+            
+            // Store vertex
+            // z: distance from previous point to this hit
+            // omega: outgoing direction FROM this hit
+            vertices[pathLength].z = hitDist;
+            vertices[pathLength].omega = newDir;
+            
+            pathLength++;
+            flags |= 1; // Valid scattering path
+            
+            // Stop after 1 bounce for now
             break;
-        }
-
-        // Move to scatter point
-        currentPos += currentDir * sampledDist;
-
-        // Sample new direction using phase function (Henyey-Greenstein, g=0.7)
-        float3 newDir = SampleHenyeyGreenstein(currentDir, 0.7, rng);
-
-        // Store vertex
-        vertices[pathLength].z = sampledDist;
-        vertices[pathLength].omega = newDir;
-
-        pathLength++;
-
-        // Update for next bounce
-        currentDir = newDir;
-
-        // Russian roulette (terminate low-contribution paths)
-        if (bounce > 1 && PCGRandomFloat(rng) > 0.8) {
+        } else {
+            // Ray missed everything - path terminates
             break;
         }
     }
-    #endif
 
-    // Mark as scattering path if we have at least one bounce
-    if (pathLength > 0) {
-        flags |= 1; // Bit 0: isScatteringPath
-        return true;
-    }
-
-    return false;
+    return pathLength > 0;
 }
 
 //=============================================================================

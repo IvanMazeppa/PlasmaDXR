@@ -92,6 +92,10 @@ cbuffer GaussianConstants : register(b0)
     uint ssSteps;                  // Ray march steps (8=fast, 16=balanced, 32=quality)
     uint debugScreenSpaceShadows;  // Debug visualization (0=off, 1=show shadow coverage)
     float ssPadding;               // Padding for alignment
+
+    // === Ground Plane (Reflective Surface Experiment) ===
+    uint enableGroundPlane;        // Toggle ground plane rendering
+    float3 groundPlaneAlbedo;      // Surface reflectance (RGB)
 };
 
 // ============================================================================
@@ -1190,6 +1194,45 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     // =============================================================================
+    // GROUND PLANE HIT DETECTION (Reflective Surface Experiment)
+    // =============================================================================
+    float groundPlaneT = 1e10;   // Distance to ground plane (very far = no hit)
+    float3 groundPlaneColor = float3(0, 0, 0);
+    bool groundPlaneHit = false;
+
+    if (enableGroundPlane != 0 && query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+        // Check if this is the ground plane (InstanceID == 2)
+        if (query.CommittedInstanceID() == 2) {
+            groundPlaneHit = true;
+            groundPlaneT = query.CommittedRayT();
+
+            // Ground plane hit position and normal (always pointing up)
+            float3 hitPos = ray.Origin + ray.Direction * groundPlaneT;
+            float3 normal = float3(0, 1, 0);  // Ground plane normal is +Y
+
+            // Calculate diffuse lighting from all lights
+            float3 diffuse = float3(0, 0, 0);
+            for (uint l = 0; l < lightCount; l++) {
+                Light light = g_lights[l];
+                float3 toLight = light.position - hitPos;
+                float dist = length(toLight);
+                float3 L = toLight / dist;
+
+                // Lambertian diffuse
+                float NdotL = max(dot(normal, L), 0.0);
+
+                // Distance attenuation
+                float attenuation = 1.0 / (1.0 + 0.0001 * dist * dist);
+
+                diffuse += light.color * light.intensity * NdotL * attenuation;
+            }
+
+            // Apply ground plane albedo
+            groundPlaneColor = groundPlaneAlbedo * diffuse;
+        }
+    }
+
+    // =============================================================================
     // ReSTIR: Temporal Resampling for Better Light Sampling
     // =============================================================================
     uint pixelIndex = pixelPos.y * screenWidth + pixelPos.x;
@@ -1630,8 +1673,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
     }
 
-    // Background color (pure black space - no blue tint)
-    float3 backgroundColor = float3(0.0, 0.0, 0.0);
+    // Background color (pure black space - or ground plane if hit)
+    float3 backgroundColor = groundPlaneHit ? groundPlaneColor : float3(0.0, 0.0, 0.0);
     float finalTransmittance = exp(logTransmittance);
     float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
 

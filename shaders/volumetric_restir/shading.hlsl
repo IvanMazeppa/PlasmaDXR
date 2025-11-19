@@ -62,28 +62,28 @@ RWTexture2D<float4> g_outputTexture : register(u0);
 //=============================================================================
 
 /**
- * Query particle at position
+ * Query particle along path segment
  *
- * Uses inline RayQuery to find nearest particle within small radius.
+ * Re-traces the ray segment to identify which particle was hit.
+ * This matches the logic used in path_generation.hlsl to ensure consistency.
  *
- * @param position Query position
- * @param[out] hitParticleIndex Index of nearest particle
- * @return true if particle found, false otherwise
+ * @param origin Segment start position
+ * @param direction Segment direction
+ * @param distance Segment length (hit distance)
+ * @param[out] hitParticleIndex Index of hit particle
+ * @return true if particle found
  */
-bool QueryParticleAtPosition(float3 position, out uint hitParticleIndex) {
-    // Cast ray in arbitrary direction with short distance to detect nearby particle
-    float3 direction = float3(0, 1, 0);
-    float maxDistance = 10.0;
-
+bool QueryParticleFromRay(float3 origin, float3 direction, float distance, out uint hitParticleIndex) {
     RayDesc ray;
-    ray.Origin = position;
+    ray.Origin = origin;
     ray.Direction = direction;
-    ray.TMin = 0.0;
-    ray.TMax = maxDistance;
+    ray.TMin = 0.001; // Same as generation
+    ray.TMax = distance + 0.1; // Slight epsilon to ensure we hit it
 
     RayQuery<RAY_FLAG_NONE> q;
     q.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, ray);
 
+    // Find the closest hit (which should match the generated vertex)
     while (q.Proceed()) {
         if (q.CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {
             q.CommitProceduralPrimitiveHit(q.CandidateProceduralPrimitiveNonOpaque());
@@ -192,9 +192,9 @@ float3 EvaluatePathContribution(
         float3 prevPos = currentPos;
         currentPos += currentDir * vertex.z;
 
-        // Query particle at vertex
+        // Query particle at vertex by re-tracing the segment
         uint particleIdx;
-        if (QueryParticleAtPosition(currentPos, particleIdx)) {
+        if (QueryParticleFromRay(prevPos, currentDir, vertex.z, particleIdx)) {
             Particle particle = g_particles[particleIdx];
 
             // Evaluate emission

@@ -124,6 +124,10 @@ public:
         uint32_t ssSteps;                  // Ray march steps (8=fast, 16=balanced, 32=quality)
         uint32_t debugScreenSpaceShadows;  // Debug visualization (0=off, 1=show shadow coverage)
         float ssPadding;                   // Padding for alignment
+
+        // === Ground Plane (Reflective Surface Experiment) ===
+        uint32_t enableGroundPlane;        // Toggle ground plane rendering
+        DirectX::XMFLOAT3 groundPlaneAlbedo;  // Surface reflectance (RGB)
     };
 
 public:

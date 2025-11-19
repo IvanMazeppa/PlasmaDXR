@@ -832,6 +832,32 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     ID3D12Resource* particleBuffer,
     uint32_t particleCount)
 {
+    // FIX: Skip volume population to prevent atomic contention crash.
+    // We will use RayQuery in path_generation.hlsl instead to generate candidates directly from the BVH.
+    // This bypasses the "32³ grid atomic lock" issue completely.
+    if (!m_volumeFirstFrame) {
+        // Just transition the resource to satisfy state tracking, but don't dispatch
+        D3D12_RESOURCE_BARRIER barrier = {};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = m_volumeMip2.Get();
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        commandList->ResourceBarrier(1, &barrier);
+    }
+
+    // Transition back to SRV immediately
+    D3D12_RESOURCE_BARRIER srvBarrier = {};
+    srvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    srvBarrier.Transition.pResource = m_volumeMip2.Get();
+    srvBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    srvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    srvBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &srvBarrier);
+
+    m_volumeFirstFrame = false;
+    return; 
+
     // TODO: Re-enable after fixing PIX includes
     // PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, "PopulateVolumeMip2");
 
@@ -976,13 +1002,13 @@ void VolumetricReSTIRSystem::PopulateVolumeMip2(
     LOG_INFO("[DIAGNOSTIC] Copied diagnostic counters to readback buffer");
 
     // Transition volume texture back to SRV state for reading in shaders
-    D3D12_RESOURCE_BARRIER srvBarrier = {};
-    srvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    srvBarrier.Transition.pResource = m_volumeMip2.Get();
-    srvBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    srvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    srvBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    commandList->ResourceBarrier(1, &srvBarrier);
+    D3D12_RESOURCE_BARRIER finalSrvBarrier = {};
+    finalSrvBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    finalSrvBarrier.Transition.pResource = m_volumeMip2.Get();
+    finalSrvBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    finalSrvBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    finalSrvBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &finalSrvBarrier);
 
     // Mark that first frame is done
     m_volumeFirstFrame = false;

@@ -325,6 +325,12 @@ private:
     int m_dumpTargetFrame = -1;
     std::string m_dumpOutputDir = "pix/buffer_dumps/";
 
+    // === Ground Plane Feature (Reflective Surface Experiment) ===
+    bool m_enableGroundPlane = false;           // --ground-plane flag
+    float m_groundPlaneHeight = -500.0f;        // Y position (below accretion disk)
+    float m_groundPlaneSize = 3000.0f;          // Width/depth extent
+    float m_groundPlaneAlbedo[3] = {0.3f, 0.3f, 0.35f};  // Surface reflectance (gray)
+
     // Helper functions for buffer dumping
     void DumpGPUBuffers();
     void DumpBufferToFile(ID3D12Resource* buffer, const char* name);

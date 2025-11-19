@@ -142,6 +142,16 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_dumpOutputDir = argv[i + 1];
             i++;
             LOG_INFO("Dump directory: {}", m_dumpOutputDir);
+        } else if (arg == "--ground-plane") {
+            m_enableGroundPlane = true;
+            // Check if next arg is height (optional)
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                m_groundPlaneHeight = static_cast<float>(std::atof(argv[i + 1]));
+                i++;
+                LOG_INFO("Ground plane enabled (height: {})", m_groundPlaneHeight);
+            } else {
+                LOG_INFO("Ground plane enabled (default height: {})", m_groundPlaneHeight);
+            }
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
             LOG_INFO("  --config=<file>      : Load configuration from JSON file");
@@ -153,6 +163,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --restir             : Use Volumetric ReSTIR (Phase 1 - experimental)");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
+            LOG_INFO("  --ground-plane [height] : Enable reflective ground plane (default: -500)");
         }
     }
 
@@ -235,6 +246,16 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // Initialize RT lighting if supported
     if (m_features->CanUseDXR() && m_config.enableRT) {
         m_rtLighting = std::make_unique<RTLightingSystem_RayQuery>();
+
+        // Configure ground plane before Initialize (geometry created during init)
+        if (m_enableGroundPlane) {
+            m_rtLighting->SetGroundPlaneEnabled(true);
+            m_rtLighting->SetGroundPlaneHeight(m_groundPlaneHeight);
+            m_rtLighting->SetGroundPlaneSize(m_groundPlaneSize);
+            m_rtLighting->SetGroundPlaneAlbedo(m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
+            LOG_INFO("Ground plane configured: height={}, size={}", m_groundPlaneHeight, m_groundPlaneSize);
+        }
+
         if (!m_rtLighting->Initialize(m_device.get(), m_resources.get(), m_config.particleCount)) {
             LOG_ERROR("Failed to initialize RT lighting system");
             // Continue without RT
@@ -923,6 +944,11 @@ void Application::Render() {
             gaussianConstants.ssSteps = m_ssSteps;
             gaussianConstants.debugScreenSpaceShadows = m_debugScreenSpaceShadows ? 1u : 0u;
             gaussianConstants.ssPadding = 0.0f;
+
+            // Ground Plane (Reflective Surface Experiment)
+            gaussianConstants.enableGroundPlane = m_enableGroundPlane ? 1u : 0u;
+            gaussianConstants.groundPlaneAlbedo = DirectX::XMFLOAT3(
+                m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;

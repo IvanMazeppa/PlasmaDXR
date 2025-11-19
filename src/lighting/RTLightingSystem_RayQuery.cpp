@@ -41,6 +41,12 @@ bool RTLightingSystem_RayQuery::Initialize(Device* device, ResourceManager* reso
         return false;
     }
 
+    // Create ground plane geometry if enabled
+    if (!CreateGroundPlaneGeometry()) {
+        LOG_ERROR("Failed to create ground plane geometry");
+        return false;
+    }
+
     LOG_INFO("RayQuery RT Lighting System initialized successfully");
     return true;
 }
@@ -536,9 +542,9 @@ bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
             return false;
         }
 
-        // Create instance descs buffer (2 instances for combined TLAS)
+        // Create instance descs buffer (3 instances for combined TLAS: probe grid, direct RT, ground plane)
         D3D12_HEAP_PROPERTIES uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(2 * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(3 * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
 
         hr = m_device->GetDevice()->CreateCommittedResource(
             &uploadHeapProps, D3D12_HEAP_FLAG_NONE, &instanceDesc,
@@ -817,12 +823,19 @@ void RTLightingSystem_RayQuery::BuildTLAS_ForSet(
 }
 
 void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList) {
-    // Build a combined TLAS with TWO instances for full particle visibility
+    // Build a combined TLAS with 2-3 instances for full visibility
     // Instance 0: Probe Grid BLAS (particles 0-2043)
     // Instance 1: Direct RT BLAS (particles 2044+)
+    // Instance 2: Ground Plane BLAS (optional, if enabled)
 
-    // Create instance descriptors array (2 instances)
-    D3D12_RAYTRACING_INSTANCE_DESC instances[2] = {};
+    // Determine instance count
+    uint32_t instanceCount = 2;
+    if (m_groundPlane.enabled && m_groundPlane.blas) {
+        instanceCount = 3;
+    }
+
+    // Create instance descriptors array (max 3 instances)
+    D3D12_RAYTRACING_INSTANCE_DESC instances[3] = {};
 
     // Instance 0: Probe Grid BLAS
     instances[0].InstanceID = 0;
@@ -844,17 +857,29 @@ void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cm
     instances[1].Transform[2][2] = 1.0f;
     instances[1].AccelerationStructure = m_directRTAS.blas->GetGPUVirtualAddress();
 
+    // Instance 2: Ground Plane BLAS (optional)
+    if (m_groundPlane.enabled && m_groundPlane.blas) {
+        instances[2].InstanceID = 2;  // ID 2 = ground plane (for shader identification)
+        instances[2].InstanceMask = 0xFF;
+        instances[2].InstanceContributionToHitGroupIndex = 0;
+        instances[2].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+        instances[2].Transform[0][0] = 1.0f;
+        instances[2].Transform[1][1] = 1.0f;
+        instances[2].Transform[2][2] = 1.0f;
+        instances[2].AccelerationStructure = m_groundPlane.blas->GetGPUVirtualAddress();
+    }
+
     // Upload instance descriptors to legacy instance buffer
     void* mappedData = nullptr;
     m_instanceDescsBuffer->Map(0, nullptr, &mappedData);
-    memcpy(mappedData, instances, sizeof(instances));
+    memcpy(mappedData, instances, instanceCount * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
     m_instanceDescsBuffer->Unmap(0, nullptr);
 
-    // Build combined TLAS (2 instances)
+    // Build combined TLAS
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS tlasInputs = {};
     tlasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
     tlasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
-    tlasInputs.NumDescs = 2;  // TWO instances
+    tlasInputs.NumDescs = instanceCount;
     tlasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     tlasInputs.InstanceDescs = m_instanceDescsBuffer->GetGPUVirtualAddress();
 
@@ -1037,23 +1062,209 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
     }
 
     // ========================================================================
+    // GROUND PLANE BLAS (Optional)
+    // ========================================================================
+    // Build ground plane BLAS if enabled (only needs to be built once, but
+    // for simplicity we rebuild each frame since it's tiny)
+    if (m_groundPlane.enabled && m_groundPlane.blas) {
+        BuildGroundPlaneBLAS(cmdList);
+    }
+
+    // ========================================================================
     // COMBINED TLAS (Phase 1 - All Particles Visible)
     // ========================================================================
-    // Build a COMBINED TLAS with TWO instances:
+    // Build a COMBINED TLAS with 2-3 instances:
     //   Instance 0: Probe Grid BLAS (particles 0-2043)
     //   Instance 1: Direct RT BLAS (particles 2044+)
+    //   Instance 2: Ground Plane BLAS (optional)
     // This allows Gaussian renderer to trace ONE TLAS but see ALL particles
     // Avoids 2045 crash while maintaining full visibility
 
-    // 4. Build combined TLAS (only if we have overflow particles)
-    if (directRTCount > 0) {
+    // 4. Build combined TLAS (if we have overflow particles OR ground plane)
+    if (directRTCount > 0 || (m_groundPlane.enabled && m_groundPlane.blas)) {
         BuildCombinedTLAS(cmdList);
     } else {
-        // <=2044 particles: Use probe grid TLAS directly
+        // <=2044 particles and no ground plane: Use probe grid TLAS directly
         // Already built above, nothing to do
     }
 
     // 5. Dispatch lighting compute shader (uses probe grid TLAS for lighting)
     // TODO Phase 2: Use probe grid for volumetric GI, direct RT for overflow lighting
     DispatchRayQueryLighting(cmdList, particleBuffer, cameraPosition);
+}
+
+// ============================================================================
+// Ground Plane Geometry (Reflective Surface Experiment)
+// ============================================================================
+
+bool RTLightingSystem_RayQuery::CreateGroundPlaneGeometry() {
+    if (!m_groundPlane.enabled) {
+        return true;  // Not enabled, nothing to do
+    }
+
+    LOG_INFO("Creating ground plane geometry (height={}, size={})",
+             m_groundPlane.height, m_groundPlane.size);
+
+    // Create a simple quad (4 vertices, 6 indices for 2 triangles)
+    float halfSize = m_groundPlane.size * 0.5f;
+    float y = m_groundPlane.height;
+
+    // Vertex data: position only (float3)
+    struct Vertex {
+        float x, y, z;
+    };
+    Vertex vertices[4] = {
+        { -halfSize, y, -halfSize },  // 0: back-left
+        {  halfSize, y, -halfSize },  // 1: back-right
+        {  halfSize, y,  halfSize },  // 2: front-right
+        { -halfSize, y,  halfSize }   // 3: front-left
+    };
+
+    // Index data: 2 triangles (CCW winding for upward normal)
+    uint32_t indices[6] = {
+        0, 2, 1,  // Triangle 1: back-left, front-right, back-right
+        0, 3, 2   // Triangle 2: back-left, front-left, front-right
+    };
+
+    // Create vertex buffer (upload heap for simplicity)
+    {
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
+
+        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_groundPlane.vertexBuffer));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create ground plane vertex buffer");
+            return false;
+        }
+
+        // Upload vertex data
+        void* mapped = nullptr;
+        m_groundPlane.vertexBuffer->Map(0, nullptr, &mapped);
+        memcpy(mapped, vertices, sizeof(vertices));
+        m_groundPlane.vertexBuffer->Unmap(0, nullptr);
+    }
+
+    // Create index buffer (upload heap for simplicity)
+    {
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(indices));
+
+        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_groundPlane.indexBuffer));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create ground plane index buffer");
+            return false;
+        }
+
+        // Upload index data
+        void* mapped = nullptr;
+        m_groundPlane.indexBuffer->Map(0, nullptr, &mapped);
+        memcpy(mapped, indices, sizeof(indices));
+        m_groundPlane.indexBuffer->Unmap(0, nullptr);
+    }
+
+    // Get BLAS size requirements for triangle geometry
+    {
+        D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
+        geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+        geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+        geomDesc.Triangles.VertexBuffer.StartAddress = m_groundPlane.vertexBuffer->GetGPUVirtualAddress();
+        geomDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(Vertex);
+        geomDesc.Triangles.VertexCount = 4;
+        geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+        geomDesc.Triangles.IndexBuffer = m_groundPlane.indexBuffer->GetGPUVirtualAddress();
+        geomDesc.Triangles.IndexCount = 6;
+        geomDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+        blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+        blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;  // Static geometry
+        blasInputs.NumDescs = 1;
+        blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+        blasInputs.pGeometryDescs = &geomDesc;
+
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+        m_device->GetDevice()->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &prebuildInfo);
+
+        m_groundPlane.blasSize = prebuildInfo.ResultDataMaxSizeInBytes;
+        size_t scratchSize = prebuildInfo.ScratchDataSizeInBytes;
+
+        LOG_INFO("Ground plane BLAS: size={} bytes, scratch={} bytes",
+                 m_groundPlane.blasSize, scratchSize);
+
+        // Create BLAS buffer
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        D3D12_RESOURCE_DESC blasDesc = CD3DX12_RESOURCE_DESC::Buffer(
+            m_groundPlane.blasSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+        HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &blasDesc,
+            D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+            nullptr, IID_PPV_ARGS(&m_groundPlane.blas));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create ground plane BLAS buffer");
+            return false;
+        }
+
+        // Create scratch buffer
+        D3D12_RESOURCE_DESC scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(
+            scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &scratchDesc,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            nullptr, IID_PPV_ARGS(&m_groundPlane.blasScratch));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create ground plane BLAS scratch buffer");
+            return false;
+        }
+    }
+
+    LOG_INFO("Ground plane geometry created successfully");
+    return true;
+}
+
+void RTLightingSystem_RayQuery::BuildGroundPlaneBLAS(ID3D12GraphicsCommandList4* cmdList) {
+    if (!m_groundPlane.enabled || !m_groundPlane.blas) {
+        return;
+    }
+
+    // Build BLAS for triangle geometry
+    D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
+    geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+    geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+    geomDesc.Triangles.VertexBuffer.StartAddress = m_groundPlane.vertexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.VertexBuffer.StrideInBytes = 12;  // sizeof(float) * 3
+    geomDesc.Triangles.VertexCount = 4;
+    geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+    geomDesc.Triangles.IndexBuffer = m_groundPlane.indexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.IndexCount = 6;
+    geomDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+    blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    blasInputs.NumDescs = 1;
+    blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    blasInputs.pGeometryDescs = &geomDesc;
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc = {};
+    blasDesc.Inputs = blasInputs;
+    blasDesc.DestAccelerationStructureData = m_groundPlane.blas->GetGPUVirtualAddress();
+    blasDesc.ScratchAccelerationStructureData = m_groundPlane.blasScratch->GetGPUVirtualAddress();
+
+    cmdList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
+
+    // UAV barrier
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_groundPlane.blas.Get());
+    cmdList->ResourceBarrier(1, &barrier);
 }

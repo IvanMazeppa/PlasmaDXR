@@ -98,6 +98,17 @@ public:
     void SetDensityScaleMin(float min) { m_densityScaleMin = min; }
     void SetDensityScaleMax(float max) { m_densityScaleMax = max; }
 
+    // Ground plane settings
+    void SetGroundPlaneEnabled(bool enabled) { m_groundPlane.enabled = enabled; }
+    void SetGroundPlaneHeight(float height) { m_groundPlane.height = height; }
+    void SetGroundPlaneSize(float size) { m_groundPlane.size = size; }
+    void SetGroundPlaneAlbedo(float r, float g, float b) {
+        m_groundPlane.albedo[0] = r;
+        m_groundPlane.albedo[1] = g;
+        m_groundPlane.albedo[2] = b;
+    }
+    bool IsGroundPlaneEnabled() const { return m_groundPlane.enabled; }
+
 private:
     // ========================================================================
     // Dual AS Architecture - Type Definitions (Phase 1)
@@ -118,6 +129,19 @@ private:
 
     static constexpr uint32_t PROBE_GRID_PARTICLE_LIMIT = 2044;    // Max particles before bug threshold
 
+    // Ground plane geometry (triangle-based BLAS)
+    struct GroundPlaneGeometry {
+        Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer;    // 4 vertices (quad)
+        Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer;     // 6 indices (2 triangles)
+        Microsoft::WRL::ComPtr<ID3D12Resource> blas;            // BLAS for triangles
+        Microsoft::WRL::ComPtr<ID3D12Resource> blasScratch;     // Build scratch
+        size_t blasSize = 0;
+        bool enabled = false;
+        float height = -500.0f;
+        float size = 3000.0f;
+        float albedo[3] = {0.3f, 0.3f, 0.35f};
+    };
+
     // ========================================================================
     // Private Functions
     // ========================================================================
@@ -132,6 +156,10 @@ private:
     void BuildBLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, uint32_t particleOffset);
     void BuildTLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet);
     void BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList);  // Combined TLAS with 2 instances for full visibility
+
+    // Ground plane helpers
+    bool CreateGroundPlaneGeometry();
+    void BuildGroundPlaneBLAS(ID3D12GraphicsCommandList4* cmdList);
 
     // Legacy functions (will be removed after migration)
     void GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer);
@@ -199,4 +227,9 @@ private:
 
     size_t m_blasSize = 0;
     size_t m_tlasSize = 0;
+
+    // ============================================================================
+    // Ground Plane Geometry (Reflective Surface Experiment)
+    // ============================================================================
+    GroundPlaneGeometry m_groundPlane;
 };
