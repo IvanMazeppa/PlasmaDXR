@@ -1,8 +1,35 @@
 # PlasmaDX-Clean Agent System
 
-**Last Updated**: 2025-10-22
+**Last Updated**: 2025-11-19
 **Claude Code Version**: 2.x
-**Agent Count**: 3 Phase 5 agents + access to 5 global debugging agents
+**Agent Count**: 4 Councils + 3 Phase 5 agents + 5 global debugging agents
+
+---
+
+## Council Architecture (Strategic Layer)
+
+Councils are **strategic decision-makers** that coordinate specialists and enforce quality gates.
+
+### **materials-council** ✅ ACTIVE
+**Description**: Strategic orchestrator for material system decisions
+**Use when**: Adding material types, modifying particle structure, setting material properties
+**Capabilities**:
+- Architectural decisions for material type systems
+- Performance budget enforcement (<5% FPS regression)
+- GPU alignment validation (16-byte requirement)
+- Dispatches to `materials-and-structure-specialist` for implementation
+
+### **rendering-council** ⏳ PLANNED (Agent SDK)
+**Description**: Visual quality and rendering pipeline decisions
+**Use when**: RTXDI issues, shadow quality, volumetric artifacts
+
+### **physics-council** ⏳ PLANNED
+**Description**: PINN integration and GPU physics decisions
+**Use when**: ML physics, accretion disk dynamics, performance optimization
+
+### **diagnostics-council** ⏳ PLANNED
+**Description**: PIX debugging and performance profiling coordination
+**Use when**: GPU crashes, TDR hangs, bottleneck analysis
 
 ---
 

@@ -430,7 +430,31 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
         return;
     }
 
+    // DIAGNOSTIC: Log entry to PINN physics update
+    static bool firstCall = true;
+    if (firstCall) {
+        LOG_INFO("[PINN] First call to UpdatePhysics_PINN");
+        LOG_INFO("[PINN]   CPU positions size: {}", m_cpuPositions.size());
+        LOG_INFO("[PINN]   CPU velocities size: {}", m_cpuVelocities.size());
+        LOG_INFO("[PINN]   CPU forces size: {}", m_cpuForces.size());
+        LOG_INFO("[PINN]   Active particle count: {}", m_activeParticleCount);
+        LOG_INFO("[PINN]   Positions pointer: {}", (void*)m_cpuPositions.data());
+        LOG_INFO("[PINN]   Velocities pointer: {}", (void*)m_cpuVelocities.data());
+        LOG_INFO("[PINN]   Forces pointer: {}", (void*)m_cpuForces.data());
+        firstCall = false;
+    }
+
+    // Validate vector sizes match
+    if (m_cpuPositions.size() != m_particleCount ||
+        m_cpuVelocities.size() != m_particleCount ||
+        m_cpuForces.size() != m_particleCount) {
+        LOG_ERROR("[PINN] Vector size mismatch! pos={}, vel={}, force={}, expected={}",
+            m_cpuPositions.size(), m_cpuVelocities.size(), m_cpuForces.size(), m_particleCount);
+        return;
+    }
+
     // Step 1: Predict forces using PINN (works directly on CPU particles)
+    LOG_INFO("[PINN] About to call PredictForcesBatch...");
     bool success = m_pinnPhysics->PredictForcesBatch(
         m_cpuPositions.data(),
         m_cpuVelocities.data(),
@@ -438,6 +462,7 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
         m_activeParticleCount,
         totalTime
     );
+    LOG_INFO("[PINN] PredictForcesBatch returned: {}", success);
 
     if (!success) {
         LOG_ERROR("[PINN] Force prediction failed");
@@ -445,15 +470,20 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
     }
 
     // Step 2: Integrate forces (Velocity Verlet) on CPU particles
+    LOG_INFO("[PINN] About to integrate forces...");
     IntegrateForces(m_cpuForces, deltaTime);
+    LOG_INFO("[PINN] Force integration complete");
 
     // Step 3: Upload updated CPU particles to GPU for rendering
+    LOG_INFO("[PINN] About to upload particle data to GPU...");
     UploadParticleData(m_cpuPositions, m_cpuVelocities);
+    LOG_INFO("[PINN] Upload data prepared");
 
-    // CRITICAL: Execute command list immediately to complete the upload
-    // Without this, the particle buffer is left in an invalid state and causes GPU crash
-    m_device->ExecuteCommandList();
-    m_device->WaitForGPU();  // Ensure upload completes before next frame
+    // FIX: Let main render loop execute command list at proper time
+    // The upload commands are recorded on the shared command list and will be
+    // executed when the main loop calls ExecuteCommandList().
+    // This prevents mid-frame command list execution which was causing crashes.
+    LOG_INFO("[PINN] Upload commands recorded - main loop will execute");
 
     // Log performance metrics every 60 frames
     static int s_pinnUpdateCount = 0;
