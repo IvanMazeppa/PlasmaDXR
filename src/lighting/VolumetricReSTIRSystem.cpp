@@ -770,6 +770,11 @@ void VolumetricReSTIRSystem::GenerateCandidates(
     constants.maxBounces = m_maxBounces;
     constants.frameIndex = frameIndex;
     constants.cameraPos = cameraPos;
+    // FIX 2025-11-19: Add runtime-tunable shader parameters
+    constants.emissionIntensity = m_emissionIntensity;
+    constants.particleRadius = m_particleRadius;
+    constants.extinctionCoefficient = m_extinctionCoefficient;
+    constants.phaseG = m_phaseG;
 
     // Convert matrices to XMFLOAT4X4 for constant buffer upload
     DirectX::XMStoreFloat4x4(&constants.viewMatrix, viewMatrix);
@@ -1175,6 +1180,10 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
         uint32_t particleCount;
         uint32_t padding0;
         DirectX::XMFLOAT3 cameraPos;
+        float emissionIntensity;          // FIX 2025-11-19: Runtime tunable
+        float particleRadius;             // FIX 2025-11-19: Runtime tunable
+        float extinctionCoefficient;      // FIX 2025-11-19: Runtime tunable
+        float phaseG;                     // FIX 2025-11-19: Runtime tunable
         float padding1;
         DirectX::XMFLOAT4X4 viewMatrix;
         DirectX::XMFLOAT4X4 projMatrix;
@@ -1186,6 +1195,11 @@ void VolumetricReSTIRSystem::ShadeSelectedPaths(
     constants.screenHeight = m_height;
     constants.particleCount = particleCount;
     constants.cameraPos = cameraPos;
+    // FIX 2025-11-19: Add runtime-tunable shader parameters
+    constants.emissionIntensity = m_emissionIntensity;
+    constants.particleRadius = m_particleRadius;
+    constants.extinctionCoefficient = m_extinctionCoefficient;
+    constants.phaseG = m_phaseG;
     DirectX::XMStoreFloat4x4(&constants.viewMatrix, viewMatrix);
     DirectX::XMStoreFloat4x4(&constants.projMatrix, projMatrix);
 

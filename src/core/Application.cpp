@@ -3574,6 +3574,67 @@ void Application::RenderImGui() {
                                   "Higher K = more accurate volume caustics");
             }
 
+            // FIX 2025-11-19: Runtime tuning parameters
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.7f, 1.0f), "Visual Tuning (Runtime)");
+
+            // Emission intensity
+            float emissionIntensity = m_volumetricReSTIR->GetEmissionIntensity();
+            if (ImGui::SliderFloat("Emission Intensity", &emissionIntensity, 1.0f, 500.0f, "%.1f")) {
+                m_volumetricReSTIR->SetEmissionIntensity(emissionIntensity);
+                LOG_INFO("Volumetric ReSTIR: Emission intensity = {}", emissionIntensity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Blackbody emission brightness multiplier\n"
+                                  "10 = Dim (like distant stars)\n"
+                                  "100 = Moderate (default)\n"
+                                  "500 = Very bright\n"
+                                  "Controls overall scene brightness");
+            }
+
+            // Particle radius
+            float particleRadius = m_volumetricReSTIR->GetParticleRadius();
+            if (ImGui::SliderFloat("Particle Radius", &particleRadius, 5.0f, 100.0f, "%.1f")) {
+                m_volumetricReSTIR->SetParticleRadius(particleRadius);
+                LOG_INFO("Volumetric ReSTIR: Particle radius = {}", particleRadius);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Ray-sphere intersection radius\n"
+                                  "5-15 = Small particles (sparse look)\n"
+                                  "50 = Default (matches other renderers)\n"
+                                  "100 = Large particles (volumetric)\n"
+                                  "Controls particle size appearance");
+            }
+
+            // Extinction coefficient
+            float extinction = m_volumetricReSTIR->GetExtinctionCoefficient();
+            if (ImGui::SliderFloat("Extinction", &extinction, 0.001f, 0.1f, "%.4f")) {
+                m_volumetricReSTIR->SetExtinctionCoefficient(extinction);
+                LOG_INFO("Volumetric ReSTIR: Extinction = {}", extinction);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Beer-Lambert absorption coefficient\n"
+                                  "0.001 = Transparent (glass-like)\n"
+                                  "0.01 = Moderate volumetric feel\n"
+                                  "0.1 = Dense fog\n"
+                                  "Higher = more absorption/darker interior");
+            }
+
+            // Phase function g
+            float phaseG = m_volumetricReSTIR->GetPhaseG();
+            if (ImGui::SliderFloat("Phase G", &phaseG, -0.9f, 0.9f, "%.2f")) {
+                m_volumetricReSTIR->SetPhaseG(phaseG);
+                LOG_INFO("Volumetric ReSTIR: Phase G = {}", phaseG);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Henyey-Greenstein scattering direction\n"
+                                  "-0.9 = Back-scatter (dark facing camera)\n"
+                                  "0.0 = Isotropic (uniform)\n"
+                                  "0.3 = Default (slight forward scatter)\n"
+                                  "0.9 = Strong forward scatter (bright edges)\n"
+                                  "Controls light distribution");
+            }
+
             // Performance estimate
             ImGui::Separator();
             float estimatedMs = randomWalks * maxBounces * 0.05f;  // Rough estimate

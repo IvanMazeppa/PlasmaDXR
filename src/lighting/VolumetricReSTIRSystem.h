@@ -142,6 +142,19 @@ public:
     float GetTemporalClampFactor() const { return m_temporalClampFactor; }
 
     /**
+     * Shader tuning parameters (FIX 2025-11-19: Make runtime-adjustable via ImGui)
+     */
+    void SetEmissionIntensity(float intensity) { m_emissionIntensity = intensity; }
+    void SetParticleRadius(float radius) { m_particleRadius = radius; }
+    void SetExtinctionCoefficient(float extinction) { m_extinctionCoefficient = extinction; }
+    void SetPhaseG(float g) { m_phaseG = g; }
+
+    float GetEmissionIntensity() const { return m_emissionIntensity; }
+    float GetParticleRadius() const { return m_particleRadius; }
+    float GetExtinctionCoefficient() const { return m_extinctionCoefficient; }
+    float GetPhaseG() const { return m_phaseG; }
+
+    /**
      * Read and log diagnostic counters from GPU
      * Must be called after GPU has finished executing PopulateVolumeMip2
      */
@@ -194,6 +207,11 @@ private:
         uint32_t padding1;
 
         DirectX::XMFLOAT3 cameraPos;
+        float emissionIntensity;          // FIX 2025-11-19: Runtime tunable
+
+        float particleRadius;             // FIX 2025-11-19: Runtime tunable
+        float extinctionCoefficient;      // FIX 2025-11-19: Runtime tunable
+        float phaseG;                     // FIX 2025-11-19: Runtime tunable
         float padding2;
 
         DirectX::XMFLOAT4X4 viewMatrix;
@@ -239,6 +257,12 @@ private:
     uint32_t m_maxBounces = 3;            // K (paper uses 3)
     uint32_t m_spatialNeighbors = 3;      // N for Phase 2
     float m_temporalClampFactor = 4.0f;   // Q for Phase 3
+
+    // === Shader Tuning Parameters (FIX 2025-11-19: Runtime adjustable) ===
+    float m_emissionIntensity = 100.0f;       // Blackbody emission multiplier
+    float m_particleRadius = 50.0f;           // Sphere radius for ray intersection
+    float m_extinctionCoefficient = 0.01f;    // Beer-Lambert absorption
+    float m_phaseG = 0.3f;                    // Henyey-Greenstein anisotropy (-1 to 1)
 
     // === Phase Control ===
     bool m_enableSpatialReuse = false;    // Phase 2 (not yet implemented)

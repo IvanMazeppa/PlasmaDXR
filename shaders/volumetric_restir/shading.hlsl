@@ -26,6 +26,11 @@ cbuffer ShadingConstants : register(b0) {
     uint g_padding0;
 
     float3 g_cameraPos;
+    float g_emissionIntensity;   // FIX 2025-11-19: Runtime tunable
+
+    float g_particleRadius;      // FIX 2025-11-19: Runtime tunable
+    float g_extinctionCoeff;     // FIX 2025-11-19: Runtime tunable
+    float g_phaseG;              // FIX 2025-11-19: Runtime tunable
     float g_padding1;
 
     float4x4 g_viewMatrix;
@@ -132,8 +137,8 @@ bool QueryParticleFromRay(float3 origin, float3 direction, float distance, out u
             Particle p = g_particles[particleIdx];
 
             // Ray-sphere intersection using particle position
-            // FIX 2025-11-19: Use 50.0 to match particle radius setting (was 10.0, causing tiny particles)
-            float sphereRadius = 50.0;
+            // FIX 2025-11-19: Now uses runtime-tunable g_particleRadius
+            float sphereRadius = g_particleRadius;
             float intersectT;
             if (RaySphereIntersection(origin, direction, p.position, sphereRadius, intersectT)) {
                 // Valid intersection within ray bounds
@@ -179,8 +184,8 @@ float3 EvaluateParticleEmission(Particle particle) {
     }
 
     // Intensity (Stefan-Boltzmann law, T⁴)
-    // FIX 2025-11-19: Increased from 0.1 → 10.0 → 100.0 for visibility (still too dim at 10.0)
-    float intensity = pow(temp / 10000.0, 4.0) * 100.0;
+    // FIX 2025-11-19: Now uses runtime-tunable g_emissionIntensity
+    float intensity = pow(temp / 10000.0, 4.0) * g_emissionIntensity;
 
     return color * intensity;
 }
@@ -199,8 +204,8 @@ float3 EvaluateTransmittance(float3 start, float3 end) {
     float distance = length(end - start);
 
     // Extinction coefficient (constant for Phase 1)
-    // FIX 2025-11-19: Increased from 0.001 to 0.01 for better volumetric feel
-    float extinction = 0.01;
+    // FIX 2025-11-19: Now uses runtime-tunable g_extinctionCoeff
+    float extinction = g_extinctionCoeff;
 
     // Beer-Lambert law
     float transmittance = exp(-extinction * distance);
@@ -257,9 +262,9 @@ float3 EvaluatePathContribution(
             float3 emission = EvaluateParticleEmission(particle);
 
             // Evaluate phase function
-            // FIX 2025-11-19: Reduced g from 0.7 to 0.3 for more isotropic scattering
+            // FIX 2025-11-19: Now uses runtime-tunable g_phaseG
             float cosTheta = dot(-currentDir, vertex.omega);
-            float phase = HenyeyGreenstein(cosTheta, 0.3);
+            float phase = HenyeyGreenstein(cosTheta, g_phaseG);
 
             // Evaluate transmittance along this segment
             float3 transmittance = EvaluateTransmittance(prevPos, currentPos);
