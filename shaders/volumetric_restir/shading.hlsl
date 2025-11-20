@@ -179,8 +179,8 @@ float3 EvaluateParticleEmission(Particle particle) {
     }
 
     // Intensity (Stefan-Boltzmann law, T⁴)
-    // FIX 2025-11-19: Increased from 0.1 to 10.0 for visibility (was way too dim)
-    float intensity = pow(temp / 10000.0, 4.0) * 10.0;
+    // FIX 2025-11-19: Increased from 0.1 → 10.0 → 100.0 for visibility (still too dim at 10.0)
+    float intensity = pow(temp / 10000.0, 4.0) * 100.0;
 
     return color * intensity;
 }

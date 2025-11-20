@@ -235,7 +235,7 @@ private:
     uint32_t m_height = 0;
 
     // === Configuration Parameters ===
-    uint32_t m_randomWalksPerPixel = 4;   // M (paper uses 4)
+    uint32_t m_randomWalksPerPixel = 32;  // M (paper uses 4, increased to 32 for stability without temporal accumulation)
     uint32_t m_maxBounces = 3;            // K (paper uses 3)
     uint32_t m_spatialNeighbors = 3;      // N for Phase 2
     float m_temporalClampFactor = 4.0f;   // Q for Phase 3
