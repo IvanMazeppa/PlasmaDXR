@@ -477,6 +477,147 @@ float CastVolumetricShadowRay(
     return shadowFactor;
 }
 
+// =============================================================================
+// ReSTIR HELPER FUNCTIONS
+// =============================================================================
+
+// Simple hash function for pseudo-random numbers
+float Hash(uint seed) {
+    seed = seed * 747796405u + 2891336453u;
+    seed = ((seed >> 16) ^ seed) * 747796405u;
+    seed = ((seed >> 16) ^ seed);
+    return float(seed) / 4294967295.0;
+}
+
+// =============================================================================
+// SPHERICAL HARMONICS L2 RECONSTRUCTION
+// =============================================================================
+
+/**
+ * Evaluate SH L2 basis functions (same as update_probes.hlsl)
+ */
+void EvaluateSH_L2(float3 dir, out float sh[9]) {
+    dir = normalize(dir);
+    float x = dir.x, y = dir.y, z = dir.z;
+    float x2 = x * x, y2 = y * y, z2 = z * z;
+
+    sh[0] = 0.282095;                      // Band 0
+    sh[1] = 0.488603 * y;                  // Band 1
+    sh[2] = 0.488603 * z;
+    sh[3] = 0.488603 * x;
+    sh[4] = 1.092548 * x * y;              // Band 2
+    sh[5] = 1.092548 * y * z;
+    sh[6] = 0.315392 * (3.0 * z2 - 1.0);
+    sh[7] = 1.092548 * x * z;
+    sh[8] = 0.546274 * (x2 - y2);
+}
+
+/**
+ * Reconstruct irradiance from SH coefficients for a given direction
+ *
+ * @param shCoeffs Array of 9 RGB SH coefficients from a probe
+ * @param direction Normalized direction to evaluate lighting
+ * @return Reconstructed RGB irradiance for that direction
+ */
+float3 ReconstructSH_L2(float3 shCoeffs[9], float3 direction) {
+    // Evaluate basis functions for this direction
+    float shBasis[9];
+    EvaluateSH_L2(direction, shBasis);
+
+    // Dot product: sum of (coefficient × basis) for all 9 terms
+    float3 irradiance = float3(0, 0, 0);
+    for (uint i = 0; i < 9; i++) {
+        irradiance += shCoeffs[i] * shBasis[i];
+    }
+
+    return irradiance;
+}
+
+// =============================================================================
+// PROBE GRID SAMPLING (Phase 0.13.1)
+// =============================================================================
+/**
+ * Sample probe grid irradiance using trilinear interpolation with FULL SH L2 reconstruction
+ *
+ * Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
+ * Zero atomic operations = zero contention = scales to 10K+ particles!
+ *
+ * Algorithm:
+ * 1. Convert world position to grid coordinates
+ * 2. Find 8 nearest probes (corner of grid cell)
+ * 3. Reconstruct directional irradiance from SH L2 coefficients for each probe
+ * 4. Trilinear interpolation between reconstructed values
+ *
+ * @param worldPos World-space position to sample lighting at
+ * @param viewDir Normalized view direction (for directional scattering)
+ * @return Irradiance (RGB color) at the given position
+ */
+float3 SampleProbeGrid(float3 worldPos, float3 viewDir) {
+    // Convert world position to grid coordinates
+    float3 gridCoord = (worldPos - gridMin) / gridSpacing;
+
+    // Clamp to valid grid bounds [0, gridSize-1]
+    gridCoord = clamp(gridCoord, float3(0, 0, 0), float3(gridSize - 1, gridSize - 1, gridSize - 1));
+
+    // Base grid index (integer part)
+    int3 gridIdx0 = int3(floor(gridCoord));
+    int3 gridIdx1 = min(gridIdx0 + int3(1, 1, 1), int3(gridSize - 1, gridSize - 1, gridSize - 1));
+
+    // Interpolation weights (fractional part)
+    float3 t = frac(gridCoord);
+
+    // Fetch 8 corner probes (trilinear cube)
+    // Linear index formula: x + y*gridSize + z*gridSize²
+    uint stride = gridSize;
+    uint strideZ = gridSize * gridSize;
+
+    uint idx000 = gridIdx0.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
+    uint idx001 = gridIdx0.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
+    uint idx010 = gridIdx0.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
+    uint idx011 = gridIdx0.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
+    uint idx100 = gridIdx1.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
+    uint idx101 = gridIdx1.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
+    uint idx110 = gridIdx1.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
+    uint idx111 = gridIdx1.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
+
+    // Bounds check (safety against out-of-bounds access)
+    if (idx000 >= totalProbes || idx001 >= totalProbes ||
+        idx010 >= totalProbes || idx011 >= totalProbes ||
+        idx100 >= totalProbes || idx101 >= totalProbes ||
+        idx110 >= totalProbes || idx111 >= totalProbes) {
+        return float3(0, 0, 0);  // Out of bounds - return black
+    }
+
+    // FULL SH L2 RECONSTRUCTION for directional lighting!
+    // For each of the 8 corner probes, reconstruct irradiance for the view direction
+    // This enables proper Henyey-Greenstein phase function scattering!
+
+    float3 c000 = ReconstructSH_L2(g_probeGrid[idx000].irradiance, viewDir);
+    float3 c001 = ReconstructSH_L2(g_probeGrid[idx001].irradiance, viewDir);
+    float3 c010 = ReconstructSH_L2(g_probeGrid[idx010].irradiance, viewDir);
+    float3 c011 = ReconstructSH_L2(g_probeGrid[idx011].irradiance, viewDir);
+    float3 c100 = ReconstructSH_L2(g_probeGrid[idx100].irradiance, viewDir);
+    float3 c101 = ReconstructSH_L2(g_probeGrid[idx101].irradiance, viewDir);
+    float3 c110 = ReconstructSH_L2(g_probeGrid[idx110].irradiance, viewDir);
+    float3 c111 = ReconstructSH_L2(g_probeGrid[idx111].irradiance, viewDir);
+
+    // Trilinear interpolation
+    // First interpolate along X axis (4 lerps)
+    float3 c00 = lerp(c000, c100, t.x);
+    float3 c01 = lerp(c001, c101, t.x);
+    float3 c10 = lerp(c010, c110, t.x);
+    float3 c11 = lerp(c011, c111, t.x);
+
+    // Interpolate along Y axis (2 lerps)
+    float3 c0 = lerp(c00, c10, t.y);
+    float3 c1 = lerp(c01, c11, t.y);
+
+    // Final interpolation along Z axis (1 lerp)
+    float3 finalIrradiance = lerp(c0, c1, t.z);
+
+    return finalIrradiance;
+}
+
 // ============================================================================
 // ATMOSPHERIC FOG RAY MARCHING - Volumetric God Rays
 // ============================================================================
@@ -605,6 +746,21 @@ float3 RayMarchAtmosphericFog(
             // Accumulate fog color (volumetric integral)
             // Now god rays will be visible THROUGH the particle cloud!
             totalFogColor += scatteringColor * stepSize;
+        }
+
+        // === ADDED: Indirect/Ambient Volumetric Lighting from Probe Grid ===
+        // If probe grid is enabled, add its contribution to the fog
+        // This illuminates the "air" with bounced light, not just direct shafts
+        if (useProbeGrid != 0) {
+             // Sample probe grid for ambient/indirect lighting
+             // We pass rayDir (view direction) to reconstruct directional irradiance
+             float3 indirect = SampleProbeGrid(samplePos, rayDir); 
+             
+             // Scale by fog density and a tuning factor (0.05 = 5% ambient strength)
+             // This ensures the fog isn't too bright but picks up the color of the environment
+             float3 indirectScatter = indirect * godRayDensity * 0.05;
+             
+             totalFogColor += indirectScatter * stepSize;
         }
     }
 
@@ -995,146 +1151,6 @@ void InsertHit(inout HitRecord hits[64], inout uint hitCount, uint particleIdx, 
     hitCount++;
 }
 
-// =============================================================================
-// ReSTIR HELPER FUNCTIONS
-// =============================================================================
-
-// Simple hash function for pseudo-random numbers
-float Hash(uint seed) {
-    seed = seed * 747796405u + 2891336453u;
-    seed = ((seed >> 16) ^ seed) * 747796405u;
-    seed = ((seed >> 16) ^ seed);
-    return float(seed) / 4294967295.0;
-}
-
-// =============================================================================
-// SPHERICAL HARMONICS L2 RECONSTRUCTION
-// =============================================================================
-
-/**
- * Evaluate SH L2 basis functions (same as update_probes.hlsl)
- */
-void EvaluateSH_L2(float3 dir, out float sh[9]) {
-    dir = normalize(dir);
-    float x = dir.x, y = dir.y, z = dir.z;
-    float x2 = x * x, y2 = y * y, z2 = z * z;
-
-    sh[0] = 0.282095;                      // Band 0
-    sh[1] = 0.488603 * y;                  // Band 1
-    sh[2] = 0.488603 * z;
-    sh[3] = 0.488603 * x;
-    sh[4] = 1.092548 * x * y;              // Band 2
-    sh[5] = 1.092548 * y * z;
-    sh[6] = 0.315392 * (3.0 * z2 - 1.0);
-    sh[7] = 1.092548 * x * z;
-    sh[8] = 0.546274 * (x2 - y2);
-}
-
-/**
- * Reconstruct irradiance from SH coefficients for a given direction
- *
- * @param shCoeffs Array of 9 RGB SH coefficients from a probe
- * @param direction Normalized direction to evaluate lighting
- * @return Reconstructed RGB irradiance for that direction
- */
-float3 ReconstructSH_L2(float3 shCoeffs[9], float3 direction) {
-    // Evaluate basis functions for this direction
-    float shBasis[9];
-    EvaluateSH_L2(direction, shBasis);
-
-    // Dot product: sum of (coefficient × basis) for all 9 terms
-    float3 irradiance = float3(0, 0, 0);
-    for (uint i = 0; i < 9; i++) {
-        irradiance += shCoeffs[i] * shBasis[i];
-    }
-
-    return irradiance;
-}
-
-// =============================================================================
-// PROBE GRID SAMPLING (Phase 0.13.1)
-// =============================================================================
-/**
- * Sample probe grid irradiance using trilinear interpolation with FULL SH L2 reconstruction
- *
- * Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
- * Zero atomic operations = zero contention = scales to 10K+ particles!
- *
- * Algorithm:
- * 1. Convert world position to grid coordinates
- * 2. Find 8 nearest probes (corner of grid cell)
- * 3. Reconstruct directional irradiance from SH L2 coefficients for each probe
- * 4. Trilinear interpolation between reconstructed values
- *
- * @param worldPos World-space position to sample lighting at
- * @param viewDir Normalized view direction (for directional scattering)
- * @return Irradiance (RGB color) at the given position
- */
-float3 SampleProbeGrid(float3 worldPos, float3 viewDir) {
-    // Convert world position to grid coordinates
-    float3 gridCoord = (worldPos - gridMin) / gridSpacing;
-
-    // Clamp to valid grid bounds [0, gridSize-1]
-    gridCoord = clamp(gridCoord, float3(0, 0, 0), float3(gridSize - 1, gridSize - 1, gridSize - 1));
-
-    // Base grid index (integer part)
-    int3 gridIdx0 = int3(floor(gridCoord));
-    int3 gridIdx1 = min(gridIdx0 + int3(1, 1, 1), int3(gridSize - 1, gridSize - 1, gridSize - 1));
-
-    // Interpolation weights (fractional part)
-    float3 t = frac(gridCoord);
-
-    // Fetch 8 corner probes (trilinear cube)
-    // Linear index formula: x + y*gridSize + z*gridSize²
-    uint stride = gridSize;
-    uint strideZ = gridSize * gridSize;
-
-    uint idx000 = gridIdx0.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
-    uint idx001 = gridIdx0.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
-    uint idx010 = gridIdx0.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
-    uint idx011 = gridIdx0.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
-    uint idx100 = gridIdx1.x + gridIdx0.y * stride + gridIdx0.z * strideZ;
-    uint idx101 = gridIdx1.x + gridIdx0.y * stride + gridIdx1.z * strideZ;
-    uint idx110 = gridIdx1.x + gridIdx1.y * stride + gridIdx0.z * strideZ;
-    uint idx111 = gridIdx1.x + gridIdx1.y * stride + gridIdx1.z * strideZ;
-
-    // Bounds check (safety against out-of-bounds access)
-    if (idx000 >= totalProbes || idx001 >= totalProbes ||
-        idx010 >= totalProbes || idx011 >= totalProbes ||
-        idx100 >= totalProbes || idx101 >= totalProbes ||
-        idx110 >= totalProbes || idx111 >= totalProbes) {
-        return float3(0, 0, 0);  // Out of bounds - return black
-    }
-
-    // FULL SH L2 RECONSTRUCTION for directional lighting!
-    // For each of the 8 corner probes, reconstruct irradiance for the view direction
-    // This enables proper Henyey-Greenstein phase function scattering!
-
-    float3 c000 = ReconstructSH_L2(g_probeGrid[idx000].irradiance, viewDir);
-    float3 c001 = ReconstructSH_L2(g_probeGrid[idx001].irradiance, viewDir);
-    float3 c010 = ReconstructSH_L2(g_probeGrid[idx010].irradiance, viewDir);
-    float3 c011 = ReconstructSH_L2(g_probeGrid[idx011].irradiance, viewDir);
-    float3 c100 = ReconstructSH_L2(g_probeGrid[idx100].irradiance, viewDir);
-    float3 c101 = ReconstructSH_L2(g_probeGrid[idx101].irradiance, viewDir);
-    float3 c110 = ReconstructSH_L2(g_probeGrid[idx110].irradiance, viewDir);
-    float3 c111 = ReconstructSH_L2(g_probeGrid[idx111].irradiance, viewDir);
-
-    // Trilinear interpolation
-    // First interpolate along X axis (4 lerps)
-    float3 c00 = lerp(c000, c100, t.x);
-    float3 c01 = lerp(c001, c101, t.x);
-    float3 c10 = lerp(c010, c110, t.x);
-    float3 c11 = lerp(c011, c111, t.x);
-
-    // Interpolate along Y axis (2 lerps)
-    float3 c0 = lerp(c00, c10, t.y);
-    float3 c1 = lerp(c01, c11, t.y);
-
-    // Final interpolation along Z axis (1 lerp)
-    float3 finalIrradiance = lerp(c0, c1, t.z);
-
-    return finalIrradiance;
-}
 
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
