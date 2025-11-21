@@ -1,14 +1,17 @@
 #include "FroxelSystem.h"
 #include "../core/Device.h"
-#include "../utils/ShaderManager.h"
+#include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
+#include "../utils/d3dx12/d3dx12.h"
 #include <stdexcept>
+#include <fstream>
+#include <vector>
 
 using namespace DirectX;
 
-FroxelSystem::FroxelSystem(Device* device, ShaderManager* shaderManager)
+FroxelSystem::FroxelSystem(Device* device, ResourceManager* resources)
     : m_device(device)
-    , m_shaderManager(shaderManager)
+    , m_resources(resources)
     , m_screenWidth(0)
     , m_screenHeight(0)
     , m_debugVisualization(false)
@@ -32,7 +35,7 @@ FroxelSystem::~FroxelSystem()
 bool FroxelSystem::Initialize(uint32_t width, uint32_t height)
 {
     if (m_initialized) {
-        LOG_WARNING("FroxelSystem already initialized");
+        LOG_WARN("FroxelSystem already initialized");
         return true;
     }
 
@@ -81,7 +84,7 @@ void FroxelSystem::Shutdown()
 
 void FroxelSystem::CreateResources()
 {
-    auto device = m_device->GetD3DDevice();
+    auto device = m_device->GetDevice();
 
     // === Create 3D Density Grid (R16_FLOAT) ===
     D3D12_RESOURCE_DESC densityDesc = {};
@@ -134,8 +137,78 @@ void FroxelSystem::CreateResources()
     m_lightingGrid->SetName(L"Froxel Lighting Grid");
 
     // === Create UAV and SRV descriptors ===
-    // Note: Actual descriptor creation should be done by ResourceManager
-    // This is a placeholder - you'll need to integrate with your descriptor heap system
+
+    // Density Grid UAV (for writing in inject_density.hlsl)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC densityUavDesc = {};
+    densityUavDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    densityUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+    densityUavDesc.Texture3D.MipSlice = 0;
+    densityUavDesc.Texture3D.FirstWSlice = 0;
+    densityUavDesc.Texture3D.WSize = m_gridParams.gridDimensions.z;
+
+    m_densityGridUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateUnorderedAccessView(m_densityGrid.Get(), nullptr, &densityUavDesc, m_densityGridUAV);
+
+    // Density Grid SRV (for reading in light_voxels.hlsl)
+    D3D12_SHADER_RESOURCE_VIEW_DESC densitySrvDesc = {};
+    densitySrvDesc.Format = DXGI_FORMAT_R16_FLOAT;
+    densitySrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    densitySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    densitySrvDesc.Texture3D.MipLevels = 1;
+
+    m_densityGridSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateShaderResourceView(m_densityGrid.Get(), &densitySrvDesc, m_densityGridSRV);
+
+    // Lighting Grid UAV (for writing in light_voxels.hlsl)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC lightingUavDesc = {};
+    lightingUavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    lightingUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+    lightingUavDesc.Texture3D.MipSlice = 0;
+    lightingUavDesc.Texture3D.FirstWSlice = 0;
+    lightingUavDesc.Texture3D.WSize = m_gridParams.gridDimensions.z;
+
+    m_lightingGridUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateUnorderedAccessView(m_lightingGrid.Get(), nullptr, &lightingUavDesc, m_lightingGridUAV);
+
+    // Lighting Grid SRV (for reading in particle_gaussian_raytrace.hlsl)
+    D3D12_SHADER_RESOURCE_VIEW_DESC lightingSrvDesc = {};
+    lightingSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    lightingSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    lightingSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    lightingSrvDesc.Texture3D.MipLevels = 1;
+
+    m_lightingGridSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateShaderResourceView(m_lightingGrid.Get(), &lightingSrvDesc, m_lightingGridSRV);
+
+    // === Create Constant Buffer for FroxelParams ===
+    const UINT constantBufferSize = (sizeof(GridParams) + 255) & ~255;  // Align to 256 bytes
+    D3D12_HEAP_PROPERTIES uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    D3D12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+
+    hr = device->CreateCommittedResource(
+        &uploadHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &cbDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_constantBuffer)
+    );
+
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to create froxel constant buffer");
+    }
+
+    m_constantBuffer->SetName(L"Froxel Constant Buffer");
+
+    // Map constant buffer (keep it mapped for lifetime)
+    hr = m_constantBuffer->Map(0, nullptr, &m_constantBufferMapped);
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to map froxel constant buffer");
+    }
+
+    LOG_INFO("Created froxel constant buffer: {} bytes (aligned from {} bytes)",
+             constantBufferSize, sizeof(GridParams));
+
     LOG_INFO("Created froxel grid textures ({}x{}x{} voxels)",
              m_gridParams.gridDimensions.x,
              m_gridParams.gridDimensions.y,
@@ -146,22 +219,142 @@ void FroxelSystem::CreateResources()
     LOG_INFO("  Lighting Grid: R16G16B16A16_FLOAT ({:.2f} MB)",
              (m_gridParams.gridDimensions.x * m_gridParams.gridDimensions.y *
               m_gridParams.gridDimensions.z * 8) / (1024.0f * 1024.0f));
+    LOG_INFO("  Created 4 descriptor views (2 UAVs, 2 SRVs)");
 }
 
 void FroxelSystem::CreatePipelineStates()
 {
-    // Load and compile shaders
-    auto injectDensityShader = m_shaderManager->LoadComputeShader(L"shaders/froxel/inject_density.hlsl");
+    auto d3dDevice = m_device->GetDevice();
 
-    if (!injectDensityShader) {
-        throw std::runtime_error("Failed to load inject_density.hlsl");
+    // === Load Inject Density Shader ===
+    std::ifstream injectDensityFile("shaders/froxel/inject_density.dxil", std::ios::binary);
+    if (!injectDensityFile) {
+        throw std::runtime_error("Failed to load inject_density.dxil - run CMake to compile shaders");
     }
 
-    // Create root signature for density injection
-    // TODO: Implement root signature creation
-    // For now, this is a placeholder
+    std::vector<char> injectDensityBytecode(
+        (std::istreambuf_iterator<char>(injectDensityFile)),
+        std::istreambuf_iterator<char>()
+    );
+    injectDensityFile.close();
 
-    LOG_INFO("Froxel pipeline states created");
+    // === Load Light Voxels Shader ===
+    std::ifstream lightVoxelsFile("shaders/froxel/light_voxels.dxil", std::ios::binary);
+    if (!lightVoxelsFile) {
+        throw std::runtime_error("Failed to load light_voxels.dxil - run CMake to compile shaders");
+    }
+
+    std::vector<char> lightVoxelsBytecode(
+        (std::istreambuf_iterator<char>(lightVoxelsFile)),
+        std::istreambuf_iterator<char>()
+    );
+    lightVoxelsFile.close();
+
+    // === Create Root Signature for Inject Density ===
+    // Root Parameters:
+    //   b0: FroxelParams constant buffer
+    //   t0: Particle buffer (SRV)
+    //   u0: Density grid (UAV)
+
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
+
+    CD3DX12_ROOT_PARAMETER1 rootParams[3];
+    rootParams[0].InitAsConstantBufferView(0);  // b0: FroxelParams
+    rootParams[1].InitAsDescriptorTable(1, &ranges[0]);  // t0: Particles
+    rootParams[2].InitAsDescriptorTable(1, &ranges[1]);  // u0: Density grid
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC injectRootSigDesc;
+    injectRootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
+                               D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    ComPtr<ID3DBlob> signature, error;
+    HRESULT hr = D3DX12SerializeVersionedRootSignature(&injectRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+                                                        &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Root signature serialization error: {}", (char*)error->GetBufferPointer());
+        }
+        throw std::runtime_error("Failed to serialize inject density root signature");
+    }
+
+    hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                      IID_PPV_ARGS(&m_injectDensityRootSig));
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to create inject density root signature");
+    }
+
+    m_injectDensityRootSig->SetName(L"Froxel Inject Density Root Signature");
+
+    // === Create Root Signature for Light Voxels ===
+    // Root Parameters:
+    //   b0: FroxelParams constant buffer
+    //   t0: Density grid (SRV)
+    //   t1: Light buffer (SRV)
+    //   t2: Particle BVH (acceleration structure)
+    //   u0: Lighting grid (UAV)
+
+    CD3DX12_DESCRIPTOR_RANGE1 lightRanges[3];
+    lightRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0
+    lightRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1
+    lightRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
+
+    CD3DX12_ROOT_PARAMETER1 lightRootParams[5];
+    lightRootParams[0].InitAsConstantBufferView(0);  // b0: FroxelParams
+    lightRootParams[1].InitAsDescriptorTable(1, &lightRanges[0]);  // t0: Density grid
+    lightRootParams[2].InitAsDescriptorTable(1, &lightRanges[1]);  // t1: Lights
+    lightRootParams[3].InitAsShaderResourceView(2);  // t2: BVH (acceleration structure - must be root descriptor)
+    lightRootParams[4].InitAsDescriptorTable(1, &lightRanges[2]);  // u0: Lighting grid
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC lightRootSigDesc;
+    lightRootSigDesc.Init_1_1(_countof(lightRootParams), lightRootParams, 0, nullptr,
+                              D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    hr = D3DX12SerializeVersionedRootSignature(&lightRootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1,
+                                                &signature, &error);
+    if (FAILED(hr)) {
+        if (error) {
+            LOG_ERROR("Root signature serialization error: {}", (char*)error->GetBufferPointer());
+        }
+        throw std::runtime_error("Failed to serialize light voxels root signature");
+    }
+
+    hr = d3dDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(),
+                                      IID_PPV_ARGS(&m_lightVoxelsRootSig));
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to create light voxels root signature");
+    }
+
+    m_lightVoxelsRootSig->SetName(L"Froxel Light Voxels Root Signature");
+
+    // === Create Pipeline State for Inject Density ===
+    D3D12_COMPUTE_PIPELINE_STATE_DESC injectPsoDesc = {};
+    injectPsoDesc.pRootSignature = m_injectDensityRootSig.Get();
+    injectPsoDesc.CS = { injectDensityBytecode.data(), injectDensityBytecode.size() };
+
+    hr = d3dDevice->CreateComputePipelineState(&injectPsoDesc, IID_PPV_ARGS(&m_injectDensityPSO));
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to create inject density PSO");
+    }
+
+    m_injectDensityPSO->SetName(L"Froxel Inject Density PSO");
+
+    // === Create Pipeline State for Light Voxels ===
+    D3D12_COMPUTE_PIPELINE_STATE_DESC lightPsoDesc = {};
+    lightPsoDesc.pRootSignature = m_lightVoxelsRootSig.Get();
+    lightPsoDesc.CS = { lightVoxelsBytecode.data(), lightVoxelsBytecode.size() };
+
+    hr = d3dDevice->CreateComputePipelineState(&lightPsoDesc, IID_PPV_ARGS(&m_lightVoxelsPSO));
+    if (FAILED(hr)) {
+        throw std::runtime_error("Failed to create light voxels PSO");
+    }
+
+    m_lightVoxelsPSO->SetName(L"Froxel Light Voxels PSO");
+
+    LOG_INFO("Froxel pipeline states created successfully");
+    LOG_INFO("  Inject Density: {} bytes", injectDensityBytecode.size());
+    LOG_INFO("  Light Voxels: {} bytes", lightVoxelsBytecode.size());
 }
 
 void FroxelSystem::InjectDensity(
@@ -234,7 +427,7 @@ void FroxelSystem::ClearGrid(ID3D12GraphicsCommandList* commandList)
 void FroxelSystem::SetGridDimensions(uint32_t x, uint32_t y, uint32_t z)
 {
     if (m_initialized) {
-        LOG_WARNING("Cannot change grid dimensions after initialization");
+        LOG_WARN("Cannot change grid dimensions after initialization");
         return;
     }
 

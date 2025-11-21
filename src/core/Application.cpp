@@ -10,6 +10,7 @@
 #include "../lighting/RTXDILightingSystem.h"
 #include "../lighting/VolumetricReSTIRSystem.h"
 #include "../lighting/ProbeGridSystem.h"
+#include "../rendering/FroxelSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"

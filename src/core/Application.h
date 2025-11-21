@@ -20,6 +20,7 @@ class RTLightingSystem_RayQuery;
 class RTXDILightingSystem;
 class VolumetricReSTIRSystem;
 class ProbeGridSystem;
+class FroxelSystem;
 class ResourceManager;
 class AdaptiveQualitySystem;
 #ifdef ENABLE_DLSS
@@ -80,6 +81,7 @@ private:
     std::unique_ptr<VolumetricReSTIRSystem> m_volumetricReSTIR;     // Volumetric ReSTIR (Phase 1 - experimental)
     D3D12_CPU_DESCRIPTOR_HANDLE m_volumetricReSTIRClearUAV = {};    // Pre-allocated descriptor for clear operation
     std::unique_ptr<ProbeGridSystem> m_probeGridSystem;             // Probe Grid (Phase 0.13.1 - replaces ReSTIR)
+    std::unique_ptr<FroxelSystem> m_froxelSystem;                   // Froxel volumetric fog (Phase 5 - replaces god rays)
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)
@@ -165,6 +167,11 @@ private:
     // === God Ray System (Phase 5 Milestone 5.3c) ===
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
+
+    // === Froxel Volumetric Fog System (Phase 5 - replaces god rays) ===
+    bool m_enableFroxelFog = false;        // Toggle froxel volumetric fog (F7 to toggle)
+    float m_froxelDensityMultiplier = 1.0f; // Fog density multiplier (0.1-5.0)
+    bool m_debugFroxelVisualization = false; // Debug visualization mode
 
     // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;

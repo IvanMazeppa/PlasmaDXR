@@ -9,7 +9,7 @@ using Microsoft::WRL::ComPtr;
 
 // Forward declarations
 class Device;
-class ShaderManager;
+class ResourceManager;
 struct Particle;
 
 /**
@@ -36,7 +36,7 @@ struct Particle;
  */
 class FroxelSystem {
 public:
-    FroxelSystem(Device* device, ShaderManager* shaderManager);
+    FroxelSystem(Device* device, ResourceManager* resources);
     ~FroxelSystem();
 
     // Initialization
@@ -65,8 +65,8 @@ public:
     ID3D12Resource* GetDensityGrid() const { return m_densityGrid.Get(); }
     ID3D12Resource* GetLightingGrid() const { return m_lightingGrid.Get(); }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE GetDensityGridSRV() const { return m_densityGridSRV; }
-    D3D12_GPU_DESCRIPTOR_HANDLE GetLightingGridSRV() const { return m_lightingGridSRV; }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDensityGridSRV() const { return m_densityGridSRV; }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetLightingGridSRV() const { return m_lightingGridSRV; }
 
     // Grid parameters
     struct GridParams {
@@ -98,17 +98,21 @@ private:
 
     // Device resources
     Device* m_device;
-    ShaderManager* m_shaderManager;
+    ResourceManager* m_resources;
 
     // Grid textures
     ComPtr<ID3D12Resource> m_densityGrid;       // R16_FLOAT - particle density
     ComPtr<ID3D12Resource> m_lightingGrid;      // R16G16B16A16_FLOAT - accumulated lighting
 
-    // Descriptor handles
-    D3D12_GPU_DESCRIPTOR_HANDLE m_densityGridUAV;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_densityGridSRV;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lightingGridUAV;
-    D3D12_GPU_DESCRIPTOR_HANDLE m_lightingGridSRV;
+    // Descriptor handles (CPU handles for CreateXXXView, GPU handles returned via GetGPUHandle)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_densityGridUAV;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_densityGridSRV;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightingGridUAV;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightingGridSRV;
+
+    // Constant buffer for FroxelParams (upload heap, persistently mapped)
+    ComPtr<ID3D12Resource> m_constantBuffer;
+    void* m_constantBufferMapped = nullptr;
 
     // Pipeline states
     ComPtr<ID3D12PipelineState> m_injectDensityPSO;
