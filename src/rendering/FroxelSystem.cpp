@@ -370,6 +370,9 @@ void FroxelSystem::InjectDensity(
     }
 
     // Upload constant buffer (no per-frame updates needed for InjectDensity)
+    // CRITICAL FIX: Reuse lightCount field for particleCount since they share the same offset (44)
+    // The shader expects 'particleCount' at this offset.
+    m_gridParams.lightCount = particleCount;
     memcpy(m_constantBufferMapped, &m_gridParams, sizeof(GridParams));
 
     // Set pipeline state and root signature

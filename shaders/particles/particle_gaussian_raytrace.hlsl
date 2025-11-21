@@ -63,14 +63,15 @@ cbuffer GaussianConstants : register(b0)
     float2 godRayPadding;          // Padding for alignment
 
     // Froxel volumetric fog system (Phase 5 - replaces god rays)
-    float3 froxelGridMin;          // Grid world-space minimum [-1500, -1500, -1500]
-    uint useFroxelFog;             // Toggle: 0=disabled, 1=enabled
-    float3 froxelGridMax;          // Grid world-space maximum [1500, 1500, 1500]
-    float froxelDensityMultiplier; // Fog density multiplier (0.1-5.0)
-    uint3 froxelGridDimensions;    // Voxel count [160, 90, 64]
-    float froxelPadding0;          // Padding for alignment
-    float3 froxelVoxelSize;        // Computed voxel size (gridMax - gridMin) / gridDimensions
-    float froxelPadding1;          // Padding for alignment
+    // MATCH C++ ORDER: useFroxelFog, gridMin, gridMax, padding0, dims, density, voxelSize, padding1
+    uint useFroxelFog;             // Toggle: 0=disabled, 1=enabled (Offset 0)
+    float3 froxelGridMin;          // Grid world-space minimum (Offset 4)
+    float3 froxelGridMax;          // Grid world-space maximum (Offset 16)
+    float froxelPadding0;          // Padding for alignment (Offset 28)
+    uint3 froxelGridDimensions;    // Voxel count (Offset 32)
+    float froxelDensityMultiplier; // Fog density multiplier (Offset 44)
+    float3 froxelVoxelSize;        // Computed voxel size (Offset 48)
+    float froxelPadding1;          // Padding for alignment (Offset 60)
 
     // Phase 1 Lighting Fix
     float rtMinAmbient;            // Global ambient term (0.0-0.2)
