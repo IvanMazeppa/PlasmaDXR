@@ -4,7 +4,11 @@
 
 Implemented a **Froxel (Frustum-Aligned Voxel) Grid** system to replace the crushing performance cost of god ray ray marching (21 FPS → target ~100 FPS).
 
-**Status:** Core infrastructure complete, integration pending
+**Status:** Core infrastructure complete (60% done), runtime integration pending (40%)
+
+**BUILD STATUS:** ✅ Compiles successfully with zero errors
+
+**DETAILED STATUS:** See `FROXEL_INTEGRATION_STATUS_20251121.md` for complete integration checklist and remaining work
 
 ---
 

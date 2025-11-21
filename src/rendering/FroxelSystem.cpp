@@ -146,8 +146,9 @@ void FroxelSystem::CreateResources()
     densityUavDesc.Texture3D.FirstWSlice = 0;
     densityUavDesc.Texture3D.WSize = m_gridParams.gridDimensions.z;
 
-    m_densityGridUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    device->CreateUnorderedAccessView(m_densityGrid.Get(), nullptr, &densityUavDesc, m_densityGridUAV);
+    m_densityGridUAVCPU = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateUnorderedAccessView(m_densityGrid.Get(), nullptr, &densityUavDesc, m_densityGridUAVCPU);
+    m_densityGridUAVGPU = m_resources->GetGPUHandle(m_densityGridUAVCPU);
 
     // Density Grid SRV (for reading in light_voxels.hlsl)
     D3D12_SHADER_RESOURCE_VIEW_DESC densitySrvDesc = {};
@@ -156,8 +157,9 @@ void FroxelSystem::CreateResources()
     densitySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     densitySrvDesc.Texture3D.MipLevels = 1;
 
-    m_densityGridSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    device->CreateShaderResourceView(m_densityGrid.Get(), &densitySrvDesc, m_densityGridSRV);
+    D3D12_CPU_DESCRIPTOR_HANDLE densitySRVCpu = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateShaderResourceView(m_densityGrid.Get(), &densitySrvDesc, densitySRVCpu);
+    m_densityGridSRVGPU = m_resources->GetGPUHandle(densitySRVCpu);
 
     // Lighting Grid UAV (for writing in light_voxels.hlsl)
     D3D12_UNORDERED_ACCESS_VIEW_DESC lightingUavDesc = {};
@@ -167,8 +169,9 @@ void FroxelSystem::CreateResources()
     lightingUavDesc.Texture3D.FirstWSlice = 0;
     lightingUavDesc.Texture3D.WSize = m_gridParams.gridDimensions.z;
 
-    m_lightingGridUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    device->CreateUnorderedAccessView(m_lightingGrid.Get(), nullptr, &lightingUavDesc, m_lightingGridUAV);
+    m_lightingGridUAVCPU = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateUnorderedAccessView(m_lightingGrid.Get(), nullptr, &lightingUavDesc, m_lightingGridUAVCPU);
+    m_lightingGridUAVGPU = m_resources->GetGPUHandle(m_lightingGridUAVCPU);
 
     // Lighting Grid SRV (for reading in particle_gaussian_raytrace.hlsl)
     D3D12_SHADER_RESOURCE_VIEW_DESC lightingSrvDesc = {};
@@ -177,8 +180,9 @@ void FroxelSystem::CreateResources()
     lightingSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     lightingSrvDesc.Texture3D.MipLevels = 1;
 
-    m_lightingGridSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    device->CreateShaderResourceView(m_lightingGrid.Get(), &lightingSrvDesc, m_lightingGridSRV);
+    D3D12_CPU_DESCRIPTOR_HANDLE lightingSRVCpu = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    device->CreateShaderResourceView(m_lightingGrid.Get(), &lightingSrvDesc, lightingSRVCpu);
+    m_lightingGridSRVGPU = m_resources->GetGPUHandle(lightingSRVCpu);
 
     // === Create Constant Buffer for FroxelParams ===
     const UINT constantBufferSize = (sizeof(GridParams) + 255) & ~255;  // Align to 256 bytes
@@ -253,17 +257,16 @@ void FroxelSystem::CreatePipelineStates()
     // === Create Root Signature for Inject Density ===
     // Root Parameters:
     //   b0: FroxelParams constant buffer
-    //   t0: Particle buffer (SRV)
+    //   t0: Particle buffer (SRV) - root descriptor to avoid heap allocation
     //   u0: Density grid (UAV)
 
-    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0
-    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
 
     CD3DX12_ROOT_PARAMETER1 rootParams[3];
     rootParams[0].InitAsConstantBufferView(0);  // b0: FroxelParams
-    rootParams[1].InitAsDescriptorTable(1, &ranges[0]);  // t0: Particles
-    rootParams[2].InitAsDescriptorTable(1, &ranges[1]);  // u0: Density grid
+    rootParams[1].InitAsShaderResourceView(0);  // t0: Particles (root descriptor - no heap allocation!)
+    rootParams[2].InitAsDescriptorTable(1, &ranges[0]);  // u0: Density grid
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC injectRootSigDesc;
     injectRootSigDesc.Init_1_1(_countof(rootParams), rootParams, 0, nullptr,
@@ -291,21 +294,20 @@ void FroxelSystem::CreatePipelineStates()
     // Root Parameters:
     //   b0: FroxelParams constant buffer
     //   t0: Density grid (SRV)
-    //   t1: Light buffer (SRV)
+    //   t1: Light buffer (SRV) - root descriptor to avoid heap allocation
     //   t2: Particle BVH (acceleration structure)
     //   u0: Lighting grid (UAV)
 
-    CD3DX12_DESCRIPTOR_RANGE1 lightRanges[3];
+    CD3DX12_DESCRIPTOR_RANGE1 lightRanges[2];
     lightRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0
-    lightRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1
-    lightRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
+    lightRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0
 
     CD3DX12_ROOT_PARAMETER1 lightRootParams[5];
     lightRootParams[0].InitAsConstantBufferView(0);  // b0: FroxelParams
     lightRootParams[1].InitAsDescriptorTable(1, &lightRanges[0]);  // t0: Density grid
-    lightRootParams[2].InitAsDescriptorTable(1, &lightRanges[1]);  // t1: Lights
+    lightRootParams[2].InitAsShaderResourceView(1);  // t1: Lights (root descriptor - no heap allocation!)
     lightRootParams[3].InitAsShaderResourceView(2);  // t2: BVH (acceleration structure - must be root descriptor)
-    lightRootParams[4].InitAsDescriptorTable(1, &lightRanges[2]);  // u0: Lighting grid
+    lightRootParams[4].InitAsDescriptorTable(1, &lightRanges[1]);  // u0: Lighting grid
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC lightRootSigDesc;
     lightRootSigDesc.Init_1_1(_countof(lightRootParams), lightRootParams, 0, nullptr,
@@ -367,19 +369,32 @@ void FroxelSystem::InjectDensity(
         return;
     }
 
-    // Update particle count
+    // Update particle count and upload constant buffer
     m_gridParams.particleCount = particleCount;
+    memcpy(m_constantBufferMapped, &m_gridParams, sizeof(GridParams));
 
-    // TODO: Implement density injection dispatch
-    // This will dispatch the inject_density.hlsl compute shader
+    // Set pipeline state and root signature
+    commandList->SetPipelineState(m_injectDensityPSO.Get());
+    commandList->SetComputeRootSignature(m_injectDensityRootSig.Get());
+
+    // Root param 0: Constant buffer (b0)
+    commandList->SetComputeRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
+
+    // Root param 1: Particle buffer SRV (t0) - use root descriptor (no heap allocation!)
+    commandList->SetComputeRootShaderResourceView(1, particleBuffer->GetGPUVirtualAddress());
+
+    // Root param 2: Density grid UAV (u0)
+    commandList->SetComputeRootDescriptorTable(2, m_densityGridUAVGPU);
 
     // Dispatch density injection compute shader
     // Thread groups: (particleCount + 255) / 256
     uint32_t threadGroups = (particleCount + 255) / 256;
 
-    LOG_DEBUG("Injecting density for {} particles ({} thread groups)", particleCount, threadGroups);
+    LOG_INFO("FROXEL: Injecting density for {} particles ({} thread groups)", particleCount, threadGroups);
 
-    // commandList->Dispatch(threadGroups, 1, 1);
+    commandList->Dispatch(threadGroups, 1, 1);
+
+    LOG_INFO("FROXEL: Density injection dispatch complete");
 }
 
 void FroxelSystem::LightVoxels(
@@ -395,33 +410,67 @@ void FroxelSystem::LightVoxels(
         return;
     }
 
-    // TODO: Implement voxel lighting dispatch
-    // This will dispatch the light_voxels.hlsl compute shader
+    // Set pipeline state and root signature
+    commandList->SetPipelineState(m_lightVoxelsPSO.Get());
+    commandList->SetComputeRootSignature(m_lightVoxelsRootSig.Get());
+
+    // Root param 0: Constant buffer (b0)
+    commandList->SetComputeRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
+
+    // Root param 1: Density grid SRV (t0)
+    commandList->SetComputeRootDescriptorTable(1, m_densityGridSRVGPU);
+
+    // Root param 2: Light buffer SRV (t1) - use root descriptor (no heap allocation!)
+    commandList->SetComputeRootShaderResourceView(2, lightBuffer->GetGPUVirtualAddress());
+
+    // Root param 3: Particle BVH (t2) - acceleration structure (root descriptor)
+    commandList->SetComputeRootShaderResourceView(3, particleBVH->GetGPUVirtualAddress());
+
+    // Root param 4: Lighting grid UAV (u0)
+    commandList->SetComputeRootDescriptorTable(4, m_lightingGridUAVGPU);
 
     // Thread groups: Dispatch 8×8×8 thread groups to cover entire grid
     uint32_t groupsX = (m_gridParams.gridDimensions.x + 7) / 8;
     uint32_t groupsY = (m_gridParams.gridDimensions.y + 7) / 8;
     uint32_t groupsZ = (m_gridParams.gridDimensions.z + 7) / 8;
 
-    LOG_DEBUG("Lighting {} voxels with {} lights ({} thread groups)",
+    LOG_INFO("FROXEL: Lighting {} voxels with {} lights ({}×{}×{} thread groups)",
               m_gridParams.gridDimensions.x * m_gridParams.gridDimensions.y * m_gridParams.gridDimensions.z,
               lightCount,
-              groupsX * groupsY * groupsZ);
+              groupsX, groupsY, groupsZ);
 
-    // commandList->Dispatch(groupsX, groupsY, groupsZ);
+    commandList->Dispatch(groupsX, groupsY, groupsZ);
+
+    LOG_INFO("FROXEL: Voxel lighting dispatch complete");
 }
 
 void FroxelSystem::ClearGrid(ID3D12GraphicsCommandList* commandList)
 {
     if (!m_initialized) return;
 
-    // Clear density grid to zero
-    // TODO: Use ClearUnorderedAccessViewFloat
-    float clearValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-
     LOG_DEBUG("Clearing froxel grids");
 
-    // commandList->ClearUnorderedAccessViewFloat(...);
+    // Clear density grid (R16_FLOAT - single channel)
+    float densityClearValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    commandList->ClearUnorderedAccessViewFloat(
+        m_densityGridUAVGPU,
+        m_densityGridUAVCPU,
+        m_densityGrid.Get(),
+        densityClearValue,
+        0,
+        nullptr
+    );
+
+    // Clear lighting grid (R16G16B16A16_FLOAT - RGBA)
+    float lightingClearValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    commandList->ClearUnorderedAccessViewFloat(
+        m_lightingGridUAVGPU,
+        m_lightingGridUAVCPU,
+        m_lightingGrid.Get(),
+        lightingClearValue,
+        0,
+        nullptr
+    );
 }
 
 void FroxelSystem::SetGridDimensions(uint32_t x, uint32_t y, uint32_t z)

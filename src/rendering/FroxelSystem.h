@@ -65,8 +65,8 @@ public:
     ID3D12Resource* GetDensityGrid() const { return m_densityGrid.Get(); }
     ID3D12Resource* GetLightingGrid() const { return m_lightingGrid.Get(); }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDensityGridSRV() const { return m_densityGridSRV; }
-    D3D12_CPU_DESCRIPTOR_HANDLE GetLightingGridSRV() const { return m_lightingGridSRV; }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetDensityGridSRV() const { return m_densityGridSRVGPU; }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetLightingGridSRV() const { return m_lightingGridSRVGPU; }
 
     // Grid parameters
     struct GridParams {
@@ -104,11 +104,15 @@ private:
     ComPtr<ID3D12Resource> m_densityGrid;       // R16_FLOAT - particle density
     ComPtr<ID3D12Resource> m_lightingGrid;      // R16G16B16A16_FLOAT - accumulated lighting
 
-    // Descriptor handles (CPU handles for CreateXXXView, GPU handles returned via GetGPUHandle)
-    D3D12_CPU_DESCRIPTOR_HANDLE m_densityGridUAV;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_densityGridSRV;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_lightingGridUAV;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_lightingGridSRV;
+    // GPU descriptor handles (for binding to command list)
+    D3D12_GPU_DESCRIPTOR_HANDLE m_densityGridUAVGPU;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_densityGridSRVGPU;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_lightingGridUAVGPU;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_lightingGridSRVGPU;
+
+    // CPU descriptor handles (needed for ClearUnorderedAccessViewFloat)
+    D3D12_CPU_DESCRIPTOR_HANDLE m_densityGridUAVCPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_lightingGridUAVCPU;
 
     // Constant buffer for FroxelParams (upload heap, persistently mapped)
     ComPtr<ID3D12Resource> m_constantBuffer;

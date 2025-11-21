@@ -9,6 +9,7 @@
 class Device;
 class ResourceManager;
 class ProbeGridSystem;
+class FroxelSystem;
 
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"  // Need full definition for DLSSQualityMode enum
@@ -128,6 +129,16 @@ public:
         // === Ground Plane (Reflective Surface Experiment) ===
         uint32_t enableGroundPlane;        // Toggle ground plane rendering
         DirectX::XMFLOAT3 groundPlaneAlbedo;  // Surface reflectance (RGB)
+
+        // === Phase 5: Froxel Volumetric Fog ===
+        uint32_t useFroxelFog;             // Toggle froxel volumetric fog
+        DirectX::XMFLOAT3 froxelGridMin;   // World-space minimum [-1500, -1500, -1500]
+        DirectX::XMFLOAT3 froxelGridMax;   // World-space maximum [1500, 1500, 1500]
+        float froxelPadding0;              // Padding for alignment
+        DirectX::XMUINT3 froxelGridDimensions;  // Voxel count [160, 90, 64]
+        float froxelDensityMultiplier;     // Fog density multiplier (0.1-5.0)
+        DirectX::XMFLOAT3 froxelVoxelSize; // Computed voxel size
+        float froxelPadding1;              // Padding for alignment
     };
 
 public:
@@ -147,7 +158,8 @@ public:
                const RenderConstants& constants,
                ID3D12Resource* rtxdiOutputBuffer = nullptr,  // RTXDI selected lights (optional)
                ProbeGridSystem* probeGridSystem = nullptr,   // Probe Grid (Phase 0.13.1)
-               ID3D12Resource* materialPropertiesBuffer = nullptr);  // Material System (Phase 3)
+               ID3D12Resource* materialPropertiesBuffer = nullptr,  // Material System (Phase 3)
+               FroxelSystem* froxelSystem = nullptr);        // Froxel Fog (Phase 5)
 
     // Phase 2: Render depth pre-pass for screen-space shadows
     void RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,

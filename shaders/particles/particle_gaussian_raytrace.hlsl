@@ -6,6 +6,7 @@
 #include "plasma_emission.hlsl"
 // NOTE: volumetric_shadows.hlsl inlined below after resource declarations (Phase 0.15.0)
 // NOTE: god_rays.hlsl removed - atmospheric fog function defined inline below for Light struct access
+// NOTE: sample_froxel_grid.hlsl included AFTER resource declarations (needs g_froxelLightingGrid, constant buffer params)
 
 // Match C++ ParticleRenderer_Gaussian::RenderConstants structure
 cbuffer GaussianConstants : register(b0)
@@ -56,10 +57,20 @@ cbuffer GaussianConstants : register(b0)
     uint debugRTXDISelection;      // DEBUG: Visualize selected light index (0=off, 1=on)
     float3 debugPadding;           // Padding for alignment
 
-    // God ray system (Phase 5 Milestone 5.3c)
-    float godRayDensity;           // Global god ray density (0.0-1.0)
-    float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0)
+    // God ray system (Phase 5 Milestone 5.3c) - DEPRECATED, replaced by froxel system
+    float godRayDensity;           // Global god ray density (0.0-1.0) - UNUSED
+    float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0) - UNUSED
     float2 godRayPadding;          // Padding for alignment
+
+    // Froxel volumetric fog system (Phase 5 - replaces god rays)
+    float3 froxelGridMin;          // Grid world-space minimum [-1500, -1500, -1500]
+    uint useFroxelFog;             // Toggle: 0=disabled, 1=enabled
+    float3 froxelGridMax;          // Grid world-space maximum [1500, 1500, 1500]
+    float froxelDensityMultiplier; // Fog density multiplier (0.1-5.0)
+    uint3 froxelGridDimensions;    // Voxel count [160, 90, 64]
+    float froxelPadding0;          // Padding for alignment
+    float3 froxelVoxelSize;        // Computed voxel size (gridMax - gridMin) / gridDimensions
+    float froxelPadding1;          // Padding for alignment
 
     // Phase 1 Lighting Fix
     float rtMinAmbient;            // Global ambient term (0.0-0.2)
@@ -154,6 +165,15 @@ Texture2D<float4> g_rtxdiOutput : register(t6);
 Texture2D<float4> g_prevColor : register(t9);
 
 // ============================================================================
+// FROXEL VOLUMETRIC FOG SYSTEM (Phase 5 - replaces god rays)
+// ============================================================================
+// 3D texture containing pre-computed lighting in volumetric fog grid
+// RGB: Accumulated light color from all sources (multi-light + shadows)
+// A: Density at voxel (for debugging)
+Texture3D<float4> g_froxelLightingGrid : register(t10);
+SamplerState g_linearClampSampler : register(s0);  // Linear clamp for smooth interpolation
+
+// ============================================================================
 // PROBE GRID SYSTEM (Phase 0.13.1)
 // ============================================================================
 // Hybrid Probe Grid: Pre-computed lighting at sparse 32³ grid for zero atomic contention
@@ -191,6 +211,9 @@ static const float baseParticleRadius = particleRadius;
 static const float volumeStepSize = 0.1;         // Finer steps for better quality
 static const float densityMultiplier = 2.0;      // Increased for more volumetric appearance
 static const float shadowBias = 0.01;            // Bias for shadow ray origin
+
+// Froxel volumetric fog sampling (Phase 5 - must be included AFTER resource declarations)
+#include "../froxel/sample_froxel_grid.hlsl"
 
 // Input: Particle buffer
 StructuredBuffer<Particle> g_particles : register(t0);
@@ -1695,26 +1718,30 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
 
     // =========================================================================
-    // ATMOSPHERIC FOG RAY MARCHING - Volumetric God Rays
+    // FROXEL VOLUMETRIC FOG SAMPLING (Phase 5 - replaces god rays)
     // =========================================================================
-    // March through uniform atmospheric fog independent of particle positions
-    // This creates visible light shafts even in empty space!
-    if (godRayDensity > 0.001) {
-        float3 atmosphericFog = RayMarchAtmosphericFog(
-            cameraPos,           // Camera position
-            ray.Direction,       // Ray direction (from GenerateCameraRay)
-            3000.0,              // Max ray march distance (covers entire scene)
-            g_lights,            // Light array
-            lightCount,          // Number of active lights
-            time,                // Total elapsed time (for rotation)
-            godRayDensity,       // Global fog density
-            g_particleBVH        // TLAS for shadow rays
+    // Sample pre-computed lighting from 3D froxel grid (160×90×64 voxels)
+    // MUCH faster than god rays: 1 texture sample vs 13 lights × 32 steps!
+    if (useFroxelFog != 0) {
+        float3 atmosphericFog = RayMarchFroxelGrid(
+            cameraPos,                  // Camera position
+            ray.Direction,              // Ray direction (from GenerateCameraRay)
+            3000.0,                     // Max ray march distance (covers entire scene)
+            froxelDensityMultiplier     // Fog density multiplier (runtime control)
         );
 
         // Add atmospheric fog to final color (before tone mapping)
         // Scale by 0.1 for balanced contribution relative to particles
         finalColor += atmosphericFog * 0.1;
     }
+
+    // DEPRECATED: Old god ray system (replaced by froxel system for 5× performance)
+    /*
+    if (godRayDensity > 0.001) {
+        float3 atmosphericFog = RayMarchAtmosphericFog(...);
+        finalColor += atmosphericFog * 0.1;
+    }
+    */
 
     // Enhanced tone mapping for HDR
     // Use ACES tone mapping for better color preservation

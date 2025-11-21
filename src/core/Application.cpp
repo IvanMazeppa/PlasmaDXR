@@ -399,6 +399,22 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Target: 10K particles @ 90-110 FPS");
     }
 
+    // Initialize Froxel Volumetric Fog System (Phase 5)
+    // Replaces expensive god ray ray marching (21 FPS → ~100 FPS)
+    LOG_INFO("Initializing Froxel Volumetric Fog System...");
+    m_froxelSystem = std::make_unique<FroxelSystem>(m_device.get(), m_resources.get());
+    if (!m_froxelSystem->Initialize(m_width, m_height)) {
+        LOG_ERROR("Failed to initialize Froxel System");
+        LOG_ERROR("  Froxel volumetric fog will not be available");
+        m_froxelSystem.reset();
+    } else {
+        LOG_INFO("Froxel System initialized successfully!");
+        LOG_INFO("  Grid: 160×90×64 = 921,600 voxels");
+        LOG_INFO("  Memory: ~9 MB (1.76 MB density + 7.04 MB lighting)");
+        LOG_INFO("  Expected performance: ~6ms total (vs ~48ms for god rays)");
+        LOG_INFO("  Target: 10K particles @ 90-100 FPS");
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -773,6 +789,75 @@ void Application::Render() {
         cmdList->ResourceBarrier(1, &particleBarrier);
     }
 
+    // === Froxel Volumetric Fog System (Phase 5 - replaces god rays) ===
+    // 3-pass architecture: Clear → Inject Density → Light Voxels
+    // Expected: ~6ms total (vs ~48ms for god rays) → 5× FPS improvement!
+    if (m_enableFroxelFog && m_froxelSystem && m_particleSystem) {
+        // Pass 1: Clear density and lighting grids (zero overhead - direct GPU clear)
+        m_froxelSystem->ClearGrid(cmdList);
+
+        // UAV barrier (ensure clear completes before inject writes)
+        D3D12_RESOURCE_BARRIER densityBarrier = {};
+        densityBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        densityBarrier.UAV.pResource = m_froxelSystem->GetDensityGrid();
+        cmdList->ResourceBarrier(1, &densityBarrier);
+
+        // Pass 2: Inject particle density into froxel grid (~0.5ms expected)
+        // Converts 10K particles → 921K voxel density field using trilinear splatting
+        m_froxelSystem->InjectDensity(
+            cmdList,
+            m_particleSystem->GetParticleBuffer(),
+            m_config.particleCount
+        );
+
+        // Transition density grid: UAV (write) → SRV (read) for lighting pass
+        D3D12_RESOURCE_BARRIER densityReadBarrier = {};
+        densityReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        densityReadBarrier.Transition.pResource = m_froxelSystem->GetDensityGrid();
+        densityReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        densityReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        densityReadBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &densityReadBarrier);
+
+        // Pass 3: Calculate voxel lighting (~3-5ms expected)
+        // 921K voxels × 13 lights with shadow rays
+        if (m_rtLighting && m_gaussianRenderer) {
+            m_froxelSystem->LightVoxels(
+                cmdList,
+                m_particleSystem->GetParticleBuffer(),
+                m_config.particleCount,
+                m_gaussianRenderer->GetLightBuffer(),
+                static_cast<uint32_t>(m_lights.size()),
+                m_rtLighting->GetTLAS()  // For shadow rays
+            );
+
+            // Transition lighting grid: UAV (write) → SRV (read) for Gaussian renderer
+            D3D12_RESOURCE_BARRIER lightingReadBarrier = {};
+            lightingReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            lightingReadBarrier.Transition.pResource = m_froxelSystem->GetLightingGrid();
+            lightingReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            lightingReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            lightingReadBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            cmdList->ResourceBarrier(1, &lightingReadBarrier);
+
+            // Log every 60 frames
+            if ((m_frameCount % 60) == 0) {
+                LOG_INFO("Froxel volumetric fog computed (frame {}, {} particles, {} voxels, {} lights)",
+                         m_frameCount, m_config.particleCount,
+                         160 * 90 * 64, m_lights.size());
+            }
+        }
+
+        // Transition density grid back to UAV for next frame
+        D3D12_RESOURCE_BARRIER densityWriteBarrier = {};
+        densityWriteBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        densityWriteBarrier.Transition.pResource = m_froxelSystem->GetDensityGrid();
+        densityWriteBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        densityWriteBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        densityWriteBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &densityWriteBarrier);
+    }
+
     // Render particles (Billboard or Gaussian path)
     if (m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
@@ -951,6 +1036,28 @@ void Application::Render() {
             gaussianConstants.groundPlaneAlbedo = DirectX::XMFLOAT3(
                 m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
 
+            // Phase 5: Froxel Volumetric Fog System
+            if (m_froxelSystem && m_enableFroxelFog) {
+                const auto& froxelParams = m_froxelSystem->GetGridParams();
+                gaussianConstants.useFroxelFog = 1u;
+                gaussianConstants.froxelGridMin = froxelParams.gridMin;
+                gaussianConstants.froxelGridMax = froxelParams.gridMax;
+                gaussianConstants.froxelPadding0 = 0.0f;
+                gaussianConstants.froxelGridDimensions = froxelParams.gridDimensions;
+                gaussianConstants.froxelDensityMultiplier = froxelParams.densityMultiplier;
+                gaussianConstants.froxelVoxelSize = froxelParams.voxelSize;
+                gaussianConstants.froxelPadding1 = 0.0f;
+            } else {
+                gaussianConstants.useFroxelFog = 0u;
+                gaussianConstants.froxelGridMin = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+                gaussianConstants.froxelGridMax = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+                gaussianConstants.froxelPadding0 = 0.0f;
+                gaussianConstants.froxelGridDimensions = DirectX::XMUINT3(0, 0, 0);
+                gaussianConstants.froxelDensityMultiplier = 0.0f;
+                gaussianConstants.froxelVoxelSize = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+                gaussianConstants.froxelPadding1 = 0.0f;
+            }
+
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
             if (!loggedToggles) {
@@ -1048,7 +1155,8 @@ void Application::Render() {
                                       gaussianConstants,
                                       rtxdiOutput,  // RTXDI output buffer
                                       m_probeGridSystem.get(),  // Probe Grid System (Phase 0.13.1)
-                                      m_particleSystem->GetMaterialPropertiesBuffer());  // Material System (Phase 3)
+                                      m_particleSystem->GetMaterialPropertiesBuffer(),  // Material System (Phase 3)
+                                      m_froxelSystem.get());  // Froxel Fog System (Phase 5)
             }  // End else (standard Gaussian rendering)
 
             // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
@@ -1705,20 +1813,10 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
         break;
 
-    // F7: Toggle Volumetric ReSTIR (for autonomous testing)
+    // F7: Toggle Froxel Volumetric Fog (Phase 5)
     case VK_F7:
-        if (m_volumetricReSTIR) {
-            // Toggle between VolumetricReSTIR and MultiLight
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
-                m_lightingSystem = LightingSystem::MultiLight;
-                LOG_INFO("Volumetric ReSTIR: OFF (switched to MultiLight)");
-            } else {
-                m_lightingSystem = LightingSystem::VolumetricReSTIR;
-                LOG_INFO("Volumetric ReSTIR: ON");
-            }
-        } else {
-            LOG_INFO("Volumetric ReSTIR system not initialized");
-        }
+        m_enableFroxelFog = !m_enableFroxelFog;
+        LOG_INFO("Froxel Volumetric Fog: {}", m_enableFroxelFog ? "ENABLED" : "DISABLED");
         break;
 
     // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)
@@ -4653,6 +4751,88 @@ void Application::RenderImGui() {
                     m_lights[idx].color = HSVtoRGB(DirectX::XMFLOAT3(h, s, v));
                 }
                 m_currentColorPreset = ColorPreset::Custom;
+            }
+
+            ImGui::TreePop();
+        }
+
+        // === FROXEL VOLUMETRIC FOG SYSTEM (Phase 5) ===
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::TreeNode("Froxel Volumetric Fog (F7)")) {
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Frustum-aligned voxel grid for efficient volumetric fog");
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Replaces god rays with pre-computed 3D lighting grid");
+
+            // Toggle froxel fog
+            if (ImGui::Checkbox("Enable Froxel Fog", &m_enableFroxelFog)) {
+                if (m_enableFroxelFog) {
+                    LOG_INFO("Froxel volumetric fog ENABLED (F7)");
+                } else {
+                    LOG_INFO("Froxel volumetric fog DISABLED (F7)");
+                }
+            }
+
+            if (m_enableFroxelFog) {
+                ImGui::Separator();
+                ImGui::Text("Fog Density:");
+
+                // Density multiplier slider
+                if (ImGui::SliderFloat("Density Multiplier", &m_froxelDensityMultiplier, 0.1f, 5.0f, "%.2f")) {
+                    if (m_froxelSystem) {
+                        m_froxelSystem->SetDensityMultiplier(m_froxelDensityMultiplier);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Controls fog opacity\n0.1 = subtle haze\n1.0 = moderate fog\n5.0 = dense fog");
+                }
+
+                // Density presets
+                ImGui::Text("Presets:");
+                if (ImGui::Button("Subtle Haze")) {
+                    m_froxelDensityMultiplier = 0.3f;
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(0.3f);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Moderate Fog")) {
+                    m_froxelDensityMultiplier = 1.0f;
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(1.0f);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Dense Fog")) {
+                    m_froxelDensityMultiplier = 3.0f;
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(3.0f);
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Debug Visualization:");
+
+                // Debug visualization toggle
+                bool debugVis = m_froxelSystem ? m_froxelSystem->IsDebugVisualizationEnabled() : false;
+                if (ImGui::Checkbox("Show Voxel Grid", &debugVis)) {
+                    if (m_froxelSystem) {
+                        m_froxelSystem->EnableDebugVisualization(debugVis);
+                        LOG_INFO("Froxel debug visualization: {}", debugVis ? "ENABLED" : "DISABLED");
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Visualize the 160×90×64 voxel grid structure");
+                }
+
+                // Grid info
+                if (m_froxelSystem) {
+                    const auto& params = m_froxelSystem->GetGridParams();
+                    ImGui::Separator();
+                    ImGui::Text("Grid Info:");
+                    ImGui::Text("Dimensions: %u × %u × %u voxels",
+                        params.gridDimensions.x, params.gridDimensions.y, params.gridDimensions.z);
+                    ImGui::Text("Total voxels: %u",
+                        params.gridDimensions.x * params.gridDimensions.y * params.gridDimensions.z);
+                    ImGui::Text("Voxel size: %.1f × %.1f × %.1f units",
+                        params.voxelSize.x, params.voxelSize.y, params.voxelSize.z);
+                }
+            } else {
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Enable froxel fog to see controls");
             }
 
             ImGui::TreePop();

@@ -5,6 +5,7 @@
 #include "../utils/d3dx12/d3dx12.h"
 #include "../debug/pix3.h"
 #include "../lighting/ProbeGridSystem.h"
+#include "../rendering/FroxelSystem.h"
 #include <d3dcompiler.h>
 #include <fstream>
 
@@ -583,18 +584,19 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     // u0: RWTexture2D<float4> g_output (descriptor table - typed UAV requirement)
     // u2: RWTexture2D<float> g_currShadow (PCSS temporal shadow - current frame, descriptor table)
     // u3: RWTexture2D<float4> g_currColor (PRIORITY 1 FIX: temporal color - current frame, descriptor table)
-    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[4];
+    CD3DX12_DESCRIPTOR_RANGE1 srvRanges[5];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);  // t5: Texture2D (prev shadow)
     srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // t6: Texture2D (RTXDI output)
     srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // t8: Texture2D (depth buffer)
     srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // t9: Texture2D (prev color - PRIORITY 1 FIX)
+    srvRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // t10: Texture3D (froxel lighting grid - Phase 5)
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRanges[3];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
     uavRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);  // u3: RWTexture2D (current color - PRIORITY 1 FIX)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[15];  // +2 for temporal color accumulation (t9, u3)
+    CD3DX12_ROOT_PARAMETER1 rootParams[16];  // +3 for temporal color (t9, u3) + froxel grid (t10)
     rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
@@ -610,9 +612,19 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[12].InitAsConstantBufferView(1);             // b1 - MaterialProperties CBV (Phase 3: Material System)
     rootParams[13].InitAsDescriptorTable(1, &srvRanges[3]); // t9 - Previous color (SRV - PRIORITY 1 FIX)
     rootParams[14].InitAsDescriptorTable(1, &uavRanges[2]); // u3 - Current color (UAV - PRIORITY 1 FIX)
+    rootParams[15].InitAsDescriptorTable(1, &srvRanges[4]); // t10 - Froxel lighting grid (SRV - Phase 5)
+
+    // Static sampler for froxel grid (s0) - Phase 5
+    CD3DX12_STATIC_SAMPLER_DESC froxelSampler(
+        0,                                      // shaderRegister (s0)
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,       // filter (trilinear)
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,      // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,      // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP       // addressW
+    );
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(15, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(16, rootParams, 1, &froxelSampler, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -740,7 +752,8 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        const RenderConstants& constants,
                                        ID3D12Resource* rtxdiOutputBuffer,
                                        ProbeGridSystem* probeGridSystem,
-                                       ID3D12Resource* materialPropertiesBuffer) {
+                                       ID3D12Resource* materialPropertiesBuffer,
+                                       FroxelSystem* froxelSystem) {
     if (!cmdList || !particleBuffer || !rtLightingBuffer || !m_resources) {
         LOG_ERROR("Gaussian Render: null resource!");
         return;
@@ -934,6 +947,16 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         return;
     }
     cmdList->SetComputeRootDescriptorTable(14, currentColorUAVHandle);
+
+    // Root param 15: Bind froxel lighting grid (SRV descriptor table - t10, Phase 5)
+    if (froxelSystem) {
+        D3D12_GPU_DESCRIPTOR_HANDLE froxelSRVHandle = froxelSystem->GetLightingGridSRV();
+        if (froxelSRVHandle.ptr != 0) {
+            cmdList->SetComputeRootDescriptorTable(15, froxelSRVHandle);
+        } else {
+            LOG_WARN("Froxel system provided but lighting grid SRV is ZERO!");
+        }
+    }
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;
