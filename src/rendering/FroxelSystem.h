@@ -75,9 +75,9 @@ public:
         DirectX::XMFLOAT3 gridMax;      // World-space maximum
         float padding1;
         DirectX::XMUINT3 gridDimensions; // Voxel count [x, y, z]
-        uint32_t particleCount;
+        uint32_t lightCount;            // Number of lights (CRITICAL - was missing!)
         DirectX::XMFLOAT3 voxelSize;    // Computed size of each voxel
-        float densityMultiplier;
+        float lightingMultiplier;       // Global lighting scale (replaces densityMultiplier)
     };
 
     const GridParams& GetGridParams() const { return m_gridParams; }
@@ -85,7 +85,7 @@ public:
     // Configuration
     void SetGridDimensions(uint32_t x, uint32_t y, uint32_t z);
     void SetWorldBounds(const DirectX::XMFLOAT3& min, const DirectX::XMFLOAT3& max);
-    void SetDensityMultiplier(float multiplier) { m_gridParams.densityMultiplier = multiplier; }
+    void SetLightingMultiplier(float multiplier) { m_gridParams.lightingMultiplier = multiplier; }
 
     // Debug
     void EnableDebugVisualization(bool enable) { m_debugVisualization = enable; }

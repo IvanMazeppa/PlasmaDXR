@@ -93,25 +93,24 @@ void main(uint3 voxelIdx : SV_DispatchThreadID)
         float normalizedDist = lightDist / max(light.radius, 1.0);
         float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
 
-        // === SHADOW RAY (Simplified for voxels - single ray, no soft shadows) ===
-        // We use a simplified shadow test for voxels to keep cost down
-        // Full PCSS soft shadows would be too expensive for 921K voxels
+        // === SHADOW RAY (DISABLED - Performance optimization) ===
+        // TODO: Re-enable with tighter BVH bounds or distance-based culling
+        // Shadow rays are VERY expensive for 921K voxels × 13 lights = 12M rays
+        // With oversized BVH bounds, almost every ray hits → everything 80% shadowed
 
-        RayDesc shadowRay;
-        shadowRay.Origin = worldPos + lightDir * 0.1;  // Small bias to avoid self-intersection
-        shadowRay.Direction = lightDir;
-        shadowRay.TMin = 0.01;
-        shadowRay.TMax = lightDist - 0.1;
+        // For now, disable shadows entirely to verify multi-light contribution
+        float shadowTerm = 1.0;  // Fully lit (no shadows)
 
-        // Use ACCEPT_FIRST_HIT for performance (we don't need exact distance)
-        RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
-        q.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, shadowRay);
-        q.Proceed();
-
-        // Shadow term:
-        // - Fully lit (1.0) if no hit
-        // - Partially shadowed (0.2) if hit (allows some light through like god rays)
-        float shadowTerm = (q.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) ? 0.2 : 1.0;
+        // ORIGINAL CODE (commented out for performance):
+        // RayDesc shadowRay;
+        // shadowRay.Origin = worldPos + lightDir * 0.1;
+        // shadowRay.Direction = lightDir;
+        // shadowRay.TMin = 0.01;
+        // shadowRay.TMax = lightDist - 0.1;
+        // RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
+        // q.TraceRayInline(g_particleBVH, RAY_FLAG_NONE, 0xFF, shadowRay);
+        // q.Proceed();
+        // float shadowTerm = (q.CommittedStatus() == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) ? 0.2 : 1.0;
 
         // Accumulate this light's contribution
         // NOTE: We don't use phase function here - that's applied during sampling in Pass 3

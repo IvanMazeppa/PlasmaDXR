@@ -21,8 +21,8 @@ FroxelSystem::FroxelSystem(Device* device, ResourceManager* resources)
     m_gridParams.gridMin = XMFLOAT3(-1500.0f, -1500.0f, -1500.0f);
     m_gridParams.gridMax = XMFLOAT3(1500.0f, 1500.0f, 1500.0f);
     m_gridParams.gridDimensions = XMUINT3(160, 90, 64);  // 921,600 voxels
-    m_gridParams.densityMultiplier = 1.0f;
-    m_gridParams.particleCount = 0;
+    m_gridParams.lightCount = 0;            // Updated per-frame in LightVoxels()
+    m_gridParams.lightingMultiplier = 1.0f; // Global lighting scale
 
     UpdateGridParams();
 }
@@ -369,8 +369,7 @@ void FroxelSystem::InjectDensity(
         return;
     }
 
-    // Update particle count and upload constant buffer
-    m_gridParams.particleCount = particleCount;
+    // Upload constant buffer (no per-frame updates needed for InjectDensity)
     memcpy(m_constantBufferMapped, &m_gridParams, sizeof(GridParams));
 
     // Set pipeline state and root signature
@@ -409,6 +408,10 @@ void FroxelSystem::LightVoxels(
         LOG_ERROR("FroxelSystem not initialized");
         return;
     }
+
+    // CRITICAL FIX: Update lightCount in constant buffer BEFORE dispatch!
+    m_gridParams.lightCount = lightCount;
+    memcpy(m_constantBufferMapped, &m_gridParams, sizeof(GridParams));
 
     // Set pipeline state and root signature
     commandList->SetPipelineState(m_lightVoxelsPSO.Get());
