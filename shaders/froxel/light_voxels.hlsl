@@ -29,17 +29,19 @@ struct Light {
     float _padding;
 };
 
-// Froxel grid parameters
+// Froxel grid parameters (MUST match GridParams in FroxelSystem.h!)
 cbuffer FroxelParams : register(b0)
 {
-    float3 gridMin;
-    float padding0;
-    float3 gridMax;
-    float padding1;
-    uint3 gridDimensions;
-    uint lightCount;
-    float3 voxelSize;
-    float lightingMultiplier;      // Global lighting scale (default 1.0)
+    float3 gridMin;              // offset 0
+    float padding0;              // offset 12
+    float3 gridMax;              // offset 16
+    float padding1;              // offset 28
+    uint3 gridDimensions;        // offset 32
+    uint particleCount;          // offset 44 (used by InjectDensity)
+    float3 voxelSize;            // offset 48
+    float densityMultiplier;     // offset 60
+    uint lightCount;             // offset 64 (used by LightVoxels)
+    float3 padding2;             // offset 68
 };
 
 // Input: Density grid from Pass 1
@@ -118,8 +120,8 @@ void main(uint3 voxelIdx : SV_DispatchThreadID)
         totalLight += lightContribution;
     }
 
-    // Apply global lighting multiplier
-    totalLight *= lightingMultiplier;
+    // Apply global density multiplier
+    totalLight *= densityMultiplier;
 
     // Store in lighting grid
     // RGB = accumulated light color (pre-multiplied by density)

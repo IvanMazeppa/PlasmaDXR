@@ -1,0 +1,16 @@
+diff --git a/PlasmaDX-Clean/.claude/agents/materials-and-structure-specialist.md b/PlasmaDX-Clean/.claude/agents/materials-and-structure-specialist.md
+index a1b2c3d..e4f5g6h 100644
+--- a/PlasmaDX-Clean/.claude/agents/materials-and-structure-specialist.md
++++ b/PlasmaDX-Clean/.claude/agents/materials-and-structure-specialist.md
+@@ -101,2 +101,2 @@
+    - <5% FPS loss: Acceptable, proceed autonomously
+-   - 5-10% FPS loss: Acceptable if user approves trade-off
+-   - >10% FPS loss: Requires architectural rethink or optimization
++   - >5% FPS loss: Requires user approval with trade-off analysis
+ 
+@@ -748,3 +748,2 @@
+ - **FPS regression acceptable:** <5% (proceed autonomously)
+-- **FPS regression needs approval:** 5-10% (seek user approval with trade-off analysis)
+-- **FPS regression requires rethink:** >10% (propose optimization or alternative approach)
++- **FPS regression requires approval:** >5% (seek user approval with trade-off analysis)
+

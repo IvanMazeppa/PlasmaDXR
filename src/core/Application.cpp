@@ -1044,7 +1044,7 @@ void Application::Render() {
                 gaussianConstants.froxelGridMax = froxelParams.gridMax;
                 gaussianConstants.froxelPadding0 = 0.0f;
                 gaussianConstants.froxelGridDimensions = froxelParams.gridDimensions;
-                gaussianConstants.froxelDensityMultiplier = froxelParams.lightingMultiplier;
+                gaussianConstants.froxelDensityMultiplier = froxelParams.densityMultiplier;
                 gaussianConstants.froxelVoxelSize = froxelParams.voxelSize;
                 gaussianConstants.froxelPadding1 = 0.0f;
             } else {
@@ -4775,33 +4775,33 @@ void Application::RenderImGui() {
 
             if (m_enableFroxelFog) {
                 ImGui::Separator();
-                ImGui::Text("Lighting Intensity:");
+                ImGui::Text("Fog Density:");
 
-                // Lighting multiplier slider (renamed from density multiplier)
-                if (ImGui::SliderFloat("Lighting Multiplier", &m_froxelDensityMultiplier, 0.1f, 5.0f, "%.2f")) {
+                // Density multiplier slider
+                if (ImGui::SliderFloat("Density Multiplier", &m_froxelDensityMultiplier, 0.1f, 5.0f, "%.2f")) {
                     if (m_froxelSystem) {
-                        m_froxelSystem->SetLightingMultiplier(m_froxelDensityMultiplier);
+                        m_froxelSystem->SetDensityMultiplier(m_froxelDensityMultiplier);
                     }
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Controls fog brightness\n0.1 = dim\n1.0 = normal\n5.0 = bright");
+                    ImGui::SetTooltip("Controls fog opacity\n0.1 = subtle haze\n1.0 = moderate fog\n5.0 = dense fog");
                 }
 
-                // Lighting presets
+                // Density presets
                 ImGui::Text("Presets:");
-                if (ImGui::Button("Dim")) {
+                if (ImGui::Button("Subtle Haze")) {
                     m_froxelDensityMultiplier = 0.3f;
-                    if (m_froxelSystem) m_froxelSystem->SetLightingMultiplier(0.3f);
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(0.3f);
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Normal")) {
+                if (ImGui::Button("Moderate")) {
                     m_froxelDensityMultiplier = 1.0f;
-                    if (m_froxelSystem) m_froxelSystem->SetLightingMultiplier(1.0f);
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(1.0f);
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Bright")) {
+                if (ImGui::Button("Dense")) {
                     m_froxelDensityMultiplier = 3.0f;
-                    if (m_froxelSystem) m_froxelSystem->SetLightingMultiplier(3.0f);
+                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(3.0f);
                 }
 
                 ImGui::Separator();

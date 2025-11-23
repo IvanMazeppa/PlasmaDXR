@@ -21,8 +21,10 @@ FroxelSystem::FroxelSystem(Device* device, ResourceManager* resources)
     m_gridParams.gridMin = XMFLOAT3(-1500.0f, -1500.0f, -1500.0f);
     m_gridParams.gridMax = XMFLOAT3(1500.0f, 1500.0f, 1500.0f);
     m_gridParams.gridDimensions = XMUINT3(160, 90, 64);  // 921,600 voxels
+    m_gridParams.particleCount = 0;         // Updated per-frame in InjectDensity()
+    m_gridParams.densityMultiplier = 1.0f;  // Global density scale
     m_gridParams.lightCount = 0;            // Updated per-frame in LightVoxels()
-    m_gridParams.lightingMultiplier = 1.0f; // Global lighting scale
+    m_gridParams.padding2 = XMFLOAT3(0.0f, 0.0f, 0.0f);
 
     UpdateGridParams();
 }
@@ -369,10 +371,8 @@ void FroxelSystem::InjectDensity(
         return;
     }
 
-    // Upload constant buffer (no per-frame updates needed for InjectDensity)
-    // CRITICAL FIX: Reuse lightCount field for particleCount since they share the same offset (44)
-    // The shader expects 'particleCount' at this offset.
-    m_gridParams.lightCount = particleCount;
+    // CRITICAL FIX: Upload particleCount to GPU
+    m_gridParams.particleCount = particleCount;
     memcpy(m_constantBufferMapped, &m_gridParams, sizeof(GridParams));
 
     // Set pipeline state and root signature

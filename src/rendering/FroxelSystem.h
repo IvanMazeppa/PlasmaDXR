@@ -68,16 +68,18 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetDensityGridSRV() const { return m_densityGridSRVGPU; }
     D3D12_GPU_DESCRIPTOR_HANDLE GetLightingGridSRV() const { return m_lightingGridSRVGPU; }
 
-    // Grid parameters
+    // Grid parameters (MUST match inject_density.hlsl and light_voxels.hlsl cbuffers!)
     struct GridParams {
-        DirectX::XMFLOAT3 gridMin;      // World-space minimum
-        float padding0;
-        DirectX::XMFLOAT3 gridMax;      // World-space maximum
-        float padding1;
-        DirectX::XMUINT3 gridDimensions; // Voxel count [x, y, z]
-        uint32_t lightCount;            // Number of lights (CRITICAL - was missing!)
-        DirectX::XMFLOAT3 voxelSize;    // Computed size of each voxel
-        float lightingMultiplier;       // Global lighting scale (replaces densityMultiplier)
+        DirectX::XMFLOAT3 gridMin;       // World-space minimum (offset 0)
+        float padding0;                  // Padding (offset 12)
+        DirectX::XMFLOAT3 gridMax;       // World-space maximum (offset 16)
+        float padding1;                  // Padding (offset 28)
+        DirectX::XMUINT3 gridDimensions; // Voxel count [x, y, z] (offset 32)
+        uint32_t particleCount;          // Particle count for InjectDensity (offset 44)
+        DirectX::XMFLOAT3 voxelSize;     // Computed size of each voxel (offset 48)
+        float densityMultiplier;         // Global density scale (offset 60)
+        uint32_t lightCount;             // Light count for LightVoxels (offset 64)
+        DirectX::XMFLOAT3 padding2;      // Padding for alignment (offset 68)
     };
 
     const GridParams& GetGridParams() const { return m_gridParams; }
@@ -85,7 +87,7 @@ public:
     // Configuration
     void SetGridDimensions(uint32_t x, uint32_t y, uint32_t z);
     void SetWorldBounds(const DirectX::XMFLOAT3& min, const DirectX::XMFLOAT3& max);
-    void SetLightingMultiplier(float multiplier) { m_gridParams.lightingMultiplier = multiplier; }
+    void SetDensityMultiplier(float multiplier) { m_gridParams.densityMultiplier = multiplier; }
 
     // Debug
     void EnableDebugVisualization(bool enable) { m_debugVisualization = enable; }

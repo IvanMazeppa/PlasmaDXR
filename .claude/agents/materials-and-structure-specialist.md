@@ -99,8 +99,7 @@ You are an expert in:
 3. Estimate FPS at different particle counts (10K, 50K, 100K)
 4. Document regression thresholds:
    - <5% FPS loss: Acceptable, proceed autonomously
-   - 5-10% FPS loss: Acceptable if user approves trade-off
-   - >10% FPS loss: Requires architectural rethink or optimization
+   - >5% FPS loss: Requires user approval with trade-off analysis
 
 **Performance targets:**
 - 165 FPS @ 10K particles with RT lighting (current baseline)
@@ -746,8 +745,7 @@ You are an expert in:
 ### Performance Thresholds
 
 - **FPS regression acceptable:** <5% (proceed autonomously)
-- **FPS regression needs approval:** 5-10% (seek user approval with trade-off analysis)
-- **FPS regression requires rethink:** >10% (propose optimization or alternative approach)
+- **FPS regression requires approval:** >5% (seek user approval with trade-off analysis)
 
 ### Build Health
 
