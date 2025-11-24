@@ -571,6 +571,34 @@ void Application::Render() {
     cmdList->RSSetViewports(1, &viewport);
     cmdList->RSSetScissorRects(1, &scissor);
 
+    // Compute camera position (needed for both RT lighting and rendering)
+    float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
+    float camY = m_cameraDistance * sinf(m_cameraPitch);
+    float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
+    DirectX::XMFLOAT3 cameraPosition = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
+
+    // === Compute Matrices Early (Needed for RTXDI Reprojection) ===
+    DirectX::XMMATRIX viewMat, projMat, viewProjMat;
+    DirectX::XMFLOAT4X4 currentViewProj;
+    {
+        using namespace DirectX;
+        XMVECTOR camPos = XMLoadFloat3(&cameraPosition);
+        XMVECTOR lookAt = XMVectorSet(0, 0, 0, 1.0f);
+        XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+        viewMat = XMMatrixLookAtLH(camPos, lookAt, up);
+        // Use standard aspect ratio here; renderers might recompute if they have custom resolution (DLSS)
+        float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+        projMat = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 10000.0f);
+        viewProjMat = XMMatrixMultiply(viewMat, projMat);
+        XMStoreFloat4x4(&currentViewProj, viewProjMat);
+
+        // Initialize prevViewProj on first frame
+        if (m_firstFrame) {
+            m_prevViewProj = currentViewProj;
+            m_firstFrame = false;
+        }
+    }
+
     // RTXDI Light Grid Update (if RTXDI lighting system is active)
     if (m_lightingSystem == LightingSystem::RTXDI && m_rtxdiLightingSystem && !m_lights.empty()) {
         m_rtxdiLightingSystem->UpdateLightGrid(m_lights.data(), static_cast<uint32_t>(m_lights.size()), cmdList);
@@ -594,12 +622,14 @@ void Application::Render() {
 
             // === Milestone 5: Temporal Accumulation ===
             // Smooth patchwork pattern by accumulating samples over time
-            DirectX::XMFLOAT3 cameraPos = {
-                m_cameraDistance * cosf(m_cameraAngle),
-                m_cameraHeight,
-                m_cameraDistance * sinf(m_cameraAngle)
-            };
-            m_rtxdiLightingSystem->DispatchTemporalAccumulation(cmdList, cameraPos, static_cast<uint32_t>(m_frameCount));
+            // FIX: Pass view projection matrices for planar reprojection
+            m_rtxdiLightingSystem->DispatchTemporalAccumulation(
+                cmdList,
+                cameraPosition,
+                currentViewProj,
+                m_prevViewProj,
+                static_cast<uint32_t>(m_frameCount)
+            );
 
             if (gridUpdateCount <= 5) {
                 LOG_INFO("RTXDI M5 Temporal Accumulation dispatched (frame {})", m_frameCount);
@@ -611,11 +641,8 @@ void Application::Render() {
         }
     }
 
-    // Compute camera position (needed for both RT lighting and rendering)
-    float camX = m_cameraDistance * cosf(m_cameraPitch) * sinf(m_cameraAngle);
-    float camY = m_cameraDistance * sinf(m_cameraPitch);
-    float camZ = m_cameraDistance * cosf(m_cameraPitch) * cosf(m_cameraAngle);
-    DirectX::XMFLOAT3 cameraPosition = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
+    // Store current view-proj as previous for next frame
+    m_prevViewProj = currentViewProj;
 
     // RT Lighting Pass (if enabled) - now with dynamic emission!
     ID3D12Resource* rtLightingBuffer = nullptr;
@@ -4181,8 +4208,13 @@ void Application::RenderImGui() {
 
                 // Custom range controls
                 if (m_lightSelection == LightSelection::CustomRange) {
-                    ImGui::SliderInt("Range Start", &m_customRangeStart, 0, (int)m_lights.size() - 1);
-                    ImGui::SliderInt("Range End", &m_customRangeEnd, 0, (int)m_lights.size() - 1);
+                    if (m_lights.size() > 0) {
+                        int maxIndex = (int)m_lights.size() - 1;
+                        ImGui::SliderInt("Range Start", &m_customRangeStart, 0, maxIndex);
+                        ImGui::SliderInt("Range End", &m_customRangeEnd, 0, maxIndex);
+                    } else {
+                        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "No lights available");
+                    }
                 }
 
                 // Radial threshold
@@ -4350,8 +4382,6 @@ void Application::RenderImGui() {
 
             ImGui::TreePop();
         }
-
-        ImGui::TreePop();
     }
 
     ImGui::End();

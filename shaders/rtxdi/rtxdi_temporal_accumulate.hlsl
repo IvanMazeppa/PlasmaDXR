@@ -11,6 +11,8 @@ cbuffer AccumulationConstants : register(b0) {
     float3 g_cameraPos;             // Current camera position
     float3 g_prevCameraPos;         // Previous camera position
     uint g_forceReset;              // Force reset flag (1=reset, 0=normal)
+    row_major float4x4 g_viewProj;      // Current ViewProj (for unprojection)
+    row_major float4x4 g_prevViewProj;  // Previous ViewProj (for reprojection)
 };
 
 // Inputs
@@ -19,6 +21,17 @@ Texture2D<float4> g_prevAccumulated : register(t1); // Previous frame accumulate
 
 // Output
 RWTexture2D<float4> g_currAccumulated : register(u0);
+
+// Calculate world position from pixel coordinates (Planar Z=0 assumption)
+float3 PixelToWorldPosition(uint2 pixelCoord) {
+    float2 uv = (float2(pixelCoord) + 0.5) / float2(g_screenWidth, g_screenHeight);
+    float diskRange = 600.0f;  // Accretion disk spans 600 units (-300 to +300)
+    float3 worldPos;
+    worldPos.x = -300.0f + uv.x * diskRange;
+    worldPos.y = -300.0f + (1.0 - uv.y) * diskRange;
+    worldPos.z = 0.0f;  // Disk plane
+    return worldPos;
+}
 
 [numthreads(8, 8, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) {
@@ -29,12 +42,39 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         return;
     }
 
+    // === REPROJECTION (Fix for "Patchwork") ===
+    // Find where this pixel was in the previous frame
+    uint2 prevPixelCoord = pixelCoord; // Default to current if reprojection fails
+    bool reprojected = false;
+
+    // 1. Reconstruct world position (Planar Assumption)
+    float3 worldPos = PixelToWorldPosition(pixelCoord);
+
+    // 2. Project to previous clip space
+    float4 prevClipPos = mul(float4(worldPos, 1.0), g_prevViewProj);
+
+    // 3. Convert to screen space
+    if (prevClipPos.w > 0.0) {
+        float3 prevNDC = prevClipPos.xyz / prevClipPos.w;
+        float2 prevUV = float2(
+            (prevNDC.x + 1.0) * 0.5,
+            (1.0 - prevNDC.y) * 0.5  // Flip Y
+        );
+
+        // Check if valid UV
+        if (all(prevUV >= 0.0) && all(prevUV <= 1.0)) {
+            prevPixelCoord = uint2(prevUV * float2(g_screenWidth, g_screenHeight));
+            reprojected = true;
+        }
+    }
+
     // Read current frame RTXDI output (raw 1-sample-per-pixel)
     float4 currentSample = g_rtxdiOutput[pixelCoord];
     uint currentLightIndex = asuint(currentSample.r);
 
-    // Read previous accumulated result
-    float4 prevAccum = g_prevAccumulated[pixelCoord];
+    // Read previous accumulated result (from REPROJECTED coordinate)
+    // Use Point Sampler load to avoid filtering indices
+    float4 prevAccum = g_prevAccumulated[prevPixelCoord];
     uint prevSampleCount = uint(prevAccum.g);
     uint prevFrameID = uint(prevAccum.a);
 
@@ -43,9 +83,8 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     // 1. Force reset (user toggled RTXDI, changed presets, etc.)
     bool shouldReset = g_forceReset != 0;
 
-    // 2. Camera moved significantly
-    float cameraMoveDistance = length(g_cameraPos - g_prevCameraPos);
-    if (cameraMoveDistance > g_resetThreshold) {
+    // 2. Reprojection failure (off-screen)
+    if (!reprojected) {
         shouldReset = true;
     }
 
@@ -54,9 +93,13 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         shouldReset = true;
     }
 
+    // Note: We REMOVED the "Camera moved significantly" check because reprojection handles movement!
+    // We effectively INCREASED the reset threshold to infinity, relying on reprojection validity.
+
     // 4. Current sample is invalid (no lights in cell)
     if (currentLightIndex == 0xFFFFFFFF) {
         // Keep previous accumulated result (don't corrupt with invalid samples)
+        // Write to CURRENT pixel (we are filling holes) using reprojected history
         g_currAccumulated[pixelCoord] = prevAccum;
         return;
     }
