@@ -62,16 +62,9 @@ cbuffer GaussianConstants : register(b0)
     float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0) - UNUSED
     float2 godRayPadding;          // Padding for alignment
 
-    // Froxel volumetric fog system (Phase 5 - replaces god rays)
-    // MATCH C++ ORDER: useFroxelFog, gridMin, gridMax, padding0, dims, density, voxelSize, padding1
-    uint useFroxelFog;             // Toggle: 0=disabled, 1=enabled (Offset 0)
-    float3 froxelGridMin;          // Grid world-space minimum (Offset 4)
-    float3 froxelGridMax;          // Grid world-space maximum (Offset 16)
-    float froxelPadding0;          // Padding for alignment (Offset 28)
-    uint3 froxelGridDimensions;    // Voxel count (Offset 32)
-    float froxelDensityMultiplier; // Fog density multiplier (Offset 44)
-    float3 froxelVoxelSize;        // Computed voxel size (Offset 48)
-    float froxelPadding1;          // Padding for alignment (Offset 60)
+// Froxel volumetric fog system (Phase 5 - DEPRECATED)
+    // Constants removed
+    float froxelPaddingPlaceholder[12]; // Keep alignment if needed or remove entirely if C++ struct updated
 
     // Phase 1 Lighting Fix
     float rtMinAmbient;            // Global ambient term (0.0-0.2)
@@ -166,12 +159,9 @@ Texture2D<float4> g_rtxdiOutput : register(t6);
 Texture2D<float4> g_prevColor : register(t9);
 
 // ============================================================================
-// FROXEL VOLUMETRIC FOG SYSTEM (Phase 5 - replaces god rays)
+// FROXEL VOLUMETRIC FOG SYSTEM (Phase 5 - DEPRECATED)
 // ============================================================================
-// 3D texture containing pre-computed lighting in volumetric fog grid
-// RGB: Accumulated light color from all sources (multi-light + shadows)
-// A: Density at voxel (for debugging)
-Texture3D<float4> g_froxelLightingGrid : register(t10);
+// Texture3D<float4> g_froxelLightingGrid : register(t10); // REMOVED
 SamplerState g_linearClampSampler : register(s0);  // Linear clamp for smooth interpolation
 
 // ============================================================================
@@ -213,8 +203,8 @@ static const float volumeStepSize = 0.1;         // Finer steps for better quali
 static const float densityMultiplier = 2.0;      // Increased for more volumetric appearance
 static const float shadowBias = 0.01;            // Bias for shadow ray origin
 
-// Froxel volumetric fog sampling (Phase 5 - must be included AFTER resource declarations)
-#include "../froxel/sample_froxel_grid.hlsl"
+// Froxel volumetric fog sampling (Phase 5 - REMOVED)
+// #include "../froxel/sample_froxel_grid.hlsl"
 
 // Input: Particle buffer
 StructuredBuffer<Particle> g_particles : register(t0);
@@ -499,18 +489,6 @@ float CastVolumetricShadowRay(
     }
 
     return shadowFactor;
-}
-
-// =============================================================================
-// ReSTIR HELPER FUNCTIONS
-// =============================================================================
-
-// Simple hash function for pseudo-random numbers
-float Hash(uint seed) {
-    seed = seed * 747796405u + 2891336453u;
-    seed = ((seed >> 16) ^ seed) * 747796405u;
-    seed = ((seed >> 16) ^ seed);
-    return float(seed) / 4294967295.0;
 }
 
 // =============================================================================
@@ -1273,7 +1251,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     }
 
     // =============================================================================
-    // ReSTIR: Temporal Resampling for Better Light Sampling
+    // Volume Rendering Loop
     // =============================================================================
     uint pixelIndex = pixelPos.y * screenWidth + pixelPos.x;
 
@@ -1719,22 +1697,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
 
     // =========================================================================
-    // FROXEL VOLUMETRIC FOG SAMPLING (Phase 5 - replaces god rays)
+    // FROXEL VOLUMETRIC FOG SAMPLING (Phase 5 - DEPRECATED)
     // =========================================================================
-    // Sample pre-computed lighting from 3D froxel grid (160×90×64 voxels)
-    // MUCH faster than god rays: 1 texture sample vs 13 lights × 32 steps!
-    if (useFroxelFog != 0) {
-        float3 atmosphericFog = RayMarchFroxelGrid(
-            cameraPos,                  // Camera position
-            ray.Direction,              // Ray direction (from GenerateCameraRay)
-            3000.0,                     // Max ray march distance (covers entire scene)
-            froxelDensityMultiplier     // Fog density multiplier (runtime control)
-        );
-
-        // Add atmospheric fog to final color (before tone mapping)
-        // Scale by 0.1 for balanced contribution relative to particles
-        finalColor += atmosphericFog * 0.1;
-    }
+    // REMOVED: Froxel system replaced by Gaussian Volume
 
     // DEPRECATED: Old god ray system (replaced by froxel system for 5× performance)
     /*
@@ -1770,12 +1735,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // Bottom-left corner: Phase function (blue bar if ON)
     if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
         finalColor = float3(0, 0, 1); // Solid blue bar
-    }
-    // Bottom-right corner: ReSTIR status (complex debug info)
-    if (pixelPos.x > resolution.x - 200 && pixelPos.y > resolution.y - 40) {
-        // Show different colors based on ReSTIR state
-        // Show gray (legacy ReSTIR removed)
-        finalColor = float3(0.3, 0.3, 0.3);
     }
 
     // === PRIORITY 1 FIX: TEMPORAL COLOR ACCUMULATION ===

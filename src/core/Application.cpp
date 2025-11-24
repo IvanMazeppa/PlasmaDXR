@@ -8,9 +8,7 @@
 #include "../particles/ParticleRenderer_Gaussian.h"
 #include "../lighting/RTLightingSystem_RayQuery.h"
 #include "../lighting/RTXDILightingSystem.h"
-#include "../lighting/VolumetricReSTIRSystem.h"
 #include "../lighting/ProbeGridSystem.h"
-#include "../rendering/FroxelSystem.h"
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
@@ -102,9 +100,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     } else if (appConfig.lighting.system == "RTXDI") {
         m_lightingSystem = LightingSystem::RTXDI;
         LOG_INFO("Lighting system: RTXDI (from config)");
-    } else if (appConfig.lighting.system == "VolumetricReSTIR") {
-        m_lightingSystem = LightingSystem::VolumetricReSTIR;
-        LOG_INFO("Lighting system: Volumetric ReSTIR (from config)");
     }
 
     // Apply probe grid config (additive system)
@@ -126,9 +121,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         } else if (arg == "--multi-light") {
             m_lightingSystem = LightingSystem::MultiLight;
             LOG_INFO("Lighting system: Multi-Light (brute force)");
-        } else if (arg == "--restir") {
-            m_lightingSystem = LightingSystem::VolumetricReSTIR;
-            LOG_INFO("Lighting system: Volumetric ReSTIR (autonomous testing mode)");
         } else if (arg == "--dump-buffers") {
             m_enableBufferDump = true;
             // Check if next arg is a frame number (optional)
@@ -161,7 +153,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --particles <count>  : Set particle count");
             LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
             LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
-            LOG_INFO("  --restir             : Use Volumetric ReSTIR (Phase 1 - experimental)");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
             LOG_INFO("  --ground-plane [height] : Enable reflective ground plane (default: -500)");
@@ -334,56 +325,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     LOG_INFO("DLSS support not enabled (ENABLE_DLSS not defined)");
 #endif
 
-    // Initialize Volumetric ReSTIR system (Phase 1 - experimental)
-    // IMPORTANT: Initialize AFTER DLSS to get correct render resolution
-    LOG_INFO("Initializing Volumetric ReSTIR System (Phase 1)...");
-
-    // FIX 2025-11-19: Use FULL resolution for Phase 1 testing
-    // The 1/4 resolution was causing frozen output because ShadeSelectedPaths
-    // only wrote to a small corner of the native-resolution output texture.
-    // TODO: Add proper output texture + upscaling in Phase 2
-    uint32_t restirWidth = m_width;
-    uint32_t restirHeight = m_height;
-    LOG_INFO("Initializing VolumetricReSTIR at FULL resolution (Phase 1 testing): {}x{}", restirWidth, restirHeight);
-    LOG_INFO("  Native resolution: {}x{}", m_width, m_height);
-    LOG_INFO("  Shader invocations reduced from {:.1f}M to {:.1f}K",
-            (m_width * m_height) / 1000000.0f,
-            (restirWidth * restirHeight) / 1000.0f);
-
-    m_volumetricReSTIR = std::make_unique<VolumetricReSTIRSystem>();
-    if (!m_volumetricReSTIR->Initialize(m_device.get(), m_resources.get(), restirWidth, restirHeight)) {
-        LOG_ERROR("Failed to initialize Volumetric ReSTIR system");
-        LOG_ERROR("  Volumetric ReSTIR will not be available");
-        m_volumetricReSTIR.reset();
-        // Don't force fallback - user can still use other lighting systems
-        if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
-            LOG_ERROR("  Startup mode was VolumetricReSTIR - falling back to Multi-Light");
-            m_lightingSystem = LightingSystem::MultiLight;
-        }
-    } else {
-        LOG_INFO("Volumetric ReSTIR System initialized successfully!");
-        LOG_INFO("  Reservoir buffers: {:.1f} MB @ {}x{}",
-                (restirWidth * restirHeight * 64 * 2) / (1024.0f * 1024.0f),
-                restirWidth, restirHeight);
-        LOG_INFO("  Phase 1: RIS candidate generation (no spatial/temporal reuse yet)");
-        LOG_INFO("  Ready for testing (experimental)");
-
-        // Pre-allocate descriptor for clear operation (prevents descriptor heap exhaustion)
-        // Use final output texture (DLSS upscaled if enabled, otherwise render-res)
-        m_volumetricReSTIRClearUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-        uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-        uavDesc.Texture2D.MipSlice = 0;
-        m_device->GetDevice()->CreateUnorderedAccessView(
-            m_gaussianRenderer->GetFinalOutputTexture(),  // DLSS upscaled or render-res
-            nullptr,
-            &uavDesc,
-            m_volumetricReSTIRClearUAV
-        );
-        LOG_INFO("  Pre-allocated clear UAV descriptor (final output texture)");
-    }
-
     // Initialize Probe Grid System (Phase 0.13.1)
     // Replaces Volumetric ReSTIR (which suffered from atomic contention at ≥2045 particles)
     m_probeGridSystem = std::make_unique<ProbeGridSystem>();
@@ -397,22 +338,6 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Memory: 4.06 MB probe buffer");
         LOG_INFO("  Zero atomic operations = zero contention!");
         LOG_INFO("  Target: 10K particles @ 90-110 FPS");
-    }
-
-    // Initialize Froxel Volumetric Fog System (Phase 5)
-    // Replaces expensive god ray ray marching (21 FPS → ~100 FPS)
-    LOG_INFO("Initializing Froxel Volumetric Fog System...");
-    m_froxelSystem = std::make_unique<FroxelSystem>(m_device.get(), m_resources.get());
-    if (!m_froxelSystem->Initialize(m_width, m_height)) {
-        LOG_ERROR("Failed to initialize Froxel System");
-        LOG_ERROR("  Froxel volumetric fog will not be available");
-        m_froxelSystem.reset();
-    } else {
-        LOG_INFO("Froxel System initialized successfully!");
-        LOG_INFO("  Grid: 160×90×64 = 921,600 voxels");
-        LOG_INFO("  Memory: ~9 MB (1.76 MB density + 7.04 MB lighting)");
-        LOG_INFO("  Expected performance: ~6ms total (vs ~48ms for god rays)");
-        LOG_INFO("  Target: 10K particles @ 90-100 FPS");
     }
 
     // Initialize ImGui
@@ -790,73 +715,7 @@ void Application::Render() {
     }
 
     // === Froxel Volumetric Fog System (Phase 5 - replaces god rays) ===
-    // 3-pass architecture: Clear → Inject Density → Light Voxels
-    // Expected: ~6ms total (vs ~48ms for god rays) → 5× FPS improvement!
-    if (m_enableFroxelFog && m_froxelSystem && m_particleSystem) {
-        // Pass 1: Clear density and lighting grids (zero overhead - direct GPU clear)
-        m_froxelSystem->ClearGrid(cmdList);
-
-        // UAV barrier (ensure clear completes before inject writes)
-        D3D12_RESOURCE_BARRIER densityBarrier = {};
-        densityBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-        densityBarrier.UAV.pResource = m_froxelSystem->GetDensityGrid();
-        cmdList->ResourceBarrier(1, &densityBarrier);
-
-        // Pass 2: Inject particle density into froxel grid (~0.5ms expected)
-        // Converts 10K particles → 921K voxel density field using trilinear splatting
-        m_froxelSystem->InjectDensity(
-            cmdList,
-            m_particleSystem->GetParticleBuffer(),
-            m_config.particleCount
-        );
-
-        // Transition density grid: UAV (write) → SRV (read) for lighting pass
-        D3D12_RESOURCE_BARRIER densityReadBarrier = {};
-        densityReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        densityReadBarrier.Transition.pResource = m_froxelSystem->GetDensityGrid();
-        densityReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        densityReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        densityReadBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        cmdList->ResourceBarrier(1, &densityReadBarrier);
-
-        // Pass 3: Calculate voxel lighting (~3-5ms expected)
-        // 921K voxels × 13 lights with shadow rays
-        if (m_rtLighting && m_gaussianRenderer) {
-            m_froxelSystem->LightVoxels(
-                cmdList,
-                m_particleSystem->GetParticleBuffer(),
-                m_config.particleCount,
-                m_gaussianRenderer->GetLightBuffer(),
-                static_cast<uint32_t>(m_lights.size()),
-                m_rtLighting->GetTLAS()  // For shadow rays
-            );
-
-            // Transition lighting grid: UAV (write) → SRV (read) for Gaussian renderer
-            D3D12_RESOURCE_BARRIER lightingReadBarrier = {};
-            lightingReadBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            lightingReadBarrier.Transition.pResource = m_froxelSystem->GetLightingGrid();
-            lightingReadBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-            lightingReadBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            lightingReadBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            cmdList->ResourceBarrier(1, &lightingReadBarrier);
-
-            // Log every 60 frames
-            if ((m_frameCount % 60) == 0) {
-                LOG_INFO("Froxel volumetric fog computed (frame {}, {} particles, {} voxels, {} lights)",
-                         m_frameCount, m_config.particleCount,
-                         160 * 90 * 64, m_lights.size());
-            }
-        }
-
-        // Transition density grid back to UAV for next frame
-        D3D12_RESOURCE_BARRIER densityWriteBarrier = {};
-        densityWriteBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        densityWriteBarrier.Transition.pResource = m_froxelSystem->GetDensityGrid();
-        densityWriteBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        densityWriteBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        densityWriteBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        cmdList->ResourceBarrier(1, &densityWriteBarrier);
-    }
+    // REMOVED: Deprecated in favor of Gaussian Volume
 
     // Render particles (Billboard or Gaussian path)
     if (m_particleSystem) {
@@ -1078,96 +937,34 @@ void Application::Render() {
                 rtxdiOutput = m_rtxdiLightingSystem->GetAccumulatedBuffer();  // M5 temporal accumulation output
             }
 
-            // VolumetricReSTIR: Replace entire rendering with path tracing
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_volumetricReSTIR) {
-                // Extract camera matrices
-                DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
-                    DirectX::XMLoadFloat3(&renderConstants.cameraPos),
-                    DirectX::XMVectorSet(0, 0, 0, 1.0f),  // Look at origin
-                    DirectX::XMVectorSet(0, 1, 0, 0)      // Up vector
-                );
-                DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(
-                    DirectX::XM_PIDIV4,  // 45° FOV
-                    renderAspect,
-                    0.1f,   // Near plane
-                    10000.0f  // Far plane
-                );
+            // Standard Gaussian volumetric rendering
 
-                // DISABLED: Populate Volume Mip 2 causes crash at >2044 particles
-                // Known Issue: populate_volume_mip2.hlsl line 16-17 documents race condition
-                // at >2044 particles causing GPU hang/TDR timeout.
-                // TODO: Fix InterlockedMax atomic contention before re-enabling
-                /*
-                m_volumetricReSTIR->PopulateVolumeMip2(
-                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                    m_particleSystem->GetParticleBuffer(),
-                    m_config.particleCount
-                );
-                */
+            // Phase 2: Depth pre-pass for screen-space shadows
+            // WORKAROUND: Temporarily disable shadows with >2044 particles
+            // Root cause: Shadow depth buffer descriptor handles may become stale after DLSS recreation
+            // TODO: Fix DLSS buffer recreation to update descriptors properly
+            if (m_useScreenSpaceShadows && m_config.particleCount <= 2044) {
+                m_gaussianRenderer->RenderDepthPrePass(cmdList,
+                                                      m_particleSystem->GetParticleBuffer(),
+                                                      gaussianConstants);
+            }
 
-                // Generate path candidates (Phase 1: RIS only)
-                m_volumetricReSTIR->GenerateCandidates(
-                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                    m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,  // Particle TLAS
-                    m_particleSystem->GetParticleBuffer(),
-                    m_config.particleCount,
-                    renderConstants.cameraPos,
-                    view,
-                    proj,
-                    m_frameCount  // Frame index for RNG seed
-                );
-
-                // Get final output texture (DLSS upscaled if enabled, otherwise render-res)
-                ID3D12Resource* finalOutputTexture = m_gaussianRenderer->GetFinalOutputTexture();
-                D3D12_GPU_DESCRIPTOR_HANDLE finalOutputUAV = m_gaussianRenderer->GetFinalOutputUAV();
-
-                // Shade selected paths to output texture
-                // Now writes to correct texture (DLSS upscaled if enabled)
-                m_volumetricReSTIR->ShadeSelectedPaths(
-                    reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                    finalOutputTexture,  // Write to DLSS upscaled texture or render-res
-                    finalOutputUAV,      // GPU descriptor handle for UAV
-                    m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,  // Particle TLAS
-                    m_particleSystem->GetParticleBuffer(),
-                    m_config.particleCount,
-                    renderConstants.cameraPos,
-                    view,
-                    proj
-                );
-            } else {
-                // Standard Gaussian volumetric rendering
-
-                // Phase 2: Depth pre-pass for screen-space shadows
-                // WORKAROUND: Temporarily disable shadows with >2044 particles
-                // Root cause: Shadow depth buffer descriptor handles may become stale after DLSS recreation
-                // TODO: Fix DLSS buffer recreation to update descriptors properly
-                if (m_useScreenSpaceShadows && m_config.particleCount <= 2044) {
-                    m_gaussianRenderer->RenderDepthPrePass(cmdList,
-                                                          m_particleSystem->GetParticleBuffer(),
-                                                          gaussianConstants);
-                }
-
-                // Render to UAV texture
-                m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
-                                      m_particleSystem->GetParticleBuffer(),
-                                      rtLightingBuffer,
-                                      m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
-                                      gaussianConstants,
-                                      rtxdiOutput,  // RTXDI output buffer
-                                      m_probeGridSystem.get(),  // Probe Grid System (Phase 0.13.1)
-                                      m_particleSystem->GetMaterialPropertiesBuffer(),  // Material System (Phase 3)
-                                      m_froxelSystem.get());  // Froxel Fog System (Phase 5)
-            }  // End else (standard Gaussian rendering)
+            // Render to UAV texture
+            m_gaussianRenderer->Render(reinterpret_cast<ID3D12GraphicsCommandList4*>(cmdList),
+                                  m_particleSystem->GetParticleBuffer(),
+                                  rtLightingBuffer,
+                                  m_rtLighting ? m_rtLighting->GetTLAS() : nullptr,
+                                  gaussianConstants,
+                                  rtxdiOutput,  // RTXDI output buffer
+                                  m_probeGridSystem.get(),  // Probe Grid System (Phase 0.13.1)
+                                  m_particleSystem->GetMaterialPropertiesBuffer());  // Material System (Phase 3)
 
             // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
             D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
 
             // Transition output texture (HDR) from UAV to SRV for sampling
-            // For VolumetricReSTIR: use final output (DLSS upscaled if enabled)
             // For Gaussian: use GetOutputTexture() (DLSS handles its own transitions)
-            ID3D12Resource* blitSourceTexture = (m_lightingSystem == LightingSystem::VolumetricReSTIR)
-                ? m_gaussianRenderer->GetFinalOutputTexture()
-                : m_gaussianRenderer->GetOutputTexture();
+            ID3D12Resource* blitSourceTexture = m_gaussianRenderer->GetOutputTexture();
 
             blitBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             blitBarriers[0].Transition.pResource = blitSourceTexture;
@@ -1200,10 +997,6 @@ void Application::Render() {
 
             // DEBUG: Log SRV binding
             static bool loggedSRV = false;
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedSRV) {
-                LOG_INFO("VolumetricReSTIR: Binding output SRV 0x{:016X} to blit shader", srvHandle.ptr);
-                loggedSRV = true;
-            }
 
             cmdList->SetGraphicsRootDescriptorTable(0, srvHandle);
 
@@ -1212,18 +1005,10 @@ void Application::Render() {
 
             // DEBUG: Log blit draw call
             static bool loggedDraw = false;
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedDraw) {
-                LOG_INFO("VolumetricReSTIR: About to DrawInstanced(3, 1, 0, 0) for blit");
-                loggedDraw = true;
-            }
 
             cmdList->DrawInstanced(3, 1, 0, 0);
 
             static bool loggedDrawDone = false;
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedDrawDone) {
-                LOG_INFO("VolumetricReSTIR: DrawInstanced completed");
-                loggedDrawDone = true;
-            }
 
             // Transition Gaussian output back to UAV for next frame
             blitBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -1232,10 +1017,6 @@ void Application::Render() {
 
             // DEBUG: Log completion of blit pass
             static bool loggedBlitComplete = false;
-            if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedBlitComplete) {
-                LOG_INFO("VolumetricReSTIR: HDR->SDR blit pass completed successfully");
-                loggedBlitComplete = true;
-            }
 
         } else if (m_particleRenderer) {
             // Billboard path (current/stable)
@@ -1278,58 +1059,22 @@ void Application::Render() {
 
     // DEBUG: Log before ExecuteCommandList
     static bool loggedExecute = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedExecute) {
-        LOG_INFO("VolumetricReSTIR: About to ExecuteCommandList");
-        loggedExecute = true;
-    }
 
     m_device->ExecuteCommandList();
 
     // DEBUG: Log after ExecuteCommandList
     static bool loggedExecuteDone = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedExecuteDone) {
-        LOG_INFO("VolumetricReSTIR: ExecuteCommandList completed");
-        loggedExecuteDone = true;
-    }
 
     // Present
     static bool loggedPresent = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedPresent) {
-        LOG_INFO("VolumetricReSTIR: About to Present");
-        loggedPresent = true;
-    }
 
     m_swapChain->Present(0);
-
-    static bool loggedPresentDone = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedPresentDone) {
-        LOG_INFO("VolumetricReSTIR: Present completed");
-        loggedPresentDone = true;
-    }
 
     // Reset upload heap for next frame (MUST be called before WaitForGPU)
     m_resources->ResetUploadHeap();
 
     // Wait for frame completion (simple sync for now)
-    static bool loggedWait = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedWait) {
-        LOG_INFO("VolumetricReSTIR: About to WaitForGPU");
-        loggedWait = true;
-    }
-
     m_device->WaitForGPU();
-
-    static bool loggedWaitDone = false;
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && !loggedWaitDone) {
-        LOG_INFO("VolumetricReSTIR: WaitForGPU completed - frame finished!");
-        loggedWaitDone = true;
-    }
-
-    // Read diagnostic counters for first 5 frames for debugging (GPU work is guaranteed complete)
-    if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_frameCount < 5) {
-        LOG_INFO("=== Reading diagnostic counters for frame {} ===", m_frameCount);
-        m_volumetricReSTIR->ReadDiagnosticCounters();
-    }
 
     m_frameCount++;
 
@@ -1813,11 +1558,8 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
         break;
 
-    // F7: Toggle Froxel Volumetric Fog (Phase 5)
-    case VK_F7:
-        m_enableFroxelFog = !m_enableFroxelFog;
-        LOG_INFO("Froxel Volumetric Fog: {}", m_enableFroxelFog ? "ENABLED" : "DISABLED");
-        break;
+    // F7: Toggle Froxel Volumetric Fog (Phase 5) - REMOVED
+    // if (key == VK_F7) { ... }
 
     // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)
     case VK_F8:
@@ -2285,7 +2027,7 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     ScreenshotMetadata meta;
 
     // Schema version
-    meta.schemaVersion = "2.0";
+    meta.schemaVersion = "3.0";
 
     // === RENDERING CONFIGURATION ===
 
@@ -2409,6 +2151,32 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.mlQuality.modelPath = "";
     meta.mlQuality.adaptiveQualityEnabled = m_enableAdaptiveQuality;
     meta.mlQuality.adaptiveTargetFPS = m_adaptiveTargetFPS;
+
+    // === FROXEL VOLUMETRIC FOG (Phase 5 - COMPLETE) ===
+
+    meta.froxelFog.enabled = m_enableFroxelFog;
+    if (m_froxelSystem) {
+        const auto& froxelParams = m_froxelSystem->GetGridParams();
+        meta.froxelFog.gridDimensionX = froxelParams.gridDimensions.x;
+        meta.froxelFog.gridDimensionY = froxelParams.gridDimensions.y;
+        meta.froxelFog.gridDimensionZ = froxelParams.gridDimensions.z;
+        meta.froxelFog.gridMinX = froxelParams.gridMin.x;
+        meta.froxelFog.gridMinY = froxelParams.gridMin.y;
+        meta.froxelFog.gridMinZ = froxelParams.gridMin.z;
+        meta.froxelFog.gridMaxX = froxelParams.gridMax.x;
+        meta.froxelFog.gridMaxY = froxelParams.gridMax.y;
+        meta.froxelFog.gridMaxZ = froxelParams.gridMax.z;
+        meta.froxelFog.densityMultiplier = froxelParams.densityMultiplier;
+        meta.froxelFog.debugVisualization = m_froxelSystem->IsDebugVisualizationEnabled();
+        meta.froxelFog.voxelCount = froxelParams.gridDimensions.x *
+                                     froxelParams.gridDimensions.y *
+                                     froxelParams.gridDimensions.z;
+
+        // Performance estimates (based on typical timings from FroxelSystem.h header)
+        // Density Injection: ~0.5ms, Voxel Lighting: ~3-5ms
+        meta.froxelFog.densityPassMs = 0.5f;
+        meta.froxelFog.lightingPassMs = 4.0f;  // Average of 3-5ms
+    }
 
     // === METADATA ===
 
@@ -2563,11 +2331,35 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "    \"model_path\": \"%s\",\n", meta.mlQuality.modelPath.c_str());
     fprintf(file, "    \"adaptive_quality_enabled\": %s,\n", meta.mlQuality.adaptiveQualityEnabled ? "true" : "false");
     fprintf(file, "    \"adaptive_target_fps\": %.1f\n", meta.mlQuality.adaptiveTargetFPS);
+    fprintf(file, "  },\n");
+
+    // === FROXEL VOLUMETRIC FOG (Phase 5 - COMPLETE) ===
+    fprintf(file, "  \"froxel_fog\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.froxelFog.enabled ? "true" : "false");
+    fprintf(file, "    \"grid_dimensions\": [%u, %u, %u],\n",
+            meta.froxelFog.gridDimensionX,
+            meta.froxelFog.gridDimensionY,
+            meta.froxelFog.gridDimensionZ);
+    fprintf(file, "    \"grid_min\": [%.1f, %.1f, %.1f],\n",
+            meta.froxelFog.gridMinX,
+            meta.froxelFog.gridMinY,
+            meta.froxelFog.gridMinZ);
+    fprintf(file, "    \"grid_max\": [%.1f, %.1f, %.1f],\n",
+            meta.froxelFog.gridMaxX,
+            meta.froxelFog.gridMaxY,
+            meta.froxelFog.gridMaxZ);
+    fprintf(file, "    \"density_multiplier\": %.2f,\n", meta.froxelFog.densityMultiplier);
+    fprintf(file, "    \"debug_visualization\": %s,\n", meta.froxelFog.debugVisualization ? "true" : "false");
+    fprintf(file, "    \"voxel_count\": %u,\n", meta.froxelFog.voxelCount);
+    fprintf(file, "    \"performance\": {\n");
+    fprintf(file, "      \"density_pass_ms\": %.2f,\n", meta.froxelFog.densityPassMs);
+    fprintf(file, "      \"lighting_pass_ms\": %.2f\n", meta.froxelFog.lightingPassMs);
+    fprintf(file, "    }\n");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
 
     fclose(file);
-    LOG_INFO("Metadata v2.0 saved: {}", metaPath);
+    LOG_INFO("Metadata v3.0 saved: {}", metaPath);
 }
 
 void Application::CaptureScreenshot() {
@@ -3579,16 +3371,6 @@ void Application::RenderImGui() {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Rainbow colors = different lights selected");
                 ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "Black = no lights in grid cell");
             }
-        } else if (m_lightingSystem == LightingSystem::VolumetricReSTIR) {
-            ImGui::TextColored(ImVec4(0.5f, 0.7f, 1.0f, 1.0f), "Volumetric ReSTIR: Path tracing (Phase 1)");
-            ImGui::Text("Expected FPS: ~200 FPS @ 1080p (M=8, K=3)");
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Phase 1: RIS-only candidate generation\n"
-                                 "No spatial/temporal reuse yet (noisy output)\n"
-                                 "Uses weighted reservoir sampling for volumetric light transport");
-            }
         } else {
             ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.5f, 1.0f), "Multi-Light: All 13 lights evaluated");
             ImGui::Text("Expected FPS: Baseline (20 FPS @ 10K particles)");
@@ -3641,106 +3423,8 @@ void Application::RenderImGui() {
         }
 
         // === Volumetric ReSTIR Controls (Phase 1) ===
-        if (m_lightingSystem == LightingSystem::VolumetricReSTIR && m_volumetricReSTIR) {
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Volumetric ReSTIR Parameters");
+        // REMOVED: Legacy ReSTIR system (see docs/ARCHITECTURE_PROPOSAL.md)
 
-            // Random walks per pixel (M)
-            int randomWalks = static_cast<int>(m_volumetricReSTIR->GetRandomWalksPerPixel());
-            if (ImGui::SliderInt("Random Walks (M)", &randomWalks, 1, 32)) {
-                m_volumetricReSTIR->SetRandomWalksPerPixel(static_cast<uint32_t>(randomWalks));
-                LOG_INFO("Volumetric ReSTIR: Random walks per pixel = {}", randomWalks);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Number of random walk candidates per pixel\n"
-                                  "4 = Fast but noisy\n"
-                                  "8 = Balanced (recommended for Phase 1)\n"
-                                  "16+ = Smoother but slower\n"
-                                  "Higher M = better convergence");
-            }
-
-            // Max bounces (K)
-            int maxBounces = static_cast<int>(m_volumetricReSTIR->GetMaxBounces());
-            if (ImGui::SliderInt("Max Bounces (K)", &maxBounces, 1, 8)) {
-                m_volumetricReSTIR->SetMaxBounces(static_cast<uint32_t>(maxBounces));
-                LOG_INFO("Volumetric ReSTIR: Max bounces = {}", maxBounces);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Maximum scattering events per path\n"
-                                  "1 = Single scattering (fast)\n"
-                                  "3 = Multiple scattering (recommended)\n"
-                                  "8 = High-order scattering (slow)\n"
-                                  "Higher K = more accurate volume caustics");
-            }
-
-            // FIX 2025-11-19: Runtime tuning parameters
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.7f, 1.0f), "Visual Tuning (Runtime)");
-
-            // Emission intensity
-            float emissionIntensity = m_volumetricReSTIR->GetEmissionIntensity();
-            if (ImGui::SliderFloat("Emission Intensity", &emissionIntensity, 1.0f, 500.0f, "%.1f")) {
-                m_volumetricReSTIR->SetEmissionIntensity(emissionIntensity);
-                LOG_INFO("Volumetric ReSTIR: Emission intensity = {}", emissionIntensity);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Blackbody emission brightness multiplier\n"
-                                  "10 = Dim (like distant stars)\n"
-                                  "100 = Moderate (default)\n"
-                                  "500 = Very bright\n"
-                                  "Controls overall scene brightness");
-            }
-
-            // Particle radius
-            float particleRadius = m_volumetricReSTIR->GetParticleRadius();
-            if (ImGui::SliderFloat("Particle Radius", &particleRadius, 5.0f, 100.0f, "%.1f")) {
-                m_volumetricReSTIR->SetParticleRadius(particleRadius);
-                LOG_INFO("Volumetric ReSTIR: Particle radius = {}", particleRadius);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Ray-sphere intersection radius\n"
-                                  "5-15 = Small particles (sparse look)\n"
-                                  "50 = Default (matches other renderers)\n"
-                                  "100 = Large particles (volumetric)\n"
-                                  "Controls particle size appearance");
-            }
-
-            // Extinction coefficient
-            float extinction = m_volumetricReSTIR->GetExtinctionCoefficient();
-            if (ImGui::SliderFloat("Extinction", &extinction, 0.001f, 0.1f, "%.4f")) {
-                m_volumetricReSTIR->SetExtinctionCoefficient(extinction);
-                LOG_INFO("Volumetric ReSTIR: Extinction = {}", extinction);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Beer-Lambert absorption coefficient\n"
-                                  "0.001 = Transparent (glass-like)\n"
-                                  "0.01 = Moderate volumetric feel\n"
-                                  "0.1 = Dense fog\n"
-                                  "Higher = more absorption/darker interior");
-            }
-
-            // Phase function g
-            float phaseG = m_volumetricReSTIR->GetPhaseG();
-            if (ImGui::SliderFloat("Phase G", &phaseG, -0.9f, 0.9f, "%.2f")) {
-                m_volumetricReSTIR->SetPhaseG(phaseG);
-                LOG_INFO("Volumetric ReSTIR: Phase G = {}", phaseG);
-            }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Henyey-Greenstein scattering direction\n"
-                                  "-0.9 = Back-scatter (dark facing camera)\n"
-                                  "0.0 = Isotropic (uniform)\n"
-                                  "0.3 = Default (slight forward scatter)\n"
-                                  "0.9 = Strong forward scatter (bright edges)\n"
-                                  "Controls light distribution");
-            }
-
-            // Performance estimate
-            ImGui::Separator();
-            float estimatedMs = randomWalks * maxBounces * 0.05f;  // Rough estimate
-            ImGui::Text("Estimated cost: %.1f ms/frame", estimatedMs);
-            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-                              "Phase 1: No spatial/temporal reuse (noisy)");
-        }
     }
 
     // Hybrid Probe Grid System (Phase 0.13.1)
@@ -3759,10 +3443,7 @@ void Application::RenderImGui() {
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Zero-atomic-contention volumetric lighting\n"
                                  "Pre-computes lighting at 32\u00b3 sparse grid\n"
-                                 "Particles interpolate via trilinear sampling\n"
-                                 "\n"
-                                 "Designed to avoid atomic contention issues\n"
-                                 "that plague Volumetric ReSTIR at 2045+ particles");
+                                 "Particles interpolate via trilinear sampling");
             }
 
             ImGui::Separator();
@@ -4757,87 +4438,7 @@ void Application::RenderImGui() {
         }
 
         // === FROXEL VOLUMETRIC FOG SYSTEM (Phase 5) ===
-        ImGui::Separator();
-        ImGui::Separator();
-
-        if (ImGui::TreeNode("Froxel Volumetric Fog (F7)")) {
-            ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Frustum-aligned voxel grid for efficient volumetric fog");
-            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Replaces god rays with pre-computed 3D lighting grid");
-
-            // Toggle froxel fog
-            if (ImGui::Checkbox("Enable Froxel Fog", &m_enableFroxelFog)) {
-                if (m_enableFroxelFog) {
-                    LOG_INFO("Froxel volumetric fog ENABLED (F7)");
-                } else {
-                    LOG_INFO("Froxel volumetric fog DISABLED (F7)");
-                }
-            }
-
-            if (m_enableFroxelFog) {
-                ImGui::Separator();
-                ImGui::Text("Fog Density:");
-
-                // Density multiplier slider
-                if (ImGui::SliderFloat("Density Multiplier", &m_froxelDensityMultiplier, 0.1f, 5.0f, "%.2f")) {
-                    if (m_froxelSystem) {
-                        m_froxelSystem->SetDensityMultiplier(m_froxelDensityMultiplier);
-                    }
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Controls fog opacity\n0.1 = subtle haze\n1.0 = moderate fog\n5.0 = dense fog");
-                }
-
-                // Density presets
-                ImGui::Text("Presets:");
-                if (ImGui::Button("Subtle Haze")) {
-                    m_froxelDensityMultiplier = 0.3f;
-                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(0.3f);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Moderate")) {
-                    m_froxelDensityMultiplier = 1.0f;
-                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(1.0f);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Dense")) {
-                    m_froxelDensityMultiplier = 3.0f;
-                    if (m_froxelSystem) m_froxelSystem->SetDensityMultiplier(3.0f);
-                }
-
-                ImGui::Separator();
-                ImGui::Text("Debug Visualization:");
-
-                // Debug visualization toggle
-                bool debugVis = m_froxelSystem ? m_froxelSystem->IsDebugVisualizationEnabled() : false;
-                if (ImGui::Checkbox("Show Voxel Grid", &debugVis)) {
-                    if (m_froxelSystem) {
-                        m_froxelSystem->EnableDebugVisualization(debugVis);
-                        LOG_INFO("Froxel debug visualization: {}", debugVis ? "ENABLED" : "DISABLED");
-                    }
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Visualize the 160×90×64 voxel grid structure");
-                }
-
-                // Grid info
-                if (m_froxelSystem) {
-                    const auto& params = m_froxelSystem->GetGridParams();
-                    ImGui::Separator();
-                    ImGui::Text("Grid Info:");
-                    ImGui::Text("Dimensions: %u × %u × %u voxels",
-                        params.gridDimensions.x, params.gridDimensions.y, params.gridDimensions.z);
-                    ImGui::Text("Total voxels: %u",
-                        params.gridDimensions.x * params.gridDimensions.y * params.gridDimensions.z);
-                    ImGui::Text("Voxel size: %.1f × %.1f × %.1f units",
-                        params.voxelSize.x, params.voxelSize.y, params.voxelSize.z);
-                }
-            } else {
-                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Enable froxel fog to see controls");
-            }
-
-            ImGui::TreePop();
-        }
-    }
+        // REMOVED: Deprecated in favor of Gaussian Volume
 
     ImGui::End();
 

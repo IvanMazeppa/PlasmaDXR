@@ -17,11 +17,9 @@ class FeatureDetector;
 class ParticleSystem;
 class ParticleRenderer;
 class RTLightingSystem_RayQuery;
-class RTXDILightingSystem;
-class VolumetricReSTIRSystem;
-class ProbeGridSystem;
-class FroxelSystem;
-class ResourceManager;
+    class RTXDILightingSystem;
+    class ProbeGridSystem;
+    class ResourceManager;
 class AdaptiveQualitySystem;
 #ifdef ENABLE_DLSS
 class DLSSSystem;
@@ -78,10 +76,7 @@ private:
     std::unique_ptr<ParticleRenderer_Gaussian> m_gaussianRenderer;  // Gaussian Splatting (optional)
     std::unique_ptr<RTLightingSystem_RayQuery> m_rtLighting;
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;     // RTXDI parallel lighting path
-    std::unique_ptr<VolumetricReSTIRSystem> m_volumetricReSTIR;     // Volumetric ReSTIR (Phase 1 - experimental)
-    D3D12_CPU_DESCRIPTOR_HANDLE m_volumetricReSTIRClearUAV = {};    // Pre-allocated descriptor for clear operation
     std::unique_ptr<ProbeGridSystem> m_probeGridSystem;             // Probe Grid (Phase 0.13.1 - replaces ReSTIR)
-    std::unique_ptr<FroxelSystem> m_froxelSystem;                   // Froxel volumetric fog (Phase 5 - replaces god rays)
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)
@@ -104,8 +99,7 @@ private:
 
     enum class LightingSystem {
         MultiLight,        // Multi-light brute force (Phase 3.5, good for <20 lights)
-        RTXDI,             // NVIDIA RTXDI with ReSTIR (Phase 4, scales to 100+ lights)
-        VolumetricReSTIR   // Volumetric ReSTIR path tracing (Phase 1 - experimental)
+        RTXDI              // NVIDIA RTXDI with ReSTIR (Phase 4, scales to 100+ lights)
     };
 
     struct Config {
@@ -165,13 +159,9 @@ private:
     float m_rtEmissionTemporalRate = 0.03f;  // Temporal modulation frequency (0.0-0.1)
 
     // === God Ray System (Phase 5 Milestone 5.3c) ===
+    // DEPRECATED: Removed in favor of Gaussian Volume
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
-
-    // === Froxel Volumetric Fog System (Phase 5 - replaces god rays) ===
-    bool m_enableFroxelFog = false;        // Toggle froxel volumetric fog (F7 to toggle)
-    float m_froxelDensityMultiplier = 1.0f; // Fog density multiplier (0.1-5.0)
-    bool m_debugFroxelVisualization = false; // Debug visualization mode
 
     // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;
@@ -347,10 +337,10 @@ private:
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
 
-    // Screenshot metadata structure v2.0 (Phase 2: Enhanced Configuration Capture)
+    // Screenshot metadata structure v3.0 (Phase 2+5: Enhanced Configuration Capture + Froxel Fog)
     struct ScreenshotMetadata {
         // Schema versioning
-        std::string schemaVersion = "2.0";
+        std::string schemaVersion = "3.0";
 
         // === RENDERING CONFIGURATION ===
 

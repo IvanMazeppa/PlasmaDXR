@@ -41,15 +41,16 @@ The user is named Ben, he is a novice programmer but has some experience with C+
 
 **PlasmaDX-Clean** is a DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, volumetric RT lighting, NVIDIA RTXDI integration, and ML-accelerated physics via Physics-Informed Neural Networks (PINNs). Simulates a black hole accretion disk achieving 20 FPS @ 1440p with 10K particles, 16 lights, and full RT lighting on RTX 4060 Ti hardware. As this is an experiment into various RT technologies, RT lighting, shadowing (etc) should always be the first choice when deciding on a solution for an upgrade, but ONLY if RT is appropriate. RT should never be forced in just for the sake of using it, it should always benefit the project and impove image quality.
 
-**Current Status (2025-11-12):**
+**Current Status (2025-11-24):**
 - **Primary Renderer:** Gaussian volumetric RT lighting (particle_gaussian_raytrace.hlsl) ✅ ACTIVE
-- **RTXDI System:** M5 temporal accumulation 🔄 WORK-IN-PROGRESS (not currently used as primary renderer due to quality issues; will switch once problems resolved)
+- **Froxel Volumetric Fog System:** Voxel-based volumetric lighting with density injection ✅ COMPLETE
+- **Probe Grid System:** Spherical harmonics (L2) for indirect lighting ✅ COMPLETE
+- **Volumetric ReSTIR System:** Path generation and shading passes ✅ COMPLETE
 - **Multi-Light System:** 13 lights with dynamic control ✅ COMPLETE
-- **PCSS Soft Shadows:** Temporal filtering at 115-120 FPS ✅ COMPLETE
 - **NVIDIA DLSS 3.7:** Super Resolution operational ✅ COMPLETE
 - **PINN ML Physics:** Python training complete, C++ integration in progress 🔄
 - **Adaptive Particle Radius:** Camera-distance adaptive sizing ✅ COMPLETE
-- **MCP Server:** 5 tools operational (performance, PIX, ML comparison, screenshots, visual quality)
+- **MCP Server:** Multiple specialized agents (DXR shadow engineer, Gaussian analyzer, material system engineer, etc.)
 - **F2 Screenshot Capture** ✅ COMPLETE
 
 **Core Technology Stack:**
@@ -59,26 +60,44 @@ The user is named Ben, he is a novice programmer but has some experience with C+
 
 ## Build System
 
-### Primary Build Method
+### CMake + MSBuild + Visual Studio 2022
+**Primary build method:**
 ```bash
-# Open solution
-start PlasmaDX-Clean.sln
+# Generate Visual Studio solution (one-time setup)
+mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
 
-# Command line build
-MSBuild PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
-MSBuild PlasmaDX-Clean.sln /p:Configuration=DebugPIX /p:Platform=x64
+# Build from command line using MSBuild
+MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
+MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Release /p:Platform=x64
+
+# Or open solution in Visual Studio
+start build/PlasmaDX-Clean.sln
 ```
 
-**Debug** - Daily development (zero PIX overhead): `build/Debug/PlasmaDX-Clean.exe`
-**DebugPIX** - PIX GPU debugging (instrumented): `build/DebugPIX/PlasmaDX-Clean-PIX.exe`
+**Output directories:**
+- **Debug:** `build/bin/Debug/PlasmaDX-Clean.exe`
+- **Release:** `build/bin/Release/PlasmaDX-Clean.exe`
 
-**Shaders:** Compiled automatically via CMake. Manual compilation:
+**Configurations:**
+- **Debug** - Daily development with full validation
+- **Release** - Optimized builds for performance testing
+- **DebugPIX** - GPU debugging with PIX instrumentation (if configured)
+
+**Shaders:** Compiled automatically via CMake custom commands triggered by MSBuild. All .hlsl files compiled to .dxil on build. Manual recompilation when needed:
 ```bash
-dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo particle_physics.dxil
-dxc.exe -T lib_6_3 shaders/rtxdi/rtxdi_raygen.hlsl -Fo shaders/rtxdi/rtxdi_raygen.dxil
+dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo build/bin/Debug/shaders/particles/particle_physics.dxil
+dxc.exe -T cs_6_5 -E main shaders/particles/particle_gaussian_raytrace.hlsl -Fo build/bin/Debug/shaders/particles/particle_gaussian_raytrace.dxil
+dxc.exe -T lib_6_3 shaders/rtxdi/rtxdi_raygen.hlsl -Fo build/bin/Debug/shaders/rtxdi/rtxdi_raygen.dxil
 ```
 
-**ONNX Runtime (Optional):** CMake auto-detects at `external/onnxruntime/`. If missing, ML features disabled with warning.
+**IMPORTANT - Shader Compilation:** If you modify .hlsl files and get unexpected visuals (e.g., debug visualizations still showing), the .dxil binary is stale. Either rebuild the entire project using MSBuild OR manually run dxc as shown above.
+
+**Dependencies (auto-detected by CMake):**
+- **ONNX Runtime** (`external/onnxruntime/`) - Optional, enables ML features
+- **DLSS SDK** (`dlss/`) - Optional, enables DLSS Super Resolution
+- **RTXDI SDK** (`external/RTXDI-Runtime/`) - Required for production lighting
+- **Agility SDK** (`external/D3D12/`) - Required, auto-copied to output
 
 ---
 
@@ -105,10 +124,14 @@ Hierarchical JSON config loading:
 ### Clean Module Design (Single-Responsibility Modules)
 
 **Core Systems** (`src/core/`): Application, Device, SwapChain, FeatureDetector
-**Particle Systems** (`src/particles/`): ParticleSystem (physics), ParticleRenderer_Gaussian (3D volumetric rendering), ParticlePhysics
-**Lighting Systems** (`src/lighting/`): RTLightingSystem_RayQuery (DXR 1.1 inline ray tracing), RTXDILightingSystem (weighted reservoir sampling)
-**ML Systems** (`src/ml/`): AdaptiveQualitySystem (ONNX Runtime, PINN physics inference)
-**Utilities** (`src/utils/`): ShaderManager, ResourceManager, Logger
+**Particle Systems** (`src/particles/`): ParticleSystem (physics), ParticleRenderer_Gaussian (3D volumetric rendering), ParticleRenderer_Billboard (fallback)
+**Lighting Systems** (`src/lighting/`): RTLightingSystem_RayQuery (DXR 1.1 inline ray tracing), RTXDILightingSystem (weighted reservoir sampling), VolumetricReSTIRSystem (volumetric path tracing), ProbeGridSystem (spherical harmonics indirect lighting)
+**Rendering Systems** (`src/rendering/`): FroxelSystem (voxel-based volumetric fog)
+**ML Systems** (`src/ml/`): AdaptiveQualitySystem (ONNX Runtime), PINNPhysicsSystem (physics inference)
+**DLSS Systems** (`src/dlss/`): DLSSSystem (Super Resolution, optional)
+**Debug Systems** (`src/debug/`): PIXCaptureHelper (GPU capture automation)
+**Utilities** (`src/utils/`): ResourceManager, Logger
+**Config** (`src/config/`): Config (JSON-based hierarchical configuration)
 
 ### Key Architecture Principles
 
@@ -124,14 +147,21 @@ Hierarchical JSON config loading:
 
 **Key Shaders:**
 - `particle_physics.hlsl` - GPU physics compute (black hole gravity, Keplerian dynamics, blackbody emission)
-- `particle_gaussian_raytrace.hlsl` - **PRIMARY RENDERER** (RayQuery API, ray-ellipsoid intersection, Beer-Lambert law, Henyey-Greenstein phase)
-- `particle_raytraced_lighting_cs.hlsl` - RT lighting compute (particle-to-particle illumination)
-- `rtxdi_raygen.hlsl` - DXR raygen for weighted reservoir sampling (RTXDI, not currently active)
-- `rtxdi_temporal_accumulate.hlsl` - M5 temporal accumulation (RTXDI, not currently active)
-- `generate_particle_aabbs.hlsl` - Procedural primitive AABB generation
-- `particle_intersection.hlsl` - Ray-ellipsoid intersection shader
+- `particle_gaussian_raytrace.hlsl` - **PRIMARY RENDERER** (RayQuery API, ray-ellipsoid intersection, Beer-Lambert law, Henyey-Greenstein phase, froxel sampling)
+- `froxel/inject_density.hlsl` - Density injection into voxel grid (trilinear splatting)
+- `froxel/light_voxels.hlsl` - Voxel lighting calculation with multi-light accumulation
+- `volumetric_restir/path_generation.hlsl` - Volumetric path generation for ReSTIR
+- `volumetric_restir/shading.hlsl` - Final shading with reservoir sampling
+- `probe_grid/update_probes.hlsl` - Spherical harmonics probe updates for indirect lighting
+- `rtxdi/rtxdi_raygen.hlsl` - DXR raygen for weighted reservoir sampling
+- `rtxdi/rtxdi_temporal_accumulate.hlsl` - M5 temporal accumulation
+- `dxr/generate_particle_aabbs.hlsl` - Procedural primitive AABB generation
+- `util/blit_hdr_to_sdr.hlsl` - HDR→SDR conversion with tone mapping
 
-**IMPORTANT:** Root constants limited to 64 DWORDs. Use constant buffers for large structures.
+**IMPORTANT:**
+- Root constants limited to 64 DWORDs. Use constant buffers for large structures.
+- Shader binaries (.dxil) can become stale if you modify .hlsl without rebuilding. Always verify .dxil timestamp matches .hlsl.
+- Froxel density injection uses `+=` on RWTexture3D which has race conditions (acceptable for fog, but not atomic-correct).
 
 ---
 
@@ -145,6 +175,46 @@ Hierarchical JSON config loading:
 - Anisotropic elongation along velocity vectors (tidal tearing)
 
 **Core algorithm:** `RayGaussianIntersection()` in `gaussian_common.hlsl`
+
+---
+
+## Froxel Volumetric Fog System (NEW - Phase 8) ✅ COMPLETE
+
+**Status:** Recently integrated (Nov 2025) for volumetric fog rendering
+
+**What is a Froxel?** A "frustum voxel" - 3D grid aligned to camera frustum for efficient volumetric rendering.
+
+**Implementation:**
+- **Grid Resolution:** 160×90×128 (X×Y×Z) covering view frustum
+- **Density Injection:** Particles splat density into grid via trilinear interpolation (`inject_density.hlsl`)
+- **Lighting Pass:** Multi-light accumulation per voxel (`light_voxels.hlsl`)
+- **Sampling:** Ray marching through grid during Gaussian rendering (`sample_froxel_grid.hlsl`)
+
+**Architecture:**
+```
+Particle System → Inject Density → Froxel Grid (160×90×128)
+                                      ↓
+                               Light Voxels (multi-light)
+                                      ↓
+                     Gaussian Renderer samples via ray march
+                                      ↓
+                              Final composite image
+```
+
+**Key Files:**
+- `src/rendering/FroxelSystem.h/cpp` - C++ management
+- `shaders/froxel/inject_density.hlsl` - Pass 1: Density injection
+- `shaders/froxel/light_voxels.hlsl` - Pass 2: Lighting calculation
+- `shaders/froxel/sample_froxel_grid.hlsl` - Sampling utilities for Gaussian renderer
+
+**Performance:** ~1.5-2ms for both passes @ 1080p
+
+**Known Issues:**
+- Race condition in density injection (`+=` on RWTexture3D not atomic) - visually acceptable for fog
+- Debug visualization mode can be accidentally left enabled in compiled shaders
+- Grid parameters tunable via `FroxelConstants` cbuffer (density scale, light accumulation strength)
+
+**Recent Fix (Nov 23, 2025):** Debug visualization mistakenly left enabled in particle_gaussian_raytrace.hlsl, causing red/yellow/green density heat map to show instead of proper fog rendering. Fixed by calling `RayMarchFroxelGrid()` instead of `DebugVisualizeFroxelDensity()`.
 
 ---
 
@@ -328,6 +398,36 @@ RT-driven dynamic star radiance:
 
 **PINN ML Integration:** C++ integration in progress (ONNX Runtime model loading, hybrid mode, ImGui controls pending).
 
+**Stale Shader Binaries:** If you see unexpected visuals (debug heat maps, old rendering behavior), check that .dxil files are newer than .hlsl source files. Rebuild project or manually recompile shaders with dxc.
+
+**Froxel Density Injection Race Conditions:** The `+=` operator on RWTexture3D in inject_density.hlsl is not atomic. This causes minor density loss when multiple particles write to the same voxel simultaneously. Acceptable for fog rendering but not for precise simulations.
+
+---
+
+## Common Pitfalls and Debugging Tips
+
+### Shader Debugging
+1. **Stale .dxil files are the #1 cause of mysterious visual bugs** - Always check timestamps
+2. **Debug visualization modes** can be accidentally left enabled in shaders (e.g., `DebugVisualizeFroxelDensity()` instead of `RayMarchFroxelGrid()`)
+3. **PIX GPU captures** are essential for debugging DXR issues - use DebugPIX configuration
+4. **Root signature mismatches** cause device removal - verify cbuffer layouts match between C++ and HLSL exactly
+
+### Performance Debugging
+1. **Check frame timings** in ImGui UI - individual pass times reveal bottlenecks
+2. **BLAS/TLAS rebuilds** are expensive (2.1ms @ 100K particles) - shows up in PIX as "BuildRaytracingAccelerationStructure"
+3. **Ray budget per pixel** is critical - even 1 extra ray can cost 20% performance
+4. **UAV barriers** can stall GPU - minimize transitions between passes
+
+### Configuration Issues
+1. **Hierarchical config loading** can be confusing - check precedence: CLI args > env var > build dir > user default > hardcoded
+2. **JSON syntax errors** fail silently - check logs for "Config load failed"
+3. **Absolute vs relative paths** in configs - use relative paths from executable location
+
+### Git Workflow
+1. **Current branch:** Check git status before starting work (currently on `0.18.8`)
+2. **Unstaged changes:** particle_gaussian_raytrace.hlsl, Application.cpp/h, FroxelSystem.cpp are modified
+3. **Documentation files:** FROXEL_FIX_SUMMARY_20251123.md documents recent froxel debug visualization fix
+
 ---
 
 ## Performance Targets
@@ -395,8 +495,74 @@ Always use context7 when I need code generation, setup or configuration steps, o
 
 ---
 
-**Last Updated:** 2025-11-12
-**Project Version:** 0.14.4
+**Last Updated:** 2025-11-24
+**Project Version:** 0.18.8
 **Documentation maintained by:** Claude Code sessions
 
 **Note:** See `MASTER_ROADMAP_V2.md` for the most up-to-date development status and detailed technical implementation plans.
+
+---
+
+## MCP Servers and Specialized Agents
+
+**Status:** Multiple specialized MCP servers operational
+
+PlasmaDX-Clean uses Model Context Protocol (MCP) servers to provide specialized capabilities to Claude Code:
+
+### Available MCP Servers
+
+1. **dxr-shadow-engineer** (`agents/dxr-shadow-engineer/`)
+   - Research shadow techniques (raytraced, volumetric, soft shadows, PCSS)
+   - Analyze current PCSS implementation
+   - Generate DXR 1.1 inline RayQuery shadow shaders
+   - Compare shadow methods (quality, performance, implementation complexity)
+   - Performance analysis and optimization recommendations
+
+2. **gaussian-analyzer** (`agents/gaussian-analyzer/`)
+   - Analyze 3D Gaussian particle parameters
+   - Validate particle structure and GPU alignment
+   - Simulate material properties for celestial bodies
+   - Estimate performance impact of rendering techniques
+   - Compare rendering approaches (splatting, ray marching, hybrid)
+
+3. **material-system-engineer** (`mcp__material-system-engineer`)
+   - Read codebase files for material system analysis
+   - Search codebase for material-related patterns
+   - Design particle type systems for varied celestial materials
+
+4. **dxr-volumetric-pyro-specialist** (`agents/dxr-volumetric-pyro-specialist/`)
+   - Research pyrotechnic and explosion rendering techniques
+   - Design fire and explosion effects for volumetric particles
+   - Performance estimation for dynamic effects
+
+5. **log-analysis-rag** (PIX/Log Analysis)
+   - Route queries to specialized diagnostics
+   - Analyze PIX GPU captures
+   - Read and validate buffer dumps
+   - Query application logs
+   - Diagnose rendering issues
+
+6. **path-and-probe** (Probe Grid Specialist)
+   - Analyze probe grid configurations
+   - Validate spherical harmonics coefficients
+   - Debug indirect lighting systems
+
+### Using MCP Tools
+
+MCP tools are invoked through function calls and provide specialized domain knowledge:
+
+```python
+# Example: Research shadow techniques
+mcp__dxr-shadow-engineer__research_shadow_techniques(
+    query="DXR 1.1 inline raytracing soft shadows",
+    focus="volumetric"
+)
+
+# Example: Analyze Gaussian parameters
+mcp__gaussian-analyzer__analyze_gaussian_parameters(
+    particle_data=...,
+    include_recommendations=True
+)
+```
+
+**Integration Philosophy:** MCP servers provide deep domain expertise (graphics research, GPU debugging, material science) that complements Claude Code's general capabilities. They can search academic papers, analyze GPU captures, and provide hardware-specific optimization recommendations.
