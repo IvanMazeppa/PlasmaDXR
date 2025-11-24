@@ -813,23 +813,26 @@ bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
     auto d3dDevice = m_device->GetDevice();
 
     // Root signature:
-    // [0] b0 - Accumulation constants (16 DWORDs = 64 bytes)
+    // [0] b0 - Accumulation constants (64 DWORDs = 256 bytes) - Phase 4 M5 fix: added invViewProj
     // [1] t0 - RTXDI output (Texture2D - requires descriptor table!)
     // [2] t1 - Previous accumulated (Texture2D - requires descriptor table!)
     // [3] u0 - Current accumulated (RWTexture2D - requires descriptor table!)
+    // [4] t2 - RT Depth buffer (Texture2D<float> - Phase 4 M5 fix for depth-based reprojection)
 
-    CD3DX12_DESCRIPTOR_RANGE srvRanges[2];
+    CD3DX12_DESCRIPTOR_RANGE srvRanges[3];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0: Texture2D<float4>
     srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1: Texture2D<float4>
+    srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // t2: Texture2D<float> (depth)
 
     CD3DX12_DESCRIPTOR_RANGE uavRange;
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<float4>
 
-    CD3DX12_ROOT_PARAMETER rootParams[4];
-    rootParams[0].InitAsConstants(48, 0);  // b0: AccumulationConstants (48 DWORDs)
+    CD3DX12_ROOT_PARAMETER rootParams[5];
+    rootParams[0].InitAsConstants(64, 0);  // b0: AccumulationConstants (64 DWORDs - added invViewProj)
     rootParams[1].InitAsDescriptorTable(1, &srvRanges[0]);  // t0: RTXDI output
     rootParams[2].InitAsDescriptorTable(1, &srvRanges[1]);  // t1: Prev accumulated
     rootParams[3].InitAsDescriptorTable(1, &uavRange);  // u0: Curr accumulated
+    rootParams[4].InitAsDescriptorTable(1, &srvRanges[2]);  // t2: RT depth buffer
 
     CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
     rootSigDesc.Init(_countof(rootParams), rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -1141,12 +1144,14 @@ void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
     LOG_INFO("RTXDI buffer dump complete");
 }
 
-// === M5: Temporal Accumulation Dispatch ===
+// === M5: Temporal Accumulation Dispatch (Phase 4 M5 Fix: Depth-Based Reprojection) ===
 void RTXDILightingSystem::DispatchTemporalAccumulation(
     ID3D12GraphicsCommandList* commandList,
     const DirectX::XMFLOAT3& cameraPos,
     const DirectX::XMFLOAT4X4& viewProj,
     const DirectX::XMFLOAT4X4& prevViewProj,
+    const DirectX::XMFLOAT4X4& invViewProj,  // Phase 4 M5: For depth unprojection
+    D3D12_GPU_DESCRIPTOR_HANDLE depthBufferSRV,  // Phase 4 M5: RT depth buffer from Gaussian renderer
     uint32_t frameIndex
 ) {
     if (!m_temporalAccumulatePSO || !m_temporalAccumulateRS) {
@@ -1194,7 +1199,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     commandList->SetPipelineState(m_temporalAccumulatePSO.Get());
     commandList->SetComputeRootSignature(m_temporalAccumulateRS.Get());
 
-    // === 3. Set constants ===
+    // === 3. Set constants (Phase 4 M5 Fix: Added invViewProj for depth-based reprojection) ===
     struct AccumulationConstants {
         uint32_t screenWidth;
         uint32_t screenHeight;
@@ -1210,6 +1215,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
         uint32_t forceReset;
         DirectX::XMFLOAT4X4 viewProj;
         DirectX::XMFLOAT4X4 prevViewProj;
+        DirectX::XMFLOAT4X4 invViewProj;  // Phase 4 M5: Inverse ViewProj for depth unprojection
     } constants;
 
     constants.screenWidth = m_width;
@@ -1224,11 +1230,12 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     constants.padding4 = 0;
     constants.prevCameraPos = m_prevCameraPos;
     constants.forceReset = m_forceReset ? 1 : 0;
-    constants.viewProj = viewProj;         // New: Current view-proj for unprojection
-    constants.prevViewProj = prevViewProj; // New: Previous view-proj for reprojection
+    constants.viewProj = viewProj;
+    constants.prevViewProj = prevViewProj;
+    constants.invViewProj = invViewProj;  // Phase 4 M5: For depth-based world position reconstruction
 
-    // Root constants size increased: 16 (base) + 16 (viewProj) + 16 (prevViewProj) = 48 DWORDs
-    commandList->SetComputeRoot32BitConstants(0, 48, &constants, 0);
+    // Root constants size: 16 (base) + 16 (viewProj) + 16 (prevViewProj) + 16 (invViewProj) = 64 DWORDs
+    commandList->SetComputeRoot32BitConstants(0, 64, &constants, 0);
 
     // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
     // PING-PONG BUFFERS: Read from previous frame, write to current frame
@@ -1242,6 +1249,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     commandList->SetComputeRootDescriptorTable(1, debugOutputGPU);  // t0: Current RTXDI output
     commandList->SetComputeRootDescriptorTable(2, prevAccumGPU);     // t1: PREVIOUS frame's accumulated (SRV)
     commandList->SetComputeRootDescriptorTable(3, currAccumGPU);     // u0: CURRENT frame's accumulated (UAV)
+    commandList->SetComputeRootDescriptorTable(4, depthBufferSRV);   // t2: RT depth buffer (Phase 4 M5 fix)
 
     // === 5. Dispatch compute shader ===
     uint32_t dispatchX = (m_width + 7) / 8;   // 8×8 thread groups

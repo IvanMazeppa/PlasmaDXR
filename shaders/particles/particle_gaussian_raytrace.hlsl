@@ -224,6 +224,10 @@ RWTexture2D<float> g_currShadow : register(u2);
 // TEMPORAL COLOR ACCUMULATION: Current frame color (for next frame's temporal blend)
 RWTexture2D<float4> g_currColor : register(u3);
 
+// RT DEPTH BUFFER: Output hit distance for RTXDI temporal reprojection (Phase 4 M5 fix)
+// Stores tNear (first hit distance) for depth-based world position reconstruction
+RWTexture2D<float> g_rtDepth : register(u4);
+
 // ==============================================================================
 // VOLUMETRIC RAYTRACED SHADOW SYSTEM (Phase 0.15.0)
 // ==============================================================================
@@ -1736,6 +1740,15 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (usePhaseFunction != 0 && pixelPos.x < 100 && pixelPos.y > resolution.y - 20) {
         finalColor = float3(0, 0, 1); // Solid blue bar
     }
+
+    // === RT DEPTH OUTPUT (Phase 4 M5 Fix) ===
+    // Write first hit distance for RTXDI temporal reprojection
+    // This replaces the planar Z=0 assumption with actual depth
+    float outputDepth = 10000.0;  // Default: far plane (no hit)
+    if (hitCount > 0) {
+        outputDepth = hits[0].tNear;  // First (closest) hit distance
+    }
+    g_rtDepth[pixelPos] = outputDepth;
 
     // === PRIORITY 1 FIX: TEMPORAL COLOR ACCUMULATION ===
     // Eliminates flashing caused by per-frame random sampling in RayQuery lighting

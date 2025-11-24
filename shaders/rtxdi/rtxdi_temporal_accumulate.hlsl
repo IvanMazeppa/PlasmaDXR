@@ -13,16 +13,50 @@ cbuffer AccumulationConstants : register(b0) {
     uint g_forceReset;              // Force reset flag (1=reset, 0=normal)
     row_major float4x4 g_viewProj;      // Current ViewProj (for unprojection)
     row_major float4x4 g_prevViewProj;  // Previous ViewProj (for reprojection)
+    row_major float4x4 g_invViewProj;   // Inverse ViewProj (Phase 4 M5 fix - for depth unprojection)
 };
 
 // Inputs
 Texture2D<float4> g_rtxdiOutput : register(t0);      // Current frame RTXDI (raw samples)
 Texture2D<float4> g_prevAccumulated : register(t1); // Previous frame accumulated
+Texture2D<float> g_depth : register(t2);             // RT depth buffer (Phase 4 M5 fix)
 
 // Output
 RWTexture2D<float4> g_currAccumulated : register(u0);
 
-// Calculate world position from pixel coordinates (Planar Z=0 assumption)
+// Calculate world position from pixel coordinates using actual depth buffer
+// Phase 4 M5 Fix: Replaces planar Z=0 assumption with proper depth-based unprojection
+// This enables correct temporal reprojection during camera movement
+float3 PixelToWorldPosition_WithDepth(uint2 pixelCoord) {
+    // Read actual depth from RT depth buffer (ray hit distance)
+    float depth = g_depth[pixelCoord];
+
+    // Convert pixel to normalized device coordinates (NDC)
+    float2 uv = (float2(pixelCoord) + 0.5) / float2(g_screenWidth, g_screenHeight);
+    float2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;  // Flip Y for D3D
+
+    // For RT depth (ray distance), we need to reconstruct world position differently
+    // The depth value is the ray-sphere intersection distance (tNear), not NDC depth
+    // So we unproject the ray direction and scale by depth
+
+    // Get near and far points for this pixel
+    float4 nearPoint = mul(float4(ndc, 0.0, 1.0), g_invViewProj);
+    float4 farPoint = mul(float4(ndc, 1.0, 1.0), g_invViewProj);
+
+    nearPoint.xyz /= nearPoint.w;
+    farPoint.xyz /= farPoint.w;
+
+    // Ray direction from camera
+    float3 rayDir = normalize(farPoint.xyz - nearPoint.xyz);
+
+    // World position = camera origin + rayDir * depth (tNear)
+    float3 worldPos = nearPoint.xyz + rayDir * depth;
+
+    return worldPos;
+}
+
+// Legacy: Planar Z=0 assumption (fallback if depth unavailable)
 float3 PixelToWorldPosition(uint2 pixelCoord) {
     float2 uv = (float2(pixelCoord) + 0.5) / float2(g_screenWidth, g_screenHeight);
     float diskRange = 600.0f;  // Accretion disk spans 600 units (-300 to +300)
@@ -47,8 +81,18 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     uint2 prevPixelCoord = pixelCoord; // Default to current if reprojection fails
     bool reprojected = false;
 
-    // 1. Reconstruct world position (Planar Assumption)
-    float3 worldPos = PixelToWorldPosition(pixelCoord);
+    // 1. Reconstruct world position using ACTUAL DEPTH (Phase 4 M5 fix)
+    // This replaces the broken planar Z=0 assumption that caused patchwork during camera movement
+    float depth = g_depth[pixelCoord];
+    float3 worldPos;
+
+    // Use depth-based unprojection if we have valid depth, else fall back to planar
+    if (depth > 0.01 && depth < 9999.0) {
+        worldPos = PixelToWorldPosition_WithDepth(pixelCoord);
+    } else {
+        // Fallback for sky/background pixels (no particle hit)
+        worldPos = PixelToWorldPosition(pixelCoord);
+    }
 
     // 2. Project to previous clip space
     float4 prevClipPos = mul(float4(worldPos, 1.0), g_prevViewProj);

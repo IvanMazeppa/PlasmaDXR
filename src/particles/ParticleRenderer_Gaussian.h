@@ -176,6 +176,10 @@ public:
     // Get light buffer for probe grid system (Phase 0.13.1)
     ID3D12Resource* GetLightBuffer() const { return m_lightBuffer.Get(); }
 
+    // Get RT depth buffer for RTXDI temporal reprojection (Phase 4 M5 fix)
+    ID3D12Resource* GetRTDepthBuffer() const { return m_rtDepthBuffer.Get(); }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetRTDepthSRV() const { return m_rtDepthSRVGPU; }
+
     // Get output SRV for blit pass (HDR→SDR conversion)
 #ifdef ENABLE_DLSS
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const {
@@ -304,6 +308,15 @@ private:
     // Depth buffer clear pipeline (initialization before pre-pass)
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_depthClearPSO;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_depthClearRS;
+
+    // === Ray-traced Depth Buffer (R32_FLOAT) ===
+    // Used by RTXDI temporal reprojection and DLSS (when enabled)
+    // Stores hit distance (tNear) from Gaussian ray tracing
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_rtDepthBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_rtDepthUAV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_rtDepthUAVGPU;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_rtDepthSRV;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_rtDepthSRVGPU;
 
 #ifdef ENABLE_DLSS
     // DLSS Super Resolution system (lazy feature creation)

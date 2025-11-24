@@ -284,6 +284,66 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
                  i, m_colorSRVGPU[i].ptr, m_colorUAVGPU[i].ptr);
     }
 
+    // === RT Depth Buffer (Phase 4 M5 Fix - always created) ===
+    // Used by RTXDI temporal reprojection for proper depth-based camera motion
+    // Also used by DLSS when enabled
+    LOG_INFO("Creating RT depth buffer for RTXDI temporal reprojection...");
+    D3D12_RESOURCE_DESC rtDepthTexDesc = {};
+    rtDepthTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    rtDepthTexDesc.Width = screenWidth;
+    rtDepthTexDesc.Height = screenHeight;
+    rtDepthTexDesc.DepthOrArraySize = 1;
+    rtDepthTexDesc.MipLevels = 1;
+    rtDepthTexDesc.Format = DXGI_FORMAT_R32_FLOAT;  // Single-channel depth (hit distance)
+    rtDepthTexDesc.SampleDesc.Count = 1;
+    rtDepthTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &defaultHeap,
+        D3D12_HEAP_FLAG_NONE,
+        &rtDepthTexDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr,
+        IID_PPV_ARGS(&m_rtDepthBuffer)
+    );
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create RT depth buffer");
+        return false;
+    }
+
+    // Create UAV for Gaussian shader to write depth (u4)
+    D3D12_UNORDERED_ACCESS_VIEW_DESC rtDepthUavDesc = {};
+    rtDepthUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    rtDepthUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+    m_rtDepthUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateUnorderedAccessView(
+        m_rtDepthBuffer.Get(),
+        nullptr,
+        &rtDepthUavDesc,
+        m_rtDepthUAV
+    );
+    m_rtDepthUAVGPU = m_resources->GetGPUHandle(m_rtDepthUAV);
+
+    // Create SRV for RTXDI temporal to read depth (t2 in temporal shader)
+    D3D12_SHADER_RESOURCE_VIEW_DESC rtDepthSrvDesc = {};
+    rtDepthSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    rtDepthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    rtDepthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    rtDepthSrvDesc.Texture2D.MipLevels = 1;
+
+    m_rtDepthSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->GetDevice()->CreateShaderResourceView(
+        m_rtDepthBuffer.Get(),
+        &rtDepthSrvDesc,
+        m_rtDepthSRV
+    );
+    m_rtDepthSRVGPU = m_resources->GetGPUHandle(m_rtDepthSRV);
+
+    LOG_INFO("Created RT depth buffer: UAV=0x{:016X}, SRV=0x{:016X}",
+             m_rtDepthUAVGPU.ptr, m_rtDepthSRVGPU.ptr);
+
 #ifdef ENABLE_DLSS
     // Create motion vector buffer for DLSS Ray Reconstruction (RG16_FLOAT)
     LOG_INFO("Creating motion vector buffer for DLSS...");
@@ -590,12 +650,13 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // t9: Texture2D (prev color - PRIORITY 1 FIX)
     srvRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // t10: Texture3D (froxel lighting grid - Phase 5)
 
-    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[3];
+    CD3DX12_DESCRIPTOR_RANGE1 uavRanges[4];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
     uavRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);  // u2: RWTexture2D (current shadow)
     uavRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 3);  // u3: RWTexture2D (current color - PRIORITY 1 FIX)
+    uavRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 4);  // u4: RWTexture2D (RT depth - Phase 4 M5 fix)
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[16];  // +3 for temporal color (t9, u3) + froxel grid (t10)
+    CD3DX12_ROOT_PARAMETER1 rootParams[17];  // +1 for RT depth (u4) - Phase 4 M5 fix
     rootParams[0].InitAsConstantBufferView(0);              // b0 - GaussianConstants CBV
     rootParams[1].InitAsShaderResourceView(0);              // t0 - particles
     rootParams[2].InitAsShaderResourceView(1);              // t1 - rtLighting
@@ -612,6 +673,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[13].InitAsDescriptorTable(1, &srvRanges[3]); // t9 - Previous color (SRV - PRIORITY 1 FIX)
     rootParams[14].InitAsDescriptorTable(1, &uavRanges[2]); // u3 - Current color (UAV - PRIORITY 1 FIX)
     rootParams[15].InitAsDescriptorTable(1, &srvRanges[4]); // t10 - Froxel lighting grid (SRV - Phase 5)
+    rootParams[16].InitAsDescriptorTable(1, &uavRanges[3]); // u4 - RT Depth (UAV - Phase 4 M5 fix)
 
     // Static sampler for froxel grid (s0) - Phase 5
     CD3DX12_STATIC_SAMPLER_DESC froxelSampler(
@@ -623,7 +685,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     );
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(16, rootParams, 1, &froxelSampler, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(17, rootParams, 1, &froxelSampler, D3D12_ROOT_SIGNATURE_FLAG_NONE);  // 17 params: +1 for RT depth (Phase 4 M5)
 
     Microsoft::WRL::ComPtr<ID3DBlob> signature, error;
     hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error);
@@ -945,6 +1007,13 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         return;
     }
     cmdList->SetComputeRootDescriptorTable(14, currentColorUAVHandle);
+
+    // Root param 16: Bind RT depth buffer (UAV descriptor table - u4) - Phase 4 M5 fix
+    if (m_rtDepthUAVGPU.ptr == 0) {
+        LOG_ERROR("RT depth UAV handle is ZERO!");
+        return;
+    }
+    cmdList->SetComputeRootDescriptorTable(16, m_rtDepthUAVGPU);
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;

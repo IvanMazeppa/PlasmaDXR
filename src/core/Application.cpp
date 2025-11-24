@@ -578,8 +578,8 @@ void Application::Render() {
     DirectX::XMFLOAT3 cameraPosition = DirectX::XMFLOAT3(camX, camY + m_cameraHeight, camZ);
 
     // === Compute Matrices Early (Needed for RTXDI Reprojection) ===
-    DirectX::XMMATRIX viewMat, projMat, viewProjMat;
-    DirectX::XMFLOAT4X4 currentViewProj;
+    DirectX::XMMATRIX viewMat, projMat, viewProjMat, invViewProjMat;
+    DirectX::XMFLOAT4X4 currentViewProj, currentInvViewProj;
     {
         using namespace DirectX;
         XMVECTOR camPos = XMLoadFloat3(&cameraPosition);
@@ -591,6 +591,10 @@ void Application::Render() {
         projMat = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 10000.0f);
         viewProjMat = XMMatrixMultiply(viewMat, projMat);
         XMStoreFloat4x4(&currentViewProj, viewProjMat);
+
+        // Phase 4 M5 Fix: Compute inverse view-proj for depth-based reprojection
+        invViewProjMat = XMMatrixInverse(nullptr, viewProjMat);
+        XMStoreFloat4x4(&currentInvViewProj, invViewProjMat);
 
         // Initialize prevViewProj on first frame
         if (m_firstFrame) {
@@ -620,14 +624,21 @@ void Application::Render() {
                 LOG_INFO("RTXDI DispatchRays executed ({}x{}, frame {})", m_width, m_height, m_frameCount);
             }
 
-            // === Milestone 5: Temporal Accumulation ===
+            // === Milestone 5: Temporal Accumulation (Phase 4 M5 Fix: Depth-Based Reprojection) ===
             // Smooth patchwork pattern by accumulating samples over time
-            // FIX: Pass view projection matrices for planar reprojection
+            // Uses depth buffer from previous frame for proper world position reconstruction
+            D3D12_GPU_DESCRIPTOR_HANDLE depthSRV = {};
+            if (m_gaussianRenderer) {
+                depthSRV = m_gaussianRenderer->GetRTDepthSRV();
+            }
+
             m_rtxdiLightingSystem->DispatchTemporalAccumulation(
                 cmdList,
                 cameraPosition,
                 currentViewProj,
                 m_prevViewProj,
+                currentInvViewProj,  // Phase 4 M5: For depth-based unprojection
+                depthSRV,            // Phase 4 M5: RT depth buffer from previous frame
                 static_cast<uint32_t>(m_frameCount)
             );
 
