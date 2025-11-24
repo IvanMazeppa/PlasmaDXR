@@ -197,7 +197,7 @@ private:
 
     // Camera state for reset detection
     DirectX::XMFLOAT3 m_prevCameraPos = {0, 0, 0};
-    uint32_t m_prevFrameIndex = 0;
+    // No longer tracking m_prevFrameIndex here as it's not needed for reset logic
     bool m_forceReset = false;                            // Manual reset trigger
 
     // Accumulation parameters
@@ -209,9 +209,11 @@ private:
     // TODO: Add visibility reuse cache
 
 public:
-    // M5 Temporal Accumulation API
+    // M5 Temporal Accumulation API (Updated for Reprojection)
     void DispatchTemporalAccumulation(ID3D12GraphicsCommandList* commandList,
                                       const DirectX::XMFLOAT3& cameraPos,
+                                      const DirectX::XMFLOAT4X4& viewProj,
+                                      const DirectX::XMFLOAT4X4& prevViewProj,
                                       uint32_t frameIndex);
 
     // Getters/setters for M5 parameters

@@ -826,7 +826,7 @@ bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<float4>
 
     CD3DX12_ROOT_PARAMETER rootParams[4];
-    rootParams[0].InitAsConstants(16, 0);  // b0: AccumulationConstants
+    rootParams[0].InitAsConstants(48, 0);  // b0: AccumulationConstants (48 DWORDs)
     rootParams[1].InitAsDescriptorTable(1, &srvRanges[0]);  // t0: RTXDI output
     rootParams[2].InitAsDescriptorTable(1, &srvRanges[1]);  // t1: Prev accumulated
     rootParams[3].InitAsDescriptorTable(1, &uavRange);  // u0: Curr accumulated
@@ -1145,6 +1145,8 @@ void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
 void RTXDILightingSystem::DispatchTemporalAccumulation(
     ID3D12GraphicsCommandList* commandList,
     const DirectX::XMFLOAT3& cameraPos,
+    const DirectX::XMFLOAT4X4& viewProj,
+    const DirectX::XMFLOAT4X4& prevViewProj,
     uint32_t frameIndex
 ) {
     if (!m_temporalAccumulatePSO || !m_temporalAccumulateRS) {
@@ -1206,6 +1208,8 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
         uint32_t padding4;
         DirectX::XMFLOAT3 prevCameraPos;
         uint32_t forceReset;
+        DirectX::XMFLOAT4X4 viewProj;
+        DirectX::XMFLOAT4X4 prevViewProj;
     } constants;
 
     constants.screenWidth = m_width;
@@ -1220,8 +1224,11 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     constants.padding4 = 0;
     constants.prevCameraPos = m_prevCameraPos;
     constants.forceReset = m_forceReset ? 1 : 0;
+    constants.viewProj = viewProj;         // New: Current view-proj for unprojection
+    constants.prevViewProj = prevViewProj; // New: Previous view-proj for reprojection
 
-    commandList->SetComputeRoot32BitConstants(0, 16, &constants, 0);
+    // Root constants size increased: 16 (base) + 16 (viewProj) + 16 (prevViewProj) = 48 DWORDs
+    commandList->SetComputeRoot32BitConstants(0, 48, &constants, 0);
 
     // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
     // PING-PONG BUFFERS: Read from previous frame, write to current frame
@@ -1259,7 +1266,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
 
     // === 8. Update camera state for next frame ===
     m_prevCameraPos = cameraPos;
-    m_prevFrameIndex = frameIndex;
+    // m_prevFrameIndex tracked externally or not critical for reset logic anymore
     m_forceReset = false;  // Clear reset flag
 
 #ifdef USE_PIX

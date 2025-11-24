@@ -714,9 +714,6 @@ void Application::Render() {
         cmdList->ResourceBarrier(1, &particleBarrier);
     }
 
-    // === Froxel Volumetric Fog System (Phase 5 - replaces god rays) ===
-    // REMOVED: Deprecated in favor of Gaussian Volume
-
     // Render particles (Billboard or Gaussian path)
     if (m_particleSystem) {
         ParticleRenderer::RenderConstants renderConstants = {};
@@ -894,28 +891,6 @@ void Application::Render() {
             gaussianConstants.enableGroundPlane = m_enableGroundPlane ? 1u : 0u;
             gaussianConstants.groundPlaneAlbedo = DirectX::XMFLOAT3(
                 m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
-
-            // Phase 5: Froxel Volumetric Fog System
-            if (m_froxelSystem && m_enableFroxelFog) {
-                const auto& froxelParams = m_froxelSystem->GetGridParams();
-                gaussianConstants.useFroxelFog = 1u;
-                gaussianConstants.froxelGridMin = froxelParams.gridMin;
-                gaussianConstants.froxelGridMax = froxelParams.gridMax;
-                gaussianConstants.froxelPadding0 = 0.0f;
-                gaussianConstants.froxelGridDimensions = froxelParams.gridDimensions;
-                gaussianConstants.froxelDensityMultiplier = froxelParams.densityMultiplier;
-                gaussianConstants.froxelVoxelSize = froxelParams.voxelSize;
-                gaussianConstants.froxelPadding1 = 0.0f;
-            } else {
-                gaussianConstants.useFroxelFog = 0u;
-                gaussianConstants.froxelGridMin = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
-                gaussianConstants.froxelGridMax = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
-                gaussianConstants.froxelPadding0 = 0.0f;
-                gaussianConstants.froxelGridDimensions = DirectX::XMUINT3(0, 0, 0);
-                gaussianConstants.froxelDensityMultiplier = 0.0f;
-                gaussianConstants.froxelVoxelSize = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
-                gaussianConstants.froxelPadding1 = 0.0f;
-            }
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -1558,9 +1533,6 @@ void Application::OnKeyPress(UINT8 key) {
         LOG_INFO("In-Scattering: {}", m_useInScattering ? "ON" : "OFF");
         break;
 
-    // F7: Toggle Froxel Volumetric Fog (Phase 5) - REMOVED
-    // if (key == VK_F7) { ... }
-
     // F8: Toggle phase function (Ctrl+F8/Shift+F8 adjust strength)
     case VK_F8:
         if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
@@ -2152,32 +2124,6 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.mlQuality.adaptiveQualityEnabled = m_enableAdaptiveQuality;
     meta.mlQuality.adaptiveTargetFPS = m_adaptiveTargetFPS;
 
-    // === FROXEL VOLUMETRIC FOG (Phase 5 - COMPLETE) ===
-
-    meta.froxelFog.enabled = m_enableFroxelFog;
-    if (m_froxelSystem) {
-        const auto& froxelParams = m_froxelSystem->GetGridParams();
-        meta.froxelFog.gridDimensionX = froxelParams.gridDimensions.x;
-        meta.froxelFog.gridDimensionY = froxelParams.gridDimensions.y;
-        meta.froxelFog.gridDimensionZ = froxelParams.gridDimensions.z;
-        meta.froxelFog.gridMinX = froxelParams.gridMin.x;
-        meta.froxelFog.gridMinY = froxelParams.gridMin.y;
-        meta.froxelFog.gridMinZ = froxelParams.gridMin.z;
-        meta.froxelFog.gridMaxX = froxelParams.gridMax.x;
-        meta.froxelFog.gridMaxY = froxelParams.gridMax.y;
-        meta.froxelFog.gridMaxZ = froxelParams.gridMax.z;
-        meta.froxelFog.densityMultiplier = froxelParams.densityMultiplier;
-        meta.froxelFog.debugVisualization = m_froxelSystem->IsDebugVisualizationEnabled();
-        meta.froxelFog.voxelCount = froxelParams.gridDimensions.x *
-                                     froxelParams.gridDimensions.y *
-                                     froxelParams.gridDimensions.z;
-
-        // Performance estimates (based on typical timings from FroxelSystem.h header)
-        // Density Injection: ~0.5ms, Voxel Lighting: ~3-5ms
-        meta.froxelFog.densityPassMs = 0.5f;
-        meta.froxelFog.lightingPassMs = 4.0f;  // Average of 3-5ms
-    }
-
     // === METADATA ===
 
     auto now = std::chrono::system_clock::now();
@@ -2331,30 +2277,6 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "    \"model_path\": \"%s\",\n", meta.mlQuality.modelPath.c_str());
     fprintf(file, "    \"adaptive_quality_enabled\": %s,\n", meta.mlQuality.adaptiveQualityEnabled ? "true" : "false");
     fprintf(file, "    \"adaptive_target_fps\": %.1f\n", meta.mlQuality.adaptiveTargetFPS);
-    fprintf(file, "  },\n");
-
-    // === FROXEL VOLUMETRIC FOG (Phase 5 - COMPLETE) ===
-    fprintf(file, "  \"froxel_fog\": {\n");
-    fprintf(file, "    \"enabled\": %s,\n", meta.froxelFog.enabled ? "true" : "false");
-    fprintf(file, "    \"grid_dimensions\": [%u, %u, %u],\n",
-            meta.froxelFog.gridDimensionX,
-            meta.froxelFog.gridDimensionY,
-            meta.froxelFog.gridDimensionZ);
-    fprintf(file, "    \"grid_min\": [%.1f, %.1f, %.1f],\n",
-            meta.froxelFog.gridMinX,
-            meta.froxelFog.gridMinY,
-            meta.froxelFog.gridMinZ);
-    fprintf(file, "    \"grid_max\": [%.1f, %.1f, %.1f],\n",
-            meta.froxelFog.gridMaxX,
-            meta.froxelFog.gridMaxY,
-            meta.froxelFog.gridMaxZ);
-    fprintf(file, "    \"density_multiplier\": %.2f,\n", meta.froxelFog.densityMultiplier);
-    fprintf(file, "    \"debug_visualization\": %s,\n", meta.froxelFog.debugVisualization ? "true" : "false");
-    fprintf(file, "    \"voxel_count\": %u,\n", meta.froxelFog.voxelCount);
-    fprintf(file, "    \"performance\": {\n");
-    fprintf(file, "      \"density_pass_ms\": %.2f,\n", meta.froxelFog.densityPassMs);
-    fprintf(file, "      \"lighting_pass_ms\": %.2f\n", meta.froxelFog.lightingPassMs);
-    fprintf(file, "    }\n");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
 
@@ -3339,14 +3261,6 @@ void Application::RenderImGui() {
         if (ImGui::RadioButton("RTXDI (1 sampled light per pixel)", currentSystem == 1)) {
             m_lightingSystem = LightingSystem::RTXDI;
             LOG_INFO("Switched to RTXDI system");
-        }
-        if (ImGui::RadioButton("Volumetric ReSTIR (Experimental)", currentSystem == 2)) {
-            if (m_volumetricReSTIR) {
-                m_lightingSystem = LightingSystem::VolumetricReSTIR;
-                LOG_INFO("Switched to Volumetric ReSTIR system");
-            } else {
-                LOG_WARN("Volumetric ReSTIR system not available");
-            }
         }
 
         // Display current mode info
@@ -4437,8 +4351,8 @@ void Application::RenderImGui() {
             ImGui::TreePop();
         }
 
-        // === FROXEL VOLUMETRIC FOG SYSTEM (Phase 5) ===
-        // REMOVED: Deprecated in favor of Gaussian Volume
+        ImGui::TreePop();
+    }
 
     ImGui::End();
 

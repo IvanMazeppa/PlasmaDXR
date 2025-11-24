@@ -5,7 +5,6 @@
 #include "../utils/d3dx12/d3dx12.h"
 #include "../debug/pix3.h"
 #include "../lighting/ProbeGridSystem.h"
-#include "../rendering/FroxelSystem.h"
 #include <d3dcompiler.h>
 #include <fstream>
 
@@ -752,8 +751,7 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
                                        const RenderConstants& constants,
                                        ID3D12Resource* rtxdiOutputBuffer,
                                        ProbeGridSystem* probeGridSystem,
-                                       ID3D12Resource* materialPropertiesBuffer,
-                                       FroxelSystem* froxelSystem) {
+                                       ID3D12Resource* materialPropertiesBuffer) {
     if (!cmdList || !particleBuffer || !rtLightingBuffer || !m_resources) {
         LOG_ERROR("Gaussian Render: null resource!");
         return;
@@ -947,16 +945,6 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
         return;
     }
     cmdList->SetComputeRootDescriptorTable(14, currentColorUAVHandle);
-
-    // Root param 15: Bind froxel lighting grid (SRV descriptor table - t10, Phase 5)
-    if (froxelSystem) {
-        D3D12_GPU_DESCRIPTOR_HANDLE froxelSRVHandle = froxelSystem->GetLightingGridSRV();
-        if (froxelSRVHandle.ptr != 0) {
-            cmdList->SetComputeRootDescriptorTable(15, froxelSRVHandle);
-        } else {
-            LOG_WARN("Froxel system provided but lighting grid SRV is ZERO!");
-        }
-    }
 
     // Dispatch (8x8 thread groups)
     uint32_t dispatchX = (constants.screenWidth + 7) / 8;

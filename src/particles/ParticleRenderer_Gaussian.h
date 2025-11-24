@@ -9,7 +9,6 @@
 class Device;
 class ResourceManager;
 class ProbeGridSystem;
-class FroxelSystem;
 
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"  // Need full definition for DLSSQualityMode enum
@@ -158,8 +157,7 @@ public:
                const RenderConstants& constants,
                ID3D12Resource* rtxdiOutputBuffer = nullptr,  // RTXDI selected lights (optional)
                ProbeGridSystem* probeGridSystem = nullptr,   // Probe Grid (Phase 0.13.1)
-               ID3D12Resource* materialPropertiesBuffer = nullptr,  // Material System (Phase 3)
-               FroxelSystem* froxelSystem = nullptr);        // Froxel Fog (Phase 5)
+               ID3D12Resource* materialPropertiesBuffer = nullptr);  // Material System (Phase 3)
 
     // Phase 2: Render depth pre-pass for screen-space shadows
     void RenderDepthPrePass(ID3D12GraphicsCommandList* cmdList,

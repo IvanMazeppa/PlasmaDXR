@@ -120,6 +120,10 @@ private:
     float m_cameraRotateSpeed = 0.5f;   // Camera rotation speed
     bool m_physicsEnabled = true;       // ENABLED - physics shader initializes particles on GPU
 
+    // RTXDI temporal accumulation state
+    DirectX::XMFLOAT4X4 m_prevViewProj; // For planar reprojection
+    bool m_firstFrame = true;           // To initialize prevViewProj on first run
+
     // Physics system parameters (readonly for now - would require ParticleSystem API changes)
     float m_innerRadius = 10.0f;        // Inner accretion disk radius
     float m_outerRadius = 300.0f;       // Outer accretion disk radius
@@ -337,7 +341,7 @@ private:
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
 
-    // Screenshot metadata structure v3.0 (Phase 2+5: Enhanced Configuration Capture + Froxel Fog)
+    // Screenshot metadata structure v3.0 (Enhanced Configuration Capture)
     struct ScreenshotMetadata {
         // Schema versioning
         std::string schemaVersion = "3.0";
