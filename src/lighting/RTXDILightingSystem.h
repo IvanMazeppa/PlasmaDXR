@@ -210,9 +210,9 @@ private:
 
 public:
     // M5 Temporal Accumulation API (Updated for Depth-Based Reprojection - Phase 4 M5 Fix)
+    // NOTE: viewProj removed to fit within 64-DWORD root constant limit
     void DispatchTemporalAccumulation(ID3D12GraphicsCommandList* commandList,
                                       const DirectX::XMFLOAT3& cameraPos,
-                                      const DirectX::XMFLOAT4X4& viewProj,
                                       const DirectX::XMFLOAT4X4& prevViewProj,
                                       const DirectX::XMFLOAT4X4& invViewProj,  // Phase 4 M5: For depth unprojection
                                       D3D12_GPU_DESCRIPTOR_HANDLE depthBufferSRV,  // Phase 4 M5: RT depth buffer

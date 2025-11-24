@@ -813,11 +813,12 @@ bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
     auto d3dDevice = m_device->GetDevice();
 
     // Root signature:
-    // [0] b0 - Accumulation constants (64 DWORDs = 256 bytes) - Phase 4 M5 fix: added invViewProj
+    // [0] b0 - Accumulation constants (48 DWORDs = 192 bytes) - Phase 4 M5 fix: prevViewProj + invViewProj (no viewProj)
     // [1] t0 - RTXDI output (Texture2D - requires descriptor table!)
     // [2] t1 - Previous accumulated (Texture2D - requires descriptor table!)
     // [3] u0 - Current accumulated (RWTexture2D - requires descriptor table!)
     // [4] t2 - RT Depth buffer (Texture2D<float> - Phase 4 M5 fix for depth-based reprojection)
+    // Total: 48 + 4 (descriptor tables) = 52 DWORDs (within 64 DWORD limit)
 
     CD3DX12_DESCRIPTOR_RANGE srvRanges[3];
     srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // t0: Texture2D<float4>
@@ -828,7 +829,7 @@ bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D<float4>
 
     CD3DX12_ROOT_PARAMETER rootParams[5];
-    rootParams[0].InitAsConstants(64, 0);  // b0: AccumulationConstants (64 DWORDs - added invViewProj)
+    rootParams[0].InitAsConstants(48, 0);  // b0: AccumulationConstants (48 DWORDs - removed viewProj)
     rootParams[1].InitAsDescriptorTable(1, &srvRanges[0]);  // t0: RTXDI output
     rootParams[2].InitAsDescriptorTable(1, &srvRanges[1]);  // t1: Prev accumulated
     rootParams[3].InitAsDescriptorTable(1, &uavRange);  // u0: Curr accumulated
@@ -1145,10 +1146,10 @@ void RTXDILightingSystem::DumpBuffers(ID3D12GraphicsCommandList* commandList,
 }
 
 // === M5: Temporal Accumulation Dispatch (Phase 4 M5 Fix: Depth-Based Reprojection) ===
+// NOTE: viewProj removed to fit within 64-DWORD root constant limit
 void RTXDILightingSystem::DispatchTemporalAccumulation(
     ID3D12GraphicsCommandList* commandList,
     const DirectX::XMFLOAT3& cameraPos,
-    const DirectX::XMFLOAT4X4& viewProj,
     const DirectX::XMFLOAT4X4& prevViewProj,
     const DirectX::XMFLOAT4X4& invViewProj,  // Phase 4 M5: For depth unprojection
     D3D12_GPU_DESCRIPTOR_HANDLE depthBufferSRV,  // Phase 4 M5: RT depth buffer from Gaussian renderer
@@ -1199,7 +1200,7 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     commandList->SetPipelineState(m_temporalAccumulatePSO.Get());
     commandList->SetComputeRootSignature(m_temporalAccumulateRS.Get());
 
-    // === 3. Set constants (Phase 4 M5 Fix: Added invViewProj for depth-based reprojection) ===
+    // === 3. Set constants (Phase 4 M5 Fix: prevViewProj + invViewProj, viewProj removed) ===
     struct AccumulationConstants {
         uint32_t screenWidth;
         uint32_t screenHeight;
@@ -1213,9 +1214,9 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
         uint32_t padding4;
         DirectX::XMFLOAT3 prevCameraPos;
         uint32_t forceReset;
-        DirectX::XMFLOAT4X4 viewProj;
-        DirectX::XMFLOAT4X4 prevViewProj;
-        DirectX::XMFLOAT4X4 invViewProj;  // Phase 4 M5: Inverse ViewProj for depth unprojection
+        DirectX::XMFLOAT4X4 prevViewProj;   // For reprojection to previous frame
+        DirectX::XMFLOAT4X4 invViewProj;    // Phase 4 M5: Inverse ViewProj for depth unprojection
+        // NOTE: viewProj removed to fit within 64-DWORD root constant limit
     } constants;
 
     constants.screenWidth = m_width;
@@ -1230,12 +1231,11 @@ void RTXDILightingSystem::DispatchTemporalAccumulation(
     constants.padding4 = 0;
     constants.prevCameraPos = m_prevCameraPos;
     constants.forceReset = m_forceReset ? 1 : 0;
-    constants.viewProj = viewProj;
     constants.prevViewProj = prevViewProj;
     constants.invViewProj = invViewProj;  // Phase 4 M5: For depth-based world position reconstruction
 
-    // Root constants size: 16 (base) + 16 (viewProj) + 16 (prevViewProj) + 16 (invViewProj) = 64 DWORDs
-    commandList->SetComputeRoot32BitConstants(0, 64, &constants, 0);
+    // Root constants size: 16 (base) + 16 (prevViewProj) + 16 (invViewProj) = 48 DWORDs
+    commandList->SetComputeRoot32BitConstants(0, 48, &constants, 0);
 
     // === 4. Bind resources (Descriptor Tables for Texture2D/RWTexture2D) ===
     // PING-PONG BUFFERS: Read from previous frame, write to current frame

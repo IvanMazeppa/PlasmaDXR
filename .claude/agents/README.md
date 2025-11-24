@@ -137,4 +137,3 @@ User: "Implement the 5 particle types for Phase 5"
 - **animation-scenario-builder** - Creates animation presets and sequences
 - **material-property-designer** - Interactive material property tuning
 - **ux-improvement-specialist** - Milestone 5.3 UX streamlining
-

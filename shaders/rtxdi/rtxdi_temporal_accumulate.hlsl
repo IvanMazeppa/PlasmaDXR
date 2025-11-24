@@ -11,9 +11,9 @@ cbuffer AccumulationConstants : register(b0) {
     float3 g_cameraPos;             // Current camera position
     float3 g_prevCameraPos;         // Previous camera position
     uint g_forceReset;              // Force reset flag (1=reset, 0=normal)
-    row_major float4x4 g_viewProj;      // Current ViewProj (for unprojection)
     row_major float4x4 g_prevViewProj;  // Previous ViewProj (for reprojection)
     row_major float4x4 g_invViewProj;   // Inverse ViewProj (Phase 4 M5 fix - for depth unprojection)
+    // NOTE: g_viewProj removed to fit within 64-DWORD root constant limit (Phase 4 M5 fix)
 };
 
 // Inputs

@@ -635,7 +635,6 @@ void Application::Render() {
             m_rtxdiLightingSystem->DispatchTemporalAccumulation(
                 cmdList,
                 cameraPosition,
-                currentViewProj,
                 m_prevViewProj,
                 currentInvViewProj,  // Phase 4 M5: For depth-based unprojection
                 depthSRV,            // Phase 4 M5: RT depth buffer from previous frame
