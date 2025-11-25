@@ -1563,15 +1563,9 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                             float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
 
                             // Skip shadow rays for blend lights (performance)
-                            float shadowTerm = 1.0;
-
-                            float phase = 1.0;
-                            if (usePhaseFunction != 0) {
-                                float cosTheta = dot(-ray.Direction, lightDir);
-                                phase = HenyeyGreenstein(cosTheta, scatteringG);
-                            }
-
-                            float3 lightContrib = light.color * light.intensity * attenuation * shadowTerm * phase;
+                            // Skip phase function for blend lights (prevents compound darkening)
+                            // Blended lights act as soft fill light for boundary smoothing
+                            float3 lightContrib = light.color * light.intensity * attenuation;
                             blendedLighting += lightContrib * distWeight;
                             blendWeightSum += distWeight;
                         }
