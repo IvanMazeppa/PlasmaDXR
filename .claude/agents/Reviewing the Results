@@ -1,4 +1,0 @@
-Reviewing the Results
-I've just finished reviewing the results of the debugging process. The linter gave me a clean bill of health, so that's a good start. I'm now focused on compiling the key findings and the fixes that were implemented, ready to give the user a clear and concise summary. I feel confident about the solution.
-Consolidating the Details
-I am summarizing the findings and the specific fixes now. The first issue was a mismatch between the C++ particle count and what was passed to the shader. The fix involved updating the C++ code to pass the correct values. The second issue was related to the order of struct members, which I've now rectified.

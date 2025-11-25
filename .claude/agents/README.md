@@ -1,8 +1,8 @@
 # PlasmaDX-Clean Agent System
 
-**Last Updated**: 2025-11-19
+**Last Updated**: 2025-11-24
 **Claude Code Version**: 2.x
-**Agent Count**: 4 Councils + 3 Phase 5 agents + 5 global debugging agents
+**Agent Count**: 2 Councils + 3 Phase 5 agents + 7 Domain Specialists
 
 ---
 
@@ -19,13 +19,17 @@ Councils are **strategic decision-makers** that coordinate specialists and enfor
 - GPU alignment validation (16-byte requirement)
 - Dispatches to `materials-and-structure-specialist` for implementation
 
-### **rendering-council** ⏳ PLANNED (Agent SDK)
-**Description**: Visual quality and rendering pipeline decisions
-**Use when**: RTXDI issues, shadow quality, volumetric artifacts
-
-### **physics-council** ⏳ PLANNED
+### **physics-council** ✅ ACTIVE
 **Description**: PINN integration and GPU physics decisions
 **Use when**: ML physics, accretion disk dynamics, performance optimization
+**Capabilities**:
+- Physics model architecture decisions
+- Conservation law enforcement
+- Dispatches to `physics-animation-engineer` for implementation
+
+### **rendering-council** ⏳ PLANNED
+**Description**: Visual quality and rendering pipeline decisions
+**Use when**: RTXDI issues, shadow quality, volumetric artifacts
 
 ### **diagnostics-council** ⏳ PLANNED
 **Description**: PIX debugging and performance profiling coordination
@@ -62,15 +66,17 @@ Councils are **strategic decision-makers** that coordinate specialists and enfor
 
 ---
 
-## Global Debugging Agents (Available from ~/.claude/agents/)
+## Domain Specialist Agents
 
-These agents complement Phase 5 development with debugging and performance tools:
+These agents handle domain-specific implementation work:
 
-- **buffer-validator-v3** - GPU buffer validation from PIX dumps
-- **pix-debugger-v3** - PIX capture root cause analysis
-- **performance-analyzer-v3** - Performance profiling and bottleneck identification
-- **stress-tester-v3** - Scalability testing (particle count, light count, camera distance)
-- **physics-performance-agent-v2** - Physics compute shader optimization
+- **gaussian-volumetric-rendering-specialist** - 3D Gaussian rendering bugs, anisotropic stretching, cube artifacts
+- **materials-and-structure-specialist** - Material system design, particle structure, GPU alignment
+- **rendering-quality-specialist** - LPIPS validation, shadow quality, probe grid diagnostics
+- **performance-diagnostics-specialist** - PIX captures, GPU hangs, FPS optimization
+- **agentic-ecosystem-architect** - Meta-agent orchestrator, coordinates multi-agent workflows
+- **pix-debugging-agent** - PIX capture analysis, buffer validation
+- **rtxdi-integration-specialist-v4** - RTXDI lighting integration
 
 ---
 
@@ -88,12 +94,12 @@ These agents complement Phase 5 development with debugging and performance tools
    - Task 2: Create material property system
    - Task 3: Integrate per-type rendering
 
-3. **Validate** (buffer-validator-v3):
+3. **Validate** (pix-debugging-agent):
    - Dump particle buffer with `--dump-buffers`
    - Verify 48-byte structure
    - Check new fields (particleType, opacity, density, lifetime)
 
-4. **Test** (stress-tester-v3):
+4. **Test** (performance-diagnostics-specialist):
    - Run with different type distributions (100% stars, 100% gas, etc.)
    - Measure performance impact (<5% overhead target)
    - Visual regression test (PLASMA_BLOB matches baseline)
@@ -121,6 +127,8 @@ These agents complement Phase 5 development with debugging and performance tools
 @phase-5-orchestrator "Begin Milestone 5.1"
 @celestial-rendering-specialist "Implement particle structure expansion"
 @physics-animation-engineer "Add constraint shape system"
+@materials-council "Review material type proposal"
+@gaussian-volumetric-rendering-specialist "Debug anisotropic stretching"
 ```
 
 **Implicit invocation** (Claude Code auto-selects based on task):
@@ -133,7 +141,26 @@ User: "Implement the 5 particle types for Phase 5"
 
 ## Future Agents (TODO)
 
+- **rendering-council** - Strategic visual quality decisions
+- **diagnostics-council** - PIX debugging and performance profiling coordination
 - **integration-tester** - End-to-end testing of Phase 5 components
 - **animation-scenario-builder** - Creates animation presets and sequences
-- **material-property-designer** - Interactive material property tuning
-- **ux-improvement-specialist** - Milestone 5.3 UX streamlining
+
+---
+
+## MCP Tools Reference
+
+Agent files document MCP (Model Context Protocol) tools for specialized functionality. These tools are available via configured MCP servers:
+
+| MCP Server | Tools | Domain |
+|------------|-------|--------|
+| `gaussian-analyzer` | 5 | Particle structure analysis, rendering technique comparison |
+| `material-system-engineer` | 9 | Code generation, shader generation, struct validation |
+| `dxr-image-quality-analyst` | 5 | Screenshot comparison, LPIPS validation, visual quality |
+| `path-and-probe` | 6 | Probe grid analysis, SH coefficient validation |
+| `pix-debug` | 8 | GPU debugging, buffer analysis, TDR diagnosis |
+| `dxr-shadow-engineer` | 5 | Shadow technique research and shader generation |
+| `dxr-volumetric-pyro-specialist` | 5 | Volumetric effects, explosions, fire/smoke |
+| `dx12-enhanced` | 6 | D3D12/DXR API reference and HLSL intrinsics |
+
+**Usage in agents**: Agent files document MCP tool calls using notation like `mcp__server-name__tool_name()`. MCP tools are automatically available when MCP servers are configured and don't need to be declared in the agent's `tools:` field.

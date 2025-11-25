@@ -1505,42 +1505,84 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                             totalLighting = float3(1, 0, 1) * 5.0;
                         }
                     } else {
-                        // NORMAL MODE: Validate light index (0xFFFFFFFF = no light in cell)
+                        // NORMAL MODE: RTXDI with soft spatial blending (Phase 4 M5+ fix)
+                        // Instead of using ONLY the RTXDI-selected light (causes patchwork),
+                        // blend the selected light (70%) with nearest lights (30%) for softer boundaries
+
+                        const float RTXDI_PRIMARY_WEIGHT = 0.7;  // Weight for RTXDI-selected light
+                        const float RTXDI_BLEND_WEIGHT = 0.3;    // Weight for distance-blended lights
+
+                        float3 primaryLighting = float3(0, 0, 0);
+                        float3 blendedLighting = float3(0, 0, 0);
+                        float blendWeightSum = 0.0;
+
+                        // === PRIMARY: RTXDI-selected light ===
                         if (selectedLightIndex != 0xFFFFFFFF && selectedLightIndex < lightCount) {
-                            // Use ONLY the RTXDI-selected light
                             Light light = g_lights[selectedLightIndex];
 
-                            // Direction and distance to this light
                             float3 lightDir = normalize(light.position - pos);
                             float lightDist = length(light.position - pos);
-
-                            // Use light.radius for soft falloff
                             float normalizedDist = lightDist / max(light.radius, 1.0);
                             float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
 
-                            // Cast shadow ray to this light (if enabled)
                             float shadowTerm = 1.0;
                             if (useShadowRays != 0) {
                                 shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
                             }
 
-                            // Apply phase function for view-dependent scattering (if enabled)
                             float phase = 1.0;
                             if (usePhaseFunction != 0) {
                                 float cosTheta = dot(-ray.Direction, lightDir);
                                 phase = HenyeyGreenstein(cosTheta, scatteringG);
                             }
 
-                            // PCSS temporal filtering: Accumulate shadow values
                             if (enableTemporalFiltering != 0) {
                                 currentShadowAccum += shadowTerm;
                                 shadowSampleCount += 1.0;
                             }
 
-                            // RTXDI-selected light contribution
-                            totalLighting = light.color * light.intensity * attenuation * shadowTerm * phase;
+                            primaryLighting = light.color * light.intensity * attenuation * shadowTerm * phase;
                         }
-                        // else: No light selected for this pixel - use ambient only (totalLighting = 0)
+
+                        // === SECONDARY: Blend nearest lights for soft spatial coherence ===
+                        // Find top 3 nearest lights (excluding RTXDI selection) and blend by distance
+                        for (uint blendIdx = 0; blendIdx < lightCount && blendIdx < 16; blendIdx++) {
+                            if (blendIdx == selectedLightIndex) continue;  // Skip RTXDI selection
+
+                            Light light = g_lights[blendIdx];
+                            float3 lightDir = normalize(light.position - pos);
+                            float lightDist = length(light.position - pos);
+
+                            // Distance-based weight: closer lights contribute more
+                            float distWeight = 1.0 / (1.0 + lightDist * lightDist * 0.0001);
+
+                            // Only include lights with significant contribution (culling far lights)
+                            if (distWeight < 0.01) continue;
+
+                            float normalizedDist = lightDist / max(light.radius, 1.0);
+                            float attenuation = 1.0 / (1.0 + normalizedDist * normalizedDist);
+
+                            // Skip shadow rays for blend lights (performance)
+                            float shadowTerm = 1.0;
+
+                            float phase = 1.0;
+                            if (usePhaseFunction != 0) {
+                                float cosTheta = dot(-ray.Direction, lightDir);
+                                phase = HenyeyGreenstein(cosTheta, scatteringG);
+                            }
+
+                            float3 lightContrib = light.color * light.intensity * attenuation * shadowTerm * phase;
+                            blendedLighting += lightContrib * distWeight;
+                            blendWeightSum += distWeight;
+                        }
+
+                        // Normalize blended lighting
+                        if (blendWeightSum > 0.0) {
+                            blendedLighting /= blendWeightSum;
+                        }
+
+                        // Combine primary (RTXDI) and blended (spatial) lighting
+                        totalLighting = primaryLighting * RTXDI_PRIMARY_WEIGHT + blendedLighting * RTXDI_BLEND_WEIGHT;
                     }
 
                 } else {
