@@ -11,12 +11,14 @@
 #include <memory>
 
 // Physics-Informed Neural Network (PINN) for accretion disk particle dynamics
-// Predicts forces on particles while respecting:
-// - General Relativity (Schwarzschild metric)
-// - Keplerian motion
-// - Angular momentum conservation
-// - Shakura-Sunyaev α-disk viscosity
-// - Energy conservation
+//
+// Version 1 (Legacy): State-only input [r, θ, φ, v_r, v_θ, v_φ, t] → [F_r, F_θ, F_φ]
+// Version 2 (New): Parameter-conditioned input:
+//   - particle_state [batch, 7]: [r, θ, φ, v_r, v_θ, v_φ, t]
+//   - physics_params [batch, 3]: [M_bh_normalized, α_viscosity, disk_thickness]
+//   → forces [batch, 3]: [F_r, F_θ, F_φ]
+//
+// Version 2 allows runtime control of physics parameters without retraining.
 
 class PINNPhysicsSystem {
 public:
@@ -36,6 +38,13 @@ public:
         float F_r;       // Radial force
         float F_theta;   // Polar force
         float F_phi;     // Azimuthal force
+    };
+
+    // Physics parameters for v2 model (runtime adjustable)
+    struct PhysicsParams {
+        float blackHoleMassNormalized = 1.0f;  // Multiplier (0.5-2.0, 1.0 = default 10 solar masses)
+        float alphaViscosity = 0.1f;           // Shakura-Sunyaev α (0.01-0.3)
+        float diskThickness = 0.1f;            // H/R ratio (0.05-0.2)
     };
 
     // Performance metrics
@@ -68,9 +77,32 @@ public:
     void SetHybridThreshold(float radiusMultiplier);
     float GetHybridThreshold() const { return m_hybridThresholdRadius; }
 
+    // ========== Physics Parameters (v2 model) ==========
+    // These parameters can be adjusted at runtime when using a v2 (parameter-conditioned) model.
+    // The v1 model ignores these parameters.
+
+    // Set/get all physics parameters at once
+    void SetPhysicsParams(const PhysicsParams& params) { m_physicsParams = params; }
+    const PhysicsParams& GetPhysicsParams() const { return m_physicsParams; }
+
+    // Individual parameter controls with clamping
+    void SetBlackHoleMass(float normalized);  // 0.5 - 2.0 (multiplier of default mass)
+    float GetBlackHoleMass() const { return m_physicsParams.blackHoleMassNormalized; }
+
+    void SetAlphaViscosity(float alpha);      // 0.01 - 0.3 (Shakura-Sunyaev α)
+    float GetAlphaViscosity() const { return m_physicsParams.alphaViscosity; }
+
+    void SetDiskThickness(float hrRatio);     // 0.05 - 0.2 (H/R ratio)
+    float GetDiskThickness() const { return m_physicsParams.diskThickness; }
+
+    // Check if using v2 (parameter-conditioned) model
+    bool IsParameterConditioned() const { return m_isV2Model; }
+    int GetModelVersion() const { return m_isV2Model ? 2 : 1; }
+
     // Batch inference: predict forces for multiple particles
     // Input: particle positions/velocities in Cartesian coordinates
     // Output: forces in Cartesian coordinates (ready for integration)
+    // Note: v2 model uses current physics parameters (SetPhysicsParams/SetBlackHoleMass/etc.)
     bool PredictForcesBatch(
         const DirectX::XMFLOAT3* positions,    // [particleCount]
         const DirectX::XMFLOAT3* velocities,   // [particleCount]
@@ -130,6 +162,13 @@ private:
     bool m_modelLoaded = false;
     bool m_hybridMode = true;
     float m_hybridThresholdRadius = 60.0f;  // 10× R_ISCO (R_ISCO = 6.0 in normalized units)
+
+    // V2 model support (parameter-conditioned)
+    PhysicsParams m_physicsParams;
+    bool m_isV2Model = false;
+#ifdef ENABLE_ML_FEATURES
+    std::vector<int64_t> m_paramsInputShape;  // Expected: [batch_size, 3] for v2 model
+#endif
 
     // Performance tracking
     PerformanceMetrics m_metrics = {};

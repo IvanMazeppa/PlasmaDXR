@@ -3737,6 +3737,46 @@ void Application::RenderImGui() {
                         }
                     }
 
+                    // V2 Model: Runtime-adjustable physics parameters
+                    if (m_particleSystem->IsPINNParameterConditioned()) {
+                        ImGui::Separator();
+                        ImGui::Text("Physics Parameters (v2 Model)");
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("(?)");
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("These parameters are passed to the neural network\nat inference time, allowing runtime physics control.");
+                        }
+
+                        // Black hole mass (normalized)
+                        float bhMass = m_particleSystem->GetPINNBlackHoleMass();
+                        if (ImGui::SliderFloat("BH Mass (x default)", &bhMass, 0.5f, 2.0f, "%.2f")) {
+                            m_particleSystem->SetPINNBlackHoleMass(bhMass);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Black hole mass multiplier.\n1.0 = 10 solar masses (default)\n2.0 = 20 solar masses\n0.5 = 5 solar masses");
+                        }
+
+                        // Alpha viscosity (Shakura-Sunyaev)
+                        float alpha = m_particleSystem->GetPINNAlphaViscosity();
+                        if (ImGui::SliderFloat("Alpha Viscosity", &alpha, 0.01f, 0.3f, "%.3f")) {
+                            m_particleSystem->SetPINNAlphaViscosity(alpha);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Shakura-Sunyaev viscosity parameter.\nHigher values = more angular momentum transfer.\nTypical: 0.01 - 0.3");
+                        }
+
+                        // Disk thickness (H/R ratio)
+                        float thickness = m_particleSystem->GetPINNDiskThickness();
+                        if (ImGui::SliderFloat("Disk Thickness (H/R)", &thickness, 0.05f, 0.2f, "%.3f")) {
+                            m_particleSystem->SetPINNDiskThickness(thickness);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Disk scale height ratio.\nHigher values = thicker, puffier disk.\nTypical: 0.05 (thin) - 0.2 (thick)");
+                        }
+                    } else {
+                        ImGui::TextDisabled("(v1 model - no runtime parameters)");
+                    }
+
                     // Performance metrics
                     auto metrics = m_particleSystem->GetPINNMetrics();
                     ImGui::Separator();
@@ -3749,7 +3789,12 @@ void Application::RenderImGui() {
                 }
 
                 // Model info
-                ImGui::TextDisabled("Model: PINN Accretion Disk (5 layers, 128 neurons)");
+                int modelVersion = m_particleSystem->GetPINNModelVersion();
+                if (modelVersion == 2) {
+                    ImGui::TextDisabled("Model: PINN Accretion Disk v2 (parameter-conditioned)");
+                } else {
+                    ImGui::TextDisabled("Model: PINN Accretion Disk v1 (5 layers, 128 neurons)");
+                }
             } else {
                 ImGui::TextDisabled("PINN: Not Available");
                 ImGui::TextDisabled("(ONNX Runtime or model not found)");

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <chrono>
 #include <sstream>
+#include <algorithm>  // std::clamp
 
 using namespace DirectX;
 
@@ -56,13 +57,20 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
         // Get input/output metadata
         Ort::AllocatorWithDefaultOptions allocator;
 
-        // Input info
+        // Input info - detect v1 (1 input) vs v2 (2 inputs)
         size_t numInputs = m_ortSession->GetInputCount();
-        if (numInputs != 1) {
-            LOG_ERROR("[PINN] Expected 1 input, found {}", numInputs);
+        if (numInputs == 1) {
+            m_isV2Model = false;
+            LOG_INFO("[PINN] Detected v1 model (state-only input)");
+        } else if (numInputs == 2) {
+            m_isV2Model = true;
+            LOG_INFO("[PINN] Detected v2 model (parameter-conditioned)");
+        } else {
+            LOG_ERROR("[PINN] Expected 1 or 2 inputs, found {}", numInputs);
             return false;
         }
 
+        // Get first input info (particle_state)
         auto inputName = m_ortSession->GetInputNameAllocated(0, allocator);
         m_inputNames.push_back(std::string(inputName.get()));
 
@@ -70,7 +78,24 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
         auto inputTensorInfo = inputTypeInfo.GetTensorTypeAndShapeInfo();
         m_inputShape = inputTensorInfo.GetShape();
 
-        LOG_INFO("[PINN] Input: '{}', shape: [{}, {}]", m_inputNames[0], m_inputShape[0], m_inputShape[1]);
+        LOG_INFO("[PINN] Input 0: '{}', shape: [{}, {}]", m_inputNames[0], m_inputShape[0], m_inputShape[1]);
+
+        // If v2 model, get second input info (physics_params)
+        if (m_isV2Model) {
+            auto paramsInputName = m_ortSession->GetInputNameAllocated(1, allocator);
+            m_inputNames.push_back(std::string(paramsInputName.get()));
+
+            auto paramsTypeInfo = m_ortSession->GetInputTypeInfo(1);
+            auto paramsTensorInfo = paramsTypeInfo.GetTensorTypeAndShapeInfo();
+            m_paramsInputShape = paramsTensorInfo.GetShape();
+
+            LOG_INFO("[PINN] Input 1: '{}', shape: [{}, {}]", m_inputNames[1], m_paramsInputShape[0], m_paramsInputShape[1]);
+
+            if (m_paramsInputShape[1] != 3) {
+                LOG_ERROR("[PINN] Invalid params input shape. Expected 3 (M_bh, α, H/R), got {}", m_paramsInputShape[1]);
+                return false;
+            }
+        }
 
         // Output info
         size_t numOutputs = m_ortSession->GetOutputCount();
@@ -100,8 +125,12 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
         }
 
         m_modelLoaded = true;
-        LOG_INFO("[PINN] Successfully loaded PINN model!");
+        LOG_INFO("[PINN] Successfully loaded PINN model (version {})!", m_isV2Model ? 2 : 1);
         LOG_INFO("[PINN] Hybrid mode: {} (threshold: {:.1f}× R_ISCO)", m_hybridMode ? "ON" : "OFF", m_hybridThresholdRadius / R_ISCO);
+        if (m_isV2Model) {
+            LOG_INFO("[PINN] Physics params: M_bh={:.2f}, α={:.3f}, H/R={:.3f}",
+                m_physicsParams.blackHoleMassNormalized, m_physicsParams.alphaViscosity, m_physicsParams.diskThickness);
+        }
 
         return true;
 
@@ -123,6 +152,32 @@ bool PINNPhysicsSystem::IsAvailable() const {
 void PINNPhysicsSystem::SetHybridThreshold(float radiusMultiplier) {
     m_hybridThresholdRadius = radiusMultiplier * R_ISCO;
     LOG_INFO("[PINN] Hybrid threshold set to {:.1f}× R_ISCO ({:.1f} units)", radiusMultiplier, m_hybridThresholdRadius);
+}
+
+// === Physics Parameter Controls (v2 model) ===
+
+void PINNPhysicsSystem::SetBlackHoleMass(float normalized) {
+    // Clamp to valid range (0.5 - 2.0)
+    m_physicsParams.blackHoleMassNormalized = std::clamp(normalized, 0.5f, 2.0f);
+    if (m_isV2Model) {
+        LOG_INFO("[PINN] Black hole mass set to {:.2f}× default", m_physicsParams.blackHoleMassNormalized);
+    }
+}
+
+void PINNPhysicsSystem::SetAlphaViscosity(float alpha) {
+    // Clamp to valid range (0.01 - 0.3)
+    m_physicsParams.alphaViscosity = std::clamp(alpha, 0.01f, 0.3f);
+    if (m_isV2Model) {
+        LOG_INFO("[PINN] Alpha viscosity set to {:.3f}", m_physicsParams.alphaViscosity);
+    }
+}
+
+void PINNPhysicsSystem::SetDiskThickness(float hrRatio) {
+    // Clamp to valid range (0.05 - 0.2)
+    m_physicsParams.diskThickness = std::clamp(hrRatio, 0.05f, 0.2f);
+    if (m_isV2Model) {
+        LOG_INFO("[PINN] Disk thickness (H/R) set to {:.3f}", m_physicsParams.diskThickness);
+    }
 }
 
 bool PINNPhysicsSystem::PredictForcesBatch(
@@ -188,8 +243,8 @@ bool PINNPhysicsSystem::PredictForcesBatch(
         // Update input shape for current batch
         std::vector<int64_t> inputShape = { static_cast<int64_t>(pinnParticleCount), 7 };
 
-        // Create input tensor
-        Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
+        // Create state input tensor
+        Ort::Value stateTensor = Ort::Value::CreateTensor<float>(
             m_memoryInfo,
             inputData.data(),
             inputData.size(),
@@ -197,15 +252,43 @@ bool PINNPhysicsSystem::PredictForcesBatch(
             inputShape.size()
         );
 
+        std::vector<Ort::Value> inputTensors;
+        inputTensors.push_back(std::move(stateTensor));
+
+        // For v2 model, create physics parameters tensor
+        std::vector<float> paramsData;
+        if (m_isV2Model) {
+            // Replicate parameters for each particle in batch
+            paramsData.reserve(pinnParticleCount * 3);
+            for (uint32_t i = 0; i < pinnParticleCount; i++) {
+                paramsData.push_back(m_physicsParams.blackHoleMassNormalized);
+                paramsData.push_back(m_physicsParams.alphaViscosity);
+                paramsData.push_back(m_physicsParams.diskThickness);
+            }
+
+            std::vector<int64_t> paramsShape = { static_cast<int64_t>(pinnParticleCount), 3 };
+            Ort::Value paramsTensor = Ort::Value::CreateTensor<float>(
+                m_memoryInfo,
+                paramsData.data(),
+                paramsData.size(),
+                paramsShape.data(),
+                paramsShape.size()
+            );
+            inputTensors.push_back(std::move(paramsTensor));
+        }
+
         // Run inference
-        const char* inputNames[] = { m_inputNames[0].c_str() };
+        std::vector<const char*> inputNames;
+        for (const auto& name : m_inputNames) {
+            inputNames.push_back(name.c_str());
+        }
         const char* outputNames[] = { m_outputNames[0].c_str() };
 
         auto outputTensors = m_ortSession->Run(
             Ort::RunOptions{ nullptr },
-            inputNames,
-            &inputTensor,
-            1,
+            inputNames.data(),
+            inputTensors.data(),
+            inputTensors.size(),
             outputNames,
             1
         );
@@ -268,11 +351,20 @@ std::string PINNPhysicsSystem::GetModelInfo() const {
     }
 
     std::ostringstream oss;
-    oss << "PINN Accretion Disk Model\n";
-    oss << "  Input: " << m_inputNames[0] << " [batch, 7]\n";
+    oss << "PINN Accretion Disk Model (v" << (m_isV2Model ? "2" : "1") << ")\n";
+    oss << "  Input 0: " << m_inputNames[0] << " [batch, 7]\n";
+    if (m_isV2Model && m_inputNames.size() > 1) {
+        oss << "  Input 1: " << m_inputNames[1] << " [batch, 3]\n";
+    }
     oss << "  Output: " << m_outputNames[0] << " [batch, 3]\n";
     oss << "  Hybrid Mode: " << (m_hybridMode ? "ON" : "OFF") << "\n";
     oss << "  Threshold: " << (m_hybridThresholdRadius / R_ISCO) << "× R_ISCO\n";
+    if (m_isV2Model) {
+        oss << "  --- Physics Parameters ---\n";
+        oss << "  Black Hole Mass: " << m_physicsParams.blackHoleMassNormalized << "× default\n";
+        oss << "  Alpha Viscosity: " << m_physicsParams.alphaViscosity << "\n";
+        oss << "  Disk Thickness: " << m_physicsParams.diskThickness << " (H/R)\n";
+    }
     oss << "  Status: " << (m_enabled ? "ENABLED" : "DISABLED");
 
     return oss.str();

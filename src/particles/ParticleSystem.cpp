@@ -107,7 +107,7 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
     // Initialize PINN ML Physics System (optional)
     m_pinnPhysics = new PINNPhysicsSystem();
     // Path relative to project root (working directory)
-    if (m_pinnPhysics->Initialize("ml/models/pinn_accretion_disk.onnx")) {
+    if (m_pinnPhysics->Initialize("ml/models/pinn_v2_param_conditioned.onnx")) {
         m_pinnPhysics->SetEnabled(false);  // Start disabled (user can enable via 'P' key)
         m_pinnPhysics->SetHybridMode(true);
         m_pinnPhysics->SetHybridThreshold(10.0f);  // 10× R_ISCO
@@ -731,6 +731,46 @@ ParticleSystem::PINNMetrics ParticleSystem::GetPINNMetrics() const {
         metrics.avgBatchTimeMs = pinnMetrics.avgBatchTimeMs;
     }
     return metrics;
+}
+
+// === PINN v2 Physics Parameters ===
+
+bool ParticleSystem::IsPINNParameterConditioned() const {
+    return m_pinnPhysics ? m_pinnPhysics->IsParameterConditioned() : false;
+}
+
+int ParticleSystem::GetPINNModelVersion() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetModelVersion() : 0;
+}
+
+float ParticleSystem::GetPINNBlackHoleMass() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetBlackHoleMass() : 1.0f;
+}
+
+void ParticleSystem::SetPINNBlackHoleMass(float normalized) {
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetBlackHoleMass(normalized);
+    }
+}
+
+float ParticleSystem::GetPINNAlphaViscosity() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetAlphaViscosity() : 0.1f;
+}
+
+void ParticleSystem::SetPINNAlphaViscosity(float alpha) {
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetAlphaViscosity(alpha);
+    }
+}
+
+float ParticleSystem::GetPINNDiskThickness() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetDiskThickness() : 0.1f;
+}
+
+void ParticleSystem::SetPINNDiskThickness(float hrRatio) {
+    if (m_pinnPhysics) {
+        m_pinnPhysics->SetDiskThickness(hrRatio);
+    }
 }
 
 // ============================================================================

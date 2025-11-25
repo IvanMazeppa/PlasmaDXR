@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "state_dim": 7,
+  "param_dim": 3,
+  "hidden_dim": 128,
+  "num_layers": 5,
+  "input_format": [
+    "r",
+    "theta",
+    "phi",
+    "v_r",
+    "v_theta",
+    "v_phi",
+    "t"
+  ],
+  "param_format": [
+    "M_bh_normalized",
+    "alpha_viscosity",
+    "disk_thickness"
+  ],
+  "output_format": [
+    "F_r",
+    "F_theta",
+    "F_phi"
+  ],
+  "training_epochs": 300,
+  "physics_weight": 0.0005,
+  "param_variations": 5
+}

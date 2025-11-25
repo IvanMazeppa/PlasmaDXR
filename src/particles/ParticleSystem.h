@@ -168,6 +168,22 @@ public:
     };
     PINNMetrics GetPINNMetrics() const;
 
+    // PINN v2 Model: Physics Parameters (runtime adjustable)
+    bool IsPINNParameterConditioned() const;
+    int GetPINNModelVersion() const;
+
+    // Black hole mass multiplier (0.5 - 2.0, 1.0 = default 10 solar masses)
+    float GetPINNBlackHoleMass() const;
+    void SetPINNBlackHoleMass(float normalized);
+
+    // Shakura-Sunyaev alpha viscosity (0.01 - 0.3)
+    float GetPINNAlphaViscosity() const;
+    void SetPINNAlphaViscosity(float alpha);
+
+    // Disk thickness H/R ratio (0.05 - 0.2)
+    float GetPINNDiskThickness() const;
+    void SetPINNDiskThickness(float hrRatio);
+
     // ========== Phase 2C: Explosion Spawning System ==========
 
     // Configuration for spawning explosion effects
