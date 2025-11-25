@@ -281,7 +281,7 @@ void ProbeGridSystem::UpdateProbes(
     constants.frameIndex = frameIndex;
     constants.updateInterval = m_updateInterval;
     constants.probeIntensity = m_probeIntensity;  // Runtime configurable (200-2000)
-    constants.padding1 = 0;
+    constants.particleRadius = 50.0f;  // Base particle radius for intersection tests
 
     // Map constant buffer and upload
     void* mappedData = nullptr;

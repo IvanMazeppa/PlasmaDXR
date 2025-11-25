@@ -700,19 +700,66 @@ void ParticleSystem::InitializeMaterialProperties() {
     m_materialProperties.materials[4].scatteringCoefficient = 3.0f;   // Very high scattering (reflective)
     m_materialProperties.materials[4].phaseG = -0.6f;                 // Strong backward scatter (rim glow)
 
-    // Zero out padding to avoid undefined behavior
+    // ============================================================================
+    // Phase 2: PYRO/EXPLOSION MATERIALS
+    // ============================================================================
+
+    // Material 5: SUPERNOVA (Explosive stellar death - EXTREME brilliance)
+    // Starts at 100,000K+, expands rapidly, fades over 5-10 seconds
+    m_materialProperties.materials[5].albedo = DirectX::XMFLOAT3(1.0f, 0.95f, 0.8f);  // Brilliant white-yellow
+    m_materialProperties.materials[5].opacity = 0.95f;                // Nearly opaque core
+    m_materialProperties.materials[5].emissionMultiplier = 15.0f;     // EXTREME emission (blinding!)
+    m_materialProperties.materials[5].scatteringCoefficient = 1.5f;   // Moderate scattering
+    m_materialProperties.materials[5].phaseG = 0.8f;                  // Strong forward scatter (radial glow)
+    m_materialProperties.materials[5].expansionRate = 50.0f;          // Fast expansion (50 units/sec)
+    m_materialProperties.materials[5].coolingRate = 8000.0f;          // Rapid cooling (8000K/sec)
+    m_materialProperties.materials[5].fadeStartRatio = 0.6f;          // Start fading at 60% lifetime
+
+    // Material 6: STELLAR_FLARE (Solar flare ejection - hot plasma burst)
+    // Coronal mass ejection, 20,000K, arcing trajectory
+    m_materialProperties.materials[6].albedo = DirectX::XMFLOAT3(1.0f, 0.6f, 0.2f);   // Hot orange-yellow
+    m_materialProperties.materials[6].opacity = 0.7f;                 // Semi-transparent
+    m_materialProperties.materials[6].emissionMultiplier = 6.0f;      // High emission
+    m_materialProperties.materials[6].scatteringCoefficient = 2.0f;   // Good scattering
+    m_materialProperties.materials[6].phaseG = 0.5f;                  // Forward scatter
+    m_materialProperties.materials[6].expansionRate = 20.0f;          // Moderate expansion
+    m_materialProperties.materials[6].coolingRate = 3000.0f;          // Slower cooling
+    m_materialProperties.materials[6].fadeStartRatio = 0.7f;          // Fade at 70% lifetime
+
+    // Material 7: SHOCKWAVE (Expanding shockwave ring - fast, dramatic)
+    // Thin expanding shell, very fast, short-lived
+    m_materialProperties.materials[7].albedo = DirectX::XMFLOAT3(0.8f, 0.9f, 1.0f);   // Bright blue-white
+    m_materialProperties.materials[7].opacity = 0.4f;                 // Semi-transparent ring
+    m_materialProperties.materials[7].emissionMultiplier = 10.0f;     // Very bright edge
+    m_materialProperties.materials[7].scatteringCoefficient = 0.5f;   // Low scattering (sharp edge)
+    m_materialProperties.materials[7].phaseG = 0.0f;                  // Isotropic (ring visible from all angles)
+    m_materialProperties.materials[7].expansionRate = 100.0f;         // VERY fast expansion (shockwave!)
+    m_materialProperties.materials[7].coolingRate = 1000.0f;          // Quick fade
+    m_materialProperties.materials[7].fadeStartRatio = 0.4f;          // Early fade (shockwaves are brief)
+
+    // Set default expansion/cooling for non-explosive materials (0 = no effect)
     for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 9; j++) {
+        m_materialProperties.materials[i].expansionRate = 0.0f;
+        m_materialProperties.materials[i].coolingRate = 0.0f;
+        m_materialProperties.materials[i].fadeStartRatio = 1.0f;  // Never fade
+    }
+
+    // Zero out padding to avoid undefined behavior
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 6; j++) {
             m_materialProperties.materials[i].padding[j] = 0.0f;
         }
     }
 
-    LOG_INFO("[Material System] Initialized 5 vibrant material presets:");
+    LOG_INFO("[Material System] Initialized 8 material presets:");
     LOG_INFO("  0: PLASMA          - Hot orange/red, emission 2.5×");
     LOG_INFO("  1: STAR            - Brilliant white-yellow, emission 8.0×");
     LOG_INFO("  2: GAS_CLOUD       - Wispy blue/purple, backward scatter");
     LOG_INFO("  3: ROCKY_BODY      - Deep grey, minimal emission");
     LOG_INFO("  4: ICY_BODY        - Bright blue-white, reflective");
+    LOG_INFO("  5: SUPERNOVA       - Extreme emission 15×, expansion 50u/s");
+    LOG_INFO("  6: STELLAR_FLARE   - Hot plasma burst, emission 6×");
+    LOG_INFO("  7: SHOCKWAVE       - Fast expanding ring, emission 10×");
 }
 
 bool ParticleSystem::CreateMaterialPropertiesBuffer() {

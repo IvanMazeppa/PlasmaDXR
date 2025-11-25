@@ -152,7 +152,7 @@ private:
         uint32_t frameIndex;                 // Frame counter for temporal amortization
         uint32_t updateInterval;             // Frames between full grid updates (4)
         float probeIntensity;                // Intensity multiplier (200-2000, runtime configurable)
-        uint32_t padding1;
+        float particleRadius;                // Base particle radius for intersection tests
     };
 
     // Resource creation helpers

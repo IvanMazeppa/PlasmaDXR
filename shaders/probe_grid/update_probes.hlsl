@@ -29,7 +29,7 @@ cbuffer ProbeUpdateConstants : register(b0) {
     uint g_frameIndex;             // Frame counter for temporal amortization
     uint g_updateInterval;         // Frames between full grid updates (4)
     float g_probeIntensity;        // Runtime intensity multiplier (200-2000, default 800)
-    uint g_padding1;
+    float g_particleRadius;        // Base particle radius for intersection tests
 };
 
 //=============================================================================
@@ -51,19 +51,25 @@ struct Probe {
 
 RWStructuredBuffer<Probe> g_probes : register(u0);
 
-// Particle data (same structure as Gaussian renderer)
+// Particle data (matches C++ ParticleSystem::Particle)
+// Phase 2: Extended to 64 bytes for lifetime/pyro support
 struct Particle {
-    float3 position;
-    float radius;
-    float3 velocity;
-    float temperature;
-    float3 ellipsoidAxis1;
-    float padding0;
-    float3 ellipsoidAxis2;
-    float padding1;
-    float3 ellipsoidAxis3;
-    float padding2;
-};
+    // === LEGACY FIELDS (32 bytes) ===
+    float3 position;       // 12 bytes (offset 0)
+    float temperature;     // 4 bytes  (offset 12)
+    float3 velocity;       // 12 bytes (offset 16)
+    float density;         // 4 bytes  (offset 28)
+
+    // === MATERIAL FIELDS (16 bytes) ===
+    float3 albedo;         // 12 bytes (offset 32)
+    uint materialType;     // 4 bytes  (offset 44)
+
+    // === LIFETIME FIELDS (16 bytes) ===
+    float lifetime;        // 4 bytes  (offset 48)
+    float maxLifetime;     // 4 bytes  (offset 52)
+    float spawnTime;       // 4 bytes  (offset 56)
+    uint flags;            // 4 bytes  (offset 60)
+};  // Total: 64 bytes
 
 StructuredBuffer<Particle> g_particles : register(t0);
 
@@ -327,7 +333,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
 
                     // Ray-ellipsoid intersection test (simplified sphere for probes)
                     float3 oc = ray.Origin - particle.position;
-                    float radius = particle.radius;
+                    float radius = g_particleRadius;  // Use constant radius instead of per-particle
                     float b = dot(oc, ray.Direction);
                     float c = dot(oc, oc) - radius * radius;
                     float discriminant = b * b - c;
@@ -369,7 +375,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
                 float3 particleLight = ComputeParticleLighting(
                     probePos,
                     particle.position,
-                    particle.radius,
+                    g_particleRadius,  // Use constant radius instead of per-particle
                     particle.temperature
                 );
 

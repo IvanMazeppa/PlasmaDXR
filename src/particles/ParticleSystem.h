@@ -25,17 +25,29 @@ public:
     static constexpr float INITIAL_ANGULAR_MOMENTUM = 100.0f;
 
     // Material type enumeration for diverse particle rendering
-    // Sprint 1: MVP with 5 material types (PLASMA must be index 0 for backward compatibility)
+    // Phase 2: Extended with pyro/explosion types
     enum class ParticleMaterialType : uint32_t {
         PLASMA = 0,              // Legacy - accretion disk plasma (hot orange/red)
         STAR_MAIN_SEQUENCE = 1,  // G-type stars (Sun-like) - 5800K, high emission
         GAS_CLOUD = 2,           // Nebulae - wispy, low density, colorful
         ROCKY_BODY = 3,          // Asteroids, rocky particles - grey, low emission
         ICY_BODY = 4,            // Comets, icy particles - white/blue, reflective
-        // Future: STAR_GIANT, STAR_NEUTRON, DUST_CLOUD (Phase 2)
+        SUPERNOVA = 5,           // Phase 2: Explosive stellar death - extreme emission, expanding
+        STELLAR_FLARE = 6,       // Phase 2: Solar flare ejection - hot plasma burst
+        SHOCKWAVE = 7,           // Phase 2: Expanding shockwave ring - fast, fading
+        COUNT = 8                // Total material types
     };
 
-    // Extended particle structure (48 bytes, 16-byte aligned)
+    // Particle flags for special behaviors
+    enum class ParticleFlags : uint32_t {
+        NONE = 0,
+        EXPLOSION = 1 << 0,      // Part of explosion event
+        FADING = 1 << 1,         // Currently fading out
+        IMMORTAL = 1 << 2,       // Never expires (lifetime ignored)
+        EMISSIVE_ONLY = 1 << 3,  // Pure emission, no scattering
+    };
+
+    // Extended particle structure (64 bytes, 16-byte aligned)
     // CRITICAL: First 32 bytes MUST match legacy layout for backward compatibility
     struct Particle {
         // === LEGACY FIELDS (32 bytes) - DO NOT REORDER ===
@@ -44,26 +56,35 @@ public:
         DirectX::XMFLOAT3 velocity;    // 12 bytes (offset 16)
         float density;                 // 4 bytes  (offset 28)
 
-        // === NEW FIELDS (16 bytes) ===
+        // === MATERIAL FIELDS (16 bytes) ===
         DirectX::XMFLOAT3 albedo;      // 12 bytes (offset 32) - Surface/volume color
         uint32_t materialType;         // 4 bytes  (offset 44) - ParticleMaterialType enum
-    };  // Total: 48 bytes (16-byte aligned ✓)
+
+        // === LIFETIME FIELDS (16 bytes) - Phase 2 Pyro/Explosions ===
+        float lifetime;                // 4 bytes  (offset 48) - Current age in seconds
+        float maxLifetime;             // 4 bytes  (offset 52) - Total duration (0 = infinite/immortal)
+        float spawnTime;               // 4 bytes  (offset 56) - Time when spawned (for effects sync)
+        uint32_t flags;                // 4 bytes  (offset 60) - ParticleFlags bitmask
+    };  // Total: 64 bytes (16-byte aligned ✓)
 
     // Material properties for each material type
-    // Sprint 1: 5 material types, each with distinct visual properties
-    // GPU constant buffer: 320 bytes (5 materials × 64 bytes)
+    // Phase 2: Extended to 8 material types for pyro/explosion effects
+    // GPU constant buffer: 512 bytes (8 materials × 64 bytes)
     struct MaterialTypeProperties {
         DirectX::XMFLOAT3 albedo;             // 12 bytes - Base surface/volume color (RGB)
         float opacity;                        // 4 bytes  - Opacity multiplier (0-1)
         float emissionMultiplier;             // 4 bytes  - Emission strength multiplier
         float scatteringCoefficient;          // 4 bytes  - Volumetric scattering (higher = more scattering)
         float phaseG;                         // 4 bytes  - Henyey-Greenstein phase function (-1 to 1)
-        float padding[9];                     // 36 bytes - Padding to 64 bytes for alignment
+        float expansionRate;                  // 4 bytes  - Phase 2: Radius expansion per second (for explosions)
+        float coolingRate;                    // 4 bytes  - Phase 2: Temperature decay rate (K/second)
+        float fadeStartRatio;                 // 4 bytes  - Phase 2: Lifetime ratio when fade begins (0.7 = 70%)
+        float padding[6];                     // 24 bytes - Padding to 64 bytes for alignment
     };  // Total: 64 bytes per material
 
     struct MaterialPropertiesConstants {
-        MaterialTypeProperties materials[5];  // 5 types × 64 bytes = 320 bytes
-    };  // Total: 320 bytes
+        MaterialTypeProperties materials[8];  // 8 types × 64 bytes = 512 bytes
+    };  // Total: 512 bytes
 
 public:
     ParticleSystem() = default;

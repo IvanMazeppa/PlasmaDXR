@@ -25,13 +25,25 @@ cbuffer LightingConstants : register(b0)
 };
 
 // Input: Particle buffer (read positions and temperatures)
+// Phase 2: Extended to 64 bytes for lifetime/pyro support
 struct Particle
 {
-    float3 position;    // Offset 0-11
-    float temperature;  // Offset 12-15
-    float3 velocity;    // Offset 16-27
-    float density;      // Offset 28-31
-};
+    // === LEGACY FIELDS (32 bytes) ===
+    float3 position;       // 12 bytes (offset 0)
+    float temperature;     // 4 bytes  (offset 12)
+    float3 velocity;       // 12 bytes (offset 16)
+    float density;         // 4 bytes  (offset 28)
+
+    // === MATERIAL FIELDS (16 bytes) ===
+    float3 albedo;         // 12 bytes (offset 32)
+    uint materialType;     // 4 bytes  (offset 44)
+
+    // === LIFETIME FIELDS (16 bytes) ===
+    float lifetime;        // 4 bytes  (offset 48)
+    float maxLifetime;     // 4 bytes  (offset 52)
+    float spawnTime;       // 4 bytes  (offset 56)
+    uint flags;            // 4 bytes  (offset 60)
+};  // Total: 64 bytes
 
 StructuredBuffer<Particle> g_particles : register(t0);
 

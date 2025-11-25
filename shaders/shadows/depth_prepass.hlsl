@@ -20,14 +20,24 @@
 // ===========================================================================================
 
 // Particle structure (matches C++ ParticleSystem::Particle)
+// Phase 2: Extended to 64 bytes for lifetime/pyro support
 struct Particle {
-    float3 position;       // World-space position
-    float radius;          // Particle radius (for conservative depth)
-    float3 velocity;       // Particle velocity
-    float temperature;     // Temperature (unused here)
-    float3 color;          // Color (unused here)
-    float mass;            // Mass (unused here)
-};
+    // === LEGACY FIELDS (32 bytes) ===
+    float3 position;       // 12 bytes (offset 0) - World-space position
+    float temperature;     // 4 bytes  (offset 12) - Used for radius calculation
+    float3 velocity;       // 12 bytes (offset 16) - Particle velocity
+    float density;         // 4 bytes  (offset 28) - Density
+
+    // === MATERIAL FIELDS (16 bytes) ===
+    float3 albedo;         // 12 bytes (offset 32) - Color (unused here)
+    uint materialType;     // 4 bytes  (offset 44) - Material type
+
+    // === LIFETIME FIELDS (16 bytes) ===
+    float lifetime;        // 4 bytes  (offset 48)
+    float maxLifetime;     // 4 bytes  (offset 52)
+    float spawnTime;       // 4 bytes  (offset 56)
+    uint flags;            // 4 bytes  (offset 60)
+};  // Total: 64 bytes
 
 // Constant buffer
 cbuffer DepthPrePassConstants : register(b0) {
@@ -35,7 +45,7 @@ cbuffer DepthPrePassConstants : register(b0) {
     uint g_screenWidth;          // Output resolution width
     uint g_screenHeight;         // Output resolution height
     uint g_particleCount;        // Number of particles to process
-    float g_padding;
+    float g_particleRadius;      // Base particle radius for depth calculation
 };
 
 // Input particle buffer
@@ -97,7 +107,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
     // CONSERVATIVE DEPTH ADJUSTMENT:
     // Subtract radius in NDC space to get closest point of sphere to camera
     // This creates slightly tighter shadows (more conservative occlusion)
-    float radiusNDC = (p.radius / clipPos.w) * 0.01;  // Approximate radius in NDC
+    float radiusNDC = (g_particleRadius / clipPos.w) * 0.01;  // Approximate radius in NDC
     depth = saturate(depth - radiusNDC);
 
     // Atomic min to handle overlapping particles

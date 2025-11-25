@@ -1,8 +1,9 @@
 // 3D Gaussian Splatting Common Functions
 // Shared between AABB generation and ray tracing
+// Phase 2: Extended with lifetime system for pyro/explosion effects
 
-// Extended particle structure (48 bytes, 16-byte aligned)
-// Sprint 1: Material System Implementation
+// Extended particle structure (64 bytes, 16-byte aligned)
+// Phase 2: Pyro/Explosion support with lifetime fields
 struct Particle {
     // === LEGACY FIELDS (32 bytes) - DO NOT REORDER ===
     float3 position;       // 12 bytes (offset 0)
@@ -10,10 +11,23 @@ struct Particle {
     float3 velocity;       // 12 bytes (offset 16)
     float density;         // 4 bytes  (offset 28)
 
-    // === NEW FIELDS (16 bytes) ===
+    // === MATERIAL FIELDS (16 bytes) ===
     float3 albedo;         // 12 bytes (offset 32) - Surface/volume color
-    uint materialType;     // 4 bytes  (offset 44) - 0=PLASMA, 1=STAR, 2=GAS_CLOUD, 3=ROCKY, 4=ICY
-};  // Total: 48 bytes (16-byte aligned ✓)
+    uint materialType;     // 4 bytes  (offset 44) - 0=PLASMA...7=SHOCKWAVE
+
+    // === LIFETIME FIELDS (16 bytes) - Phase 2 Pyro/Explosions ===
+    float lifetime;        // 4 bytes  (offset 48) - Current age in seconds
+    float maxLifetime;     // 4 bytes  (offset 52) - Total duration (0 = infinite)
+    float spawnTime;       // 4 bytes  (offset 56) - Time when spawned
+    uint flags;            // 4 bytes  (offset 60) - Particle flags bitmask
+};  // Total: 64 bytes (16-byte aligned ✓)
+
+// Particle flags
+#define FLAG_NONE           0
+#define FLAG_EXPLOSION      (1 << 0)
+#define FLAG_FADING         (1 << 1)
+#define FLAG_IMMORTAL       (1 << 2)
+#define FLAG_EMISSIVE_ONLY  (1 << 3)
 
 // Compute Gaussian scale from particle properties (with anisotropy control)
 // Phase 1.5: Added adaptive radius parameters

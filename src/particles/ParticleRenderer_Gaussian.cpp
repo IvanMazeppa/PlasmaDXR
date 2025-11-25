@@ -1188,7 +1188,7 @@ void ParticleRenderer_Gaussian::RenderDepthPrePass(ID3D12GraphicsCommandList* cm
         uint32_t screenWidth;
         uint32_t screenHeight;
         uint32_t particleCount;
-        float padding;
+        float particleRadius;
     };
 
     DepthPrePassConstants depthConstants = {};
@@ -1196,7 +1196,7 @@ void ParticleRenderer_Gaussian::RenderDepthPrePass(ID3D12GraphicsCommandList* cm
     depthConstants.screenWidth = constants.screenWidth;
     depthConstants.screenHeight = constants.screenHeight;
     depthConstants.particleCount = constants.particleCount;
-    depthConstants.padding = 0.0f;
+    depthConstants.particleRadius = 50.0f;  // Base particle radius for depth calculation
 
     // Upload constants inline (small constant buffer, no need for persistent mapping)
     cmdList->SetComputeRoot32BitConstants(0, sizeof(DepthPrePassConstants) / 4,

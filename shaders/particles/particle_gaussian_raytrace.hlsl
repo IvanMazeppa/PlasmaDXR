@@ -104,7 +104,7 @@ cbuffer GaussianConstants : register(b0)
 };
 
 // ============================================================================
-// SPRINT 1: MATERIAL SYSTEM (Phase 2)
+// PHASE 2: MATERIAL SYSTEM (Extended for Pyro/Explosions)
 // ============================================================================
 
 // Material properties for each material type (matches C++ MaterialTypeProperties)
@@ -114,13 +114,16 @@ struct MaterialTypeProperties {
     float emissionMultiplier;       // 4 bytes  - Emission strength multiplier
     float scatteringCoefficient;    // 4 bytes  - Volumetric scattering coefficient
     float phaseG;                   // 4 bytes  - Henyey-Greenstein phase function parameter (-1 to 1)
-    float padding[9];               // 36 bytes - Padding to 64 bytes
+    float expansionRate;            // 4 bytes  - Phase 2: Radius expansion per second
+    float coolingRate;              // 4 bytes  - Phase 2: Temperature decay rate (K/sec)
+    float fadeStartRatio;           // 4 bytes  - Phase 2: Lifetime ratio when fade begins
+    float padding[6];               // 24 bytes - Padding to 64 bytes
 };  // Total: 64 bytes per material
 
-// Material properties constant buffer (5 material types × 64 bytes = 320 bytes)
+// Material properties constant buffer (8 material types × 64 bytes = 512 bytes)
 cbuffer MaterialProperties : register(b1)
 {
-    MaterialTypeProperties g_materials[5];  // PLASMA, STAR, GAS_CLOUD, ROCKY, ICY
+    MaterialTypeProperties g_materials[8];  // PLASMA, STAR, GAS_CLOUD, ROCKY, ICY, SUPERNOVA, STELLAR_FLARE, SHOCKWAVE
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -1281,9 +1284,22 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         // =========================================================================
         MaterialTypeProperties mat = g_materials[p.materialType];
 
+        // =========================================================================
+        // PHASE 2: LIFETIME-BASED OPACITY FADE (Pyro/Explosions)
+        // =========================================================================
+        float lifetimeFade = 1.0;  // Default: full opacity
+        if (p.maxLifetime > 0.0 && (p.flags & FLAG_IMMORTAL) == 0) {
+            float lifetimeRatio = p.lifetime / p.maxLifetime;
+            // Apply fade after fadeStartRatio (e.g., start fading at 60% lifetime)
+            if (lifetimeRatio > mat.fadeStartRatio) {
+                float fadeProgress = (lifetimeRatio - mat.fadeStartRatio) / (1.0 - mat.fadeStartRatio);
+                lifetimeFade = 1.0 - saturate(fadeProgress);  // Linear fade to 0
+            }
+        }
+
         // Material-specific volumetric lighting parameters
         float scatteringG = mat.phaseG;                  // Henyey-Greenstein phase function (-1 to 1)
-        float extinction = mat.opacity;                   // Opacity/extinction coefficient
+        float extinction = mat.opacity * lifetimeFade;    // Opacity with lifetime fade
         float scatteringCoeff = mat.scatteringCoefficient; // Volumetric scattering strength
 
         // Gaussian parameters (with anisotropic control + adaptive radius)
