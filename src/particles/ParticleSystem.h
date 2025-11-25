@@ -165,6 +165,45 @@ public:
     };
     PINNMetrics GetPINNMetrics() const;
 
+    // ========== Phase 2C: Explosion Spawning System ==========
+
+    // Configuration for spawning explosion effects
+    struct ExplosionConfig {
+        DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };  // World position
+        ParticleMaterialType type = ParticleMaterialType::SUPERNOVA;  // Material type
+        uint32_t particleCount = 100;        // Number of particles (clamped to pool size)
+        float initialRadius = 10.0f;         // Starting spawn radius
+        float expansionSpeed = 100.0f;       // Outward velocity (units/sec)
+        float temperature = 50000.0f;        // Initial temperature (Kelvin)
+        float lifetime = 3.0f;               // Particle lifetime (seconds)
+        float density = 0.8f;                // Initial density (affects opacity)
+    };
+
+    /**
+     * Spawn an explosion effect at a given position
+     *
+     * Uses a reserved pool of particles (last 1000 in buffer) for explosions.
+     * Old explosion particles are recycled when pool is exhausted.
+     *
+     * @param config Explosion configuration
+     * @return Number of particles actually spawned
+     */
+    uint32_t SpawnExplosion(const ExplosionConfig& config);
+
+    /**
+     * Spawn explosion at random position in disk (convenience method)
+     */
+    uint32_t SpawnRandomExplosion(ParticleMaterialType type = ParticleMaterialType::SUPERNOVA);
+
+    /**
+     * Get explosion pool statistics
+     */
+    uint32_t GetExplosionPoolSize() const { return EXPLOSION_POOL_SIZE; }
+    uint32_t GetExplosionPoolUsed() const { return m_explosionPoolUsed; }
+
+    // Explosion pool constants
+    static constexpr uint32_t EXPLOSION_POOL_SIZE = 1000;  // Reserved particles for explosions
+
 private:
     void InitializeAccretionDisk();
     void InitializeAccretionDisk_CPU();  // CPU-based initialization for PINN mode
@@ -179,6 +218,9 @@ private:
     void UpdatePhysics_PINN(float deltaTime, float totalTime);
     void UploadParticleData(const std::vector<DirectX::XMFLOAT3>& positions, const std::vector<DirectX::XMFLOAT3>& velocities);
     void IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime);
+
+    // Phase 2C: Explosion System Helper Methods
+    void UploadExplosionParticles(const std::vector<Particle>& particles, uint32_t startIndex);
 
 private:
     Device* m_device = nullptr;
@@ -225,4 +267,13 @@ private:
     std::vector<DirectX::XMFLOAT3> m_cpuPositions;
     std::vector<DirectX::XMFLOAT3> m_cpuVelocities;
     std::vector<DirectX::XMFLOAT3> m_cpuForces;
+
+    // Phase 2C: Explosion pool tracking
+    uint32_t m_explosionPoolStart = 0;      // First index of explosion pool (particleCount - EXPLOSION_POOL_SIZE)
+    uint32_t m_nextExplosionIndex = 0;      // Next index to use in explosion pool (circular)
+    uint32_t m_explosionPoolUsed = 0;       // Number of explosion particles currently active
+
+    // Phase 2C: Persistent upload buffer for explosions (avoids mid-frame command list disruption)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_explosionUploadBuffer;
+    static constexpr size_t EXPLOSION_UPLOAD_BUFFER_SIZE = EXPLOSION_POOL_SIZE * sizeof(Particle);  // 64KB
 };

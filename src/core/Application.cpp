@@ -1421,6 +1421,37 @@ void Application::OnKeyPress(UINT8 key) {
         }
         break;
 
+    // Spawn explosion (Phase 2C) - J = (available key)
+    case 'J':
+        if (m_particleSystem) {
+            // Cycle through explosion types: Supernova → Stellar Flare → Shockwave
+            static int explosionCycle = 0;
+            ParticleSystem::ParticleMaterialType type;
+            const char* typeName;
+            switch (explosionCycle) {
+                case 0:
+                    type = ParticleSystem::ParticleMaterialType::SUPERNOVA;
+                    typeName = "SUPERNOVA";
+                    break;
+                case 1:
+                    type = ParticleSystem::ParticleMaterialType::STELLAR_FLARE;
+                    typeName = "STELLAR_FLARE";
+                    break;
+                case 2:
+                    type = ParticleSystem::ParticleMaterialType::SHOCKWAVE;
+                    typeName = "SHOCKWAVE";
+                    break;
+                default:
+                    type = ParticleSystem::ParticleMaterialType::SUPERNOVA;
+                    typeName = "SUPERNOVA";
+                    break;
+            }
+            uint32_t spawned = m_particleSystem->SpawnRandomExplosion(type);
+            LOG_INFO("Spawned {} explosion with {} particles (J key cycles types)", typeName, spawned);
+            explosionCycle = (explosionCycle + 1) % 3;
+        }
+        break;
+
     // Debug: Readback particle data (Ctrl+D = buffer dump if enabled)
     case 'D':
         if (m_enableBufferDump && (GetAsyncKeyState(VK_CONTROL) & 0x8000)) {
@@ -3239,6 +3270,67 @@ void Application::RenderImGui() {
                 m_rtLighting->SetDensityScaleMin(m_densityScaleMin);
                 m_rtLighting->SetDensityScaleMax(m_densityScaleMax);
             }
+        }
+
+        // === Phase 2C: Explosion System ===
+        ImGui::Separator();
+        ImGui::Text("Explosion System (Phase 2C)");
+        if (m_particleSystem) {
+            ImGui::Text("Pool: %u / %u particles used",
+                        m_particleSystem->GetExplosionPoolUsed(),
+                        m_particleSystem->GetExplosionPoolSize());
+
+            // Explosion type selection
+            static int explosionType = 0;
+            ImGui::RadioButton("Supernova", &explosionType, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("Stellar Flare", &explosionType, 1);
+            ImGui::SameLine();
+            ImGui::RadioButton("Shockwave", &explosionType, 2);
+
+            // Spawn random explosion button
+            if (ImGui::Button("Spawn Random Explosion (J key)")) {
+                ParticleSystem::ParticleMaterialType type;
+                switch (explosionType) {
+                    case 0: type = ParticleSystem::ParticleMaterialType::SUPERNOVA; break;
+                    case 1: type = ParticleSystem::ParticleMaterialType::STELLAR_FLARE; break;
+                    case 2: type = ParticleSystem::ParticleMaterialType::SHOCKWAVE; break;
+                    default: type = ParticleSystem::ParticleMaterialType::SUPERNOVA; break;
+                }
+                m_particleSystem->SpawnRandomExplosion(type);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Spawns explosion at random location in accretion disk\n"
+                                  "Supernova: 200 particles, 5s lifetime, extreme emission\n"
+                                  "Stellar Flare: 80 particles, 2.5s lifetime, plasma burst\n"
+                                  "Shockwave: 150 particles, 2s lifetime, fast expanding ring");
+            }
+
+            // Custom explosion controls (collapsible)
+            if (ImGui::TreeNode("Custom Explosion Settings")) {
+                static ParticleSystem::ExplosionConfig customConfig;
+                ImGui::SliderFloat3("Position", &customConfig.position.x, -300.0f, 300.0f);
+                ImGui::SliderInt("Particle Count", (int*)&customConfig.particleCount, 10, 500);
+                ImGui::SliderFloat("Initial Radius", &customConfig.initialRadius, 1.0f, 50.0f);
+                ImGui::SliderFloat("Expansion Speed", &customConfig.expansionSpeed, 10.0f, 300.0f);
+                ImGui::SliderFloat("Temperature (K)", &customConfig.temperature, 5000.0f, 100000.0f);
+                ImGui::SliderFloat("Lifetime (s)", &customConfig.lifetime, 0.5f, 10.0f);
+                ImGui::SliderFloat("Density", &customConfig.density, 0.1f, 1.0f);
+
+                // Type selection for custom
+                const char* typeNames[] = { "PLASMA", "STAR", "GAS_CLOUD", "ROCKY", "ICY", "SUPERNOVA", "STELLAR_FLARE", "SHOCKWAVE" };
+                int customType = static_cast<int>(customConfig.type);
+                if (ImGui::Combo("Material Type", &customType, typeNames, 8)) {
+                    customConfig.type = static_cast<ParticleSystem::ParticleMaterialType>(customType);
+                }
+
+                if (ImGui::Button("Spawn Custom Explosion")) {
+                    m_particleSystem->SpawnExplosion(customConfig);
+                }
+                ImGui::TreePop();
+            }
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "ParticleSystem not initialized");
         }
 
         // === Phase 3.9 Spatial RT Interpolation ===
