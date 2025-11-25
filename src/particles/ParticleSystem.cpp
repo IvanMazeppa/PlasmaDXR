@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <fstream>
 #include <d3dcompiler.h>
+#include <execution>  // C++17 parallel algorithms
+#include <numeric>    // std::iota for index generation
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -573,38 +575,44 @@ void ParticleSystem::UploadParticleData(
     }
 
     Particle* particles = static_cast<Particle*>(uploadData);
-    for (uint32_t i = 0; i < m_activeParticleCount; i++) {
-        particles[i].position = positions[i];
-        particles[i].velocity = velocities[i];
 
-        // CRITICAL FIX: Must set temperature and density for particles to be visible!
-        // Temperature determines blackbody emission color, density determines opacity.
-        // Without these, particles are invisible (temperature=0 means no emission).
-        float x = positions[i].x;
-        float y = positions[i].y;
-        float z = positions[i].z;
-        float radius = sqrtf(x * x + y * y + z * z);
+    // PARALLELIZED: Populate particle data using all available CPU cores
+    std::vector<uint32_t> indices(m_activeParticleCount);
+    std::iota(indices.begin(), indices.end(), 0);
 
-        // Temperature based on radius (hotter near black hole, cooler at edge)
-        // Inner disk: ~30000K, Outer disk: ~5000K (matches GPU physics shader)
-        float normalizedRadius = (radius - INNER_STABLE_ORBIT) / (OUTER_DISK_RADIUS - INNER_STABLE_ORBIT);
-        normalizedRadius = (std::max)(0.0f, (std::min)(1.0f, normalizedRadius));
-        particles[i].temperature = 30000.0f - normalizedRadius * 25000.0f;  // 30000K → 5000K
+    std::for_each(std::execution::par, indices.begin(), indices.end(),
+        [&positions, &velocities, particles](uint32_t i) {
+            particles[i].position = positions[i];
+            particles[i].velocity = velocities[i];
 
-        // Density affects opacity - use consistent value for volumetric rendering
-        particles[i].density = 0.8f;
+            // CRITICAL FIX: Must set temperature and density for particles to be visible!
+            // Temperature determines blackbody emission color, density determines opacity.
+            // Without these, particles are invisible (temperature=0 means no emission).
+            float x = positions[i].x;
+            float y = positions[i].y;
+            float z = positions[i].z;
+            float radius = sqrtf(x * x + y * y + z * z);
 
-        // Sprint 1: Initialize new material system fields
-        // Default to PLASMA material with warm orange albedo (backward compatible)
-        particles[i].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot plasma orange/red
-        particles[i].materialType = static_cast<uint32_t>(ParticleMaterialType::PLASMA);  // Type 0
+            // Temperature based on radius (hotter near black hole, cooler at edge)
+            // Inner disk: ~30000K, Outer disk: ~5000K (matches GPU physics shader)
+            float normalizedRadius = (radius - INNER_STABLE_ORBIT) / (OUTER_DISK_RADIUS - INNER_STABLE_ORBIT);
+            normalizedRadius = (std::max)(0.0f, (std::min)(1.0f, normalizedRadius));
+            particles[i].temperature = 30000.0f - normalizedRadius * 25000.0f;  // 30000K → 5000K
 
-        // Initialize lifetime fields (non-explosive particles are immortal)
-        particles[i].lifetime = 0.0f;
-        particles[i].maxLifetime = 0.0f;  // 0 = infinite/immortal
-        particles[i].spawnTime = 0.0f;
-        particles[i].flags = 0;
-    }
+            // Density affects opacity - use consistent value for volumetric rendering
+            particles[i].density = 0.8f;
+
+            // Sprint 1: Initialize new material system fields
+            // Default to PLASMA material with warm orange albedo (backward compatible)
+            particles[i].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot plasma orange/red
+            particles[i].materialType = static_cast<uint32_t>(ParticleMaterialType::PLASMA);  // Type 0
+
+            // Initialize lifetime fields (non-explosive particles are immortal)
+            particles[i].lifetime = 0.0f;
+            particles[i].maxLifetime = 0.0f;  // 0 = infinite/immortal
+            particles[i].spawnTime = 0.0f;
+            particles[i].flags = 0;
+        });
 
     m_pinnUploadBuffer->Unmap(0, nullptr);
 
@@ -630,22 +638,30 @@ void ParticleSystem::UploadParticleData(
 }
 
 void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime) {
-    // Velocity Verlet integration
-    for (uint32_t i = 0; i < m_activeParticleCount; i++) {
-        // Update velocity: v' = v + a * dt
-        float ax = forces[i].x;
-        float ay = forces[i].y;
-        float az = forces[i].z;
+    // Velocity Verlet integration - PARALLELIZED for multi-core CPUs
+    // Uses C++17 parallel algorithms to leverage all available cores
 
-        m_cpuVelocities[i].x += ax * deltaTime;
-        m_cpuVelocities[i].y += ay * deltaTime;
-        m_cpuVelocities[i].z += az * deltaTime;
+    // Create index range for parallel iteration
+    std::vector<uint32_t> indices(m_activeParticleCount);
+    std::iota(indices.begin(), indices.end(), 0);
 
-        // Update position: p' = p + v' * dt
-        m_cpuPositions[i].x += m_cpuVelocities[i].x * deltaTime;
-        m_cpuPositions[i].y += m_cpuVelocities[i].y * deltaTime;
-        m_cpuPositions[i].z += m_cpuVelocities[i].z * deltaTime;
-    }
+    // Parallel integration across all particles
+    std::for_each(std::execution::par, indices.begin(), indices.end(),
+        [this, &forces, deltaTime](uint32_t i) {
+            // Update velocity: v' = v + a * dt
+            float ax = forces[i].x;
+            float ay = forces[i].y;
+            float az = forces[i].z;
+
+            m_cpuVelocities[i].x += ax * deltaTime;
+            m_cpuVelocities[i].y += ay * deltaTime;
+            m_cpuVelocities[i].z += az * deltaTime;
+
+            // Update position: p' = p + v' * dt
+            m_cpuPositions[i].x += m_cpuVelocities[i].x * deltaTime;
+            m_cpuPositions[i].y += m_cpuVelocities[i].y * deltaTime;
+            m_cpuPositions[i].z += m_cpuVelocities[i].z * deltaTime;
+        });
 }
 
 // PINN Control Methods

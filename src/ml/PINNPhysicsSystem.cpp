@@ -37,8 +37,15 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
 
         // Configure session options
         m_sessionOptions = std::make_unique<Ort::SessionOptions>();
-        m_sessionOptions->SetIntraOpNumThreads(4);  // Use 4 CPU threads
+
+        // Optimize for high-core-count CPUs (Ryzen 9 5950X has 32 threads)
+        // IntraOp: parallelism within a single operator (matrix multiply, etc.)
+        // InterOp: parallelism between independent operators
+        m_sessionOptions->SetIntraOpNumThreads(16);  // Use 16 threads for tensor ops
+        m_sessionOptions->SetInterOpNumThreads(4);   // Use 4 threads for op parallelism
         m_sessionOptions->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+        LOG_INFO("[PINN] ONNX Runtime configured: 16 intra-op threads, 4 inter-op threads");
 
         // Convert path to wide string (Windows requirement)
         std::wstring wideModelPath(modelPath.begin(), modelPath.end());
