@@ -22,6 +22,11 @@ public:
     static constexpr float INNER_STABLE_ORBIT = 10.0f;      // Schwarzschild radii
     static constexpr float OUTER_DISK_RADIUS = 300.0f;      // Reduced for denser, more visible disk
     static constexpr float DISK_THICKNESS = 50.0f;
+
+    // PINN Normalized Unit System (G*M = 1)
+    // Training data uses: r=10-300, v=sqrt(1/r), F=-1/r^2
+    static constexpr float PINN_GM = 1.0f;                  // Gravitational parameter (normalized)
+    static constexpr float PINN_R_ISCO = 6.0f;              // Innermost stable circular orbit
     static constexpr float INITIAL_ANGULAR_MOMENTUM = 100.0f;
 
     // Material type enumeration for diverse particle rendering
@@ -184,6 +189,26 @@ public:
     float GetPINNDiskThickness() const;
     void SetPINNDiskThickness(float hrRatio);
 
+    // PINN Visualization Parameters (post-processing controls)
+    // These adjust appearance without retraining the model
+    float GetPINNVelocityMultiplier() const { return m_pinnVelocityMultiplier; }
+    void SetPINNVelocityMultiplier(float mult) { m_pinnVelocityMultiplier = std::clamp(mult, 0.1f, 50.0f); }
+
+    float GetPINNTurbulence() const { return m_pinnTurbulence; }
+    void SetPINNTurbulence(float turb) { m_pinnTurbulence = std::clamp(turb, 0.0f, 1.0f); }
+
+    float GetPINNDamping() const { return m_pinnDamping; }
+    void SetPINNDamping(float damp) { m_pinnDamping = std::clamp(damp, 0.9f, 1.0f); }
+
+    float GetPINNRadialSpread() const { return m_pinnRadialSpread; }
+    void SetPINNRadialSpread(float spread) { m_pinnRadialSpread = std::clamp(spread, 0.1f, 3.0f); }
+
+    bool GetPINNEnforceBoundaries() const { return m_pinnEnforceBoundaries; }
+    void SetPINNEnforceBoundaries(bool enforce) { m_pinnEnforceBoundaries = enforce; }
+
+    // Reinitialize particles with current PINN settings
+    void ReinitializePINNParticles();
+
     // ========== Phase 2C: Explosion Spawning System ==========
 
     // Configuration for spawning explosion effects
@@ -285,6 +310,14 @@ private:
     float m_blackHoleMass = BLACK_HOLE_MASS;  // Solar masses (default: Sgr A*)
     float m_alphaViscosity = 0.1f;            // Shakura-Sunyaev α parameter (0.0-1.0)
     float m_timeScale = 1.0f;                 // Simulation speed multiplier (0.0-10.0, 1.0 = normal speed)
+
+    // PINN Visualization Parameters (post-processing after PINN inference)
+    // These control appearance without retraining the model
+    float m_pinnVelocityMultiplier = 1.0f;    // Scale orbital velocities (1.0=physical, 5-20=visible rotation)
+    float m_pinnTurbulence = 0.0f;            // Random velocity perturbation (0.0-1.0)
+    float m_pinnDamping = 0.999f;             // Velocity damping per frame (0.99-1.0)
+    float m_pinnRadialSpread = 1.0f;          // Initial radius distribution width (0.5=narrow, 2.0=wide)
+    bool m_pinnEnforceBoundaries = true;      // Whether to clamp particles to disk region
 
     DirectX::XMFLOAT3 m_blackHolePosition = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
     DirectX::XMFLOAT3 m_diskAxis = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);

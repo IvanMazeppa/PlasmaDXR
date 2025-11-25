@@ -331,13 +331,30 @@ def main():
 
     print(f"Loading training data from: {data_path}")
     data = np.load(data_path)
-    states = data['states_normalized']
-    forces = data['forces_normalized']
 
-    # Augment with parameter variations
-    states, forces, params = generate_augmented_data(
-        states, forces, num_param_variations=args.param_variations
-    )
+    # Support both old format (states_normalized) and new format (states)
+    if 'states_normalized' in data:
+        states = data['states_normalized']
+        forces = data['forces_normalized']
+        print("  Using normalized data format (old generator)")
+        # Augment with parameter variations
+        states, forces, params = generate_augmented_data(
+            states, forces, num_param_variations=args.param_variations
+        )
+    elif 'states' in data and 'params' in data:
+        states = data['states']
+        forces = data['forces']
+        params = data['params']
+        print("  Using v2 data format with embedded params")
+        print(f"  Loaded {len(states)} samples with params")
+    else:
+        states = data['states']
+        forces = data['forces']
+        print("  Using raw data format (will augment with params)")
+        # Augment with parameter variations
+        states, forces, params = generate_augmented_data(
+            states, forces, num_param_variations=args.param_variations
+        )
 
     # Split train/val
     n_samples = len(states)

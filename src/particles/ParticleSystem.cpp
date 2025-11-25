@@ -164,37 +164,55 @@ void ParticleSystem::InitializeAccretionDisk() {
 }
 
 void ParticleSystem::InitializeAccretionDisk_CPU() {
-    // CPU-based initialization for PINN mode (matches GPU shader logic)
+    // CPU-based initialization for PINN mode
+    // CRITICAL: Uses PINN normalized units where GM = 1
+    // Keplerian velocity: v = sqrt(GM/r) = sqrt(1/r) in normalized units
+
     std::random_device rd;
     std::mt19937 rng(rd());
-    std::uniform_real_distribution<float> radiusDist(INNER_STABLE_ORBIT, OUTER_DISK_RADIUS);
+    std::uniform_real_distribution<float> radiusDist(INNER_STABLE_ORBIT, OUTER_DISK_RADIUS * 0.7f);  // Keep particles in well-trained region
     std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159265f);
-    std::uniform_real_distribution<float> heightDist(-DISK_THICKNESS * 0.5f, DISK_THICKNESS * 0.5f);
+
+    // Get disk thickness from PINN params if available, else use default
+    float diskHR = m_pinnPhysics ? m_pinnPhysics->GetDiskThickness() : 0.1f;
 
     for (uint32_t i = 0; i < m_particleCount; i++) {
         // Cylindrical coordinates
         float radius = radiusDist(rng);
         float angle = angleDist(rng);
-        float height = heightDist(rng);
+
+        // Disk height based on H/R ratio (thinner for PINN accuracy)
+        float scaleHeight = diskHR * radius;
+        float height = std::uniform_real_distribution<float>(-scaleHeight * 0.5f, scaleHeight * 0.5f)(rng);
 
         // Convert to Cartesian
         m_cpuPositions[i].x = radius * cosf(angle);
         m_cpuPositions[i].y = height;
         m_cpuPositions[i].z = radius * sinf(angle);
 
-        // Keplerian orbital velocity: v = sqrt(GM/r)
-        float orbitalSpeed = sqrtf(m_gravityStrength / radius) * m_angularMomentumBoost;
+        // PINN Normalized Units: Keplerian velocity v = sqrt(GM/r) = sqrt(1/r)
+        // Get black hole mass multiplier from PINN params (default 1.0)
+        float bhMass = m_pinnPhysics ? m_pinnPhysics->GetBlackHoleMass() : 1.0f;
+        float GM = PINN_GM * bhMass;
+        float orbitalSpeed = sqrtf(GM / radius);
 
-        // Tangential velocity in disk plane
+        // Add small random perturbation (1-2%) for realism - matches training data
+        float perturbation = 1.0f + std::uniform_real_distribution<float>(-0.01f, 0.01f)(rng);
+        orbitalSpeed *= perturbation;
+
+        // Tangential velocity in disk plane (counter-clockwise orbit)
         m_cpuVelocities[i].x = -orbitalSpeed * sinf(angle);
         m_cpuVelocities[i].y = 0.0f;  // No initial vertical velocity
         m_cpuVelocities[i].z = orbitalSpeed * cosf(angle);
 
-        // NOTE: albedo and materialType will be initialized in UploadParticleData
-        // when particles are copied to GPU (Particle struct includes these fields)
+        // NOTE: albedo and materialType initialized in UploadParticleData
     }
 
-    LOG_INFO("[PINN] CPU-initialized {} particles in accretion disk", m_particleCount);
+    LOG_INFO("[PINN] CPU-initialized {} particles with NORMALIZED units (GM={})",
+             m_particleCount, PINN_GM);
+    LOG_INFO("[PINN] Orbital speed range: {:.4f} to {:.4f} (at r={} to r={})",
+             sqrtf(PINN_GM / (OUTER_DISK_RADIUS * 0.7f)), sqrtf(PINN_GM / INNER_STABLE_ORBIT),
+             OUTER_DISK_RADIUS * 0.7f, INNER_STABLE_ORBIT);
 }
 
 bool ParticleSystem::CreateComputePipeline() {
@@ -640,27 +658,87 @@ void ParticleSystem::UploadParticleData(
 void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime) {
     // Velocity Verlet integration - PARALLELIZED for multi-core CPUs
     // Uses C++17 parallel algorithms to leverage all available cores
+    // Includes configurable damping, turbulence, and boundary conditions
 
     // Create index range for parallel iteration
     std::vector<uint32_t> indices(m_activeParticleCount);
     std::iota(indices.begin(), indices.end(), 0);
 
+    // Get PINN visualization parameters
+    const float velocityMult = m_pinnVelocityMultiplier;
+    const float turbulence = m_pinnTurbulence;
+    const float damping = m_pinnDamping;
+    const bool enforceBounds = m_pinnEnforceBoundaries;
+    const float innerRadius = PINN_R_ISCO * 1.01f;
+    const float outerRadius = OUTER_DISK_RADIUS * 0.99f;
+
+    // Random seed for turbulence (different each frame)
+    unsigned int seed = static_cast<unsigned int>(m_totalTime * 1000.0f);
+
     // Parallel integration across all particles
     std::for_each(std::execution::par, indices.begin(), indices.end(),
-        [this, &forces, deltaTime](uint32_t i) {
-            // Update velocity: v' = v + a * dt
-            float ax = forces[i].x;
-            float ay = forces[i].y;
-            float az = forces[i].z;
+        [this, &forces, deltaTime, velocityMult, turbulence, damping, enforceBounds,
+         innerRadius, outerRadius, seed](uint32_t i) {
+            // Update velocity: v' = v + a * dt (with velocity multiplier for faster rotation)
+            float ax = forces[i].x * velocityMult;
+            float ay = forces[i].y * velocityMult;
+            float az = forces[i].z * velocityMult;
 
             m_cpuVelocities[i].x += ax * deltaTime;
             m_cpuVelocities[i].y += ay * deltaTime;
             m_cpuVelocities[i].z += az * deltaTime;
 
+            // Add turbulence (random velocity perturbation)
+            if (turbulence > 0.0f) {
+                // Simple hash-based pseudo-random per particle
+                unsigned int h = seed ^ (i * 2654435761u);
+                h = ((h >> 16) ^ h) * 0x45d9f3b;
+                h = ((h >> 16) ^ h) * 0x45d9f3b;
+                float rx = (float((h & 0xFF) - 128) / 128.0f) * turbulence * 0.1f;
+                float ry = (float(((h >> 8) & 0xFF) - 128) / 128.0f) * turbulence * 0.02f;
+                float rz = (float(((h >> 16) & 0xFF) - 128) / 128.0f) * turbulence * 0.1f;
+
+                m_cpuVelocities[i].x += rx;
+                m_cpuVelocities[i].y += ry;
+                m_cpuVelocities[i].z += rz;
+            }
+
+            // Apply configurable damping
+            m_cpuVelocities[i].x *= damping;
+            m_cpuVelocities[i].y *= damping;
+            m_cpuVelocities[i].z *= damping;
+
             // Update position: p' = p + v' * dt
             m_cpuPositions[i].x += m_cpuVelocities[i].x * deltaTime;
             m_cpuPositions[i].y += m_cpuVelocities[i].y * deltaTime;
             m_cpuPositions[i].z += m_cpuVelocities[i].z * deltaTime;
+
+            // Boundary conditions (optional)
+            if (enforceBounds) {
+                float px = m_cpuPositions[i].x;
+                float py = m_cpuPositions[i].y;
+                float pz = m_cpuPositions[i].z;
+                float radius = sqrtf(px*px + pz*pz);
+
+                // Radial boundaries - soft clamp to valid disk region
+                if (radius < innerRadius) {
+                    float scale = innerRadius / (radius + 1e-6f);
+                    m_cpuPositions[i].x *= scale;
+                    m_cpuPositions[i].z *= scale;
+                    m_cpuVelocities[i].x *= 0.5f;
+                    m_cpuVelocities[i].z *= 0.5f;
+                } else if (radius > outerRadius) {
+                    float scale = outerRadius / (radius + 1e-6f);
+                    m_cpuPositions[i].x *= scale;
+                    m_cpuPositions[i].z *= scale;
+                    m_cpuVelocities[i].x *= 0.9f;
+                    m_cpuVelocities[i].z *= 0.9f;
+                }
+
+                // Vertical confinement - keep near disk midplane
+                float maxHeight = 0.15f * radius;  // H/R ~ 0.15 (slightly thicker)
+                m_cpuPositions[i].y = std::clamp(m_cpuPositions[i].y, -maxHeight, maxHeight);
+            }
         });
 }
 
@@ -771,6 +849,29 @@ void ParticleSystem::SetPINNDiskThickness(float hrRatio) {
     if (m_pinnPhysics) {
         m_pinnPhysics->SetDiskThickness(hrRatio);
     }
+}
+
+void ParticleSystem::ReinitializePINNParticles() {
+    if (!m_particlesOnCPU) {
+        LOG_WARN("[PINN] Cannot reinitialize - particles not on CPU");
+        return;
+    }
+
+    LOG_INFO("[PINN] Reinitializing particles with current parameters...");
+
+    // Store current PINN state
+    bool wasEnabled = m_usePINN;
+
+    // Reinitialize CPU particle positions and velocities
+    InitializeAccretionDisk_CPU();
+
+    // Reset total time for fresh simulation
+    m_totalTime = 0.0f;
+
+    // Upload to GPU for rendering
+    UploadParticleData(m_cpuPositions, m_cpuVelocities);
+
+    LOG_INFO("[PINN] Reinitialized {} particles", m_particleCount);
 }
 
 // ============================================================================

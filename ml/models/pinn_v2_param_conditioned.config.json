@@ -24,6 +24,6 @@
     "F_phi"
   ],
   "training_epochs": 300,
-  "physics_weight": 0.0005,
-  "param_variations": 5
+  "physics_weight": 0.01,
+  "param_variations": 10
 }

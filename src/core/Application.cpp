@@ -3777,6 +3777,59 @@ void Application::RenderImGui() {
                         ImGui::TextDisabled("(v1 model - no runtime parameters)");
                     }
 
+                    // PINN Visualization Parameters (post-processing controls)
+                    ImGui::Separator();
+                    ImGui::Text("Visualization Controls");
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("These adjust appearance without retraining.\nUse to speed up rotation and add visual chaos.");
+                    }
+
+                    // Velocity multiplier - KEY for faster rotation
+                    float velMult = m_particleSystem->GetPINNVelocityMultiplier();
+                    if (ImGui::SliderFloat("Velocity Multiplier", &velMult, 0.1f, 50.0f, "%.1fx")) {
+                        m_particleSystem->SetPINNVelocityMultiplier(velMult);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Scale orbital velocities for faster rotation.\n1.0 = physically accurate (slow)\n10-20 = visually interesting\n50 = very fast");
+                    }
+
+                    // Turbulence
+                    float turb = m_particleSystem->GetPINNTurbulence();
+                    if (ImGui::SliderFloat("Turbulence", &turb, 0.0f, 1.0f, "%.2f")) {
+                        m_particleSystem->SetPINNTurbulence(turb);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Random velocity perturbations.\n0.0 = smooth orbits\n0.5 = moderate chaos\n1.0 = very chaotic");
+                    }
+
+                    // Damping
+                    float damp = m_particleSystem->GetPINNDamping();
+                    if (ImGui::SliderFloat("Damping", &damp, 0.9f, 1.0f, "%.4f")) {
+                        m_particleSystem->SetPINNDamping(damp);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Velocity damping per frame.\n0.999 = slight energy loss (stable)\n1.0 = no damping (energy conserved)\n0.95 = heavy damping (settles quickly)");
+                    }
+
+                    // Boundary enforcement
+                    bool enforceBounds = m_particleSystem->GetPINNEnforceBoundaries();
+                    if (ImGui::Checkbox("Enforce Boundaries", &enforceBounds)) {
+                        m_particleSystem->SetPINNEnforceBoundaries(enforceBounds);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Keep particles within disk region.\nDisable to allow particles to escape.");
+                    }
+
+                    // Reinitialize button
+                    if (ImGui::Button("Reinitialize Particles")) {
+                        m_particleSystem->ReinitializePINNParticles();
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Reset all particles to initial positions\nwith current physics parameters.");
+                    }
+
                     // Performance metrics
                     auto metrics = m_particleSystem->GetPINNMetrics();
                     ImGui::Separator();
@@ -3800,68 +3853,85 @@ void Application::RenderImGui() {
                 ImGui::TextDisabled("(ONNX Runtime or model not found)");
             }
 
-            ImGui::Separator();
-            ImGui::Text("Dynamic Physics Parameters");
-            float gravity = m_particleSystem->GetGravityStrength();
-            if (ImGui::SliderFloat("Gravity (V)", &gravity, 0.0f, 2000.0f)) {
-                m_particleSystem->SetGravityStrength(gravity);
-            }
-            float angularMomentum = m_particleSystem->GetAngularMomentum();
-            if (ImGui::SliderFloat("Angular Momentum (N)", &angularMomentum, 0.0f, 5.0f)) {
-                m_particleSystem->SetAngularMomentum(angularMomentum);
-            }
-            float turbulence = m_particleSystem->GetTurbulence();
-            if (ImGui::SliderFloat("Turbulence (B)", &turbulence, 0.0f, 100.0f)) {
-                m_particleSystem->SetTurbulence(turbulence);
-            }
-            float damping = m_particleSystem->GetDamping();
-            if (ImGui::SliderFloat("Damping (M)", &damping, 0.0f, 1.0f)) {
-                m_particleSystem->SetDamping(damping);
-            }
+            // Show legacy GPU physics controls ONLY when PINN is NOT enabled
+            // These controls don't apply to PINN physics (different unit system)
+            bool showLegacyControls = !m_particleSystem->IsPINNEnabled();
 
-            // NEW: Black hole mass (logarithmic slider)
-            ImGui::Separator();
-            ImGui::Text("Black Hole Physics");
-            float blackHoleMass = m_particleSystem->GetBlackHoleMass();
-            // Logarithmic slider: 1-1e10 solar masses (10^0 to 10^10)
-            float logMass = log10f(blackHoleMass);
-            if (ImGui::SliderFloat("Black Hole Mass (Ctrl/Shift+H)", &logMass, 0.0f, 10.0f, "10^%.1f")) {
-                float newMass = powf(10.0f, logMass);
-                m_particleSystem->SetBlackHoleMass(newMass);
-            }
-            // Display actual mass value
-            if (blackHoleMass < 1e3f) {
-                ImGui::Text("  = %.1f solar masses", blackHoleMass);
-            } else if (blackHoleMass < 1e6f) {
-                ImGui::Text("  = %.1f thousand M☉", blackHoleMass / 1e3f);
-            } else if (blackHoleMass < 1e9f) {
-                ImGui::Text("  = %.2f million M☉", blackHoleMass / 1e6f);
+            if (showLegacyControls) {
+                ImGui::Separator();
+                ImGui::Text("GPU Physics Parameters");
+                ImGui::SameLine();
+                ImGui::TextDisabled("(GPU shader - not normalized units)");
+
+                float gravity = m_particleSystem->GetGravityStrength();
+                if (ImGui::SliderFloat("Gravity (V)", &gravity, 0.0f, 2000.0f)) {
+                    m_particleSystem->SetGravityStrength(gravity);
+                }
+                float angularMomentum = m_particleSystem->GetAngularMomentum();
+                if (ImGui::SliderFloat("Angular Momentum (N)", &angularMomentum, 0.0f, 5.0f)) {
+                    m_particleSystem->SetAngularMomentum(angularMomentum);
+                }
+                float turbulence = m_particleSystem->GetTurbulence();
+                if (ImGui::SliderFloat("Turbulence (B)", &turbulence, 0.0f, 100.0f)) {
+                    m_particleSystem->SetTurbulence(turbulence);
+                }
+                float damping = m_particleSystem->GetDamping();
+                if (ImGui::SliderFloat("Damping (M)", &damping, 0.0f, 1.0f)) {
+                    m_particleSystem->SetDamping(damping);
+                }
             } else {
-                ImGui::Text("  = %.2f billion M☉", blackHoleMass / 1e9f);
+                // Show read-only info when PINN is active
+                ImGui::Separator();
+                ImGui::TextDisabled("GPU Physics: Disabled (PINN Active)");
+                ImGui::TextDisabled("Use PINN v2 parameters above for physics control");
             }
 
-            // Quick presets
-            ImGui::SameLine();
-            if (ImGui::Button("Stellar")) { m_particleSystem->SetBlackHoleMass(10.0f); }
-            ImGui::SameLine();
-            if (ImGui::Button("Sgr A*")) { m_particleSystem->SetBlackHoleMass(4.3e6f); }
-            ImGui::SameLine();
-            if (ImGui::Button("Quasar")) { m_particleSystem->SetBlackHoleMass(1e9f); }
+            // Black Hole Physics section - only show for GPU mode
+            // (PINN mode uses normalized units in the v2 parameters above)
+            if (showLegacyControls) {
+                ImGui::Separator();
+                ImGui::Text("Black Hole Physics (GPU)");
+                float blackHoleMass = m_particleSystem->GetBlackHoleMass();
+                // Logarithmic slider: 1-1e10 solar masses (10^0 to 10^10)
+                float logMass = log10f(blackHoleMass);
+                if (ImGui::SliderFloat("Black Hole Mass (Ctrl/Shift+H)", &logMass, 0.0f, 10.0f, "10^%.1f")) {
+                    float newMass = powf(10.0f, logMass);
+                    m_particleSystem->SetBlackHoleMass(newMass);
+                }
+                // Display actual mass value
+                if (blackHoleMass < 1e3f) {
+                    ImGui::Text("  = %.1f solar masses", blackHoleMass);
+                } else if (blackHoleMass < 1e6f) {
+                    ImGui::Text("  = %.1f thousand M☉", blackHoleMass / 1e3f);
+                } else if (blackHoleMass < 1e9f) {
+                    ImGui::Text("  = %.2f million M☉", blackHoleMass / 1e6f);
+                } else {
+                    ImGui::Text("  = %.2f billion M☉", blackHoleMass / 1e9f);
+                }
 
-            // NEW: Alpha viscosity (Shakura-Sunyaev accretion parameter)
-            float alphaViscosity = m_particleSystem->GetAlphaViscosity();
-            if (ImGui::SliderFloat("Alpha Viscosity (Ctrl/Shift+X)", &alphaViscosity, 0.0f, 1.0f, "%.3f")) {
-                m_particleSystem->SetAlphaViscosity(alphaViscosity);
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Shakura-Sunyaev α parameter\n"
-                                "Controls inward spiral (accretion)\n"
-                                "0.0 = no accretion, 0.1 = realistic, 1.0 = fast");
-            }
+                // Quick presets
+                ImGui::SameLine();
+                if (ImGui::Button("Stellar")) { m_particleSystem->SetBlackHoleMass(10.0f); }
+                ImGui::SameLine();
+                if (ImGui::Button("Sgr A*")) { m_particleSystem->SetBlackHoleMass(4.3e6f); }
+                ImGui::SameLine();
+                if (ImGui::Button("Quasar")) { m_particleSystem->SetBlackHoleMass(1e9f); }
 
-            // NEW: Timescale (simulation speed multiplier)
+                // Alpha viscosity (Shakura-Sunyaev accretion parameter) - GPU physics
+                float alphaViscosity = m_particleSystem->GetAlphaViscosity();
+                if (ImGui::SliderFloat("Alpha Viscosity (Ctrl/Shift+X)", &alphaViscosity, 0.0f, 1.0f, "%.3f")) {
+                    m_particleSystem->SetAlphaViscosity(alphaViscosity);
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(?)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Shakura-Sunyaev α parameter\n"
+                                    "Controls inward spiral (accretion)\n"
+                                    "0.0 = no accretion, 0.1 = realistic, 1.0 = fast");
+                }
+            }  // End of showLegacyControls for Black Hole Physics
+
+            // Timescale applies to both PINN and GPU physics
             ImGui::Separator();
             float timeScale = m_particleSystem->GetTimeScale();
             if (ImGui::SliderFloat("Time Scale (Ctrl/Shift+T)", &timeScale, 0.0f, 10.0f, "%.2fx")) {
