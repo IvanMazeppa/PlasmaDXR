@@ -105,8 +105,11 @@ public:
 
     // Runtime active particle count control
     uint32_t GetActiveParticleCount() const { return m_activeParticleCount; }
+    uint32_t GetMaxActiveParticleCount() const { return m_explosionPoolStart > 0 ? m_explosionPoolStart : m_particleCount; }
     void SetActiveParticleCount(uint32_t count) {
-        m_activeParticleCount = (std::min)(count, m_particleCount);
+        // Clamp to explosion pool boundary (don't let physics overwrite explosion particles)
+        uint32_t maxActive = m_explosionPoolStart > 0 ? m_explosionPoolStart : m_particleCount;
+        m_activeParticleCount = (std::min)(count, maxActive);
     }
 
     // Physics parameter accessors for runtime control
@@ -180,20 +183,32 @@ public:
     };
 
     /**
-     * Spawn an explosion effect at a given position
+     * Queue an explosion effect to be spawned
      *
      * Uses a reserved pool of particles (last 1000 in buffer) for explosions.
      * Old explosion particles are recycled when pool is exhausted.
      *
+     * NOTE: This queues the explosion for processing. Call ProcessPendingExplosions()
+     * AFTER the command list is reset but BEFORE rendering to actually upload particles.
+     *
      * @param config Explosion configuration
-     * @return Number of particles actually spawned
      */
-    uint32_t SpawnExplosion(const ExplosionConfig& config);
+    void SpawnExplosion(const ExplosionConfig& config);
 
     /**
-     * Spawn explosion at random position in disk (convenience method)
+     * Queue explosion at random position in disk (convenience method)
      */
-    uint32_t SpawnRandomExplosion(ParticleMaterialType type = ParticleMaterialType::SUPERNOVA);
+    void SpawnRandomExplosion(ParticleMaterialType type = ParticleMaterialType::SUPERNOVA);
+
+    /**
+     * Process all pending explosion requests
+     *
+     * MUST be called AFTER command list is reset but BEFORE particle buffer is used.
+     * This uploads explosion particle data to the GPU.
+     *
+     * @return Total number of particles spawned this frame
+     */
+    uint32_t ProcessPendingExplosions();
 
     /**
      * Get explosion pool statistics
@@ -276,4 +291,10 @@ private:
     // Phase 2C: Persistent upload buffer for explosions (avoids mid-frame command list disruption)
     Microsoft::WRL::ComPtr<ID3D12Resource> m_explosionUploadBuffer;
     static constexpr size_t EXPLOSION_UPLOAD_BUFFER_SIZE = EXPLOSION_POOL_SIZE * sizeof(Particle);  // 64KB
+
+    // Phase 2C: Pending explosion queue (processed after command list reset)
+    std::vector<ExplosionConfig> m_pendingExplosions;
+
+    // PINN: Persistent upload buffer for particle data (CRITICAL: must outlive GPU command execution)
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_pinnUploadBuffer;
 };

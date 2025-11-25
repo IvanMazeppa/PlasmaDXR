@@ -209,6 +209,11 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         return false;
     }
 
+    // Phase 2C: Sync active particle count with ParticleSystem (respects explosion pool reservation)
+    // ParticleSystem reserves last 1000 particles for explosions, so active count = total - pool
+    m_activeParticleCount = m_particleSystem->GetActiveParticleCount();
+    LOG_INFO("Active particle count synced from ParticleSystem: {} (explosion pool reserved)", m_activeParticleCount);
+
     // Initialize particle renderer based on command-line selection
     if (m_config.rendererType == RendererType::Gaussian) {
         LOG_INFO("Initializing 3D Gaussian Splatting renderer...");
@@ -499,6 +504,12 @@ void Application::Render() {
     // Reset command list
     m_device->ResetCommandList();
     auto cmdList = m_device->GetCommandList();
+
+    // Phase 2C: Process pending explosions AFTER command list reset
+    // This ensures GPU copy commands are recorded at the correct time
+    if (m_particleSystem) {
+        m_particleSystem->ProcessPendingExplosions();
+    }
 
     // CRITICAL: Run physics update AFTER reset, so commands are recorded properly!
     if (m_physicsEnabled && m_particleSystem) {
@@ -1377,9 +1388,10 @@ void Application::OnKeyPress(UINT8 key) {
     // Particle size / Particle count (Ctrl+Alt modifier for count)
     case VK_OEM_PLUS: case VK_ADD:
         if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
-            // Ctrl+Alt+= : Increase active particle count
-            m_activeParticleCount = (std::min)(m_config.particleCount, m_activeParticleCount + 1000);
-            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+            // Ctrl+Alt+= : Increase active particle count (respects explosion pool)
+            uint32_t maxActive = m_particleSystem ? m_particleSystem->GetMaxActiveParticleCount() : m_config.particleCount;
+            m_activeParticleCount = (std::min)(maxActive, m_activeParticleCount + 1000);
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, maxActive);
         } else {
             // Default: Increase particle size
             m_particleSize += 2.0f;
@@ -1390,7 +1402,8 @@ void Application::OnKeyPress(UINT8 key) {
         if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState(VK_MENU) & 0x8000)) {
             // Ctrl+Alt+- : Decrease active particle count
             m_activeParticleCount = (std::max)(100u, m_activeParticleCount - 1000);
-            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, m_config.particleCount);
+            uint32_t maxActive = m_particleSystem ? m_particleSystem->GetMaxActiveParticleCount() : m_config.particleCount;
+            LOG_INFO("Active Particles: {} / {}", m_activeParticleCount, maxActive);
         } else {
             // Default: Decrease particle size
             m_particleSize = (std::max)(1.0f, m_particleSize - 2.0f);
@@ -1446,8 +1459,8 @@ void Application::OnKeyPress(UINT8 key) {
                     typeName = "SUPERNOVA";
                     break;
             }
-            uint32_t spawned = m_particleSystem->SpawnRandomExplosion(type);
-            LOG_INFO("Spawned {} explosion with {} particles (J key cycles types)", typeName, spawned);
+            m_particleSystem->SpawnRandomExplosion(type);
+            LOG_INFO("Queued {} explosion (J key cycles types) - will spawn next frame", typeName);
             explosionCycle = (explosionCycle + 1) % 3;
         }
         break;
@@ -3829,26 +3842,27 @@ void Application::RenderImGui() {
         ImGui::Separator();
         ImGui::Text("Simulation Info");
 
-        // Runtime particle count control
+        // Runtime particle count control (respects explosion pool reservation)
+        uint32_t maxActiveParticles = m_particleSystem ? m_particleSystem->GetMaxActiveParticleCount() : m_config.particleCount;
         int activeParticles = static_cast<int>(m_activeParticleCount);
-        if (ImGui::SliderInt("Active Particles (=/−)", &activeParticles, 100, static_cast<int>(m_config.particleCount), "%d")) {
+        if (ImGui::SliderInt("Active Particles (=/−)", &activeParticles, 100, static_cast<int>(maxActiveParticles), "%d")) {
             m_activeParticleCount = static_cast<uint32_t>(activeParticles);
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Runtime particle count control\nPress = to increase, - to decrease\nMax: %u (set at startup)", m_config.particleCount);
+            ImGui::SetTooltip("Runtime particle count control\nPress = to increase, - to decrease\nMax: %u (explosion pool reserved)", maxActiveParticles);
         }
 
-        // Quick presets
+        // Quick presets (capped at max active to avoid explosion pool)
         ImGui::SameLine();
-        if (ImGui::Button("1K")) { m_activeParticleCount = 1000; }
+        if (ImGui::Button("1K")) { m_activeParticleCount = (std::min)(1000u, maxActiveParticles); }
         ImGui::SameLine();
-        if (ImGui::Button("5K")) { m_activeParticleCount = 5000; }
+        if (ImGui::Button("5K")) { m_activeParticleCount = (std::min)(5000u, maxActiveParticles); }
         ImGui::SameLine();
-        if (ImGui::Button("10K")) { m_activeParticleCount = 10000; }
+        if (ImGui::Button("9K")) { m_activeParticleCount = (std::min)(9000u, maxActiveParticles); }
         ImGui::SameLine();
-        if (ImGui::Button("Max")) { m_activeParticleCount = m_config.particleCount; }
+        if (ImGui::Button("Max")) { m_activeParticleCount = maxActiveParticles; }
 
         ImGui::Separator();
         ImGui::Text("Accretion Disk Parameters (Read-only)");

@@ -117,18 +117,37 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
         m_cpuVelocities.resize(particleCount);
         m_cpuForces.resize(particleCount);
 
-        // Initialize particles on CPU (avoid GPU readback entirely)
-        LOG_INFO("[PINN] Initializing particles on CPU (no GPU readback needed)");
-        InitializeAccretionDisk_CPU();
-        m_particlesOnCPU = true;
+        // Create persistent upload buffer for PINN (CRITICAL: must outlive GPU command execution)
+        // This fixes the crash caused by using a temporary buffer that gets destroyed before GPU executes
+        CD3DX12_HEAP_PROPERTIES pinnUploadProps(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC pinnUploadDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
 
-        // Upload CPU particles to GPU for rendering
-        UploadParticleData(m_cpuPositions, m_cpuVelocities);
-        m_device->ExecuteCommandList();
-        m_device->WaitForGPU();
-        m_device->ResetCommandList();
+        hr = m_device->GetDevice()->CreateCommittedResource(
+            &pinnUploadProps, D3D12_HEAP_FLAG_NONE, &pinnUploadDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&m_pinnUploadBuffer)
+        );
 
-        LOG_INFO("[PINN] CPU initialization complete - {} particles ready", particleCount);
+        if (FAILED(hr)) {
+            LOG_ERROR("[PINN] Failed to create persistent upload buffer - PINN disabled");
+            delete m_pinnPhysics;
+            m_pinnPhysics = nullptr;
+        } else {
+            LOG_INFO("[PINN] Persistent upload buffer created ({} KB)", bufferSize / 1024);
+
+            // Initialize particles on CPU (avoid GPU readback entirely)
+            LOG_INFO("[PINN] Initializing particles on CPU (no GPU readback needed)");
+            InitializeAccretionDisk_CPU();
+            m_particlesOnCPU = true;
+
+            // Upload CPU particles to GPU for rendering
+            UploadParticleData(m_cpuPositions, m_cpuVelocities);
+            m_device->ExecuteCommandList();
+            m_device->WaitForGPU();
+            m_device->ResetCommandList();
+
+            LOG_INFO("[PINN] CPU initialization complete - {} particles ready", particleCount);
+        }
     } else {
         LOG_INFO("PINN not available (ONNX Runtime not installed or model not found)");
         LOG_INFO("  GPU physics will be used exclusively");
@@ -360,6 +379,7 @@ void ParticleSystem::Shutdown() {
     m_computeRootSignature.Reset();
     m_computePSO.Reset();
     m_explosionUploadBuffer.Reset();  // Phase 2C
+    m_pinnUploadBuffer.Reset();       // PINN persistent upload buffer
 
     LOG_INFO("ParticleSystem shut down");
 }
@@ -535,29 +555,20 @@ void ParticleSystem::UploadParticleData(
     const std::vector<DirectX::XMFLOAT3>& positions,
     const std::vector<DirectX::XMFLOAT3>& velocities) {
 
-    // Create upload buffer
-    size_t bufferSize = m_particleCount * sizeof(Particle);
-    Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer;
+    // CRITICAL FIX: Use persistent upload buffer instead of temporary
+    // The old code created a local ComPtr that was destroyed before GPU executed the copy command
+    // This caused a use-after-free crash when the main loop executed the command list
 
-    CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-
-    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
-        &uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-        IID_PPV_ARGS(&uploadBuffer)
-    );
-
-    if (FAILED(hr)) {
-        LOG_ERROR("[PINN] Failed to create upload buffer");
+    if (!m_pinnUploadBuffer) {
+        LOG_ERROR("[PINN] Persistent upload buffer not initialized!");
         return;
     }
 
-    // Map and copy data
+    // Map persistent upload buffer and copy particle data
     void* uploadData = nullptr;
-    hr = uploadBuffer->Map(0, nullptr, &uploadData);
+    HRESULT hr = m_pinnUploadBuffer->Map(0, nullptr, &uploadData);
     if (FAILED(hr)) {
-        LOG_ERROR("[PINN] Failed to map upload buffer");
+        LOG_ERROR("[PINN] Failed to map persistent upload buffer");
         return;
     }
 
@@ -565,17 +576,39 @@ void ParticleSystem::UploadParticleData(
     for (uint32_t i = 0; i < m_activeParticleCount; i++) {
         particles[i].position = positions[i];
         particles[i].velocity = velocities[i];
-        // Keep temperature and density from GPU (PINN doesn't modify these)
+
+        // CRITICAL FIX: Must set temperature and density for particles to be visible!
+        // Temperature determines blackbody emission color, density determines opacity.
+        // Without these, particles are invisible (temperature=0 means no emission).
+        float x = positions[i].x;
+        float y = positions[i].y;
+        float z = positions[i].z;
+        float radius = sqrtf(x * x + y * y + z * z);
+
+        // Temperature based on radius (hotter near black hole, cooler at edge)
+        // Inner disk: ~30000K, Outer disk: ~5000K (matches GPU physics shader)
+        float normalizedRadius = (radius - INNER_STABLE_ORBIT) / (OUTER_DISK_RADIUS - INNER_STABLE_ORBIT);
+        normalizedRadius = (std::max)(0.0f, (std::min)(1.0f, normalizedRadius));
+        particles[i].temperature = 30000.0f - normalizedRadius * 25000.0f;  // 30000K → 5000K
+
+        // Density affects opacity - use consistent value for volumetric rendering
+        particles[i].density = 0.8f;
 
         // Sprint 1: Initialize new material system fields
         // Default to PLASMA material with warm orange albedo (backward compatible)
         particles[i].albedo = DirectX::XMFLOAT3(1.0f, 0.4f, 0.1f);  // Hot plasma orange/red
         particles[i].materialType = static_cast<uint32_t>(ParticleMaterialType::PLASMA);  // Type 0
+
+        // Initialize lifetime fields (non-explosive particles are immortal)
+        particles[i].lifetime = 0.0f;
+        particles[i].maxLifetime = 0.0f;  // 0 = infinite/immortal
+        particles[i].spawnTime = 0.0f;
+        particles[i].flags = 0;
     }
 
-    uploadBuffer->Unmap(0, nullptr);
+    m_pinnUploadBuffer->Unmap(0, nullptr);
 
-    // Copy to GPU
+    // Copy to GPU using the persistent buffer (buffer will remain valid until next frame)
     auto cmdList = m_device->GetCommandList();
 
     D3D12_RESOURCE_BARRIER barrier = {};
@@ -586,13 +619,14 @@ void ParticleSystem::UploadParticleData(
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmdList->ResourceBarrier(1, &barrier);
 
-    cmdList->CopyResource(m_particleBuffer.Get(), uploadBuffer.Get());
+    cmdList->CopyResource(m_particleBuffer.Get(), m_pinnUploadBuffer.Get());
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     cmdList->ResourceBarrier(1, &barrier);
 
     // Don't execute - let main loop handle it
+    // The persistent m_pinnUploadBuffer will remain valid until destroyed in destructor
 }
 
 void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& forces, float deltaTime) {
@@ -834,111 +868,136 @@ bool ParticleSystem::CreateMaterialPropertiesBuffer() {
 // Phase 2C: Explosion Spawning System Implementation
 // ============================================================================
 
-uint32_t ParticleSystem::SpawnExplosion(const ExplosionConfig& config) {
+void ParticleSystem::SpawnExplosion(const ExplosionConfig& config) {
+    // Queue explosion for processing after command list reset
+    // This ensures GPU copy commands are recorded at the correct time
+    m_pendingExplosions.push_back(config);
+    LOG_INFO("[Explosion] Queued explosion at ({:.1f}, {:.1f}, {:.1f}) type={} (will spawn {} particles)",
+             config.position.x, config.position.y, config.position.z,
+             static_cast<uint32_t>(config.type), config.particleCount);
+}
+
+uint32_t ParticleSystem::ProcessPendingExplosions() {
+    if (m_pendingExplosions.empty()) {
+        return 0;
+    }
+
     if (!m_device || !m_particleBuffer) {
-        LOG_ERROR("[Explosion] Cannot spawn - system not initialized");
+        LOG_ERROR("[Explosion] Cannot process - system not initialized");
+        m_pendingExplosions.clear();
         return 0;
     }
 
     if (m_explosionPoolStart == 0) {
-        LOG_ERROR("[Explosion] Cannot spawn - no explosion pool available");
+        LOG_ERROR("[Explosion] Cannot process - no explosion pool available");
+        m_pendingExplosions.clear();
         return 0;
     }
 
-    // Clamp particle count to available pool space
-    uint32_t particlesToSpawn = (std::min)(config.particleCount, EXPLOSION_POOL_SIZE);
+    uint32_t totalSpawned = 0;
 
-    LOG_INFO("[Explosion] Spawning {} particles at ({:.1f}, {:.1f}, {:.1f}) type={}",
-             particlesToSpawn, config.position.x, config.position.y, config.position.z,
-             static_cast<uint32_t>(config.type));
+    // Process all pending explosions
+    for (const auto& config : m_pendingExplosions) {
+        // Clamp particle count to available pool space
+        uint32_t particlesToSpawn = (std::min)(config.particleCount, EXPLOSION_POOL_SIZE);
 
-    // Generate explosion particles
-    std::vector<Particle> explosionParticles(particlesToSpawn);
+        LOG_INFO("[Explosion] Processing {} particles at ({:.1f}, {:.1f}, {:.1f}) type={}",
+                 particlesToSpawn, config.position.x, config.position.y, config.position.z,
+                 static_cast<uint32_t>(config.type));
 
-    // Get material properties for albedo
-    const auto& matProps = m_materialProperties.materials[static_cast<uint32_t>(config.type)];
+        // Generate explosion particles
+        std::vector<Particle> explosionParticles(particlesToSpawn);
 
-    for (uint32_t i = 0; i < particlesToSpawn; i++) {
-        Particle& p = explosionParticles[i];
+        // Get material properties for albedo
+        const auto& matProps = m_materialProperties.materials[static_cast<uint32_t>(config.type)];
 
-        // Generate random direction on unit sphere (Fibonacci sphere for uniform distribution)
-        float phi = acosf(1.0f - 2.0f * (float(i) + 0.5f) / float(particlesToSpawn));
-        float theta = 3.14159265f * (1.0f + sqrtf(5.0f)) * float(i);
+        for (uint32_t i = 0; i < particlesToSpawn; i++) {
+            Particle& p = explosionParticles[i];
 
-        float sinPhi = sinf(phi);
-        float cosPhi = cosf(phi);
-        float sinTheta = sinf(theta);
-        float cosTheta = cosf(theta);
+            // Generate random direction on unit sphere (Fibonacci sphere for uniform distribution)
+            float phi = acosf(1.0f - 2.0f * (float(i) + 0.5f) / float(particlesToSpawn));
+            float theta = 3.14159265f * (1.0f + sqrtf(5.0f)) * float(i);
 
-        DirectX::XMFLOAT3 direction = {
-            sinPhi * cosTheta,
-            cosPhi,
-            sinPhi * sinTheta
-        };
+            float sinPhi = sinf(phi);
+            float cosPhi = cosf(phi);
+            float sinTheta = sinf(theta);
+            float cosTheta = cosf(theta);
 
-        // Add some randomness to the direction
-        float randOffset = 0.1f;
-        direction.x += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
-        direction.y += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
-        direction.z += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
+            DirectX::XMFLOAT3 direction = {
+                sinPhi * cosTheta,
+                cosPhi,
+                sinPhi * sinTheta
+            };
 
-        // Normalize direction
-        float len = sqrtf(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
-        if (len > 0.0001f) {
-            direction.x /= len;
-            direction.y /= len;
-            direction.z /= len;
+            // Add some randomness to the direction
+            float randOffset = 0.1f;
+            direction.x += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
+            direction.y += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
+            direction.z += (float(rand()) / RAND_MAX - 0.5f) * randOffset;
+
+            // Normalize direction
+            float len = sqrtf(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+            if (len > 0.0001f) {
+                direction.x /= len;
+                direction.y /= len;
+                direction.z /= len;
+            }
+
+            // Random initial radius within spawn sphere
+            float spawnRadius = config.initialRadius * (0.5f + 0.5f * float(rand()) / RAND_MAX);
+
+            // Position: center + direction * initial radius
+            p.position.x = config.position.x + direction.x * spawnRadius;
+            p.position.y = config.position.y + direction.y * spawnRadius;
+            p.position.z = config.position.z + direction.z * spawnRadius;
+
+            // Velocity: outward expansion with some variation
+            float speedVariation = 0.8f + 0.4f * float(rand()) / RAND_MAX;
+            p.velocity.x = direction.x * config.expansionSpeed * speedVariation;
+            p.velocity.y = direction.y * config.expansionSpeed * speedVariation;
+            p.velocity.z = direction.z * config.expansionSpeed * speedVariation;
+
+            // Temperature with slight variation
+            p.temperature = config.temperature * (0.9f + 0.2f * float(rand()) / RAND_MAX);
+
+            // Density
+            p.density = config.density;
+
+            // Material properties
+            p.albedo = matProps.albedo;
+            p.materialType = static_cast<uint32_t>(config.type);
+
+            // Lifetime fields
+            p.lifetime = 0.0f;  // Just spawned
+            p.maxLifetime = config.lifetime * (0.8f + 0.4f * float(rand()) / RAND_MAX);  // Vary lifetime
+            p.spawnTime = m_totalTime;
+            p.flags = static_cast<uint32_t>(ParticleFlags::EXPLOSION);
         }
 
-        // Random initial radius within spawn sphere
-        float spawnRadius = config.initialRadius * (0.5f + 0.5f * float(rand()) / RAND_MAX);
+        // Calculate where to place these particles in the explosion pool
+        uint32_t startIndex = m_explosionPoolStart + m_nextExplosionIndex;
 
-        // Position: center + direction * initial radius
-        p.position.x = config.position.x + direction.x * spawnRadius;
-        p.position.y = config.position.y + direction.y * spawnRadius;
-        p.position.z = config.position.z + direction.z * spawnRadius;
+        // Upload to GPU
+        UploadExplosionParticles(explosionParticles, startIndex);
 
-        // Velocity: outward expansion with some variation
-        float speedVariation = 0.8f + 0.4f * float(rand()) / RAND_MAX;
-        p.velocity.x = direction.x * config.expansionSpeed * speedVariation;
-        p.velocity.y = direction.y * config.expansionSpeed * speedVariation;
-        p.velocity.z = direction.z * config.expansionSpeed * speedVariation;
+        // Update pool tracking (circular buffer)
+        m_nextExplosionIndex = (m_nextExplosionIndex + particlesToSpawn) % EXPLOSION_POOL_SIZE;
+        m_explosionPoolUsed = (std::min)(m_explosionPoolUsed + particlesToSpawn, EXPLOSION_POOL_SIZE);
 
-        // Temperature with slight variation
-        p.temperature = config.temperature * (0.9f + 0.2f * float(rand()) / RAND_MAX);
+        LOG_INFO("[Explosion] Spawned {} particles at pool index {} (pool usage: {}/{})",
+                 particlesToSpawn, startIndex - m_explosionPoolStart,
+                 m_explosionPoolUsed, EXPLOSION_POOL_SIZE);
 
-        // Density
-        p.density = config.density;
-
-        // Material properties
-        p.albedo = matProps.albedo;
-        p.materialType = static_cast<uint32_t>(config.type);
-
-        // Lifetime fields
-        p.lifetime = 0.0f;  // Just spawned
-        p.maxLifetime = config.lifetime * (0.8f + 0.4f * float(rand()) / RAND_MAX);  // Vary lifetime
-        p.spawnTime = m_totalTime;
-        p.flags = static_cast<uint32_t>(ParticleFlags::EXPLOSION);
+        totalSpawned += particlesToSpawn;
     }
 
-    // Calculate where to place these particles in the explosion pool
-    uint32_t startIndex = m_explosionPoolStart + m_nextExplosionIndex;
+    // Clear pending queue
+    m_pendingExplosions.clear();
 
-    // Upload to GPU
-    UploadExplosionParticles(explosionParticles, startIndex);
-
-    // Update pool tracking (circular buffer)
-    m_nextExplosionIndex = (m_nextExplosionIndex + particlesToSpawn) % EXPLOSION_POOL_SIZE;
-    m_explosionPoolUsed = (std::min)(m_explosionPoolUsed + particlesToSpawn, EXPLOSION_POOL_SIZE);
-
-    LOG_INFO("[Explosion] Spawned {} particles at pool index {} (pool usage: {}/{})",
-             particlesToSpawn, startIndex - m_explosionPoolStart,
-             m_explosionPoolUsed, EXPLOSION_POOL_SIZE);
-
-    return particlesToSpawn;
+    return totalSpawned;
 }
 
-uint32_t ParticleSystem::SpawnRandomExplosion(ParticleMaterialType type) {
+void ParticleSystem::SpawnRandomExplosion(ParticleMaterialType type) {
     ExplosionConfig config;
     config.type = type;
 
@@ -989,7 +1048,7 @@ uint32_t ParticleSystem::SpawnRandomExplosion(ParticleMaterialType type) {
             break;
     }
 
-    return SpawnExplosion(config);
+    SpawnExplosion(config);
 }
 
 void ParticleSystem::UploadExplosionParticles(const std::vector<Particle>& particles, uint32_t startIndex) {
