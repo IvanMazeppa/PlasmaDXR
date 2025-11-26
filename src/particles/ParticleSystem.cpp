@@ -107,7 +107,17 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
     // Initialize PINN ML Physics System (optional)
     m_pinnPhysics = new PINNPhysicsSystem();
     // Path relative to project root (working directory)
-    if (m_pinnPhysics->Initialize("ml/models/pinn_v2_param_conditioned.onnx")) {
+    // Try turbulent model first (with MRI physics), fall back to standard v2
+    bool pinnLoaded = false;
+    if (m_pinnPhysics->Initialize("ml/models/pinn_v2_turbulent.onnx")) {
+        LOG_INFO("[PINN] Loaded TURBULENT model (MRI + Kolmogorov physics)");
+        pinnLoaded = true;
+    } else if (m_pinnPhysics->Initialize("ml/models/pinn_v2_param_conditioned.onnx")) {
+        LOG_INFO("[PINN] Loaded standard param-conditioned model");
+        pinnLoaded = true;
+    }
+
+    if (pinnLoaded) {
         m_pinnPhysics->SetEnabled(false);  // Start disabled (user can enable via 'P' key)
         m_pinnPhysics->SetHybridMode(true);
         m_pinnPhysics->SetHybridThreshold(10.0f);  // 10× R_ISCO
