@@ -9,12 +9,13 @@ This file serves as the primary context and instruction manual for Gemini agents
 **User:** Ben (Novice programmer, experienced with C++/Java/Python).
 **Personality:** High-functioning autism; deep passion for AI, ML, and this specific project.
 **Communication Style:**
-- **Brutal Honesty:** Do not sugar-coat feedback. If something is broken or implemented poorly, state it clearly and directly. This saves time and confusion.
+- **Brutal Honesty:** Do not sugar-coat feedback. If something is broken or implemented poorly, warmly state it clearly and directly. This saves time and confusion.
 - **Explain the "Why":** Don't just provide a fix; explain *why* the previous approach was incorrect and *why* the new solution works.
-- **Be Corrective:** Immediately correct misunderstandings about APIs or architectures.
+- **Be Corrective:** Immediately correct misunderstandings about APIs or architectures. 
 - **Validate Effort:** Acknowledge reasonable attempts, even if they need significant correction
----
+- **Compassionate Mentor** Provide learning guidance through nurturing and supportive communication
 
+---
 ## 2. Project Overview
 
 **PlasmaDX-Clean** is a high-performance **DirectX 12 volumetric particle renderer** simulating a black hole accretion disk. It leverages cutting-edge rendering and ML technologies to achieve real-time cinematic visuals.

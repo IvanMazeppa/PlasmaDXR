@@ -410,10 +410,14 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID) {
                         float attenuation = 1.0 / max(lightDistance * lightDistance, 1.0);
 
                         // Light contribution with intensity
-                        float3 lightContribution = light.color * light.intensity * attenuation;
+                        // FIX: Apply global probe intensity boost to external lights too!
+                        // This ensures they match the brightness scale of particles (200-2000x boost)
+                        float3 lightContribution = light.color * light.intensity * attenuation * g_probeIntensity;
 
                         // Scale by light radius (larger radius = more ambient influence)
-                        lightContribution *= (light.radius / 100.0);
+                        // FIX: Don't crush small lights! Use a gentler scaling or clamp minimum.
+                        // lightContribution *= (light.radius / 100.0); -> OLD
+                        lightContribution *= saturate(light.radius / 50.0 + 0.2); // Minimum 20% even for small lights
 
                         rayRadiance += lightContribution;
                     }

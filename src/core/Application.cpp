@@ -3783,19 +3783,10 @@ void Application::RenderImGui() {
                     ImGui::SameLine();
                     ImGui::TextDisabled("(?)");
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("These adjust appearance without retraining.\nUse to speed up rotation and add visual chaos.");
+                        ImGui::SetTooltip("These adjust appearance without retraining.\nUse Time Scale slider for faster rotation.");
                     }
 
-                    // Velocity multiplier - KEY for faster rotation
-                    float velMult = m_particleSystem->GetPINNVelocityMultiplier();
-                    if (ImGui::SliderFloat("Velocity Multiplier", &velMult, 0.1f, 50.0f, "%.1fx")) {
-                        m_particleSystem->SetPINNVelocityMultiplier(velMult);
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("Scale orbital velocities for faster rotation.\n1.0 = physically accurate (slow)\n10-20 = visually interesting\n50 = very fast");
-                    }
-
-                    // Turbulence
+                    // Turbulence (velocity multiplier removed - use Time Scale instead)
                     float turb = m_particleSystem->GetPINNTurbulence();
                     if (ImGui::SliderFloat("Turbulence", &turb, 0.0f, 1.0f, "%.2f")) {
                         m_particleSystem->SetPINNTurbulence(turb);
@@ -3934,15 +3925,15 @@ void Application::RenderImGui() {
             // Timescale applies to both PINN and GPU physics
             ImGui::Separator();
             float timeScale = m_particleSystem->GetTimeScale();
-            if (ImGui::SliderFloat("Time Scale (Ctrl/Shift+T)", &timeScale, 0.0f, 10.0f, "%.2fx")) {
+            if (ImGui::SliderFloat("Time Scale (Ctrl/Shift+T)", &timeScale, 0.0f, 50.0f, "%.2fx")) {
                 m_particleSystem->SetTimeScale(timeScale);
             }
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Simulation speed multiplier\n"
-                                "0.0 = paused, 0.5 = half speed\n"
-                                "1.0 = normal, 2.0 = double speed");
+                                "0.0 = paused, 1.0 = normal\n"
+                                "10-20 = fast rotation, 50 = very fast");
             }
             // Quick presets
             ImGui::SameLine();

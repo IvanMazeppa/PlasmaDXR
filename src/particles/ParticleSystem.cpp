@@ -107,13 +107,20 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
     // Initialize PINN ML Physics System (optional)
     m_pinnPhysics = new PINNPhysicsSystem();
     // Path relative to project root (working directory)
-    // Try turbulent model first (with MRI physics), fall back to standard v2
+    // Try v3 TOTAL FORCES model first (gravity + viscosity + MRI)
+    // Falls back to v2 models if v3 not available
     bool pinnLoaded = false;
-    if (m_pinnPhysics->Initialize("ml/models/pinn_v2_turbulent.onnx")) {
-        LOG_INFO("[PINN] Loaded TURBULENT model (MRI + Kolmogorov physics)");
+    if (m_pinnPhysics->Initialize("ml/models/pinn_v3_total_forces.onnx")) {
+        LOG_INFO("[PINN] Loaded v3 TOTAL FORCES model (gravity + viscosity + MRI)");
+        LOG_INFO("[PINN] This model outputs gravitational forces directly for proper orbital motion");
+        pinnLoaded = true;
+    } else if (m_pinnPhysics->Initialize("ml/models/pinn_v2_turbulent.onnx")) {
+        LOG_INFO("[PINN] Loaded v2 turbulent model (MRI + Kolmogorov physics)");
+        LOG_WARN("[PINN] v2 may have rotation issues - recommend using v3");
         pinnLoaded = true;
     } else if (m_pinnPhysics->Initialize("ml/models/pinn_v2_param_conditioned.onnx")) {
-        LOG_INFO("[PINN] Loaded standard param-conditioned model");
+        LOG_INFO("[PINN] Loaded v2 standard param-conditioned model");
+        LOG_WARN("[PINN] v2 may have rotation issues - recommend using v3");
         pinnLoaded = true;
     }
 
@@ -536,7 +543,6 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
     }
 
     // Step 1: Predict forces using PINN (works directly on CPU particles)
-    LOG_INFO("[PINN] About to call PredictForcesBatch...");
     bool success = m_pinnPhysics->PredictForcesBatch(
         m_cpuPositions.data(),
         m_cpuVelocities.data(),
@@ -544,7 +550,6 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
         m_activeParticleCount,
         totalTime
     );
-    LOG_INFO("[PINN] PredictForcesBatch returned: {}", success);
 
     if (!success) {
         LOG_ERROR("[PINN] Force prediction failed");
@@ -552,29 +557,36 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
     }
 
     // Step 2: Integrate forces (Velocity Verlet) on CPU particles
-    LOG_INFO("[PINN] About to integrate forces...");
     IntegrateForces(m_cpuForces, deltaTime);
-    LOG_INFO("[PINN] Force integration complete");
 
     // Step 3: Upload updated CPU particles to GPU for rendering
-    LOG_INFO("[PINN] About to upload particle data to GPU...");
     UploadParticleData(m_cpuPositions, m_cpuVelocities);
-    LOG_INFO("[PINN] Upload data prepared");
 
-    // FIX: Let main render loop execute command list at proper time
-    // The upload commands are recorded on the shared command list and will be
-    // executed when the main loop calls ExecuteCommandList().
-    // This prevents mid-frame command list execution which was causing crashes.
-    LOG_INFO("[PINN] Upload commands recorded - main loop will execute");
-
-    // Log performance metrics every 60 frames
+    // Log performance metrics and force diagnostics every 60 frames
     static int s_pinnUpdateCount = 0;
     s_pinnUpdateCount++;
     if (s_pinnUpdateCount % 60 == 0) {
         auto metrics = m_pinnPhysics->GetPerformanceMetrics();
-        LOG_INFO("[PINN] Update {} - Inference: {:.2f}ms, {} particles, CPU-only: {}",
-                 s_pinnUpdateCount, metrics.inferenceTimeMs, metrics.particlesProcessed,
-                 m_particlesOnCPU ? "YES" : "NO");
+
+        // Compute average force magnitude and direction for diagnostics
+        float avgFx = 0.0f, avgFy = 0.0f, avgFz = 0.0f;
+        float maxForceMag = 0.0f;
+        for (uint32_t i = 0; i < m_activeParticleCount; i++) {
+            avgFx += m_cpuForces[i].x;
+            avgFy += m_cpuForces[i].y;
+            avgFz += m_cpuForces[i].z;
+            float mag = sqrtf(m_cpuForces[i].x * m_cpuForces[i].x +
+                            m_cpuForces[i].y * m_cpuForces[i].y +
+                            m_cpuForces[i].z * m_cpuForces[i].z);
+            maxForceMag = std::max(maxForceMag, mag);
+        }
+        avgFx /= m_activeParticleCount;
+        avgFy /= m_activeParticleCount;
+        avgFz /= m_activeParticleCount;
+        float avgNetForce = sqrtf(avgFx*avgFx + avgFy*avgFy + avgFz*avgFz);
+
+        LOG_INFO("[PINN] Frame {} - Inference: {:.2f}ms | Avg force: ({:.4f}, {:.4f}, {:.4f}) mag={:.4f} | Max: {:.4f}",
+                 s_pinnUpdateCount, metrics.inferenceTimeMs, avgFx, avgFy, avgFz, avgNetForce, maxForceMag);
     }
 }
 
@@ -675,7 +687,6 @@ void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& force
     std::iota(indices.begin(), indices.end(), 0);
 
     // Get PINN visualization parameters
-    const float velocityMult = m_pinnVelocityMultiplier;
     const float turbulence = m_pinnTurbulence;
     const float damping = m_pinnDamping;
     const bool enforceBounds = m_pinnEnforceBoundaries;
@@ -687,30 +698,36 @@ void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& force
 
     // Parallel integration across all particles
     std::for_each(std::execution::par, indices.begin(), indices.end(),
-        [this, &forces, deltaTime, velocityMult, turbulence, damping, enforceBounds,
+        [this, &forces, deltaTime, turbulence, damping, enforceBounds,
          innerRadius, outerRadius, seed](uint32_t i) {
-            // Update velocity: v' = v + a * dt (with velocity multiplier for faster rotation)
-            float ax = forces[i].x * velocityMult;
-            float ay = forces[i].y * velocityMult;
-            float az = forces[i].z * velocityMult;
+            // Update velocity: v' = v + a * dt
+            // Let PINN forces work unmodified - they contain the learned physics balance
+            float ax = forces[i].x;
+            float ay = forces[i].y;
+            float az = forces[i].z;
 
             m_cpuVelocities[i].x += ax * deltaTime;
             m_cpuVelocities[i].y += ay * deltaTime;
             m_cpuVelocities[i].z += az * deltaTime;
 
-            // Add turbulence (random velocity perturbation)
+            // Add turbulence (random acceleration, not velocity!)
+            // This creates gentle chaotic perturbations without exponential accumulation
             if (turbulence > 0.0f) {
-                // Simple hash-based pseudo-random per particle
+                // Hash-based pseudo-random per particle (changes each frame via seed)
                 unsigned int h = seed ^ (i * 2654435761u);
                 h = ((h >> 16) ^ h) * 0x45d9f3b;
                 h = ((h >> 16) ^ h) * 0x45d9f3b;
-                float rx = (float((h & 0xFF) - 128) / 128.0f) * turbulence * 0.1f;
-                float ry = (float(((h >> 8) & 0xFF) - 128) / 128.0f) * turbulence * 0.02f;
-                float rz = (float(((h >> 16) & 0xFF) - 128) / 128.0f) * turbulence * 0.1f;
 
-                m_cpuVelocities[i].x += rx;
-                m_cpuVelocities[i].y += ry;
-                m_cpuVelocities[i].z += rz;
+                // Random acceleration (scaled by deltaTime to prevent accumulation)
+                // Much smaller magnitude: turbulence=1.0 adds ~0.001 accel
+                float turbStrength = turbulence * 0.001f;
+                float rx = (float((h & 0xFF) - 128) / 128.0f) * turbStrength;
+                float ry = (float(((h >> 8) & 0xFF) - 128) / 128.0f) * turbStrength * 0.2f; // Less vertical chaos
+                float rz = (float(((h >> 16) & 0xFF) - 128) / 128.0f) * turbStrength;
+
+                m_cpuVelocities[i].x += rx * deltaTime;
+                m_cpuVelocities[i].y += ry * deltaTime;
+                m_cpuVelocities[i].z += rz * deltaTime;
             }
 
             // Apply configurable damping

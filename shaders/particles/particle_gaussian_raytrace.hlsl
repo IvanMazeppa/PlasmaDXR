@@ -765,9 +765,9 @@ float3 RayMarchAtmosphericFog(
              // We pass rayDir (view direction) to reconstruct directional irradiance
              float3 indirect = SampleProbeGrid(samplePos, rayDir); 
              
-             // Scale by fog density and a tuning factor (0.05 = 5% ambient strength)
+             // Scale by fog density and a tuning factor (0.5 = 50% ambient strength)
              // This ensures the fog isn't too bright but picks up the color of the environment
-             float3 indirectScatter = indirect * godRayDensity * 0.05;
+             float3 indirectScatter = indirect * godRayDensity * 0.5;
              
              totalFogColor += indirectScatter * stepSize;
         }

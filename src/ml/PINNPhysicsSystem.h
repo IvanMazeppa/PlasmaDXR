@@ -165,7 +165,8 @@ private:
 
     // V2 model support (parameter-conditioned)
     PhysicsParams m_physicsParams;
-    bool m_isV2Model = false;
+    bool m_isV2Model = false;  // v2: 2 inputs (state + params)
+    bool m_isV3Model = false;  // v3: 1 input, 10D Cartesian (total forces output)
 #ifdef ENABLE_ML_FEATURES
     std::vector<int64_t> m_paramsInputShape;  // Expected: [batch_size, 3] for v2 model
 #endif

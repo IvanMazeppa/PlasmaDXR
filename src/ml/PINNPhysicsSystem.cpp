@@ -57,11 +57,12 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
         // Get input/output metadata
         Ort::AllocatorWithDefaultOptions allocator;
 
-        // Input info - detect v1 (1 input) vs v2 (2 inputs)
+        // Input info - detect v1 (1 input, 7D), v2 (2 inputs, 7D+3D), or v3 (1 input, 10D)
         size_t numInputs = m_ortSession->GetInputCount();
         if (numInputs == 1) {
+            // Could be v1 (7D spherical) or v3 (10D Cartesian) - determine from input size
             m_isV2Model = false;
-            LOG_INFO("[PINN] Detected v1 model (state-only input)");
+            LOG_INFO("[PINN] Detected single-input model (v1 or v3)");
         } else if (numInputs == 2) {
             m_isV2Model = true;
             LOG_INFO("[PINN] Detected v2 model (parameter-conditioned)");
@@ -113,19 +114,31 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
 
         LOG_INFO("[PINN] Output: '{}', shape: [{}, {}]", m_outputNames[0], m_outputShape[0], m_outputShape[1]);
 
-        // Validate model dimensions
-        if (m_inputShape[1] != 7) {
-            LOG_ERROR("[PINN] Invalid input shape. Expected 7 features (r, θ, φ, v_r, v_θ, v_φ, t), got {}", m_inputShape[1]);
+        // Validate model dimensions and detect v3
+        if (m_inputShape[1] == 10 && !m_isV2Model) {
+            // v3 model: 10D input (x, y, z, vx, vy, vz, t, M_bh, alpha, H_R)
+            m_isV3Model = true;
+            LOG_INFO("[PINN] Detected v3 model (10D Cartesian input with total forces)");
+        } else if (m_inputShape[1] == 7) {
+            // v1/v2 model: 7D input (r, θ, φ, v_r, v_θ, v_φ, t)
+            m_isV3Model = false;
+            LOG_INFO("[PINN] Detected v{} model (7D spherical input)", m_isV2Model ? 2 : 1);
+        } else {
+            LOG_ERROR("[PINN] Invalid input shape. Expected 7 (v1/v2) or 10 (v3) features, got {}", m_inputShape[1]);
             return false;
         }
 
         if (m_outputShape[1] != 3) {
-            LOG_ERROR("[PINN] Invalid output shape. Expected 3 forces (F_r, F_θ, F_φ), got {}", m_outputShape[1]);
+            LOG_ERROR("[PINN] Invalid output shape. Expected 3 forces, got {}", m_outputShape[1]);
             return false;
         }
 
         m_modelLoaded = true;
-        LOG_INFO("[PINN] Successfully loaded PINN model (version {})!", m_isV2Model ? 2 : 1);
+        if (m_isV3Model) {
+            LOG_INFO("[PINN] Successfully loaded PINN v3 model (total forces output)!");
+        } else {
+            LOG_INFO("[PINN] Successfully loaded PINN model (version {})!", m_isV2Model ? 2 : 1);
+        }
         LOG_INFO("[PINN] Hybrid mode: {} (threshold: {:.1f}× R_ISCO)", m_hybridMode ? "ON" : "OFF", m_hybridThresholdRadius / R_ISCO);
         if (m_isV2Model) {
             LOG_INFO("[PINN] Physics params: M_bh={:.2f}, α={:.3f}, H/R={:.3f}",
@@ -198,19 +211,22 @@ bool PINNPhysicsSystem::PredictForcesBatch(
     auto startTime = std::chrono::high_resolution_clock::now();
 
     try {
-        // Prepare input tensor data: [particleCount, 7]
+        // Prepare input tensor data: [particleCount, 7] for v1/v2 or [particleCount, 10] for v3
+        int inputFeaturesPerParticle = m_isV3Model ? 10 : 7;
         std::vector<float> inputData;
-        inputData.reserve(particleCount * 7);
+        inputData.reserve(particleCount * inputFeaturesPerParticle);
 
         std::vector<uint32_t> pinnIndices;  // Indices of particles to process with PINN
         pinnIndices.reserve(particleCount);
 
         for (uint32_t i = 0; i < particleCount; i++) {
-            // Convert to spherical coordinates
-            ParticleStateSpherical state = CartesianToSpherical(positions[i], velocities[i]);
+            // For hybrid mode radius check, convert to spherical (regardless of model version)
+            float r_check = sqrtf(positions[i].x * positions[i].x +
+                                 positions[i].y * positions[i].y +
+                                 positions[i].z * positions[i].z);
 
             // Hybrid mode: only use PINN for particles beyond threshold
-            if (m_hybridMode && !ShouldUsePINN(state.r)) {
+            if (m_hybridMode && !ShouldUsePINN(r_check)) {
                 // Mark for GPU shader processing (zero forces for now)
                 outForces[i] = XMFLOAT3(0.0f, 0.0f, 0.0f);
                 continue;
@@ -219,14 +235,29 @@ bool PINNPhysicsSystem::PredictForcesBatch(
             // Add to PINN batch
             pinnIndices.push_back(i);
 
-            // Append input features: (r, θ, φ, v_r, v_θ, v_φ, t)
-            inputData.push_back(state.r);
-            inputData.push_back(state.theta);
-            inputData.push_back(state.phi);
-            inputData.push_back(state.v_r);
-            inputData.push_back(state.v_theta);
-            inputData.push_back(state.v_phi);
-            inputData.push_back(currentTime);
+            if (m_isV3Model) {
+                // v3: 10D Cartesian input (x, y, z, vx, vy, vz, t, M_bh, alpha, H_R)
+                inputData.push_back(positions[i].x);
+                inputData.push_back(positions[i].y);
+                inputData.push_back(positions[i].z);
+                inputData.push_back(velocities[i].x);
+                inputData.push_back(velocities[i].y);
+                inputData.push_back(velocities[i].z);
+                inputData.push_back(currentTime);
+                inputData.push_back(m_physicsParams.blackHoleMassNormalized);
+                inputData.push_back(m_physicsParams.alphaViscosity);
+                inputData.push_back(m_physicsParams.diskThickness);
+            } else {
+                // v1/v2: 7D spherical input (r, θ, φ, v_r, v_θ, v_φ, t)
+                ParticleStateSpherical state = CartesianToSpherical(positions[i], velocities[i]);
+                inputData.push_back(state.r);
+                inputData.push_back(state.theta);
+                inputData.push_back(state.phi);
+                inputData.push_back(state.v_r);
+                inputData.push_back(state.v_theta);
+                inputData.push_back(state.v_phi);
+                inputData.push_back(currentTime);
+            }
         }
 
         uint32_t pinnParticleCount = static_cast<uint32_t>(pinnIndices.size());
@@ -241,7 +272,7 @@ bool PINNPhysicsSystem::PredictForcesBatch(
         outputData.resize(pinnParticleCount * 3);
 
         // Update input shape for current batch
-        std::vector<int64_t> inputShape = { static_cast<int64_t>(pinnParticleCount), 7 };
+        std::vector<int64_t> inputShape = { static_cast<int64_t>(pinnParticleCount), inputFeaturesPerParticle };
 
         // Create state input tensor
         Ort::Value stateTensor = Ort::Value::CreateTensor<float>(
@@ -255,9 +286,10 @@ bool PINNPhysicsSystem::PredictForcesBatch(
         std::vector<Ort::Value> inputTensors;
         inputTensors.push_back(std::move(stateTensor));
 
-        // For v2 model, create physics parameters tensor
+        // For v2 model (NOT v3), create physics parameters tensor
+        // v3 includes params in the main 10D input, so no separate tensor needed
         std::vector<float> paramsData;
-        if (m_isV2Model) {
+        if (m_isV2Model && !m_isV3Model) {
             // Replicate parameters for each particle in batch
             paramsData.reserve(pinnParticleCount * 3);
             for (uint32_t i = 0; i < pinnParticleCount; i++) {
