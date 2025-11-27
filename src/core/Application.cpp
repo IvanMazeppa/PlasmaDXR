@@ -722,6 +722,18 @@ void Application::Render() {
         // CRITICAL: Use 2043 (not 2044) to avoid edge case crash at exactly 2045 total particles
         uint32_t probeGridParticleCount = std::min(m_config.particleCount, 2043u);
 
+        // RESOURCE TRANSITION: SRV -> UAV for update (skip first frame as it starts in COMMON)
+        static bool s_firstProbeUpdate = true;
+        if (!s_firstProbeUpdate) {
+            D3D12_RESOURCE_BARRIER toUav = {};
+            toUav.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            toUav.Transition.pResource = m_probeGridSystem->GetProbeBuffer();
+            toUav.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            toUav.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            toUav.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            cmdList->ResourceBarrier(1, &toUav);
+        }
+
         m_probeGridSystem->UpdateProbes(
             cmdList,
             m_rtLighting->GetProbeGridTLAS(),  // FIXED: Use probe grid TLAS, not combined TLAS
@@ -731,6 +743,8 @@ void Application::Render() {
             lightCount,
             m_frameCount
         );
+        
+        s_firstProbeUpdate = false;
 
         // CRITICAL: UAV barrier on probe buffer after compute shader writes
         // The probe grid update shader writes to the probe buffer (UAV)
@@ -740,6 +754,15 @@ void Application::Render() {
         probeBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
         probeBarrier.UAV.pResource = m_probeGridSystem->GetProbeBuffer();
         cmdList->ResourceBarrier(1, &probeBarrier);
+
+        // RESOURCE TRANSITION: UAV -> SRV for rendering
+        D3D12_RESOURCE_BARRIER toSrv = {};
+        toSrv.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        toSrv.Transition.pResource = m_probeGridSystem->GetProbeBuffer();
+        toSrv.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        toSrv.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        toSrv.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &toSrv);
 
         // DEBUGGING: Transition particle buffer back to UAV for next physics update
         D3D12_RESOURCE_BARRIER particleWriteBarrier = {};

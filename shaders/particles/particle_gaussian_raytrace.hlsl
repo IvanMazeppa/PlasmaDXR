@@ -62,10 +62,6 @@ cbuffer GaussianConstants : register(b0)
     float godRayStepMultiplier;    // Ray march step multiplier (0.5-2.0) - UNUSED
     float2 godRayPadding;          // Padding for alignment
 
-// Froxel volumetric fog system (Phase 5 - DEPRECATED)
-    // Constants removed
-    float froxelPaddingPlaceholder[12]; // Keep alignment if needed or remove entirely if C++ struct updated
-
     // Phase 1 Lighting Fix
     float rtMinAmbient;            // Global ambient term (0.0-0.2)
     float3 lightingPadding;        // Padding for alignment
