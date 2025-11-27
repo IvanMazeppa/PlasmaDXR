@@ -3954,6 +3954,56 @@ void Application::RenderImGui() {
                         ImGui::TextDisabled("Model: %s [v1 Legacy]", modelName.c_str());
                         break;
                 }
+                
+                // SIREN Turbulence Controls (only shown when PINN is available)
+                if (m_particleSystem->IsSIRENAvailable()) {
+                    ImGui::Separator();
+                    ImGui::Text("ML Turbulence (SIREN)");
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("SIREN vortex field model adds physically-based turbulence.\n"
+                                         "Works best with PINN v4 (turbulence-robust).\n"
+                                         "F_total = F_orbital (PINN) + F_turbulence (SIREN)");
+                    }
+                    
+                    bool sirenEnabled = m_particleSystem->IsSIRENEnabled();
+                    if (ImGui::Checkbox("Enable SIREN Turbulence", &sirenEnabled)) {
+                        m_particleSystem->SetSIRENEnabled(sirenEnabled);
+                    }
+                    
+                    if (sirenEnabled) {
+                        ImGui::Indent();
+                        
+                        // Turbulence intensity
+                        float intensity = m_particleSystem->GetSIRENIntensity();
+                        if (ImGui::SliderFloat("Turbulence Intensity", &intensity, 0.0f, 5.0f, "%.2f")) {
+                            m_particleSystem->SetSIRENIntensity(intensity);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Scale factor for turbulent forces.\n"
+                                             "0.0 = No turbulence\n"
+                                             "0.5 = Gentle swirling (default)\n"
+                                             "2.0+ = Strong vortices");
+                        }
+                        
+                        // Random seed
+                        float seed = m_particleSystem->GetSIRENSeed();
+                        if (ImGui::SliderFloat("Turbulence Seed", &seed, 0.0f, 100.0f, "%.1f")) {
+                            m_particleSystem->SetSIRENSeed(seed);
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Seed for vortex pattern.\n"
+                                             "Different seeds create different turbulence structures.");
+                        }
+                        
+                        // Performance metrics
+                        auto sirenMetrics = m_particleSystem->GetSIRENMetrics();
+                        ImGui::Text("SIREN: %.2f ms", sirenMetrics.inferenceTimeMs);
+                        
+                        ImGui::Unindent();
+                    }
+                }
             } else {
                 ImGui::TextDisabled("PINN: Not Available");
                 ImGui::TextDisabled("(ONNX Runtime or model not found)");

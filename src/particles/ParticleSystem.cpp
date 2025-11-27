@@ -4,6 +4,7 @@
 #include "../utils/Logger.h"
 #include "../utils/d3dx12/d3dx12.h"
 #include "../ml/PINNPhysicsSystem.h"
+#include "../ml/SIRENVortexField.h"
 #include <random>
 #include <cmath>
 #include <algorithm>
@@ -16,6 +17,7 @@
 
 ParticleSystem::~ParticleSystem() {
     delete m_pinnPhysics;
+    delete m_sirenVortex;
     Shutdown();
 }
 
@@ -170,6 +172,22 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
     } else {
         LOG_INFO("PINN not available (ONNX Runtime not installed or model not found)");
         LOG_INFO("  GPU physics will be used exclusively");
+    }
+    
+    // Initialize SIREN Vortex Field (ML-based turbulence)
+    m_sirenVortex = new SIRENVortexField();
+    if (m_sirenVortex->Initialize("ml/models/vortex_siren.onnx")) {
+        LOG_INFO("[SIREN] Loaded SIREN vortex field model!");
+        m_sirenVortex->SetEnabled(false);  // Start disabled (user can enable via ImGui)
+        m_sirenVortex->SetIntensity(0.5f); // Default moderate intensity
+        LOG_INFO("[SIREN] Turbulence available! Enable via ImGui controls");
+        
+        // Allocate turbulence force buffer
+        m_cpuTurbulenceForces.resize(particleCount);
+    } else {
+        LOG_INFO("[SIREN] Vortex field model not found (optional - turbulence disabled)");
+        delete m_sirenVortex;
+        m_sirenVortex = nullptr;
     }
 
     return true;
@@ -542,7 +560,7 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
         return;
     }
 
-    // Step 1: Predict forces using PINN (works directly on CPU particles)
+    // Step 1: Predict orbital forces using PINN (works directly on CPU particles)
     bool success = m_pinnPhysics->PredictForcesBatch(
         m_cpuPositions.data(),
         m_cpuVelocities.data(),
@@ -554,6 +572,28 @@ void ParticleSystem::UpdatePhysics_PINN(float deltaTime, float totalTime) {
     if (!success) {
         LOG_ERROR("[PINN] Force prediction failed");
         return;
+    }
+
+    // Step 1.5: Add SIREN turbulence forces (if enabled)
+    // PINN v4 is trained to be robust to velocity perturbations, so SIREN turbulence is safe
+    if (m_sirenVortex && m_sirenVortex->IsEnabled()) {
+        // Compute turbulent forces: F_turb = cross(velocity, vorticity)
+        bool sirenSuccess = m_sirenVortex->ComputeTurbulentForcesBatch(
+            m_cpuPositions.data(),
+            m_cpuVelocities.data(),
+            m_cpuTurbulenceForces.data(),
+            m_activeParticleCount,
+            totalTime
+        );
+
+        if (sirenSuccess) {
+            // Add turbulence to orbital forces: F_total = F_orbital + F_turbulence
+            for (uint32_t i = 0; i < m_activeParticleCount; i++) {
+                m_cpuForces[i].x += m_cpuTurbulenceForces[i].x;
+                m_cpuForces[i].y += m_cpuTurbulenceForces[i].y;
+                m_cpuForces[i].z += m_cpuTurbulenceForces[i].z;
+            }
+        }
     }
 
     // Step 2: Integrate forces (Velocity Verlet) on CPU particles
@@ -954,6 +994,58 @@ bool ParticleSystem::LoadPINNModel(const std::string& modelPath) {
     }
     
     return result;
+}
+
+// === SIREN Vortex Field (ML-based Turbulence) ===
+
+bool ParticleSystem::IsSIRENAvailable() const {
+    return m_sirenVortex && m_sirenVortex->IsAvailable();
+}
+
+bool ParticleSystem::IsSIRENEnabled() const {
+    return m_sirenVortex ? m_sirenVortex->IsEnabled() : false;
+}
+
+void ParticleSystem::SetSIRENEnabled(bool enabled) {
+    if (m_sirenVortex) {
+        m_sirenVortex->SetEnabled(enabled);
+        LOG_INFO("[SIREN] Turbulence {}", enabled ? "ENABLED" : "DISABLED");
+    }
+}
+
+float ParticleSystem::GetSIRENIntensity() const {
+    return m_sirenVortex ? m_sirenVortex->GetIntensity() : 0.0f;
+}
+
+void ParticleSystem::SetSIRENIntensity(float intensity) {
+    if (m_sirenVortex) {
+        m_sirenVortex->SetIntensity(intensity);
+    }
+}
+
+float ParticleSystem::GetSIRENSeed() const {
+    return m_sirenVortex ? m_sirenVortex->GetSeed() : 0.0f;
+}
+
+void ParticleSystem::SetSIRENSeed(float seed) {
+    if (m_sirenVortex) {
+        m_sirenVortex->SetSeed(seed);
+    }
+}
+
+std::string ParticleSystem::GetSIRENModelInfo() const {
+    return m_sirenVortex ? m_sirenVortex->GetModelInfo() : "SIREN not available";
+}
+
+ParticleSystem::SIRENMetrics ParticleSystem::GetSIRENMetrics() const {
+    SIRENMetrics metrics;
+    if (m_sirenVortex) {
+        auto sirenMetrics = m_sirenVortex->GetPerformanceMetrics();
+        metrics.inferenceTimeMs = sirenMetrics.inferenceTimeMs;
+        metrics.particlesProcessed = sirenMetrics.particlesProcessed;
+        metrics.avgBatchTimeMs = sirenMetrics.avgBatchTimeMs;
+    }
+    return metrics;
 }
 
 // ============================================================================

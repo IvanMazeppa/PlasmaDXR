@@ -11,6 +11,7 @@
 class Device;
 class ResourceManager;
 class PINNPhysicsSystem;
+class SIRENVortexField;
 
 // ParticleSystem - Manages particle data and physics
 // Focused on NASA-quality accretion disk simulation
@@ -214,6 +215,26 @@ public:
     std::string GetPINNModelPath() const;
     std::vector<std::pair<std::string, std::string>> GetAvailablePINNModels() const;
     bool LoadPINNModel(const std::string& modelPath);
+    
+    // SIREN Vortex Field (ML-based turbulence)
+    bool IsSIRENAvailable() const;
+    bool IsSIRENEnabled() const;
+    void SetSIRENEnabled(bool enabled);
+    
+    float GetSIRENIntensity() const;
+    void SetSIRENIntensity(float intensity);
+    
+    float GetSIRENSeed() const;
+    void SetSIRENSeed(float seed);
+    
+    std::string GetSIRENModelInfo() const;
+    
+    struct SIRENMetrics {
+        float inferenceTimeMs = 0.0f;
+        uint32_t particlesProcessed = 0;
+        float avgBatchTimeMs = 0.0f;
+    };
+    SIRENMetrics GetSIRENMetrics() const;
 
     // ========== Phase 2C: Explosion Spawning System ==========
 
@@ -332,6 +353,10 @@ private:
     PINNPhysicsSystem* m_pinnPhysics = nullptr;
     bool m_usePINN = false;
     bool m_particlesOnCPU = false;  // When true, particles are stored on CPU (PINN mode)
+    
+    // SIREN Vortex Field (ML-based turbulence)
+    SIRENVortexField* m_sirenVortex = nullptr;
+    std::vector<DirectX::XMFLOAT3> m_cpuTurbulenceForces;  // Buffer for SIREN output
 
     // CPU-side particle data buffers (for PINN inference)
     std::vector<DirectX::XMFLOAT3> m_cpuPositions;
