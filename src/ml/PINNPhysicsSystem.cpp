@@ -247,6 +247,21 @@ bool PINNPhysicsSystem::PredictForcesBatch(
                 inputData.push_back(m_physicsParams.blackHoleMassNormalized);
                 inputData.push_back(m_physicsParams.alphaViscosity);
                 inputData.push_back(m_physicsParams.diskThickness);
+
+                // DEBUG: Log first particle input
+                if (i == 0) {
+                    float r = sqrtf(positions[i].x * positions[i].x +
+                                  positions[i].y * positions[i].y +
+                                  positions[i].z * positions[i].z);
+                    float v_mag = sqrtf(velocities[i].x * velocities[i].x +
+                                      velocities[i].y * velocities[i].y +
+                                      velocities[i].z * velocities[i].z);
+                    LOG_INFO("[PINN v3 INPUT DEBUG] particle[0]: pos=({:.2f},{:.2f},{:.2f}) r={:.2f} | vel=({:.3f},{:.3f},{:.3f}) mag={:.3f} | t={:.3f} M_bh={:.3f} α={:.3f} H/R={:.3f}",
+                             positions[i].x, positions[i].y, positions[i].z, r,
+                             velocities[i].x, velocities[i].y, velocities[i].z, v_mag,
+                             currentTime, m_physicsParams.blackHoleMassNormalized,
+                             m_physicsParams.alphaViscosity, m_physicsParams.diskThickness);
+                }
             } else {
                 // v1/v2: 7D spherical input (r, θ, φ, v_r, v_θ, v_φ, t)
                 ParticleStateSpherical state = CartesianToSpherical(positions[i], velocities[i]);
@@ -329,18 +344,50 @@ bool PINNPhysicsSystem::PredictForcesBatch(
         float* outputPtr = outputTensors[0].GetTensorMutableData<float>();
         std::copy(outputPtr, outputPtr + pinnParticleCount * 3, outputData.begin());
 
-        // Convert spherical forces back to Cartesian coordinates
-        for (uint32_t i = 0; i < pinnParticleCount; i++) {
-            uint32_t particleIdx = pinnIndices[i];
+        // CRITICAL: v3 outputs Cartesian forces (Fx, Fy, Fz) DIRECTLY
+        // v1/v2 output spherical forces (F_r, F_theta, F_phi) that need conversion
+        if (m_isV3Model) {
+            // v3: Use raw ONNX output as Cartesian forces (NO coordinate transformation!)
+            for (uint32_t i = 0; i < pinnParticleCount; i++) {
+                uint32_t particleIdx = pinnIndices[i];
 
-            PredictedForces forces;
-            forces.F_r = outputData[i * 3 + 0];
-            forces.F_theta = outputData[i * 3 + 1];
-            forces.F_phi = outputData[i * 3 + 2];
+                outForces[particleIdx].x = outputData[i * 3 + 0];  // Fx (Cartesian)
+                outForces[particleIdx].y = outputData[i * 3 + 1];  // Fy (Cartesian)
+                outForces[particleIdx].z = outputData[i * 3 + 2];  // Fz (Cartesian)
 
-            // Convert back to Cartesian
-            ParticleStateSpherical state = CartesianToSpherical(positions[particleIdx], velocities[particleIdx]);
-            outForces[particleIdx] = SphericalForcesToCartesian(forces, state);
+                // DIAGNOSTIC: Log first particle to verify strong forces (GM=100 model)
+                if (i == 0) {
+                    float fx = outForces[particleIdx].x;
+                    float fy = outForces[particleIdx].y;
+                    float fz = outForces[particleIdx].z;
+                    float mag = sqrtf(fx*fx + fy*fy + fz*fz);
+
+                    // Compute radial component (should be NEGATIVE for attractive gravity)
+                    float r = sqrtf(positions[particleIdx].x * positions[particleIdx].x +
+                                  positions[particleIdx].y * positions[particleIdx].y +
+                                  positions[particleIdx].z * positions[particleIdx].z);
+                    float f_radial = (fx * positions[particleIdx].x +
+                                     fy * positions[particleIdx].y +
+                                     fz * positions[particleIdx].z) / r;
+
+                    LOG_INFO("[PINN v3 DEBUG] RAW ONNX particle[0]: F=({:.6f}, {:.6f}, {:.6f}) mag={:.6f} | r={:.2f} F_radial={:.6f} (should be NEGATIVE!)",
+                             fx, fy, fz, mag, r, f_radial);
+                }
+            }
+        } else {
+            // v1/v2: Convert spherical forces to Cartesian (legacy behavior)
+            for (uint32_t i = 0; i < pinnParticleCount; i++) {
+                uint32_t particleIdx = pinnIndices[i];
+
+                PredictedForces forces;
+                forces.F_r = outputData[i * 3 + 0];
+                forces.F_theta = outputData[i * 3 + 1];
+                forces.F_phi = outputData[i * 3 + 2];
+
+                // Convert back to Cartesian
+                ParticleStateSpherical state = CartesianToSpherical(positions[particleIdx], velocities[particleIdx]);
+                outForces[particleIdx] = SphericalForcesToCartesian(forces, state);
+            }
         }
 
         // Update performance metrics

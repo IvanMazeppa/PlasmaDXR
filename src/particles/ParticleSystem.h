@@ -23,9 +23,9 @@ public:
     static constexpr float OUTER_DISK_RADIUS = 300.0f;      // Reduced for denser, more visible disk
     static constexpr float DISK_THICKNESS = 50.0f;
 
-    // PINN Normalized Unit System (G*M = 1)
-    // Training data uses: r=10-300, v=sqrt(1/r), F=-1/r^2
-    static constexpr float PINN_GM = 1.0f;                  // Gravitational parameter (normalized)
+    // PINN Normalized Unit System (G*M = 100) - UPDATED FOR v3 MODEL
+    // Training data uses: r=10-300, v=sqrt(100/r), F=-100/r^2
+    static constexpr float PINN_GM = 100.0f;                // Gravitational parameter (MUST match training script!)
     static constexpr float PINN_R_ISCO = 6.0f;              // Innermost stable circular orbit
     static constexpr float INITIAL_ANGULAR_MOMENTUM = 100.0f;
 
