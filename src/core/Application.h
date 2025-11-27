@@ -331,6 +331,11 @@ private:
     float m_groundPlaneHeight = -500.0f;        // Y position (below accretion disk)
     float m_groundPlaneSize = 3000.0f;          // Width/depth extent
     float m_groundPlaneAlbedo[3] = {0.3f, 0.3f, 0.35f};  // Surface reflectance (gray)
+    
+    // === PINN Model Selection (--pinn flag) ===
+    std::string m_pinnModelPath;                // Model path from --pinn flag (empty = auto-detect)
+    int m_pinnModelIndex = 0;                   // Currently selected model in dropdown
+    std::vector<std::pair<std::string, std::string>> m_availablePINNModels;  // Cached model list
 
     // Helper functions for buffer dumping
     void DumpGPUBuffers();

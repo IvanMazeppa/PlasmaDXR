@@ -208,6 +208,12 @@ public:
 
     // Reinitialize particles with current PINN settings
     void ReinitializePINNParticles();
+    
+    // PINN Model Selection (runtime switching)
+    std::string GetPINNModelName() const;
+    std::string GetPINNModelPath() const;
+    std::vector<std::pair<std::string, std::string>> GetAvailablePINNModels() const;
+    bool LoadPINNModel(const std::string& modelPath);
 
     // ========== Phase 2C: Explosion Spawning System ==========
 

@@ -145,6 +145,23 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             } else {
                 LOG_INFO("Ground plane enabled (default height: {})", m_groundPlaneHeight);
             }
+        } else if (arg == "--pinn" && i + 1 < argc) {
+            std::string modelArg = argv[++i];
+            
+            // Allow shorthand versions (v3, v4) or full paths
+            if (modelArg == "v3") {
+                m_pinnModelPath = "ml/models/pinn_v3_total_forces.onnx";
+            } else if (modelArg == "v4") {
+                m_pinnModelPath = "ml/models/pinn_v4_turbulence_robust.onnx";
+            } else if (modelArg == "v2") {
+                m_pinnModelPath = "ml/models/pinn_v2_turbulent.onnx";
+            } else if (modelArg == "v1") {
+                m_pinnModelPath = "ml/models/pinn_accretion_disk.onnx";
+            } else {
+                // Assume full path provided
+                m_pinnModelPath = modelArg;
+            }
+            LOG_INFO("PINN model specified: {}", m_pinnModelPath);
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
             LOG_INFO("  --config=<file>      : Load configuration from JSON file");
@@ -153,6 +170,8 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --particles <count>  : Set particle count");
             LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
             LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
+            LOG_INFO("  --pinn <model>       : Select PINN model (v1, v2, v3, v4, or path)");
+            LOG_INFO("                         v3 = Total Forces, v4 = Turbulence-Robust");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
             LOG_INFO("  --ground-plane [height] : Enable reflective ground plane (default: -500)");
@@ -213,6 +232,31 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // ParticleSystem reserves last 1000 particles for explosions, so active count = total - pool
     m_activeParticleCount = m_particleSystem->GetActiveParticleCount();
     LOG_INFO("Active particle count synced from ParticleSystem: {} (explosion pool reserved)", m_activeParticleCount);
+    
+    // Load PINN model if specified via --pinn flag
+    if (!m_pinnModelPath.empty() && m_particleSystem->IsPINNAvailable()) {
+        LOG_INFO("Loading specified PINN model: {}", m_pinnModelPath);
+        if (m_particleSystem->LoadPINNModel(m_pinnModelPath)) {
+            LOG_INFO("Successfully loaded PINN model: {}", m_particleSystem->GetPINNModelName());
+            // Auto-enable PINN when model is specified via command line
+            m_particleSystem->SetPINNEnabled(true);
+        } else {
+            LOG_WARN("Failed to load specified PINN model, using default");
+        }
+    }
+    
+    // Cache available PINN models for ImGui dropdown
+    m_availablePINNModels = m_particleSystem->GetAvailablePINNModels();
+    LOG_INFO("Found {} available PINN models", m_availablePINNModels.size());
+    
+    // Find current model index in list
+    std::string currentModelPath = m_particleSystem->GetPINNModelPath();
+    for (size_t i = 0; i < m_availablePINNModels.size(); i++) {
+        if (m_availablePINNModels[i].second == currentModelPath) {
+            m_pinnModelIndex = static_cast<int>(i);
+            break;
+        }
+    }
 
     // Initialize particle renderer based on command-line selection
     if (m_config.rendererType == RendererType::Gaussian) {
@@ -3737,6 +3781,44 @@ void Application::RenderImGui() {
                 if (ImGui::Checkbox("Enable PINN Physics (P key)", &pinnEnabled)) {
                     m_particleSystem->SetPINNEnabled(pinnEnabled);
                 }
+                
+                // Model Selection Dropdown
+                if (!m_availablePINNModels.empty()) {
+                    ImGui::Text("Model:");
+                    ImGui::SameLine();
+                    
+                    // Build combo items string
+                    std::string currentLabel = m_pinnModelIndex < static_cast<int>(m_availablePINNModels.size()) 
+                        ? m_availablePINNModels[m_pinnModelIndex].first 
+                        : "Select Model";
+                    
+                    if (ImGui::BeginCombo("##PINNModel", currentLabel.c_str())) {
+                        for (int i = 0; i < static_cast<int>(m_availablePINNModels.size()); i++) {
+                            bool isSelected = (m_pinnModelIndex == i);
+                            if (ImGui::Selectable(m_availablePINNModels[i].first.c_str(), isSelected)) {
+                                if (m_pinnModelIndex != i) {
+                                    m_pinnModelIndex = i;
+                                    // Load the selected model
+                                    LOG_INFO("[GUI] Switching PINN model to: {}", m_availablePINNModels[i].second);
+                                    m_particleSystem->LoadPINNModel(m_availablePINNModels[i].second);
+                                }
+                            }
+                            if (isSelected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Select PINN physics model:\n"
+                                         "v4: Turbulence-Robust (best for dynamic scenes)\n"
+                                         "v3: Total Forces (orbital physics)\n"
+                                         "v2/v1: Legacy models\n\n"
+                                         "Use --pinn <v3|v4|path> to set at startup");
+                    }
+                }
 
                 if (pinnEnabled) {
                     ImGui::Indent();
@@ -3857,10 +3939,20 @@ void Application::RenderImGui() {
 
                 // Model info
                 int modelVersion = m_particleSystem->GetPINNModelVersion();
-                if (modelVersion == 2) {
-                    ImGui::TextDisabled("Model: PINN Accretion Disk v2 (parameter-conditioned)");
-                } else {
-                    ImGui::TextDisabled("Model: PINN Accretion Disk v1 (5 layers, 128 neurons)");
+                std::string modelName = m_particleSystem->GetPINNModelName();
+                switch (modelVersion) {
+                    case 4:
+                        ImGui::TextDisabled("Model: %s [v4 Turbulence-Robust]", modelName.c_str());
+                        break;
+                    case 3:
+                        ImGui::TextDisabled("Model: %s [v3 Total Forces]", modelName.c_str());
+                        break;
+                    case 2:
+                        ImGui::TextDisabled("Model: %s [v2 Parameter-Conditioned]", modelName.c_str());
+                        break;
+                    default:
+                        ImGui::TextDisabled("Model: %s [v1 Legacy]", modelName.c_str());
+                        break;
                 }
             } else {
                 ImGui::TextDisabled("PINN: Not Available");

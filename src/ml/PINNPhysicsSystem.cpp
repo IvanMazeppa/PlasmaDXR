@@ -4,8 +4,10 @@
 #include <chrono>
 #include <sstream>
 #include <algorithm>  // std::clamp
+#include <filesystem>
 
 using namespace DirectX;
+namespace fs = std::filesystem;
 
 PINNPhysicsSystem::PINNPhysicsSystem()
 #ifdef ENABLE_ML_FEATURES
@@ -114,19 +116,33 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
 
         LOG_INFO("[PINN] Output: '{}', shape: [{}, {}]", m_outputNames[0], m_outputShape[0], m_outputShape[1]);
 
-        // Validate model dimensions and detect v3
+        // Validate model dimensions and detect v3/v4
         if (m_inputShape[1] == 10 && !m_isV2Model) {
-            // v3 model: 10D input (x, y, z, vx, vy, vz, t, M_bh, alpha, H_R)
+            // v3/v4 model: 10D input (x, y, z, vx, vy, vz, t, M_bh, alpha, H_R)
             m_isV3Model = true;
-            LOG_INFO("[PINN] Detected v3 model (10D Cartesian input with total forces)");
+            
+            // Detect v4 from model path
+            if (modelPath.find("v4") != std::string::npos || 
+                modelPath.find("turbulence_robust") != std::string::npos) {
+                m_isV4Model = true;
+                LOG_INFO("[PINN] Detected v4 model (10D Cartesian, turbulence-robust)");
+            } else {
+                LOG_INFO("[PINN] Detected v3 model (10D Cartesian input with total forces)");
+            }
         } else if (m_inputShape[1] == 7) {
             // v1/v2 model: 7D input (r, θ, φ, v_r, v_θ, v_φ, t)
             m_isV3Model = false;
+            m_isV4Model = false;
             LOG_INFO("[PINN] Detected v{} model (7D spherical input)", m_isV2Model ? 2 : 1);
         } else {
-            LOG_ERROR("[PINN] Invalid input shape. Expected 7 (v1/v2) or 10 (v3) features, got {}", m_inputShape[1]);
+            LOG_ERROR("[PINN] Invalid input shape. Expected 7 (v1/v2) or 10 (v3/v4) features, got {}", m_inputShape[1]);
             return false;
         }
+        
+        // Store model identification
+        fs::path p(modelPath);
+        m_currentModelName = p.stem().string();
+        m_currentModelPath = modelPath;
 
         if (m_outputShape[1] != 3) {
             LOG_ERROR("[PINN] Invalid output shape. Expected 3 forces, got {}", m_outputShape[1]);
@@ -152,6 +168,106 @@ bool PINNPhysicsSystem::Initialize(const std::string& modelPath) {
         return false;
     }
 #endif
+}
+
+bool PINNPhysicsSystem::LoadModel(const std::string& modelPath) {
+#ifndef ENABLE_ML_FEATURES
+    LOG_WARN("[PINN] ONNX Runtime not available. Cannot load model.");
+    return false;
+#else
+    // Release existing session before loading new model
+    if (m_ortSession) {
+        LOG_INFO("[PINN] Releasing previous model...");
+        m_ortSession.reset();
+        m_inputNames.clear();
+        m_outputNames.clear();
+        m_modelLoaded = false;
+    }
+    
+    // Reset version flags
+    m_isV2Model = false;
+    m_isV3Model = false;
+    m_isV4Model = false;
+    
+    // Initialize with new model
+    bool result = Initialize(modelPath);
+    
+    if (result) {
+        // Detect v4 model from filename pattern
+        if (modelPath.find("v4") != std::string::npos || 
+            modelPath.find("turbulence_robust") != std::string::npos) {
+            m_isV4Model = true;
+            m_isV3Model = true;  // v4 is also compatible with v3 inference path
+            LOG_INFO("[PINN] Model identified as v4 (turbulence-robust)");
+        }
+        
+        // Extract model name from path
+        fs::path p(modelPath);
+        m_currentModelName = p.stem().string();
+        m_currentModelPath = modelPath;
+        
+        LOG_INFO("[PINN] Successfully loaded model: {}", m_currentModelName);
+    }
+    
+    return result;
+#endif
+}
+
+std::vector<std::pair<std::string, std::string>> PINNPhysicsSystem::GetAvailableModels() {
+    std::vector<std::pair<std::string, std::string>> models;
+    
+    // Scan ml/models/ directory for ONNX files
+    const std::string modelDir = "ml/models/";
+    
+    try {
+        if (!fs::exists(modelDir)) {
+            LOG_WARN("[PINN] Model directory not found: {}", modelDir);
+            return models;
+        }
+        
+        for (const auto& entry : fs::directory_iterator(modelDir)) {
+            if (entry.is_regular_file()) {
+                std::string filename = entry.path().filename().string();
+                std::string extension = entry.path().extension().string();
+                
+                // Only include .onnx files (not .onnx.data)
+                if (extension == ".onnx" && filename.find("pinn") != std::string::npos) {
+                    std::string displayName = entry.path().stem().string();
+                    std::string fullPath = entry.path().string();
+                    
+                    // Add version info to display name
+                    std::string versionInfo;
+                    if (displayName.find("v4") != std::string::npos) {
+                        versionInfo = " [v4 Turbulence-Robust]";
+                    } else if (displayName.find("v3") != std::string::npos) {
+                        versionInfo = " [v3 Total Forces]";
+                    } else if (displayName.find("v2") != std::string::npos) {
+                        versionInfo = " [v2 Legacy]";
+                    } else {
+                        versionInfo = " [v1 Legacy]";
+                    }
+                    
+                    models.push_back({displayName + versionInfo, fullPath});
+                    LOG_INFO("[PINN] Found model: {} -> {}", displayName, fullPath);
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("[PINN] Error scanning model directory: {}", e.what());
+    }
+    
+    // Sort by version (v4 first, then v3, v2, v1)
+    std::sort(models.begin(), models.end(), [](const auto& a, const auto& b) {
+        auto getVersion = [](const std::string& name) {
+            if (name.find("v4") != std::string::npos) return 4;
+            if (name.find("v3") != std::string::npos) return 3;
+            if (name.find("v2") != std::string::npos) return 2;
+            return 1;
+        };
+        return getVersion(a.first) > getVersion(b.first);
+    });
+    
+    return models;
 }
 
 bool PINNPhysicsSystem::IsAvailable() const {
@@ -445,15 +561,27 @@ std::string PINNPhysicsSystem::GetModelInfo() const {
     }
 
     std::ostringstream oss;
-    oss << "PINN Accretion Disk Model (v" << (m_isV2Model ? "2" : "1") << ")\n";
-    oss << "  Input 0: " << m_inputNames[0] << " [batch, 7]\n";
+    int version = GetModelVersion();
+    oss << "PINN Accretion Disk Model (v" << version << ")\n";
+    oss << "  Name: " << m_currentModelName << "\n";
+    
+    if (m_isV4Model) {
+        oss << "  Type: Turbulence-Robust (10D Cartesian)\n";
+    } else if (m_isV3Model) {
+        oss << "  Type: Total Forces (10D Cartesian)\n";
+    } else {
+        oss << "  Type: Legacy (7D Spherical)\n";
+    }
+    
+    int inputDim = m_isV3Model ? 10 : 7;
+    oss << "  Input 0: " << m_inputNames[0] << " [batch, " << inputDim << "]\n";
     if (m_isV2Model && m_inputNames.size() > 1) {
         oss << "  Input 1: " << m_inputNames[1] << " [batch, 3]\n";
     }
     oss << "  Output: " << m_outputNames[0] << " [batch, 3]\n";
     oss << "  Hybrid Mode: " << (m_hybridMode ? "ON" : "OFF") << "\n";
     oss << "  Threshold: " << (m_hybridThresholdRadius / R_ISCO) << "× R_ISCO\n";
-    if (m_isV2Model) {
+    if (m_isV2Model || m_isV3Model || m_isV4Model) {
         oss << "  --- Physics Parameters ---\n";
         oss << "  Black Hole Mass: " << m_physicsParams.blackHoleMassNormalized << "× default\n";
         oss << "  Alpha Viscosity: " << m_physicsParams.alphaViscosity << "\n";

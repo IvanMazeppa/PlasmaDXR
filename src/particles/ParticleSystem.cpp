@@ -912,6 +912,50 @@ void ParticleSystem::ReinitializePINNParticles() {
     LOG_INFO("[PINN] Reinitialized {} particles", m_particleCount);
 }
 
+// === PINN Model Selection ===
+
+std::string ParticleSystem::GetPINNModelName() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetCurrentModelName() : "none";
+}
+
+std::string ParticleSystem::GetPINNModelPath() const {
+    return m_pinnPhysics ? m_pinnPhysics->GetCurrentModelPath() : "";
+}
+
+std::vector<std::pair<std::string, std::string>> ParticleSystem::GetAvailablePINNModels() const {
+    return PINNPhysicsSystem::GetAvailableModels();
+}
+
+bool ParticleSystem::LoadPINNModel(const std::string& modelPath) {
+    if (!m_pinnPhysics) {
+        LOG_ERROR("[PINN] Cannot load model - PINN system not initialized");
+        return false;
+    }
+    
+    LOG_INFO("[PINN] Loading model: {}", modelPath);
+    
+    bool wasEnabled = m_usePINN;
+    m_usePINN = false;  // Disable during model switch
+    
+    bool result = m_pinnPhysics->LoadModel(modelPath);
+    
+    if (result) {
+        LOG_INFO("[PINN] Model loaded successfully: {}", m_pinnPhysics->GetCurrentModelName());
+        LOG_INFO("[PINN] Model version: v{}", m_pinnPhysics->GetModelVersion());
+        
+        // Reinitialize particles for the new model
+        if (m_particlesOnCPU) {
+            ReinitializePINNParticles();
+        }
+        
+        m_usePINN = wasEnabled;  // Restore enabled state
+    } else {
+        LOG_ERROR("[PINN] Failed to load model: {}", modelPath);
+    }
+    
+    return result;
+}
+
 // ============================================================================
 // Sprint 1: Material System Implementation
 // ============================================================================

@@ -189,7 +189,7 @@ def export_to_onnx(model: VortexSIREN, output_path: str, output_scale: float):
         input_names=['input'],
         output_names=['vorticity'],
         dynamic_axes={'input': {0: 'batch'}, 'vorticity': {0: 'batch'}},
-        opset_version=11
+        opset_version=18
     )
 
     print(f"Exported ONNX model to: {output_path}")

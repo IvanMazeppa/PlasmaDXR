@@ -97,7 +97,22 @@ public:
 
     // Check if using v2 (parameter-conditioned) model
     bool IsParameterConditioned() const { return m_isV2Model; }
-    int GetModelVersion() const { return m_isV2Model ? 2 : 1; }
+    int GetModelVersion() const { 
+        if (m_isV4Model) return 4;
+        if (m_isV3Model) return 3;
+        if (m_isV2Model) return 2;
+        return 1;
+    }
+    
+    // Model selection at runtime
+    std::string GetCurrentModelName() const { return m_currentModelName; }
+    std::string GetCurrentModelPath() const { return m_currentModelPath; }
+    
+    // Get list of available models in ml/models/ directory
+    static std::vector<std::pair<std::string, std::string>> GetAvailableModels();
+    
+    // Reload with a different model (returns true if successful)
+    bool LoadModel(const std::string& modelPath);
 
     // Batch inference: predict forces for multiple particles
     // Input: particle positions/velocities in Cartesian coordinates
@@ -167,6 +182,11 @@ private:
     PhysicsParams m_physicsParams;
     bool m_isV2Model = false;  // v2: 2 inputs (state + params)
     bool m_isV3Model = false;  // v3: 1 input, 10D Cartesian (total forces output)
+    bool m_isV4Model = false;  // v4: 1 input, 10D Cartesian (turbulence-robust)
+    
+    // Model identification
+    std::string m_currentModelName = "none";
+    std::string m_currentModelPath;
 #ifdef ENABLE_ML_FEATURES
     std::vector<int64_t> m_paramsInputShape;  // Expected: [batch_size, 3] for v2 model
 #endif
