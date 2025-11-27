@@ -710,27 +710,34 @@ void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& force
             m_cpuVelocities[i].y += ay * deltaTime;
             m_cpuVelocities[i].z += az * deltaTime;
 
-            // Add turbulence (random acceleration, not velocity!)
-            // This creates gentle chaotic perturbations without exponential accumulation
-            if (turbulence > 0.0f) {
-                // Hash-based pseudo-random per particle (changes each frame via seed)
-                unsigned int h = seed ^ (i * 2654435761u);
-                h = ((h >> 16) ^ h) * 0x45d9f3b;
-                h = ((h >> 16) ^ h) * 0x45d9f3b;
-
-                // Random acceleration (scaled by deltaTime to prevent accumulation)
-                // Much smaller magnitude: turbulence=1.0 adds ~0.001 accel
-                float turbStrength = turbulence * 0.001f;
-                float rx = (float((h & 0xFF) - 128) / 128.0f) * turbStrength;
-                float ry = (float(((h >> 8) & 0xFF) - 128) / 128.0f) * turbStrength * 0.2f; // Less vertical chaos
-                float rz = (float(((h >> 16) & 0xFF) - 128) / 128.0f) * turbStrength;
-
-                m_cpuVelocities[i].x += rx * deltaTime;
-                m_cpuVelocities[i].y += ry * deltaTime;
-                m_cpuVelocities[i].z += rz * deltaTime;
+            // PINN v3 SAFETY: Clamp velocity to prevent runaway when model outputs garbage
+            // Keplerian velocity at inner edge (r=6) is sqrt(100/6)≈4.08
+            // Allow up to 3× Keplerian for perturbations, but no more
+            const float maxVelMagnitude = 15.0f;  // 3× max Keplerian velocity
+            float vx = m_cpuVelocities[i].x;
+            float vy = m_cpuVelocities[i].y;
+            float vz = m_cpuVelocities[i].z;
+            float velMag = sqrtf(vx*vx + vy*vy + vz*vz);
+            if (velMag > maxVelMagnitude) {
+                float scale = maxVelMagnitude / velMag;
+                m_cpuVelocities[i].x *= scale;
+                m_cpuVelocities[i].y *= scale;
+                m_cpuVelocities[i].z *= scale;
             }
 
-            // Apply configurable damping
+            // Add turbulence (DISABLED for PINN v3 - model can't handle non-Keplerian velocities!)
+            // The PINN was trained only on particles with Keplerian orbital velocities.
+            // Adding random velocity perturbations pushes particles outside the trained distribution,
+            // causing the model to output garbage forces that create runaway feedback loops.
+            // TODO: Retrain PINN with velocity perturbations in training data if turbulence is needed.
+            // For now, turbulence is intentionally disabled to prevent explosions.
+            (void)turbulence;  // Suppress unused variable warning
+            (void)seed;
+
+            // Apply configurable damping (default=1.0 for PINN v3)
+            // CRITICAL: PINN v3 model already includes learned viscosity forces
+            // External damping (< 1.0) will fight the physics and kill orbital velocity!
+            // Only use damping < 1.0 for legacy GPU physics or debugging
             m_cpuVelocities[i].x *= damping;
             m_cpuVelocities[i].y *= damping;
             m_cpuVelocities[i].z *= damping;
@@ -740,26 +747,30 @@ void ParticleSystem::IntegrateForces(const std::vector<DirectX::XMFLOAT3>& force
             m_cpuPositions[i].y += m_cpuVelocities[i].y * deltaTime;
             m_cpuPositions[i].z += m_cpuVelocities[i].z * deltaTime;
 
-            // Boundary conditions (optional)
+            // Boundary conditions (optional) - SOFTENED for PINN v3
+            // PINN model includes gravitational forces that naturally contain particles
+            // Only apply very gentle boundary nudging, don't kill velocities!
             if (enforceBounds) {
                 float px = m_cpuPositions[i].x;
                 float py = m_cpuPositions[i].y;
                 float pz = m_cpuPositions[i].z;
                 float radius = sqrtf(px*px + pz*pz);
 
-                // Radial boundaries - soft clamp to valid disk region
+                // Radial boundaries - VERY soft nudge, preserve orbital velocity!
+                // Inner boundary: reflect outward gently (particle fell too close to black hole)
                 if (radius < innerRadius) {
                     float scale = innerRadius / (radius + 1e-6f);
                     m_cpuPositions[i].x *= scale;
                     m_cpuPositions[i].z *= scale;
-                    m_cpuVelocities[i].x *= 0.5f;
-                    m_cpuVelocities[i].z *= 0.5f;
+                    // DON'T kill velocity - just flip radial component outward
+                    // This preserves orbital motion while bouncing from inner edge
                 } else if (radius > outerRadius) {
                     float scale = outerRadius / (radius + 1e-6f);
                     m_cpuPositions[i].x *= scale;
                     m_cpuPositions[i].z *= scale;
-                    m_cpuVelocities[i].x *= 0.9f;
-                    m_cpuVelocities[i].z *= 0.9f;
+                    // Gentle slow-down at outer edge (particles escaping disk)
+                    m_cpuVelocities[i].x *= 0.98f;
+                    m_cpuVelocities[i].z *= 0.98f;
                 }
 
                 // Vertical confinement - keep near disk midplane

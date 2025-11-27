@@ -348,18 +348,33 @@ bool PINNPhysicsSystem::PredictForcesBatch(
         // v1/v2 output spherical forces (F_r, F_theta, F_phi) that need conversion
         if (m_isV3Model) {
             // v3: Use raw ONNX output as Cartesian forces (NO coordinate transformation!)
+            // Maximum expected force magnitude at innermost orbit (r=6, GM=100):
+            // F = GM/r² = 100/36 ≈ 2.78, allow 2× margin for safety
+            const float maxForceMagnitude = 5.0f;
+
             for (uint32_t i = 0; i < pinnParticleCount; i++) {
                 uint32_t particleIdx = pinnIndices[i];
 
-                outForces[particleIdx].x = outputData[i * 3 + 0];  // Fx (Cartesian)
-                outForces[particleIdx].y = outputData[i * 3 + 1];  // Fy (Cartesian)
-                outForces[particleIdx].z = outputData[i * 3 + 2];  // Fz (Cartesian)
+                float fx = outputData[i * 3 + 0];  // Fx (Cartesian)
+                float fy = outputData[i * 3 + 1];  // Fy (Cartesian)
+                float fz = outputData[i * 3 + 2];  // Fz (Cartesian)
+
+                // SAFETY: Clamp force magnitude to prevent runaway when model outputs garbage
+                // This happens when particle velocity deviates from Keplerian (training distribution)
+                float forceMag = sqrtf(fx*fx + fy*fy + fz*fz);
+                if (forceMag > maxForceMagnitude) {
+                    float scale = maxForceMagnitude / forceMag;
+                    fx *= scale;
+                    fy *= scale;
+                    fz *= scale;
+                }
+
+                outForces[particleIdx].x = fx;
+                outForces[particleIdx].y = fy;
+                outForces[particleIdx].z = fz;
 
                 // DIAGNOSTIC: Log first particle to verify strong forces (GM=100 model)
                 if (i == 0) {
-                    float fx = outForces[particleIdx].x;
-                    float fy = outForces[particleIdx].y;
-                    float fz = outForces[particleIdx].z;
                     float mag = sqrtf(fx*fx + fy*fy + fz*fz);
 
                     // Compute radial component (should be NEGATIVE for attractive gravity)

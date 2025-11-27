@@ -315,7 +315,7 @@ private:
     // These control appearance without retraining the model
     float m_pinnVelocityMultiplier = 1.0f;    // Scale orbital velocities (1.0=physical, 5-20=visible rotation)
     float m_pinnTurbulence = 0.0f;            // Random velocity perturbation (0.0-1.0)
-    float m_pinnDamping = 0.999f;             // Velocity damping per frame (0.99-1.0)
+    float m_pinnDamping = 1.0f;               // Velocity damping per frame (1.0=none, PINN includes learned viscosity)
     float m_pinnRadialSpread = 1.0f;          // Initial radius distribution width (0.5=narrow, 2.0=wide)
     bool m_pinnEnforceBoundaries = true;      // Whether to clamp particles to disk region
 
