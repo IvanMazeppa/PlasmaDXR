@@ -150,6 +150,34 @@ public:
     void SetTimeScale(float value) { m_timeScale = (std::max)(0.0f, (std::min)(50.0f, value)); }
     void AdjustTimeScale(float delta) { m_timeScale = (std::max)(0.0f, (std::min)(50.0f, m_timeScale + delta)); }
 
+    // Benchmark Physics Parameters (Phase 1: Runtime Controls)
+    float GetGM() const { return m_gm; }
+    void SetGM(float value) { m_gm = (std::max)(1.0f, value); }
+
+    float GetDiskThickness() const { return m_diskThickness; }
+    void SetDiskThickness(float value) { m_diskThickness = (std::max)(0.01f, (std::min)(0.5f, value)); }
+
+    float GetDensityScale() const { return m_densityScale; }
+    void SetDensityScale(float value) { m_densityScale = (std::max)(0.01f, (std::min)(10.0f, value)); }
+
+    float GetInnerRadius() const { return m_innerRadius; }
+    void SetInnerRadius(float value) { m_innerRadius = (std::max)(1.0f, value); }
+
+    float GetOuterRadius() const { return m_outerRadius; }
+    void SetOuterRadius(float value) { m_outerRadius = (std::max)(m_innerRadius + 10.0f, value); }
+
+    float GetForceClamp() const { return m_forceClamp; }
+    void SetForceClamp(float value) { m_forceClamp = (std::max)(0.1f, value); }
+
+    float GetVelocityClamp() const { return m_velocityClamp; }
+    void SetVelocityClamp(float value) { m_velocityClamp = (std::max)(0.1f, value); }
+
+    int GetBoundaryMode() const { return m_boundaryMode; }
+    void SetBoundaryMode(int mode) { m_boundaryMode = (std::max)(0, (std::min)(3, mode)); }
+
+    bool GetEnforceBoundaries() const { return m_enforceBoundaries; }
+    void SetEnforceBoundaries(bool enforce) { m_enforceBoundaries = enforce; }
+
     // Debug: Readback particle data from GPU
     void DebugReadbackParticles(int count = 5);
 
@@ -374,6 +402,17 @@ private:
     float m_blackHoleMass = BLACK_HOLE_MASS;  // Solar masses (default: Sgr A*)
     float m_alphaViscosity = 0.1f;            // Shakura-Sunyaev α parameter (0.0-1.0)
     float m_timeScale = 1.0f;                 // Simulation speed multiplier (0.0-50.0, 1.0 = normal speed)
+
+    // Benchmark physics parameters (Phase 1: Runtime Controls)
+    float m_gm = 100.0f;                      // Gravitational parameter (G*M)
+    float m_diskThickness = 0.1f;             // H/R ratio (disk height/radius, 0.01-0.5)
+    float m_densityScale = 1.0f;              // Global density multiplier
+    float m_innerRadius = 6.0f;               // Inner disk radius (ISCO)
+    float m_outerRadius = 300.0f;             // Outer disk radius
+    float m_forceClamp = 10.0f;               // Maximum force magnitude (safety limit)
+    float m_velocityClamp = 20.0f;            // Maximum velocity magnitude (safety limit)
+    int m_boundaryMode = 1;                   // Boundary handling (0=none, 1=reflect, 2=wrap, 3=respawn)
+    bool m_enforceBoundaries = false;         // Whether to apply boundary constraints
 
     // PINN Visualization Parameters (post-processing after PINN inference)
     // These control appearance without retraining the model

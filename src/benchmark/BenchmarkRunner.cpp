@@ -31,8 +31,8 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     // Log configuration
     LOG_INFO("[Benchmark] Configuration:");
     LOG_INFO("[Benchmark]   PINN Model: {}", config.pinnModel);
-    LOG_INFO("[Benchmark]   SIREN: {} (intensity: {:.2f})", 
-             config.sirenEnabled ? "ENABLED" : "DISABLED", config.sirenIntensity);
+    LOG_INFO("[Benchmark]   SIREN: {} (intensity: {:.2f})",
+             config.turbulence.sirenEnabled ? "ENABLED" : "DISABLED", config.turbulence.sirenIntensity);
     LOG_INFO("[Benchmark]   Particles: {}", config.particleCount);
     LOG_INFO("[Benchmark]   Frames: {} (warmup: {})", config.frames, config.warmupFrames);
     LOG_INFO("[Benchmark]   Timestep: {:.4f}s, Timescale: {:.1f}x", config.timestep, config.timescale);
@@ -80,15 +80,47 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     }
     
     // Configure SIREN if enabled
-    if (config.sirenEnabled && m_particleSystem->IsSIRENAvailable()) {
-        LOG_INFO("[Benchmark] Enabling SIREN turbulence (intensity: {:.2f})", config.sirenIntensity);
+    if (config.turbulence.sirenEnabled && m_particleSystem->IsSIRENAvailable()) {
+        LOG_INFO("[Benchmark] Enabling SIREN turbulence (intensity: {:.2f})", config.turbulence.sirenIntensity);
         m_particleSystem->SetSIRENEnabled(true);
-        m_particleSystem->SetSIRENIntensity(config.sirenIntensity);
-        m_particleSystem->SetSIRENSeed(config.sirenSeed);
+        m_particleSystem->SetSIRENIntensity(config.turbulence.sirenIntensity);
+        m_particleSystem->SetSIRENSeed(config.turbulence.sirenSeed);
     }
     
     // Set timescale
     m_particleSystem->SetTimeScale(config.timescale);
+
+    // Apply physics parameters
+    LOG_INFO("[Benchmark] Applying physics parameters:");
+    LOG_INFO("[Benchmark]   GM: {:.2f}", config.physics.gm);
+    LOG_INFO("[Benchmark]   Black Hole Mass: {:.2f}", config.physics.blackHoleMass);
+    LOG_INFO("[Benchmark]   Alpha Viscosity: {:.4f}", config.physics.alphaViscosity);
+    LOG_INFO("[Benchmark]   Damping: {:.4f}", config.physics.damping);
+    LOG_INFO("[Benchmark]   Disk Thickness (H/R): {:.4f}", config.physics.diskThickness);
+    LOG_INFO("[Benchmark]   Inner Radius: {:.2f}", config.physics.innerRadius);
+    LOG_INFO("[Benchmark]   Outer Radius: {:.2f}", config.physics.outerRadius);
+    LOG_INFO("[Benchmark]   Density Scale: {:.2f}", config.physics.densityScale);
+    LOG_INFO("[Benchmark]   Angular Momentum Boost: {:.2f}", config.physics.angularMomentumBoost);
+
+    m_particleSystem->SetGM(config.physics.gm);
+    m_particleSystem->SetBlackHoleMass(config.physics.blackHoleMass);
+    m_particleSystem->SetAlphaViscosity(config.physics.alphaViscosity);
+    m_particleSystem->SetDamping(config.physics.damping);
+    m_particleSystem->SetDiskThickness(config.physics.diskThickness);
+    m_particleSystem->SetInnerRadius(config.physics.innerRadius);
+    m_particleSystem->SetOuterRadius(config.physics.outerRadius);
+    m_particleSystem->SetDensityScale(config.physics.densityScale);
+    m_particleSystem->SetAngularMomentum(config.physics.angularMomentumBoost);
+
+    // Apply simulation parameters
+    LOG_INFO("[Benchmark] Applying simulation parameters:");
+    LOG_INFO("[Benchmark]   Force Clamp: {:.2f}", config.simulation.forceClamp);
+    LOG_INFO("[Benchmark]   Velocity Clamp: {:.2f}", config.simulation.velocityClamp);
+    LOG_INFO("[Benchmark]   Boundary Mode: {} (0=none, 1=reflect, 2=wrap, 3=respawn)", config.simulation.boundaryMode);
+
+    m_particleSystem->SetForceClamp(config.simulation.forceClamp);
+    m_particleSystem->SetVelocityClamp(config.simulation.velocityClamp);
+    m_particleSystem->SetBoundaryMode(config.simulation.boundaryMode);
 
     // Configure boundary enforcement
     if (config.enforceBoundaries) {
@@ -106,8 +138,8 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     }
 
     // Initialize results structure
-    m_results.sirenEnabled = config.sirenEnabled;
-    m_results.sirenIntensity = config.sirenIntensity;
+    m_results.sirenEnabled = config.turbulence.sirenEnabled;
+    m_results.sirenIntensity = config.turbulence.sirenIntensity;
     m_results.particleCount = config.particleCount;
     m_results.framesSimulated = 0;
     m_results.timestep = config.timestep;
@@ -128,13 +160,51 @@ bool BenchmarkRunner::ParseCommandLine(int argc, char** argv, BenchmarkConfig& o
             outConfig.pinnModel = ResolvePINNModelPath(argv[++i]);
         }
         else if (arg == "--siren") {
-            outConfig.sirenEnabled = true;
+            outConfig.turbulence.sirenEnabled = true;
         }
         else if (arg == "--siren-intensity" && i + 1 < argc) {
-            outConfig.sirenIntensity = std::stof(argv[++i]);
+            outConfig.turbulence.sirenIntensity = std::stof(argv[++i]);
         }
         else if (arg == "--siren-seed" && i + 1 < argc) {
-            outConfig.sirenSeed = std::stof(argv[++i]);
+            outConfig.turbulence.sirenSeed = std::stof(argv[++i]);
+        }
+        // === PHYSICS PARAMETERS ===
+        else if (arg == "--gm" && i + 1 < argc) {
+            outConfig.physics.gm = std::stof(argv[++i]);
+        }
+        else if (arg == "--alpha" && i + 1 < argc) {
+            outConfig.physics.alphaViscosity = std::stof(argv[++i]);
+        }
+        else if (arg == "--angular-boost" && i + 1 < argc) {
+            outConfig.physics.angularMomentumBoost = std::stof(argv[++i]);
+        }
+        else if (arg == "--damping" && i + 1 < argc) {
+            outConfig.physics.damping = std::stof(argv[++i]);
+        }
+        else if (arg == "--bh-mass" && i + 1 < argc) {
+            outConfig.physics.blackHoleMass = std::stof(argv[++i]);
+        }
+        else if (arg == "--disk-thickness" && i + 1 < argc) {
+            outConfig.physics.diskThickness = std::stof(argv[++i]);
+        }
+        else if (arg == "--density-scale" && i + 1 < argc) {
+            outConfig.physics.densityScale = std::stof(argv[++i]);
+        }
+        else if (arg == "--inner-radius" && i + 1 < argc) {
+            outConfig.physics.innerRadius = std::stof(argv[++i]);
+        }
+        else if (arg == "--outer-radius" && i + 1 < argc) {
+            outConfig.physics.outerRadius = std::stof(argv[++i]);
+        }
+        // === SIMULATION PARAMETERS ===
+        else if (arg == "--force-clamp" && i + 1 < argc) {
+            outConfig.simulation.forceClamp = std::stof(argv[++i]);
+        }
+        else if (arg == "--velocity-clamp" && i + 1 < argc) {
+            outConfig.simulation.velocityClamp = std::stof(argv[++i]);
+        }
+        else if (arg == "--boundary-mode" && i + 1 < argc) {
+            outConfig.simulation.boundaryMode = std::stoi(argv[++i]);
         }
         else if (arg == "--particles" && i + 1 < argc) {
             outConfig.particleCount = std::stoi(argv[++i]);
@@ -645,6 +715,23 @@ void PrintBenchmarkHelp() {
     LOG_INFO("  --timescale <f>        Time multiplier 1-50 (default: 1.0)");
     LOG_INFO("  --enforce-boundaries   Enable containment volume (default: OFF)");
     LOG_INFO("  --hybrid               Enable PINN+GPU hybrid mode (default: OFF)");
+    LOG_INFO("");
+    LOG_INFO("Physics Parameters:");
+    LOG_INFO("  --gm <f>               Gravitational parameter G*M (default: 100.0)");
+    LOG_INFO("  --bh-mass <f>          Black hole mass multiplier (default: 1.0, range: 0.1-10.0)");
+    LOG_INFO("  --alpha <f>            Shakura-Sunyaev alpha viscosity (default: 0.1, range: 0.001-1.0)");
+    LOG_INFO("  --damping <f>          Velocity damping factor (default: 1.0, range: 0.9-1.0)");
+    LOG_INFO("  --angular-boost <f>    Angular momentum boost (default: 1.0)");
+    LOG_INFO("  --disk-thickness <f>   Disk H/R ratio (default: 0.1, range: 0.01-0.5)");
+    LOG_INFO("  --inner-radius <f>     Inner disk radius/ISCO (default: 6.0)");
+    LOG_INFO("  --outer-radius <f>     Outer disk radius (default: 300.0)");
+    LOG_INFO("  --density-scale <f>    Global density multiplier (default: 1.0)");
+    LOG_INFO("");
+    LOG_INFO("Simulation Parameters:");
+    LOG_INFO("  --force-clamp <f>      Max force magnitude (default: 10.0)");
+    LOG_INFO("  --velocity-clamp <f>   Max velocity magnitude (default: 20.0)");
+    LOG_INFO("  --boundary-mode <n>    Boundary handling: 0=none, 1=reflect, 2=wrap, 3=respawn (default: 1)");
+    LOG_INFO("");
     LOG_INFO("  --warmup <n>           Warmup frames (default: 100)");
     LOG_INFO("  --sample-interval <n>  Frames between samples (default: 10)");
     LOG_INFO("  --output <path>        Output file path (default: benchmark_results.json)");
@@ -656,6 +743,8 @@ void PrintBenchmarkHelp() {
     LOG_INFO("Examples:");
     LOG_INFO("  --benchmark --pinn v4 --frames 500");
     LOG_INFO("  --benchmark --pinn v4 --siren --siren-intensity 0.3");
+    LOG_INFO("  --benchmark --pinn v4 --alpha 0.3 --bh-mass 2.0 --frames 500");
+    LOG_INFO("  --benchmark --pinn v4 --disk-thickness 0.2 --density-scale 2.0");
     LOG_INFO("  --benchmark --compare-all --frames 300");
     LOG_INFO("");
 }

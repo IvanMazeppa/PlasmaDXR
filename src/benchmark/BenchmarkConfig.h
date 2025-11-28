@@ -6,16 +6,61 @@
 
 namespace Benchmark {
 
+// Physics parameter configuration
+struct PhysicsConfig {
+    // Gravitational
+    float gm = 100.0f;                    // Gravitational parameter (G*M)
+    float blackHoleMass = 1.0f;           // Mass multiplier (0.1-10.0)
+
+    // Viscosity
+    float alphaViscosity = 0.1f;          // Shakura-Sunyaev alpha (0.001-1.0)
+    float damping = 1.0f;                 // Velocity damping (0.9-1.0)
+
+    // Disk geometry
+    float diskThickness = 0.1f;           // H/R ratio (0.01-0.5)
+    float innerRadius = 6.0f;             // ISCO
+    float outerRadius = 300.0f;           // Disk edge
+
+    // Density
+    float densityScale = 1.0f;            // Global density multiplier
+
+    // Dynamics
+    float angularMomentumBoost = 1.0f;    // Initial velocity boost
+};
+
+// Simulation configuration
+struct SimulationConfig {
+    float forceClamp = 10.0f;             // Max force magnitude
+    float velocityClamp = 20.0f;          // Max velocity magnitude
+    int boundaryMode = 1;                 // Boundary handling (0=none, 1=reflect, 2=wrap, 3=respawn)
+};
+
+// Turbulence configuration
+struct TurbulenceConfig {
+    bool sirenEnabled = false;
+    float sirenIntensity = 0.5f;
+    float sirenSeed = 0.0f;
+
+    // Physics constraints
+    bool conserveAngularMomentum = true;  // Project out net torque
+    float vortexScale = 1.0f;             // Eddy size multiplier
+    float vortexDecay = 0.1f;             // Temporal decay rate
+};
+
 // Configuration for a single benchmark run
 struct BenchmarkConfig {
     // PINN Model
     std::string pinnModel = "ml/models/pinn_v4_turbulence_robust.onnx";
-    
-    // SIREN Turbulence
-    bool sirenEnabled = false;
-    float sirenIntensity = 0.5f;
-    float sirenSeed = 0.0f;
-    
+
+    // Physics parameters
+    PhysicsConfig physics;
+
+    // Simulation parameters
+    SimulationConfig simulation;
+
+    // Turbulence parameters
+    TurbulenceConfig turbulence;
+
     // Simulation Parameters
     uint32_t particleCount = 10000;
     uint32_t frames = 1000;

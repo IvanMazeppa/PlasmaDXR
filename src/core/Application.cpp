@@ -4137,6 +4137,100 @@ void Application::RenderImGui() {
             if (ImGui::Button("1x")) { m_particleSystem->SetTimeScale(1.0f); }
             ImGui::SameLine();
             if (ImGui::Button("2x")) { m_particleSystem->SetTimeScale(2.0f); }
+
+            // Benchmark Physics Parameters (Phase 1: Runtime Controls)
+            ImGui::Separator();
+            if (ImGui::CollapsingHeader("Advanced Physics Parameters")) {
+                ImGui::Text("Gravitational Parameters");
+
+                float gm = m_particleSystem->GetGM();
+                if (ImGui::SliderFloat("GM (G*M)", &gm, 1.0f, 500.0f, "%.2f")) {
+                    m_particleSystem->SetGM(gm);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Gravitational parameter (G*M)\nControls overall gravitational strength");
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Disk Geometry");
+
+                float diskThickness = m_particleSystem->GetDiskThickness();
+                if (ImGui::SliderFloat("Disk Thickness (H/R)", &diskThickness, 0.01f, 0.5f, "%.3f")) {
+                    m_particleSystem->SetDiskThickness(diskThickness);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Height-to-radius ratio\n0.01 = thin disk, 0.5 = thick disk");
+                }
+
+                float innerRadius = m_particleSystem->GetInnerRadius();
+                if (ImGui::SliderFloat("Inner Radius (ISCO)", &innerRadius, 1.0f, 20.0f, "%.1f")) {
+                    m_particleSystem->SetInnerRadius(innerRadius);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Innermost Stable Circular Orbit\nTypically 3-6x Schwarzschild radius");
+                }
+
+                float outerRadius = m_particleSystem->GetOuterRadius();
+                if (ImGui::SliderFloat("Outer Radius", &outerRadius, 50.0f, 1000.0f, "%.1f")) {
+                    m_particleSystem->SetOuterRadius(outerRadius);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Outer edge of accretion disk");
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Material Properties");
+
+                float densityScale = m_particleSystem->GetDensityScale();
+                if (ImGui::SliderFloat("Density Scale", &densityScale, 0.01f, 10.0f, "%.2f")) {
+                    m_particleSystem->SetDensityScale(densityScale);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Global density multiplier\nAffects visual opacity and scattering");
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Safety Limits");
+
+                float forceClamp = m_particleSystem->GetForceClamp();
+                if (ImGui::SliderFloat("Force Clamp", &forceClamp, 0.1f, 100.0f, "%.2f")) {
+                    m_particleSystem->SetForceClamp(forceClamp);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Maximum force magnitude\nPrevents numerical instability near singularity");
+                }
+
+                float velocityClamp = m_particleSystem->GetVelocityClamp();
+                if (ImGui::SliderFloat("Velocity Clamp", &velocityClamp, 0.1f, 100.0f, "%.2f")) {
+                    m_particleSystem->SetVelocityClamp(velocityClamp);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Maximum velocity magnitude\nPrevents particles from exceeding physical limits");
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Boundary Handling");
+
+                int boundaryMode = m_particleSystem->GetBoundaryMode();
+                const char* boundaryModes[] = { "None", "Reflect", "Wrap", "Respawn" };
+                if (ImGui::Combo("Boundary Mode", &boundaryMode, boundaryModes, 4)) {
+                    m_particleSystem->SetBoundaryMode(boundaryMode);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("None: Particles can escape\n"
+                                     "Reflect: Bounce off boundaries\n"
+                                     "Wrap: Toroidal wrapping\n"
+                                     "Respawn: Reset to initial distribution");
+                }
+
+                bool enforceBoundaries = m_particleSystem->GetEnforceBoundaries();
+                if (ImGui::Checkbox("Enforce Boundaries", &enforceBoundaries)) {
+                    m_particleSystem->SetEnforceBoundaries(enforceBoundaries);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Apply boundary constraints to particle motion");
+                }
+            }
         }
         ImGui::Separator();
         ImGui::Text("Simulation Info");
