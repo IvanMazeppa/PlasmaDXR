@@ -12,6 +12,7 @@
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
+#include "../benchmark/BenchmarkRunner.h"
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"
 #endif
@@ -42,6 +43,15 @@ Application::~Application() {
 
 bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char** argv) {
     LOG_INFO("Initializing Application...");
+    
+    // Check for benchmark mode FIRST (skip all GPU/window initialization)
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--benchmark") {
+            m_benchmarkMode = true;
+            LOG_INFO("=== BENCHMARK MODE DETECTED ===");
+            return InitializeBenchmarkMode(argc, argv);
+        }
+    }
 
     // Load configuration from JSON file
     ::Config::ConfigManager configMgr;
@@ -428,6 +438,11 @@ void Application::Shutdown() {
 }
 
 int Application::Run() {
+    // Benchmark mode bypasses normal render loop
+    if (m_benchmarkMode) {
+        return RunBenchmark();
+    }
+    
     MSG msg = {};
 
     // Reset frame timer so first deltaTime isn't huge (initialization time)
@@ -5556,4 +5571,53 @@ void Application::ApplyColorPreset(ColorPreset preset) {
     }
 
     LOG_INFO("Applied color preset: {} to {} lights", (int)preset, (int)indices.size());
+}
+
+// ========== Benchmark Mode Implementation ==========
+
+bool Application::InitializeBenchmarkMode(int argc, char** argv) {
+    LOG_INFO("===================================================");
+    LOG_INFO("   PINN Benchmark System - Headless Mode");
+    LOG_INFO("===================================================");
+    
+    // Parse benchmark-specific config
+    Benchmark::BenchmarkConfig config;
+    if (!Benchmark::BenchmarkRunner::ParseCommandLine(argc, argv, config)) {
+        // Help was displayed or parse failed
+        return false;
+    }
+    
+    // Create benchmark runner
+    m_benchmarkRunner = std::make_unique<Benchmark::BenchmarkRunner>();
+    
+    // Initialize with config (this creates minimal resources - no GPU rendering)
+    if (!m_benchmarkRunner->Initialize(config)) {
+        LOG_ERROR("[Benchmark] Failed to initialize benchmark runner");
+        return false;
+    }
+    
+    LOG_INFO("[Benchmark] Initialization complete - ready to run");
+    m_isRunning = true;  // Allow Run() to proceed
+    return true;
+}
+
+int Application::RunBenchmark() {
+    if (!m_benchmarkRunner) {
+        LOG_ERROR("[Benchmark] BenchmarkRunner not initialized!");
+        return 1;
+    }
+    
+    // Run the benchmark
+    Benchmark::BenchmarkResults results = m_benchmarkRunner->Run();
+    
+    // Save results
+    // Note: outputPath and format come from config parsed during initialization
+    // For now, use defaults embedded in the runner
+    
+    LOG_INFO("[Benchmark] Benchmark complete!");
+    LOG_INFO("[Benchmark] Overall Score: {:.1f}/100", results.overallScore);
+    LOG_INFO("[Benchmark] {}", results.recommendation);
+    
+    // Return exit code based on success
+    return (results.overallScore >= 50.0f) ? 0 : 1;
 }

@@ -25,6 +25,12 @@ class AdaptiveQualitySystem;
 class DLSSSystem;
 #endif
 
+// Benchmark system
+namespace Benchmark {
+    class BenchmarkRunner;
+    struct BenchmarkConfig;
+}
+
 // Need full include for ParticleRenderer_Gaussian::Light nested type
 #include "../particles/ParticleRenderer_Gaussian.h"
 
@@ -37,12 +43,19 @@ public:
     bool Initialize(HINSTANCE hInstance, int nCmdShow, int argc = 0, char** argv = nullptr);
     int Run();
     void Shutdown();
+    
+    // Benchmark mode (headless)
+    bool IsBenchmarkMode() const { return m_benchmarkMode; }
 
 private:
     // Window management
     bool CreateAppWindow(HINSTANCE hInstance, int nCmdShow);
     void ToggleFullscreen();
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    
+    // Benchmark mode (headless simulation)
+    bool InitializeBenchmarkMode(int argc, char** argv);
+    int RunBenchmark();
 
     // Frame timing
     void UpdateFrameStats(float actualFrameTime);
@@ -63,6 +76,10 @@ private:
     int m_height = 1080;
     bool m_isFullscreen = false;
     RECT m_windowedRect = {};  // Store windowed position/size for fullscreen toggle
+    
+    // Benchmark mode (headless - no window/rendering)
+    bool m_benchmarkMode = false;
+    std::unique_ptr<Benchmark::BenchmarkRunner> m_benchmarkRunner;
 
     // Core systems (dependency injection - no god object!)
     std::unique_ptr<Device> m_device;

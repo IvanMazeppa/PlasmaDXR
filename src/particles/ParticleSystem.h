@@ -236,6 +236,43 @@ public:
     };
     SIRENMetrics GetSIRENMetrics() const;
 
+    // ========== Benchmark Support ==========
+    
+    // Physics snapshot for benchmark metrics (no rendering required)
+    struct PhysicsSnapshot {
+        float totalKineticEnergy = 0.0f;
+        float totalPotentialEnergy = 0.0f;
+        float totalEnergy = 0.0f;
+        float totalAngularMomentum = 0.0f;
+        
+        uint32_t particlesInBounds = 0;
+        uint32_t particlesEscaped = 0;
+        uint32_t particlesCollapsed = 0;
+        
+        float velocityMean = 0.0f;
+        float velocityMax = 0.0f;
+        float velocityStdDev = 0.0f;
+        
+        float avgForceMagnitude = 0.0f;
+        float avgRadialForce = 0.0f;
+        uint32_t correctRadialForceCount = 0;
+        
+        float keplerianVelocityError = 0.0f;
+        
+        // Coherent motion detection
+        float velocityCovarianceXZ = 0.0f;
+        
+        // Disk shape
+        float diskThicknessRatio = 0.0f;  // H/R
+    };
+    
+    /**
+     * Capture current physics state for benchmark metrics.
+     * Can be called without GPU rendering active.
+     * @return PhysicsSnapshot with stability, accuracy, and visual quality metrics
+     */
+    PhysicsSnapshot CapturePhysicsSnapshot() const;
+
     // ========== Phase 2C: Explosion Spawning System ==========
 
     // Configuration for spawning explosion effects

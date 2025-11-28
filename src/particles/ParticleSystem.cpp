@@ -1435,3 +1435,143 @@ void ParticleSystem::UploadExplosionParticles(const std::vector<Particle>& parti
     // DO NOT execute/wait/reset here - let the main render loop handle command list execution
     // The copy will happen as part of the current frame's command list
 }
+
+// ========== Benchmark Support ==========
+
+ParticleSystem::PhysicsSnapshot ParticleSystem::CapturePhysicsSnapshot() const {
+    PhysicsSnapshot snap = {};
+    
+    if (!m_particlesOnCPU || m_cpuPositions.empty() || m_cpuVelocities.empty()) {
+        LOG_WARN("[Benchmark] CapturePhysicsSnapshot: No CPU particle data available");
+        return snap;
+    }
+    
+    const uint32_t count = m_activeParticleCount;
+    if (count == 0) return snap;
+    
+    // Accumulators
+    float totalKE = 0.0f;
+    float totalPE = 0.0f;
+    float totalL = 0.0f;
+    float totalVelX = 0.0f, totalVelZ = 0.0f;  // For covariance
+    float totalVelMag = 0.0f;
+    float maxVelMag = 0.0f;
+    float totalHeight = 0.0f;
+    float totalRadius = 0.0f;
+    float totalKeplerError = 0.0f;
+    float totalForceMag = 0.0f;
+    float totalRadialForce = 0.0f;
+    uint32_t correctSignCount = 0;
+    
+    std::vector<float> velocities(count);
+    
+    for (uint32_t i = 0; i < count; i++) {
+        const auto& pos = m_cpuPositions[i];
+        const auto& vel = m_cpuVelocities[i];
+        
+        // Cylindrical radius (disk plane)
+        float r_cyl = sqrtf(pos.x * pos.x + pos.z * pos.z);
+        float r_3d = sqrtf(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z);
+        
+        // Velocity magnitude
+        float v2 = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
+        float v = sqrtf(v2);
+        velocities[i] = v;
+        totalVelMag += v;
+        maxVelMag = (std::max)(maxVelMag, v);
+        
+        // Kinetic energy: 0.5 * m * v² (m=1)
+        totalKE += 0.5f * v2;
+        
+        // Potential energy: -GM/r (avoid division by zero)
+        if (r_3d > 1e-6f) {
+            totalPE -= PINN_GM / r_3d;
+        }
+        
+        // Angular momentum: L = r × v (z-component for disk plane)
+        // Lz = x*vz - z*vx
+        totalL += pos.x * vel.z - pos.z * vel.x;
+        
+        // For covariance calculation
+        totalVelX += vel.x;
+        totalVelZ += vel.z;
+        
+        // Disk shape: height and radius
+        totalHeight += std::abs(pos.y);
+        totalRadius += r_cyl;
+        
+        // Keplerian velocity error
+        if (r_cyl > 1e-6f) {
+            float v_kepler = sqrtf(PINN_GM / r_cyl);
+            float v_orbital = sqrtf(vel.x * vel.x + vel.z * vel.z);  // Horizontal velocity
+            float error = std::abs(v_orbital - v_kepler) / (v_kepler + 1e-6f);
+            totalKeplerError += error;
+        }
+        
+        // Force metrics (if forces are populated)
+        if (!m_cpuForces.empty() && i < m_cpuForces.size()) {
+            const auto& force = m_cpuForces[i];
+            float fMag = sqrtf(force.x * force.x + force.y * force.y + force.z * force.z);
+            totalForceMag += fMag;
+            
+            // Radial force component: F · r̂
+            if (r_3d > 1e-6f) {
+                float f_radial = (force.x * pos.x + force.y * pos.y + force.z * pos.z) / r_3d;
+                totalRadialForce += f_radial;
+                if (f_radial < 0.0f) {
+                    correctSignCount++;  // Gravity should be negative (attractive)
+                }
+            }
+        }
+        
+        // Boundary checks
+        if (r_cyl < PINN_R_ISCO) {
+            snap.particlesCollapsed++;
+        } else if (r_cyl > OUTER_DISK_RADIUS) {
+            snap.particlesEscaped++;
+        } else {
+            snap.particlesInBounds++;
+        }
+    }
+    
+    // Compute averages
+    float invCount = 1.0f / count;
+    snap.velocityMean = totalVelMag * invCount;
+    snap.velocityMax = maxVelMag;
+    snap.totalKineticEnergy = totalKE;
+    snap.totalPotentialEnergy = totalPE;
+    snap.totalEnergy = totalKE + totalPE;
+    snap.totalAngularMomentum = totalL;
+    snap.keplerianVelocityError = totalKeplerError * invCount * 100.0f;  // As percentage
+    snap.avgForceMagnitude = totalForceMag * invCount;
+    snap.avgRadialForce = totalRadialForce * invCount;
+    snap.correctRadialForceCount = correctSignCount;
+    
+    // Velocity standard deviation
+    float meanVel = snap.velocityMean;
+    float sumSqDiff = 0.0f;
+    for (uint32_t i = 0; i < count; i++) {
+        float diff = velocities[i] - meanVel;
+        sumSqDiff += diff * diff;
+    }
+    snap.velocityStdDev = sqrtf(sumSqDiff * invCount);
+    
+    // Coherent motion: covariance of velocity components
+    // High covariance = particles moving together (bad)
+    float meanVelX = totalVelX * invCount;
+    float meanVelZ = totalVelZ * invCount;
+    float covariance = 0.0f;
+    for (uint32_t i = 0; i < count; i++) {
+        covariance += (m_cpuVelocities[i].x - meanVelX) * (m_cpuVelocities[i].z - meanVelZ);
+    }
+    snap.velocityCovarianceXZ = covariance * invCount;
+    
+    // Disk thickness ratio: H/R
+    float avgHeight = totalHeight * invCount;
+    float avgRadius = totalRadius * invCount;
+    if (avgRadius > 1e-6f) {
+        snap.diskThicknessRatio = avgHeight / avgRadius;
+    }
+    
+    return snap;
+}
