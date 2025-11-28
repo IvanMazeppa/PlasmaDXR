@@ -1,5 +1,35 @@
 {
   "general": {
     "preferredEditor": "cursor"
+  },
+  "mcpServers": {
+    "gaussian-analyzer": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/gaussian-analyzer && ./run_server.sh"
+      ]
+    },
+    "dxr-image-quality-analyst": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/dxr-image-quality-analyst && ./run_server.sh"
+      ]
+    },
+    "log-analysis-rag": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/log-analysis-rag && ./run_server.sh"
+      ]
+    },
+    "path-and-probe": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/path-and-probe && ./run_server.sh"
+      ]
+    }
   }
 }

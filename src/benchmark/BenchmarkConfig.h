@@ -21,6 +21,8 @@ struct BenchmarkConfig {
     uint32_t frames = 1000;
     float timestep = 0.016f;       // 60 FPS equivalent
     float timescale = 1.0f;        // Time multiplier
+    bool enforceBoundaries = false; // Containment volume (disabled by default)
+    bool hybridMode = false;        // PINN + GPU hybrid (disabled by default)
     
     // Benchmark Settings
     uint32_t warmupFrames = 100;   // Excluded from metrics

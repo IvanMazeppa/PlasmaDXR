@@ -5606,18 +5606,33 @@ int Application::RunBenchmark() {
         LOG_ERROR("[Benchmark] BenchmarkRunner not initialized!");
         return 1;
     }
-    
+
     // Run the benchmark
     Benchmark::BenchmarkResults results = m_benchmarkRunner->Run();
-    
+
     // Save results
-    // Note: outputPath and format come from config parsed during initialization
-    // For now, use defaults embedded in the runner
-    
+    // Parse config to get output path and format
+    Benchmark::BenchmarkConfig config;
+    if (!Benchmark::BenchmarkRunner::ParseCommandLine(__argc, __argv, config)) {
+        LOG_WARN("[Benchmark] Failed to parse config for output settings, using defaults");
+    }
+
+    if (!m_benchmarkRunner->SaveResults(results, config.outputPath, config.outputFormat)) {
+        LOG_ERROR("[Benchmark] Failed to save benchmark results!");
+        return 1;
+    }
+
+    // Generate preset if requested
+    if (config.generatePreset && !config.presetPath.empty()) {
+        if (!m_benchmarkRunner->GeneratePreset(results, config.presetPath)) {
+            LOG_WARN("[Benchmark] Failed to generate preset file");
+        }
+    }
+
     LOG_INFO("[Benchmark] Benchmark complete!");
     LOG_INFO("[Benchmark] Overall Score: {:.1f}/100", results.overallScore);
     LOG_INFO("[Benchmark] {}", results.recommendation);
-    
+
     // Return exit code based on success
     return (results.overallScore >= 50.0f) ? 0 : 1;
 }

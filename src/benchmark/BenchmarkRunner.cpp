@@ -89,7 +89,22 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     
     // Set timescale
     m_particleSystem->SetTimeScale(config.timescale);
-    
+
+    // Configure boundary enforcement
+    if (config.enforceBoundaries) {
+        LOG_INFO("[Benchmark] Enabling boundary enforcement");
+        m_particleSystem->SetEnforceBoundaries(true);
+    } else {
+        LOG_INFO("[Benchmark] Boundary enforcement DISABLED (particles can escape)");
+        m_particleSystem->SetEnforceBoundaries(false);
+    }
+
+    // Configure hybrid mode
+    if (config.hybridMode) {
+        LOG_INFO("[Benchmark] Enabling PINN + GPU hybrid mode");
+        m_particleSystem->SetPINNHybridMode(true);
+    }
+
     // Initialize results structure
     m_results.sirenEnabled = config.sirenEnabled;
     m_results.sirenIntensity = config.sirenIntensity;
@@ -149,6 +164,12 @@ bool BenchmarkRunner::ParseCommandLine(int argc, char** argv, BenchmarkConfig& o
             outConfig.generatePreset = true;
             outConfig.presetPath = argv[++i];
         }
+        else if (arg == "--enforce-boundaries") {
+            outConfig.enforceBoundaries = true;
+        }
+        else if (arg == "--hybrid") {
+            outConfig.hybridMode = true;
+        }
         else if (arg == "--verbose") {
             outConfig.verbose = true;
         }
@@ -207,10 +228,32 @@ BenchmarkResults BenchmarkRunner::Run() {
         
         auto frameEnd = std::chrono::high_resolution_clock::now();
         float frameMs = std::chrono::duration<float, std::milli>(frameEnd - frameStart).count();
-        
+
         // Record performance metrics
         m_results.performance.totalPhysicsMs.AddSample(frameMs);
-        
+
+        // Query PINN metrics if enabled
+        if (m_particleSystem->IsPINNAvailable() && m_particleSystem->IsPINNEnabled()) {
+            auto pinnMetrics = m_particleSystem->GetPINNMetrics();
+            m_results.performance.pinnInferenceMs.AddSample(pinnMetrics.inferenceTimeMs);
+        }
+
+        // Query SIREN metrics if enabled
+        if (m_particleSystem->IsSIRENAvailable() && m_particleSystem->IsSIRENEnabled()) {
+            auto sirenMetrics = m_particleSystem->GetSIRENMetrics();
+            m_results.performance.sirenInferenceMs.AddSample(sirenMetrics.inferenceTimeMs);
+        }
+
+        // Calculate integration time as residual (total frame time - inference times)
+        float integrationMs = frameMs;
+        if (m_particleSystem->IsPINNEnabled()) {
+            integrationMs -= m_particleSystem->GetPINNMetrics().inferenceTimeMs;
+        }
+        if (m_particleSystem->IsSIRENEnabled()) {
+            integrationMs -= m_particleSystem->GetSIRENMetrics().inferenceTimeMs;
+        }
+        m_results.performance.integrationMs.AddSample(std::max(0.0f, integrationMs));
+
         // Sample metrics at interval
         if (i % m_config.sampleInterval == 0) {
             PhysicsSnapshot snapshot = CaptureSnapshot();
@@ -263,6 +306,14 @@ BenchmarkResults BenchmarkRunner::Run() {
 void BenchmarkRunner::SimulateFrame(float deltaTime, float totalTime) {
     // Update physics through ParticleSystem (PINN + optional SIREN)
     m_particleSystem->Update(deltaTime, totalTime);
+
+    // Execute and sync GPU commands if using GPU physics (non-PINN mode)
+    // PINN runs on CPU so no GPU sync needed
+    if (!m_particleSystem->IsPINNEnabled()) {
+        m_device->ExecuteCommandList();
+        m_device->WaitForGPU();
+        m_device->ResetCommandList();
+    }
 }
 
 PhysicsSnapshot BenchmarkRunner::CaptureSnapshot() {
@@ -395,8 +446,14 @@ bool BenchmarkRunner::SaveResultsJSON(const BenchmarkResults& results, const std
     
     // Performance metrics
     file << "  \"performance\": {\n";
-    file << "    \"physics_ms\": { \"mean\": " << results.performance.totalPhysicsMs.mean 
+    file << "    \"physics_ms\": { \"mean\": " << results.performance.totalPhysicsMs.mean
          << ", \"max\": " << results.performance.totalPhysicsMs.max << " },\n";
+    file << "    \"pinn_inference_ms\": { \"mean\": " << results.performance.pinnInferenceMs.mean
+         << ", \"max\": " << results.performance.pinnInferenceMs.max << " },\n";
+    file << "    \"siren_inference_ms\": { \"mean\": " << results.performance.sirenInferenceMs.mean
+         << ", \"max\": " << results.performance.sirenInferenceMs.max << " },\n";
+    file << "    \"integration_ms\": { \"mean\": " << results.performance.integrationMs.mean
+         << ", \"max\": " << results.performance.integrationMs.max << " },\n";
     file << "    \"frames_per_second\": " << results.performance.framesPerSecond << ",\n";
     file << "    \"particles_per_second\": " << results.performance.particlesPerSecond << "\n";
     file << "  },\n";
@@ -586,6 +643,8 @@ void PrintBenchmarkHelp() {
     LOG_INFO("  --frames <n>           Simulation frames (default: 1000)");
     LOG_INFO("  --timestep <f>         Fixed timestep in seconds (default: 0.016)");
     LOG_INFO("  --timescale <f>        Time multiplier 1-50 (default: 1.0)");
+    LOG_INFO("  --enforce-boundaries   Enable containment volume (default: OFF)");
+    LOG_INFO("  --hybrid               Enable PINN+GPU hybrid mode (default: OFF)");
     LOG_INFO("  --warmup <n>           Warmup frames (default: 100)");
     LOG_INFO("  --sample-interval <n>  Frames between samples (default: 10)");
     LOG_INFO("  --output <path>        Output file path (default: benchmark_results.json)");
