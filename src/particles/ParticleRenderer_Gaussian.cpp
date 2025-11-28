@@ -1032,7 +1032,7 @@ void ParticleRenderer_Gaussian::Render(ID3D12GraphicsCommandList4* cmdList,
 
 #ifdef ENABLE_DLSS
     // DLSS Super Resolution: AI upscaling from render resolution to output resolution
-    if (m_dlssSystem && m_dlssFeatureCreated) {
+    if (m_dlssEnabled && m_dlssSystem && m_dlssFeatureCreated) {
         // Transition noisy output: UAV → SRV (DLSS input)
         CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
             m_outputTexture.Get(),

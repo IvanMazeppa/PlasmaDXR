@@ -183,8 +183,8 @@ public:
     // Get output SRV for blit pass (HDR→SDR conversion)
 #ifdef ENABLE_DLSS
     D3D12_GPU_DESCRIPTOR_HANDLE GetOutputSRV() const {
-        // If DLSS succeeded, return upscaled output, otherwise render-res output
-        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputSRVGPU.ptr != 0) {
+        // If DLSS is enabled and succeeded, return upscaled output, otherwise render-res output
+        if (m_dlssEnabled && m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputSRVGPU.ptr != 0) {
             return m_upscaledOutputSRVGPU;
         }
         return m_outputSRVGPU;
@@ -199,7 +199,7 @@ public:
     // (DLSS upscaled texture if DLSS is enabled, otherwise render-res texture)
     ID3D12Resource* GetFinalOutputTexture() const {
 #ifdef ENABLE_DLSS
-        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputTexture) {
+        if (m_dlssEnabled && m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputTexture) {
             return m_upscaledOutputTexture.Get();
         }
 #endif
@@ -208,7 +208,7 @@ public:
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetFinalOutputUAV() const {
 #ifdef ENABLE_DLSS
-        if (m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputUAVGPU.ptr != 0) {
+        if (m_dlssEnabled && m_dlssSystem && m_dlssFeatureCreated && m_upscaledOutputUAVGPU.ptr != 0) {
             return m_upscaledOutputUAVGPU;
         }
 #endif
@@ -218,6 +218,10 @@ public:
 #ifdef ENABLE_DLSS
     // Set DLSS system reference and calculate optimal render resolution
     void SetDLSSSystem(DLSSSystem* dlss, uint32_t width, uint32_t height, int qualityMode = 1);
+
+    // Enable/disable DLSS Super Resolution at runtime
+    void SetDLSSEnabled(bool enabled) { m_dlssEnabled = enabled; }
+    bool IsDLSSEnabled() const { return m_dlssEnabled && m_dlssSystem && m_dlssFeatureCreated; }
 
     // Get actual render resolution (may differ from screen resolution if DLSS is enabled)
     uint32_t GetRenderWidth() const { return m_screenWidth; }  // Returns render resolution
@@ -322,6 +326,7 @@ private:
     // DLSS Super Resolution system (lazy feature creation)
     DLSSSystem* m_dlssSystem = nullptr;       // Not owned (pointer to Application's DLSSSystem)
     bool m_dlssFeatureCreated = false;        // Track lazy creation
+    bool m_dlssEnabled = false;               // Runtime enable/disable toggle
     uint32_t m_dlssWidth = 0;                 // Feature creation width
     uint32_t m_dlssHeight = 0;                // Feature creation height
 

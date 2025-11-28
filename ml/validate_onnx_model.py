@@ -6,10 +6,12 @@ Verifies that the exported ONNX model is compatible with the C++ inference engin
 Checks input/output shapes, data types, and runs test inference.
 """
 
+from pathlib import Path
+
+import numpy as np
+
 import onnx
 import onnxruntime as ort
-import numpy as np
-from pathlib import Path
 
 
 def validate_onnx_model(model_path: str = "models/pinn_accretion_disk.onnx"):

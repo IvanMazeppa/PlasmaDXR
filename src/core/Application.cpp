@@ -362,7 +362,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         // Pass DLSS system to Gaussian renderer for lazy feature creation
         if (m_gaussianRenderer) {
             m_gaussianRenderer->SetDLSSSystem(m_dlssSystem.get(), m_width, m_height, m_dlssQualityMode);
+            m_gaussianRenderer->SetDLSSEnabled(m_enableDLSS);  // Sync initial enable state
             LOG_INFO("  DLSS system reference passed to Gaussian renderer");
+            LOG_INFO("  DLSS is {} by default (press F4 to toggle)", m_enableDLSS ? "ENABLED" : "DISABLED");
         }
     } else {
         LOG_WARN("DLSS initialization failed");
@@ -1652,7 +1654,7 @@ void Application::OnKeyPress(UINT8 key) {
         break;
 
 #ifdef ENABLE_DLSS
-    // F4: Toggle DLSS Ray Reconstruction (AI denoising for shadow rays)
+    // F4: Toggle DLSS Super Resolution (AI upscaling)
     case VK_F4:
         m_enableDLSS = !m_enableDLSS;
         if (m_enableDLSS && !m_dlssSystem) {
@@ -1660,10 +1662,17 @@ void Application::OnKeyPress(UINT8 key) {
             LOG_WARN("  Check: Driver 531.00+, RTX GPU, nvngx_dlssd.dll in exe directory");
             m_enableDLSS = false;
         } else {
-            LOG_INFO("DLSS Ray Reconstruction: {}", m_enableDLSS ? "ENABLED" : "DISABLED");
+            // Sync enable state with Gaussian renderer
+            if (m_gaussianRenderer) {
+                m_gaussianRenderer->SetDLSSEnabled(m_enableDLSS);
+            }
+            LOG_INFO("DLSS Super Resolution: {}", m_enableDLSS ? "ENABLED" : "DISABLED");
             if (m_enableDLSS) {
-                LOG_INFO("  AI denoising for shadow rays");
-                LOG_INFO("  Denoiser strength: {:.1f} (adjust in ImGui)", m_dlssDenoiserStrength);
+                LOG_INFO("  AI upscaling for performance boost");
+                LOG_INFO("  Quality mode: {} (adjust in ImGui)",
+                         m_dlssQualityMode == 0 ? "Quality (67%)" :
+                         m_dlssQualityMode == 1 ? "Balanced (58%)" :
+                         m_dlssQualityMode == 2 ? "Performance (50%)" : "Ultra Performance (33%)");
             }
         }
         break;
@@ -3013,10 +3022,14 @@ void Application::RenderImGui() {
             ImGui::BeginDisabled();
         }
 
-        if (ImGui::Checkbox("DLSS Ray Reconstruction (F4)", &m_enableDLSS)) {
+        if (ImGui::Checkbox("DLSS Super Resolution (F4)", &m_enableDLSS)) {
             if (m_enableDLSS && !dlssAvailable) {
                 LOG_WARN("DLSS: Cannot enable - system not available");
                 m_enableDLSS = false;
+            }
+            // Sync enable state with Gaussian renderer
+            if (m_gaussianRenderer) {
+                m_gaussianRenderer->SetDLSSEnabled(m_enableDLSS);
             }
         }
 
@@ -3034,9 +3047,9 @@ void Application::RenderImGui() {
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("AI-powered denoising for shadow rays\n"
-                                 "Reduces shadow noise at 1-2 rays/light\n"
-                                 "Expected: 2-4× raytracing performance");
+                ImGui::SetTooltip("AI-powered upscaling for performance\n"
+                                 "Renders at lower resolution, upscales to native\n"
+                                 "Expected: +30-60% FPS boost");
             }
 
             // Denoiser strength slider (only show when DLSS enabled)

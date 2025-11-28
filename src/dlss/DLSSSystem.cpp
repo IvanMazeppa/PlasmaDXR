@@ -8,8 +8,8 @@
 
 // DLSS Project ID for development (narrow string, NOT wide string)
 // IMPORTANT: ProjectID must be UUID/GUID format (hexadecimal characters only!)
-// Generated UUID for PlasmaDX-Clean: a0b1c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d
-#define DLSS_PROJECT_ID "a0b1c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d"
+// Generated UUID for PlasmaDX-Clean: 05227611-97e2-4462-af0b-ab7d47f06a86
+#define DLSS_PROJECT_ID "05227611-97e2-4462-af0b-ab7d47f06a86"
 #define DLSS_ENGINE_VERSION "1.0.0"
 
 DLSSSystem::DLSSSystem() = default;
