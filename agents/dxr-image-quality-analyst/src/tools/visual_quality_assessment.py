@@ -35,7 +35,7 @@ class VisualQualityAssessment:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.rubric_path = project_root / "agents" / "rtxdi-quality-analyzer" / "VISUAL_QUALITY_RUBRIC.md"
+        self.rubric_path = project_root / "agents" / "dxr-image-quality-analyst" / "VISUAL_QUALITY_RUBRIC.md"
         self.references_dir = project_root / "screenshots" / "reference"
         self.annotations_dir = project_root / "screenshots" / "annotations"
         self.annotations_dir.mkdir(parents=True, exist_ok=True)

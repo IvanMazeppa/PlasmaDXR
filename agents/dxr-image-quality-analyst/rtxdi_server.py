@@ -19,8 +19,8 @@ from mcp.types import TextContent, ImageContent, Tool
 import base64
 
 # Import tools directly (not as packages)
-from tools.performance_comparison import compare_performance, format_comparison_report
-from tools.pix_analysis import analyze_pix_capture, format_pix_report
+# from tools.performance_comparison import compare_performance, format_comparison_report
+# from tools.pix_analysis import analyze_pix_capture, format_pix_report
 from tools.ml_visual_comparison import compare_screenshots_ml, format_comparison_report as format_ml_report
 from tools.visual_quality_assessment import assess_screenshot_quality
 
@@ -193,6 +193,20 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["screenshot_path"]
             }
+        ),
+        Tool(
+            name="get_screenshot_metadata",
+            description="Retrieve the full JSON metadata for a specific screenshot, including rendering config, performance metrics, and camera state.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "screenshot_path": {
+                        "type": "string",
+                        "description": "Path to the screenshot (BMP or PNG)"
+                    }
+                },
+                "required": ["screenshot_path"]
+            }
         )
     ]
 
@@ -285,6 +299,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageConte
             ]
         except Exception as e:
             return [TextContent(type="text", text=f"Error processing image: {str(e)}\nPlease ensure Pillow is installed: pip install Pillow")]
+
+    elif name == "get_screenshot_metadata":
+        screenshot_path = arguments.get("screenshot_path")
+        metadata = load_screenshot_metadata(screenshot_path)
+        
+        if metadata:
+            import json
+            return [TextContent(type="text", text=json.dumps(metadata, indent=2))]
+        else:
+            return [TextContent(type="text", text=f"No metadata found for {screenshot_path}. Ensure the screenshot was captured with F2.")]
 
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]

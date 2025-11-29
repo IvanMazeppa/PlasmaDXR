@@ -13,8 +13,6 @@ The **DXR Image Quality Analyst** is an MCP (Model Context Protocol) agent desig
 
 ✅ **ML-Powered Visual Comparison** - Perceptual similarity using LPIPS (92% correlation with human judgment)
 ✅ **Automated Visual Quality Assessment** - 7-dimension rubric for volumetric rendering
-✅ **Performance Analysis** - FPS/frame time tracking with bottleneck identification
-✅ **PIX Capture Analysis** - GPU profiling integration
 ✅ **Screenshot Management** - Organized capture and metadata tracking
 
 ### Key Features
@@ -68,7 +66,7 @@ Agent is already installed. Verify connection:
 
 ---
 
-## TOOL SUITE (5 Tools)
+## TOOL SUITE (4 Tools)
 
 ### 1. `compare_screenshots_ml` ⭐ PRIMARY TOOL
 
@@ -125,25 +123,18 @@ Agent is already installed. Verify connection:
 
 **Output:** Filename, path, timestamp, file size, metadata status
 
-### 4. `compare_performance`
+### 4. `get_screenshot_metadata`
 
-**Compare RTXDI performance metrics between renderers**
-
-```bash
-/mcp dxr-image-quality-analyst compare_performance \
-  --legacy_log "logs/legacy.log" \
-  --rtxdi_m4_log "logs/rtxdi_m4.log" \
-  --rtxdi_m5_log "logs/rtxdi_m5.log"
-```
-
-### 5. `analyze_pix_capture`
-
-**Analyze PIX GPU captures for bottlenecks**
+**Retrieve full JSON metadata for a specific screenshot**
 
 ```bash
-/mcp dxr-image-quality-analyst analyze_pix_capture \
-  --capture_path "PIX/Captures/capture_latest.wpix"
+/mcp dxr-image-quality-analyst get_screenshot_metadata \
+  --screenshot_path "build/bin/Debug/screenshots/screenshot_latest.bmp"
 ```
+
+**Output:** Full JSON object containing rendering config, performance metrics, and camera state.
+
+> **Note:** ReSTIR-based performance tools (`compare_performance`, `analyze_pix_capture`) have been disabled as they are legacy tools.
 
 ---
 
