@@ -1781,68 +1781,124 @@ void Application::OnKeyPress(UINT8 key) {
 
     // Turbulence (B = brownian motion)
     case 'B':
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            m_particleSystem->AdjustTurbulence(-2.0f);
-            LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
-        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-            m_particleSystem->AdjustTurbulence(2.0f);
-            LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
+        if (m_particleSystem->IsPINNEnabled()) {
+            // PINN Turbulence (0.0-1.0 range)
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNTurbulence() - 0.05f;
+                m_particleSystem->SetPINNTurbulence(newValue);
+                LOG_INFO("PINN Turbulence: {:.2f}", m_particleSystem->GetPINNTurbulence());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNTurbulence() + 0.05f;
+                m_particleSystem->SetPINNTurbulence(newValue);
+                LOG_INFO("PINN Turbulence: {:.2f}", m_particleSystem->GetPINNTurbulence());
+            }
+        } else {
+            // GPU Turbulence
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                m_particleSystem->AdjustTurbulence(-2.0f);
+                LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                m_particleSystem->AdjustTurbulence(2.0f);
+                LOG_INFO("Turbulence: {:.1f}", m_particleSystem->GetTurbulence());
+            }
         }
         break;
 
     // Damping (M = momentum damping)
     case 'M':
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            m_particleSystem->AdjustDamping(-0.01f);
-            LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
-        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-            m_particleSystem->AdjustDamping(0.01f);
-            LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
+        if (m_particleSystem->IsPINNEnabled()) {
+            // PINN Damping (0.9-1.0 range)
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNDamping() - 0.001f;
+                m_particleSystem->SetPINNDamping(newValue);
+                LOG_INFO("PINN Damping: {:.4f}", m_particleSystem->GetPINNDamping());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNDamping() + 0.001f;
+                m_particleSystem->SetPINNDamping(newValue);
+                LOG_INFO("PINN Damping: {:.4f}", m_particleSystem->GetPINNDamping());
+            }
+        } else {
+            // GPU Damping
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                m_particleSystem->AdjustDamping(-0.01f);
+                LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                m_particleSystem->AdjustDamping(0.01f);
+                LOG_INFO("Damping: {:.3f}", m_particleSystem->GetDamping());
+            }
         }
         break;
 
     // Black Hole Mass (H = black hole mass)
     case 'H':
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            // Decrease mass (logarithmic: divide by 10)
-            float currentMass = m_particleSystem->GetBlackHoleMass();
-            float newMass = currentMass / 10.0f;
-            m_particleSystem->SetBlackHoleMass(newMass);
-            if (newMass < 1e3f) {
-                LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
-            } else if (newMass < 1e6f) {
-                LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
-            } else if (newMass < 1e9f) {
-                LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
-            } else {
-                LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+        if (m_particleSystem->IsPINNEnabled() && m_particleSystem->IsPINNParameterConditioned()) {
+            // PINN Black Hole Mass (0.5-2.0 range, normalized multiplier)
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNBlackHoleMass() - 0.1f;
+                m_particleSystem->SetPINNBlackHoleMass(newValue);
+                LOG_INFO("PINN Black Hole Mass: {:.2f}x", m_particleSystem->GetPINNBlackHoleMass());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNBlackHoleMass() + 0.1f;
+                m_particleSystem->SetPINNBlackHoleMass(newValue);
+                LOG_INFO("PINN Black Hole Mass: {:.2f}x", m_particleSystem->GetPINNBlackHoleMass());
             }
-        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-            // Increase mass (logarithmic: multiply by 10)
-            float currentMass = m_particleSystem->GetBlackHoleMass();
-            float newMass = currentMass * 10.0f;
-            if (newMass > 1e10f) newMass = 1e10f;  // Cap at 10 billion solar masses
-            m_particleSystem->SetBlackHoleMass(newMass);
-            if (newMass < 1e3f) {
-                LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
-            } else if (newMass < 1e6f) {
-                LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
-            } else if (newMass < 1e9f) {
-                LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
-            } else {
-                LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+        } else {
+            // GPU Black Hole Mass (logarithmic scale)
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                // Decrease mass (logarithmic: divide by 10)
+                float currentMass = m_particleSystem->GetBlackHoleMass();
+                float newMass = currentMass / 10.0f;
+                m_particleSystem->SetBlackHoleMass(newMass);
+                if (newMass < 1e3f) {
+                    LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
+                } else if (newMass < 1e6f) {
+                    LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
+                } else if (newMass < 1e9f) {
+                    LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
+                } else {
+                    LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+                }
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                // Increase mass (logarithmic: multiply by 10)
+                float currentMass = m_particleSystem->GetBlackHoleMass();
+                float newMass = currentMass * 10.0f;
+                if (newMass > 1e10f) newMass = 1e10f;  // Cap at 10 billion solar masses
+                m_particleSystem->SetBlackHoleMass(newMass);
+                if (newMass < 1e3f) {
+                    LOG_INFO("Black Hole Mass: {:.1f} M☉", newMass);
+                } else if (newMass < 1e6f) {
+                    LOG_INFO("Black Hole Mass: {:.1f} thousand M☉", newMass / 1e3f);
+                } else if (newMass < 1e9f) {
+                    LOG_INFO("Black Hole Mass: {:.2f} million M☉", newMass / 1e6f);
+                } else {
+                    LOG_INFO("Black Hole Mass: {:.2f} billion M☉", newMass / 1e9f);
+                }
             }
         }
         break;
 
     // Alpha Viscosity (X = viscosity)
     case 'X':
-        if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-            m_particleSystem->AdjustAlphaViscosity(-0.01f);
-            LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
-        } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-            m_particleSystem->AdjustAlphaViscosity(0.01f);
-            LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+        if (m_particleSystem->IsPINNEnabled() && m_particleSystem->IsPINNParameterConditioned()) {
+            // PINN Alpha Viscosity (0.01-0.3 range)
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNAlphaViscosity() - 0.01f;
+                m_particleSystem->SetPINNAlphaViscosity(newValue);
+                LOG_INFO("PINN Alpha Viscosity: {:.3f}", m_particleSystem->GetPINNAlphaViscosity());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                float newValue = m_particleSystem->GetPINNAlphaViscosity() + 0.01f;
+                m_particleSystem->SetPINNAlphaViscosity(newValue);
+                LOG_INFO("PINN Alpha Viscosity: {:.3f}", m_particleSystem->GetPINNAlphaViscosity());
+            }
+        } else {
+            // GPU Alpha Viscosity
+            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+                m_particleSystem->AdjustAlphaViscosity(-0.01f);
+                LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+            } else if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                m_particleSystem->AdjustAlphaViscosity(0.01f);
+                LOG_INFO("Alpha Viscosity: {:.3f}", m_particleSystem->GetAlphaViscosity());
+            }
         }
         break;
 
@@ -3910,16 +3966,16 @@ void Application::RenderImGui() {
                         ImGui::TextDisabled("(v1 model - no runtime parameters)");
                     }
 
-                    // PINN Visualization Parameters (post-processing controls)
+                    // PINN Appearance & Behavior
                     ImGui::Separator();
-                    ImGui::Text("Visualization Controls");
+                    ImGui::Text("Appearance & Behavior");
                     ImGui::SameLine();
                     ImGui::TextDisabled("(?)");
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("These adjust appearance without retraining.\nUse Time Scale slider for faster rotation.");
+                        ImGui::SetTooltip("Visual adjustments without retraining.\nUse Time Scale slider for faster rotation.");
                     }
 
-                    // Turbulence (velocity multiplier removed - use Time Scale instead)
+                    // Turbulence
                     float turb = m_particleSystem->GetPINNTurbulence();
                     if (ImGui::SliderFloat("Turbulence", &turb, 0.0f, 1.0f, "%.2f")) {
                         m_particleSystem->SetPINNTurbulence(turb);
@@ -3937,21 +3993,13 @@ void Application::RenderImGui() {
                         ImGui::SetTooltip("Velocity damping per frame.\n0.999 = slight energy loss (stable)\n1.0 = no damping (energy conserved)\n0.95 = heavy damping (settles quickly)");
                     }
 
-                    // Boundary enforcement
-                    bool enforceBounds = m_particleSystem->GetPINNEnforceBoundaries();
-                    if (ImGui::Checkbox("Enforce Boundaries", &enforceBounds)) {
-                        m_particleSystem->SetPINNEnforceBoundaries(enforceBounds);
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("Keep particles within disk region.\nDisable to allow particles to escape.");
-                    }
-
-                    // Reinitialize button
+                    // Particle Management
+                    ImGui::Separator();
                     if (ImGui::Button("Reinitialize Particles")) {
                         m_particleSystem->ReinitializePINNParticles();
                     }
                     if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip("Reset all particles to initial positions\nwith current physics parameters.");
+                        ImGui::SetTooltip("Reset all particles to initial positions\nwith current PINN physics parameters.\n\nUse 'Advanced Physics Parameters' below\nto configure boundary handling (Reflect/Wrap/Respawn).");
                     }
 
                     // Performance metrics
@@ -4144,11 +4192,38 @@ void Application::RenderImGui() {
                 ImGui::Text("Gravitational Parameters");
 
                 float gm = m_particleSystem->GetGM();
-                if (ImGui::SliderFloat("GM (G*M)", &gm, 1.0f, 500.0f, "%.2f")) {
+                if (ImGui::SliderFloat("GM (G*M)", &gm, 1.0f, 2000.0f, "%.2f")) {
                     m_particleSystem->SetGM(gm);
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Gravitational parameter (G*M)\nControls overall gravitational strength");
+                }
+
+                float blackHoleMass = m_particleSystem->GetBlackHoleMass();
+                if (ImGui::SliderFloat("Black Hole Mass", &blackHoleMass, 0.1f, 10.0f, "%.2f")) {
+                    m_particleSystem->SetBlackHoleMass(blackHoleMass);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Black hole mass multiplier\n0.1 = light, 1.0 = default, 10.0 = massive");
+                }
+
+                ImGui::Separator();
+                ImGui::Text("Accretion Dynamics");
+
+                float alphaViscosity = m_particleSystem->GetAlphaViscosity();
+                if (ImGui::SliderFloat("Alpha Viscosity (Ctrl/Shift+X)", &alphaViscosity, 0.0f, 1.0f, "%.3f")) {
+                    m_particleSystem->SetAlphaViscosity(alphaViscosity);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Shakura-Sunyaev α parameter\nControls inward spiral (accretion)\n0.0 = no accretion, 0.1 = realistic, 1.0 = fast");
+                }
+
+                float angularMomentum = m_particleSystem->GetAngularMomentum();
+                if (ImGui::SliderFloat("Angular Momentum Boost (N)", &angularMomentum, 0.0f, 5.0f, "%.2f")) {
+                    m_particleSystem->SetAngularMomentum(angularMomentum);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Initial angular momentum multiplier\nControls orbital velocity");
                 }
 
                 ImGui::Separator();
@@ -4224,7 +4299,7 @@ void Application::RenderImGui() {
                 }
 
                 bool enforceBoundaries = m_particleSystem->GetEnforceBoundaries();
-                if (ImGui::Checkbox("Enforce Boundaries", &enforceBoundaries)) {
+                if (ImGui::Checkbox("Enforce Boundaries##Advanced", &enforceBoundaries)) {
                     m_particleSystem->SetEnforceBoundaries(enforceBoundaries);
                 }
                 if (ImGui::IsItemHovered()) {
