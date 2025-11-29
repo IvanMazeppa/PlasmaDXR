@@ -1,0 +1,92 @@
+[
+  {
+    "rank": 1,
+    "fitness": 7.5,
+    "parameters": {
+      "gm": 90.3466469455998,
+      "bh_mass": 7.232676216592169,
+      "alpha": 0.46906933734154366,
+      "damping": 0.9157992513235371,
+      "angular_boost": 2.6007163596992786,
+      "disk_thickness": 0.125589459800307,
+      "inner_radius": 9.460619573634446,
+      "outer_radius": 367.3371126575778,
+      "density_scale": 1.2901210869155182,
+      "force_clamp": 42.13493241375062,
+      "velocity_clamp": 32.9719607560242,
+      "boundary_mode": 1
+    }
+  },
+  {
+    "rank": 2,
+    "fitness": 7.5,
+    "parameters": {
+      "gm": 95.4708994882801,
+      "bh_mass": 4.553276822388802,
+      "alpha": 0.10720981412694067,
+      "damping": 0.9144739808156114,
+      "angular_boost": 2.0776367019271005,
+      "disk_thickness": 0.24743934884510332,
+      "inner_radius": 6.522181191115802,
+      "outer_radius": 340.6396971491195,
+      "density_scale": 1.9176134423750384,
+      "force_clamp": 8.956157699126939,
+      "velocity_clamp": 36.0044475117019,
+      "boundary_mode": 2
+    }
+  },
+  {
+    "rank": 3,
+    "fitness": 7.5,
+    "parameters": {
+      "gm": 164.0415705949045,
+      "bh_mass": 7.531162384225921,
+      "alpha": 0.13402958171527446,
+      "damping": 0.9190576662213912,
+      "angular_boost": 1.185895442498954,
+      "disk_thickness": 0.16837732642503495,
+      "inner_radius": 9.594075616869484,
+      "outer_radius": 295.11882653190986,
+      "density_scale": 0.6528276500526143,
+      "force_clamp": 46.15536056047291,
+      "velocity_clamp": 31.451991064694944,
+      "boundary_mode": 1
+    }
+  },
+  {
+    "rank": 4,
+    "fitness": 7.5,
+    "parameters": {
+      "gm": 193.58552922800996,
+      "bh_mass": 3.0701422437565578,
+      "alpha": 0.015592444581158327,
+      "damping": 0.9378433495919979,
+      "angular_boost": 2.042190826269779,
+      "disk_thickness": 0.26262639510036134,
+      "inner_radius": 4.682431529031814,
+      "outer_radius": 448.85276166603785,
+      "density_scale": 0.5748127410668917,
+      "force_clamp": 44.96146892874683,
+      "velocity_clamp": 23.014147355610056,
+      "boundary_mode": 3
+    }
+  },
+  {
+    "rank": 5,
+    "fitness": 7.5,
+    "parameters": {
+      "gm": 167.90759634976973,
+      "bh_mass": 1.8553887056984268,
+      "alpha": 0.06067013731418486,
+      "damping": 0.9024110016044287,
+      "angular_boost": 0.9401783082914743,
+      "disk_thickness": 0.2137485149699081,
+      "inner_radius": 3.2239321576053412,
+      "outer_radius": 439.1832241274599,
+      "density_scale": 2.9442239037465496,
+      "force_clamp": 39.477932081870996,
+      "velocity_clamp": 46.57360813456201,
+      "boundary_mode": 1
+    }
+  }
+]

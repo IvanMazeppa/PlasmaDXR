@@ -64,7 +64,7 @@ class GeneticOptimizer:
                  generations: int = 50,
                  mutation_prob: float = 0.2,
                  crossover_prob: float = 0.7,
-                 output_dir: str = "ml/optimization/results"):
+                 output_dir: str = "results"):
         """
         Args:
             executable_path: Path to PlasmaDX-Clean.exe
@@ -73,15 +73,17 @@ class GeneticOptimizer:
             generations: Number of generations to evolve
             mutation_prob: Probability of mutation per gene
             crossover_prob: Probability of crossover
-            output_dir: Directory to save results
+            output_dir: Directory to save results (relative to script location)
         """
-        self.executable_path = executable_path
+        self.executable_path = str(Path(executable_path).absolute())
         self.pinn_model = pinn_model
         self.population_size = population_size
         self.generations = generations
         self.mutation_prob = mutation_prob
         self.crossover_prob = crossover_prob
-        self.output_dir = Path(output_dir)
+        # Make output_dir relative to script location
+        script_dir = Path(__file__).parent.absolute()
+        self.output_dir = (script_dir / output_dir).absolute()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.bounds = ParameterBounds()
@@ -183,6 +185,16 @@ class GeneticOptimizer:
         Returns:
             Dictionary with benchmark results (or None if failed)
         """
+        # Convert output path to Windows format for .exe
+        output_file = self.output_dir / f"tmp_eval_{self.evaluation_count}.json"
+        output_path_str = str(output_file)
+        # Convert WSL path to Windows path if needed
+        if output_path_str.startswith('/mnt/'):
+            # /mnt/d/... -> D:/...
+            drive = output_path_str[5]
+            rest = output_path_str[6:].replace('/', '\\')
+            output_path_str = f"{drive.upper()}:{rest}"
+
         # Build command line
         cmd = [
             self.executable_path,
@@ -190,7 +202,7 @@ class GeneticOptimizer:
             "--pinn", self.pinn_model,
             "--frames", "500",  # Shorter for GA speed
             "--particles", "5000",  # Smaller for GA speed
-            "--output", str(self.output_dir / f"tmp_eval_{self.evaluation_count}.json"),
+            "--output", output_path_str,
             "--gm", str(params['gm']),
             "--bh-mass", str(params['bh_mass']),
             "--alpha", str(params['alpha']),
@@ -206,20 +218,27 @@ class GeneticOptimizer:
         ]
 
         try:
-            # Run benchmark (timeout after 2 minutes)
+            # Get executable directory (needed for shader/resource loading)
+            executable_dir = Path(self.executable_path).parent.absolute()
+
+            # Run benchmark from executable directory (timeout after 2 minutes)
             result = subprocess.run(cmd,
                                    capture_output=True,
                                    text=True,
-                                   timeout=120)
+                                   timeout=120,
+                                   cwd=str(executable_dir))
 
-            if result.returncode != 0:
-                print(f"[WARNING] Benchmark failed: {result.stderr[:200]}")
-                return None
-
-            # Load results
+            # Note: Exit code 1 can mean "UNSUITABLE" result (score < 50), not failure
+            # Check if output file was created instead of relying on exit code
             output_file = self.output_dir / f"tmp_eval_{self.evaluation_count}.json"
+
             if not output_file.exists():
+                print(f"[WARNING] Benchmark failed (exit code {result.returncode})")
                 print(f"[WARNING] Output file not found: {output_file}")
+                if result.stderr:
+                    print(f"[STDERR] {result.stderr}")
+                if result.stdout:
+                    print(f"[STDOUT] {result.stdout[:1000]}")
                 return None
 
             with open(output_file, 'r') as f:
@@ -394,27 +413,29 @@ class GeneticOptimizer:
 
 def main():
     """Example usage"""
-    # Path to PlasmaDX executable
-    cd "../build/bin/Debug/"
-    executable = ./PlasmaDX-Clean.exe"
+    # Path to PlasmaDX executable (resolve relative to this script's location)
+    script_dir = Path(__file__).parent.absolute()
+    project_root = script_dir.parent.parent  # ml/optimization -> ml -> project root
+    executable = project_root / "build/bin/Debug/PlasmaDX-Clean.exe"
 
-    if not Path(executable).exists():
+    if not executable.exists():
         print(f"ERROR: Executable not found: {executable}")
         print(f"Please build PlasmaDX-Clean first or update the path.")
+        print(f"Expected location: {executable}")
         return
 
     # Create optimizer
     optimizer = GeneticOptimizer(
         executable_path=executable,
         pinn_model="v4",
-        population_size=10,  # Small for testing
+        population_size=50,  # Small for testing
         generations=5,       # Small for testing
         mutation_prob=0.2,
         crossover_prob=0.7
     )
 
     # Run optimization
-    best_individuals = optimizer.run_evolution()
+    optimizer.run_evolution()
 
     print(f"\n✅ Optimization complete!")
     print(f"   Best individuals saved to: {optimizer.output_dir}")
