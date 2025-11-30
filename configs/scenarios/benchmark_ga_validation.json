@@ -1,0 +1,56 @@
+{
+  "profile": "benchmark_ga_validation",
+  "description": "Benchmark validation for GA-optimized parameters (fitness 73.79)",
+
+  "benchmark": {
+    "enabled": true,
+    "frames": 500,
+    "output": "ml/optimization/results/validation_benchmark.json"
+  },
+
+  "rendering": {
+    "particleCount": 5000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080,
+    "headless": true
+  },
+
+  "physics": {
+    "physicsEnabled": true,
+    "pinn_enabled": true,
+    "pinn_model": "ml/models/pinn_accretion_disk.onnx",
+
+    "gm": 165.52,
+    "bh_mass": 6.71,
+    "alpha": 0.276,
+    "damping": 0.985,
+    "angular_boost": 2.58,
+    "disk_thickness": 0.098,
+    "inner_radius": 3.41,
+    "outer_radius": 463.65,
+    "density_scale": 2.65,
+    "force_clamp": 30.21,
+    "velocity_clamp": 10.0,
+    "boundary_mode": 3,
+
+    "timeStep": 0.008333
+  },
+
+  "features": {
+    "enableReSTIR": false,
+    "enableShadowRays": false,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "rtLightingStrength": 2.0
+  },
+
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": false,
+    "showFPS": false,
+    "showParticleStats": false
+  }
+}

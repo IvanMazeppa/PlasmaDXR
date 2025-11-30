@@ -1,0 +1,56 @@
+{
+  "profile": "benchmark_baseline",
+  "description": "Benchmark baseline for comparison (default physics parameters)",
+
+  "benchmark": {
+    "enabled": true,
+    "frames": 500,
+    "output": "ml/optimization/results/baseline_benchmark.json"
+  },
+
+  "rendering": {
+    "particleCount": 5000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080,
+    "headless": true
+  },
+
+  "physics": {
+    "physicsEnabled": true,
+    "pinn_enabled": true,
+    "pinn_model": "ml/models/pinn_accretion_disk.onnx",
+
+    "gm": 100.0,
+    "bh_mass": 4.3,
+    "alpha": 0.1,
+    "damping": 0.95,
+    "angular_boost": 1.0,
+    "disk_thickness": 50.0,
+    "inner_radius": 10.0,
+    "outer_radius": 300.0,
+    "density_scale": 1.0,
+    "force_clamp": 50.0,
+    "velocity_clamp": 50.0,
+    "boundary_mode": 0,
+
+    "timeStep": 0.008333
+  },
+
+  "features": {
+    "enableReSTIR": false,
+    "enableShadowRays": false,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "rtLightingStrength": 2.0
+  },
+
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": false,
+    "showFPS": false,
+    "showParticleStats": false
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "scenario": "test_ga_optimized",
+  "description": "Visual test of GA-optimized physics (fitness 73.79 vs baseline)",
+  "test_duration_frames": 1200,
+  "particleCount": 10000,
+
+  "baseline_physics": {
+    "gm": 100.0,
+    "bh_mass": 4.3,
+    "alpha": 0.1,
+    "damping": 0.95,
+    "angular_boost": 1.0,
+    "disk_thickness": 50.0,
+    "inner_radius": 10.0,
+    "outer_radius": 300.0,
+    "density_scale": 1.0,
+    "force_clamp": 50.0,
+    "velocity_clamp": 50.0,
+    "boundary_mode": 0
+  },
+
+  "optimized_physics": {
+    "gm": 165.52,
+    "bh_mass": 6.71,
+    "alpha": 0.276,
+    "damping": 0.985,
+    "angular_boost": 2.58,
+    "disk_thickness": 0.098,
+    "inner_radius": 3.41,
+    "outer_radius": 463.65,
+    "density_scale": 2.65,
+    "force_clamp": 30.21,
+    "velocity_clamp": 10.0,
+    "boundary_mode": 3
+  },
+
+  "camera_positions": [
+    {"distance": 800, "height": 400, "angle": 0.0, "pitch": -0.3, "name": "oblique_view"},
+    {"distance": 600, "height": 100, "angle": 0.0, "pitch": -0.1, "name": "edge_on"},
+    {"distance": 1200, "height": 800, "angle": 0.0, "pitch": -0.5, "name": "top_view"}
+  ],
+
+  "screenshot_frames": [120, 300, 600, 1200]
+}

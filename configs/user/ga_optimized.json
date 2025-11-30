@@ -1,0 +1,57 @@
+{
+  "profile": "ga_optimized",
+  "description": "GA-optimized physics parameters (fitness 73.79) - Generation 13, Rank 1",
+  "rendering": {
+    "particleCount": 10000,
+    "rendererType": "gaussian",
+    "width": 1920,
+    "height": 1080
+  },
+  "features": {
+    "enableReSTIR": false,
+    "enableShadowRays": true,
+    "enablePhaseFunction": true,
+    "phaseStrength": 5.0,
+    "useAnisotropicGaussians": true,
+    "anisotropyStrength": 1.0,
+    "rtLightingStrength": 2.0,
+    "usePhysicalEmission": false,
+    "emissionStrength": 1.0
+  },
+  "physics": {
+    "physicsEnabled": true,
+    "pinn_enabled": true,
+    "pinn_model": "ml/models/pinn_accretion_disk.onnx",
+
+    "gm": 165.51836117860205,
+    "bh_mass": 6.708524824438993,
+    "alpha": 0.27575810274950857,
+    "damping": 0.9854935961378861,
+    "angular_boost": 2.5771860341174855,
+    "disk_thickness": 0.09839020050190643,
+    "inner_radius": 3.413033987573494,
+    "outer_radius": 463.6545969140755,
+    "density_scale": 2.6516798323097444,
+    "force_clamp": 30.209376356056367,
+    "velocity_clamp": 10.0,
+    "boundary_mode": 3,
+
+    "timeStep": 0.008333
+  },
+  "camera": {
+    "startDistance": 800.0,
+    "startHeight": 400.0,
+    "startAngle": 0.0,
+    "startPitch": -0.3,
+    "moveSpeed": 100.0,
+    "rotateSpeed": 0.5,
+    "particleSize": 20.0
+  },
+  "debug": {
+    "enableDebugLayer": false,
+    "logLevel": "info",
+    "enablePIX": false,
+    "showFPS": true,
+    "showParticleStats": true
+  }
+}
