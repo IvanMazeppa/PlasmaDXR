@@ -165,7 +165,9 @@ def print_summary(hof_file: str, stats_file: str):
 
 def main():
     """Generate all visualizations"""
-    results_dir = Path("ml/optimization/results")
+    # Resolve results directory relative to this script
+    script_dir = Path(__file__).parent.absolute()
+    results_dir = script_dir / "results"
 
     stats_file = results_dir / "generation_stats.json"
     hof_file = results_dir / "hall_of_fame.json"

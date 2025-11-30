@@ -190,8 +190,10 @@ class ParallelGeneticOptimizer:
         Returns:
             Dictionary with benchmark results (or None if failed)
         """
-        # Convert output path to Windows format for .exe
-        output_file = self.output_dir / f"tmp_eval_{self.evaluation_count}.json"
+        import os
+        # Use process ID + timestamp for unique filenames in multiprocessing
+        unique_id = f"{os.getpid()}_{int(time.time() * 1000000)}"
+        output_file = self.output_dir / f"tmp_eval_{unique_id}.json"
         output_path_str = str(output_file)
 
         # Convert WSL path to Windows path if needed
@@ -236,7 +238,7 @@ class ParallelGeneticOptimizer:
 
             # Note: Exit code 1 can mean "UNSUITABLE" result (score < 50), not failure
             # Check if output file was created instead of relying on exit code
-            output_file = self.output_dir / f"tmp_eval_{self.evaluation_count}.json"
+            # (output_file already defined above with unique_id)
 
             if not output_file.exists():
                 print(f"[WARNING] Benchmark failed (exit code {result.returncode})")
@@ -273,7 +275,7 @@ class ParallelGeneticOptimizer:
         - 15% Visual quality
 
         Bonuses:
-        - +10 for vortices
+        - +10 for vortices (FUTURE: turbulence not implemented yet)
         - +5 for high retention
         """
         if results is None:
@@ -281,26 +283,30 @@ class ParallelGeneticOptimizer:
 
         fitness = 0.0
 
+        # Get summary section (scores are nested here)
+        summary = results.get('summary', {})
+
         # Stability score (0-100)
-        stability = results.get('stability_score', 0.0)
+        stability = summary.get('stability_score', 0.0)
         fitness += 0.35 * stability
 
         # Accuracy score (0-100)
-        accuracy = results.get('accuracy_score', 0.0)
+        accuracy = summary.get('accuracy_score', 0.0)
         fitness += 0.30 * accuracy
 
         # Performance score (0-100)
-        performance = results.get('performance_score', 0.0)
+        performance = summary.get('performance_score', 0.0)
         fitness += 0.20 * performance
 
         # Visual score (0-100, if available)
-        visual = results.get('visual_score', 50.0)  # Default to 50 if missing
+        visual = summary.get('visual_score', 50.0)  # Default to 50 if missing
         fitness += 0.15 * visual
 
-        # Bonus for vortices (turbulence)
-        vortex_count = results.get('turbulence', {}).get('vortex_count', {}).get('mean', 0)
-        if vortex_count > 0:
-            fitness += 10.0
+        # Bonus for vortices (turbulence) - NOT YET IMPLEMENTED
+        # TODO: Phase 5 - SIREN turbulence integration
+        # vortex_count = results.get('turbulence', {}).get('vortex_count', {}).get('mean', 0)
+        # if vortex_count > 0:
+        #     fitness += 10.0
 
         # Bonus for high retention
         escape_rate = results.get('stability', {}).get('escape_rate', {}).get('mean', 100.0)

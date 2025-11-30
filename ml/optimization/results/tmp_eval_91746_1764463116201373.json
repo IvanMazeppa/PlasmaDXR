@@ -1,0 +1,50 @@
+{
+  "benchmark": {
+    "version": "1.0",
+    "timestamp": "2025-11-30T00:39:59",
+    "duration_seconds": 69.8308,
+    "config": {
+      "pinn_model": "ml/models/pinn_v4_turbulence_robust.onnx",
+      "pinn_version": 4,
+      "siren_enabled": false,
+      "siren_intensity": 0.5000,
+      "particle_count": 5000,
+      "frames": 500,
+      "timestep": 0.0160,
+      "timescale": 1.0000
+    }
+  },
+  "stability": {
+    "escape_rate": { "mean": 0.0000, "max": 0.0000 },
+    "collapse_rate": { "mean": 0.0000, "max": 0.0000 },
+    "energy_drift_percent": 31.0264,
+    "angular_momentum_drift_percent": 0.0041,
+    "velocity": { "mean": 1.1340, "max": 3.1488 }
+  },
+  "performance": {
+    "physics_ms": { "mean": 93.6027, "max": 403.7898 },
+    "pinn_inference_ms": { "mean": 90.1809, "max": 402.2412 },
+    "siren_inference_ms": { "mean": 0.0000, "max": 0.0000 },
+    "integration_ms": { "mean": 3.4218, "max": 73.2805 },
+    "frames_per_second": 10.6171,
+    "particles_per_second": 53085.3594
+  },
+  "physical_accuracy": {
+    "keplerian_velocity_error_percent": 1.9365,
+    "radial_force_sign_correct_percent": 100.0000,
+    "avg_force_magnitude": 0.0057
+  },
+  "visual_quality": {
+    "coherent_motion_index": 0.0075,
+    "disk_thickness_ratio": 0.0248,
+    "velocity_jerk": 0.0000
+  },
+  "summary": {
+    "stability_score": 37.9472,
+    "performance_score": 8.8476,
+    "accuracy_score": 0.0000,
+    "visual_score": 49.2503,
+    "overall_score": 22.4386,
+    "recommendation": "UNSUITABLE - Do not use for this simulation type"
+  }
+}
