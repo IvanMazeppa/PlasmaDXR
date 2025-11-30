@@ -7,6 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build/bin/Debug"
+PINN_MODEL="$PROJECT_ROOT/ml/models/pinn_accretion_disk.onnx"
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
 echo "║          GA Optimization Benchmark Validation                 ║"
@@ -25,10 +26,39 @@ fi
 
 cd "$BUILD_DIR"
 
+# Convert WSL paths to Windows paths for output
+BASELINE_OUTPUT="$PROJECT_ROOT/ml/optimization/results/baseline_benchmark.json"
+OPTIMIZED_OUTPUT="$PROJECT_ROOT/ml/optimization/results/validation_benchmark.json"
+
+BASELINE_WIN="${BASELINE_OUTPUT//\/mnt\//}"
+BASELINE_WIN="${BASELINE_WIN/\/d\//D:/}"
+BASELINE_WIN="${BASELINE_WIN//\//\\}"
+
+OPTIMIZED_WIN="${OPTIMIZED_OUTPUT//\/mnt\//}"
+OPTIMIZED_WIN="${OPTIMIZED_WIN/\/d\//D:/}"
+OPTIMIZED_WIN="${OPTIMIZED_WIN//\//\\}"
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Running Baseline Benchmark (default physics)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-./PlasmaDX-Clean.exe --config=../../../configs/scenarios/benchmark_baseline.json
+./PlasmaDX-Clean.exe \
+    --benchmark \
+    --pinn "$PINN_MODEL" \
+    --frames 500 \
+    --particles 5000 \
+    --output "$BASELINE_WIN" \
+    --gm 100.0 \
+    --bh-mass 4.3 \
+    --alpha 0.1 \
+    --damping 0.95 \
+    --angular-boost 1.0 \
+    --disk-thickness 50.0 \
+    --inner-radius 10.0 \
+    --outer-radius 300.0 \
+    --density-scale 1.0 \
+    --force-clamp 50.0 \
+    --velocity-clamp 50.0 \
+    --boundary-mode 0
 
 if [ $? -eq 0 ]; then
     echo "✅ Baseline benchmark complete"
@@ -41,7 +71,24 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Running Optimized Benchmark (GA parameters, fitness 73.79)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-./PlasmaDX-Clean.exe --config=../../../configs/scenarios/benchmark_ga_validation.json
+./PlasmaDX-Clean.exe \
+    --benchmark \
+    --pinn "$PINN_MODEL" \
+    --frames 500 \
+    --particles 5000 \
+    --output "$OPTIMIZED_WIN" \
+    --gm 165.52 \
+    --bh-mass 6.71 \
+    --alpha 0.276 \
+    --damping 0.985 \
+    --angular-boost 2.58 \
+    --disk-thickness 0.098 \
+    --inner-radius 3.41 \
+    --outer-radius 463.65 \
+    --density-scale 2.65 \
+    --force-clamp 30.21 \
+    --velocity-clamp 10.0 \
+    --boundary-mode 3
 
 if [ $? -eq 0 ]; then
     echo "✅ Optimized benchmark complete"
@@ -57,12 +104,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Compare results using Python
-python3 << 'PYTHON_EOF'
+python3 << PYTHON_EOF
 import json
 import sys
 from pathlib import Path
 
-results_dir = Path(__file__).parent.parent.parent / "ml" / "optimization" / "results"
+results_dir = Path("$PROJECT_ROOT") / "ml" / "optimization" / "results"
 baseline_file = results_dir / "baseline_benchmark.json"
 optimized_file = results_dir / "validation_benchmark.json"
 
@@ -124,6 +171,8 @@ except FileNotFoundError as e:
     sys.exit(1)
 except Exception as e:
     print(f"❌ ERROR: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 PYTHON_EOF

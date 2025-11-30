@@ -1,0 +1,50 @@
+{
+  "benchmark": {
+    "version": "1.0",
+    "timestamp": "2025-11-30T18:09:04",
+    "duration_seconds": 2.3691,
+    "config": {
+      "pinn_model": "D:/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/ml/models/pinn_accretion_disk.onnx",
+      "pinn_version": 2,
+      "siren_enabled": false,
+      "siren_intensity": 0.5000,
+      "particle_count": 5000,
+      "frames": 500,
+      "timestep": 0.0160,
+      "timescale": 1.0000
+    }
+  },
+  "stability": {
+    "escape_rate": { "mean": 0.0000, "max": 0.0000 },
+    "collapse_rate": { "mean": 0.0000, "max": 0.0000 },
+    "energy_drift_percent": 2298.8245,
+    "angular_momentum_drift_percent": -8.9126,
+    "velocity": { "mean": 7.8217, "max": 15.0000 }
+  },
+  "performance": {
+    "physics_ms": { "mean": 3.7915, "max": 5.3390 },
+    "pinn_inference_ms": { "mean": 3.4270, "max": 4.9426 },
+    "siren_inference_ms": { "mean": 0.0000, "max": 0.0000 },
+    "integration_ms": { "mean": 0.3645, "max": 0.7475 },
+    "frames_per_second": 261.2237,
+    "particles_per_second": 1306118.5000
+  },
+  "physical_accuracy": {
+    "keplerian_velocity_error_percent": 545.7695,
+    "radial_force_sign_correct_percent": 100.0000,
+    "avg_force_magnitude": 1.2265
+  },
+  "visual_quality": {
+    "coherent_motion_index": 0.0722,
+    "disk_thickness_ratio": 0.0958,
+    "velocity_jerk": 0.1581
+  },
+  "summary": {
+    "stability_score": 0.0000,
+    "performance_score": 100.0000,
+    "accuracy_score": 0.0000,
+    "visual_score": 42.7785,
+    "overall_score": 26.4168,
+    "recommendation": "UNSUITABLE - Do not use for this simulation type"
+  }
+}

@@ -13,15 +13,19 @@
     "dxr-image-quality-analyst": {
       "command": "bash",
       "args": [
-        "-c",
         "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/dxr-image-quality-analyst && ./run_server.sh"
-      ]
-    },
-    "log-analysis-rag": {
+        ],
+        "env": {
+          "PROJECT_ROOT": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean",
+          "PIX_PATH": "/mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+      }
+    },        
+    "dxr-shadow-engineer": {
+      "type": "stdio",
       "command": "bash",
       "args": [
         "-c",
-        "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/log-analysis-rag && ./run_server.sh"
+        "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/dxr-shadow-engineer/run_server.sh"
       ]
     },
     "path-and-probe": {
