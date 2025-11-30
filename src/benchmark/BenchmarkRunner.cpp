@@ -443,13 +443,10 @@ void BenchmarkRunner::AccumulateMetrics(const PhysicsSnapshot& snapshot) {
 }
 
 void BenchmarkRunner::ComputeFinalMetrics() {
-    // Finalize all metric aggregations
+    // Finalize all metric aggregations and compute scores
+    // Note: radialForceSignCorrectPercent is computed inside ComputeScores()
+    // after accuracy.Finalize() provides avgRadialForce.mean
     m_results.Finalize();
-    
-    // Compute radial force sign correctness from accuracy data
-    // (This would need tracking during accumulation - simplified here)
-    m_results.accuracy.radialForceSignCorrectPercent = 
-        (m_results.accuracy.avgRadialForce.mean < 0.0f) ? 100.0f : 0.0f;
 }
 
 bool BenchmarkRunner::SaveResults(const BenchmarkResults& results, 

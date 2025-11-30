@@ -214,6 +214,11 @@ struct BenchmarkResults {
         stabilityScore -= std::abs(stability.energyDriftPercent) * 2.0f;  // -2 per 1% drift
         stabilityScore = std::clamp(stabilityScore, 0.0f, 100.0f);
         
+        // Compute radial force sign correctness (negative = attractive = correct)
+        // Must be done here AFTER accuracy.Finalize() computes avgRadialForce.mean
+        accuracy.radialForceSignCorrectPercent = 
+            (accuracy.avgRadialForce.mean < 0.0f) ? 100.0f : 0.0f;
+        
         // Accuracy score (0-100)
         accuracyScore = 100.0f;
         accuracyScore -= accuracy.keplerianVelocityError.mean * 5.0f;  // -5 per 1% error

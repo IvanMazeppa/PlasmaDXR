@@ -132,3 +132,6 @@ wandb/
 !ml/*.py
 !ml/*.md
 !ml/requirements*.txt
+
+.gemini/
+gha-creds-*.json
