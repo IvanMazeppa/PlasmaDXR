@@ -19,10 +19,11 @@ class SIRENVortexField;
 class ParticleSystem {
 public:
     // Physical constants for accretion disk
+    // Phase 5 UPDATED: Realistic scale for volumetric particles (radius ~20 units)
     static constexpr float BLACK_HOLE_MASS = 4.3e6f;        // Solar masses (Sgr A*)
-    static constexpr float INNER_STABLE_ORBIT = 10.0f;      // Schwarzschild radii
-    static constexpr float OUTER_DISK_RADIUS = 300.0f;      // Reduced for denser, more visible disk
-    static constexpr float DISK_THICKNESS = 50.0f;
+    static constexpr float INNER_STABLE_ORBIT = 50.0f;      // Schwarzschild radii (was 10, now 2.5× particle diameter)
+    static constexpr float OUTER_DISK_RADIUS = 1000.0f;     // Disk edge (was 300, now 50× particle diameter)
+    static constexpr float DISK_THICKNESS = 100.0f;         // Vertical extent (was 50, now 5× particle diameter)
 
     // PINN Normalized Unit System (G*M = 100) - UPDATED FOR v3 MODEL
     // Training data uses: r=10-300, v=sqrt(100/r), F=-100/r^2
@@ -404,14 +405,15 @@ private:
     float m_timeScale = 1.0f;                 // Simulation speed multiplier (0.0-50.0, 1.0 = normal speed)
 
     // Benchmark physics parameters (Phase 1: Runtime Controls)
+    // Phase 5 UPDATED: Realistic scale for volumetric particles (radius ~20 units)
     float m_gm = 100.0f;                      // Gravitational parameter (G*M)
     float m_diskThickness = 0.1f;             // H/R ratio (disk height/radius, 0.01-0.5)
     float m_densityScale = 1.0f;              // Global density multiplier
-    float m_innerRadius = 6.0f;               // Inner disk radius (ISCO)
-    float m_outerRadius = 300.0f;             // Outer disk radius
+    float m_innerRadius = 50.0f;              // Inner disk radius (was 6, now 2.5× particle diameter)
+    float m_outerRadius = 1000.0f;            // Outer disk radius (was 300, now 50× particle diameter)
     float m_forceClamp = 10.0f;               // Maximum force magnitude (safety limit)
     float m_velocityClamp = 20.0f;            // Maximum velocity magnitude (safety limit)
-    int m_boundaryMode = 1;                   // Boundary handling (0=none, 1=reflect, 2=wrap, 3=respawn)
+    int m_boundaryMode = 0;                   // Boundary handling (0=none, 1=reflect, 2=wrap, 3=respawn)
     bool m_enforceBoundaries = false;         // Whether to apply boundary constraints
 
     // PINN Visualization Parameters (post-processing after PINN inference)

@@ -70,7 +70,8 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_config.particleCount = appConfig.rendering.particleCount;
     m_config.rendererType = (appConfig.rendering.rendererType == ::Config::RendererType::Gaussian) ?
                             RendererType::Gaussian : RendererType::Billboard;
-    m_config.enableRT = true; // Always enabled
+    m_config.enableRT = true; // Always enabled (Required for core functionality)
+    // m_config.enableRT = false;
     m_config.preferMeshShaders = true;
     m_config.enableDebugLayer = appConfig.debug.enableDebugLayer;
 
@@ -103,6 +104,14 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_useGravitationalRedshift = appConfig.features.useGravitationalRedshift;
     m_redshiftStrength = appConfig.features.redshiftStrength;
 
+    // God ray system (Phase 5 Milestone 5.3c) - DEPRECATED, replaced by froxel system
+    // DEFAULT: Disabled (0.0) for performance - enable with --fog ONLY
+    m_godRayDensity = 0.0f; 
+    // if (appConfig.features.godRayDensity > 0.0f) {
+    //    m_godRayDensity = appConfig.features.godRayDensity;
+    // }
+    m_godRayStepMultiplier = 1.0f; // Default value, config member removed
+
     // Apply lighting config
     if (appConfig.lighting.system == "MultiLight") {
         m_lightingSystem = LightingSystem::MultiLight;
@@ -131,6 +140,15 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         } else if (arg == "--multi-light") {
             m_lightingSystem = LightingSystem::MultiLight;
             LOG_INFO("Lighting system: Multi-Light (brute force)");
+        } else if (arg == "--fog") {
+            // Check if next arg is a value (optional)
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                m_godRayDensity = static_cast<float>(std::atof(argv[++i]));
+                LOG_INFO("Atmospheric Fog ENABLED (density: {:.2f})", m_godRayDensity);
+            } else {
+                m_godRayDensity = 0.5f; // Default density if enabled but no value provided
+                LOG_INFO("Atmospheric Fog ENABLED (default density: 0.5)");
+            }
         } else if (arg == "--dump-buffers") {
             m_enableBufferDump = true;
             // Check if next arg is a frame number (optional)
@@ -527,7 +545,7 @@ void Application::Update(float deltaTime) {
         m_useAnisotropicGaussians = preset.useAnisotropicGaussians;
         m_enableTemporalFiltering = preset.enableTemporalFiltering;
         m_enableRTLighting = preset.enableRTLighting;
-        m_godRayDensity = preset.godRayDensity;
+        // m_godRayDensity = preset.godRayDensity; // DISABLED: Respect user preference/command line
         m_rtLightingStrength = preset.rtLightingStrength;
     }
 

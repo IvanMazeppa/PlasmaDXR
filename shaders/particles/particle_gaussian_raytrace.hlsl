@@ -401,7 +401,7 @@ float ComputeSoftShadowOcclusion(
     float sinRot = sin(rotation);
 
     // Cast multiple shadow rays
-    [unroll(8)]  // Maximum expected rays (Quality preset)
+    [loop]  // Prevent unrolling to avoid compiler hang
     for (uint i = 0; i < numRays; i++)
     {
         // Apply temporal rotation to Poisson disk sample
@@ -644,8 +644,11 @@ float3 RayMarchAtmosphericFog(
         return float3(0, 0, 0);
     }
 
+    // SAFETY: Clamp light count to prevent infinite loops/TDR
+    lightCount = min(lightCount, 16);
+
     // Configuration
-    const uint NUM_STEPS = 32;  // 32 steps = good quality/performance balance
+    const uint NUM_STEPS = 8;  // REDUCED: 8 steps to prevent TDR (was 32)
     const float stepSize = maxDistance / float(NUM_STEPS);
 
     float3 totalFogColor = float3(0, 0, 0);
@@ -753,20 +756,16 @@ float3 RayMarchAtmosphericFog(
             totalFogColor += scatteringColor * stepSize;
         }
 
-        // === ADDED: Indirect/Ambient Volumetric Lighting from Probe Grid ===
-        // If probe grid is enabled, add its contribution to the fog
-        // This illuminates the "air" with bounced light, not just direct shafts
+        // === DISABLED: Indirect/Ambient Volumetric Lighting from Probe Grid ===
+        // This was causing severe performance degradation (1% framerate)
+        // Removed probe grid sampling from atmospheric fog - Ben 2025-12-01
+        /*
         if (useProbeGrid != 0) {
-             // Sample probe grid for ambient/indirect lighting
-             // We pass rayDir (view direction) to reconstruct directional irradiance
-             float3 indirect = SampleProbeGrid(samplePos, rayDir); 
-             
-             // Scale by fog density and a tuning factor (0.5 = 50% ambient strength)
-             // This ensures the fog isn't too bright but picks up the color of the environment
+             float3 indirect = SampleProbeGrid(samplePos, rayDir);
              float3 indirectScatter = indirect * godRayDensity * 0.5;
-             
              totalFogColor += indirectScatter * stepSize;
         }
+        */
     }
 
     return totalFogColor;
@@ -1753,11 +1752,20 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     // =========================================================================
     // REMOVED: Froxel system replaced by Gaussian Volume
 
-    // DEPRECATED: Old god ray system (replaced by froxel system for 5× performance)
+    // Volumetric Fog / God Ray System - HARD DISABLED to fix performance
     /*
     if (godRayDensity > 0.001) {
-        float3 atmosphericFog = RayMarchAtmosphericFog(...);
-        finalColor += atmosphericFog * 0.1;
+        float3 atmosphericFog = RayMarchAtmosphericFog(
+            cameraPos,
+            ray.Direction,
+            1000.0,  // Max distance
+            g_lights,
+            lightCount,
+            time,
+            godRayDensity,
+            g_particleBVH
+        );
+        finalColor += atmosphericFog; // Additive blending
     }
     */
 
