@@ -105,11 +105,11 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_redshiftStrength = appConfig.features.redshiftStrength;
 
     // God ray system (Phase 5 Milestone 5.3c) - DEPRECATED, replaced by froxel system
-    // DEFAULT: Disabled (0.0) for performance - enable with --fog ONLY
+    // DEFAULT: Disabled (0.0) for performance - enable with --fog or config
     m_godRayDensity = 0.0f; 
-    // if (appConfig.features.godRayDensity > 0.0f) {
-    //    m_godRayDensity = appConfig.features.godRayDensity;
-    // }
+    if (appConfig.features.godRayDensity > 0.0f) {
+       m_godRayDensity = appConfig.features.godRayDensity;
+    }
     m_godRayStepMultiplier = 1.0f; // Default value, config member removed
 
     // Apply lighting config
@@ -538,15 +538,15 @@ void Application::Update(float deltaTime) {
         auto preset = m_adaptiveQuality->GetQualityPreset(recommendedQuality);
 
         // Apply settings
-        m_shadowRaysPerLight = preset.shadowRaysPerLight;
-        m_useShadowRays = preset.useShadowRays;
-        m_useInScattering = preset.useInScattering;
-        m_usePhaseFunction = preset.usePhaseFunction;
-        m_useAnisotropicGaussians = preset.useAnisotropicGaussians;
-        m_enableTemporalFiltering = preset.enableTemporalFiltering;
-        m_enableRTLighting = preset.enableRTLighting;
-        // m_godRayDensity = preset.godRayDensity; // DISABLED: Respect user preference/command line
-        m_rtLightingStrength = preset.rtLightingStrength;
+        // m_shadowRaysPerLight = preset.shadowRaysPerLight;
+        // m_useShadowRays = preset.useShadowRays;
+        // m_useInScattering = preset.useInScattering;
+        // m_usePhaseFunction = preset.usePhaseFunction;
+        // m_useAnisotropicGaussians = preset.useAnisotropicGaussians;
+        // m_enableTemporalFiltering = preset.enableTemporalFiltering;
+        // m_enableRTLighting = preset.enableRTLighting;
+        // // m_godRayDensity = preset.godRayDensity; // DISABLED: Respect user preference/command line
+        // m_rtLightingStrength = preset.rtLightingStrength;
     }
 
     // Physics update moved to Render() to ensure proper command list ordering
@@ -983,6 +983,19 @@ void Application::Render() {
             // RTXDI provides external lighting, so RT lighting would be redundant and incorrect
             bool useRTLighting = m_enableRTLighting && (m_lightingSystem != LightingSystem::RTXDI);
             gaussianConstants.rtLightingStrength = useRTLighting ? m_rtLightingStrength : 0.0f;
+
+            // DEBUG: Log RT lighting state (frame 0 only)
+            static bool logged = false;
+            if (!logged) {
+                LOG_INFO("=== RT LIGHTING DEBUG ===");
+                LOG_INFO("  m_enableRTLighting: {}", m_enableRTLighting);
+                LOG_INFO("  m_lightingSystem: {}", m_lightingSystem == LightingSystem::RTXDI ? "RTXDI" : "MultiLight");
+                LOG_INFO("  useRTLighting: {}", useRTLighting);
+                LOG_INFO("  m_rtLightingStrength: {}", m_rtLightingStrength);
+                LOG_INFO("  gaussianConstants.rtLightingStrength: {}", gaussianConstants.rtLightingStrength);
+                logged = true;
+            }
+
             gaussianConstants.useAnisotropicGaussians = m_useAnisotropicGaussians ? 1u : 0u;
             gaussianConstants.anisotropyStrength = m_anisotropyStrength;
 

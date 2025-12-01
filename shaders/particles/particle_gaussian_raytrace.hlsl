@@ -1,6 +1,7 @@
 // 3D Gaussian Splatting Ray Tracing
 // Replaces billboard rasterization with volumetric ray-traced Gaussians
 // Proper depth sorting, transparency, and volumetric appearance
+// FORCE_RECOMPILE_20251201_V2
 
 #include "gaussian_common.hlsl"
 #include "plasma_emission.hlsl"
@@ -1415,6 +1416,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
             float3 directRTLight = float3(0, 0, 0);
 
             // Sample probe grid if enabled (volumetric ambient scattering)
+            // DISABLED: Potentially causing double-lighting or artifacts - Ben 2025-12-01
+            /*
             if (useProbeGrid != 0) {
                 // PROBE GRID MODE (Phase 0.13.1): Zero atomic contention!
                 // Pre-computed lighting at sparse 48³ grid with trilinear interpolation
@@ -1422,6 +1425,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                 // NOW WITH FULL SH L2 RECONSTRUCTION for directional scattering!
                 probeGridLight = SampleProbeGrid(pos, ray.Direction);
             }
+            */
 
             // Sample direct RT lighting (always active when RT lighting enabled)
             if (useVolumetricRT != 0) {
