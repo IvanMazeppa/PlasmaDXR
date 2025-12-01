@@ -240,6 +240,15 @@ bool BenchmarkRunner::ParseCommandLine(int argc, char** argv, BenchmarkConfig& o
         else if (arg == "--hybrid") {
             outConfig.hybridMode = true;
         }
+        else if (arg == "--no-settlement") {
+            outConfig.settlementCheckEnabled = false;
+        }
+        else if (arg == "--settlement-threshold" && i + 1 < argc) {
+            outConfig.settlementEnergyThreshold = std::stof(argv[++i]);
+        }
+        else if (arg == "--max-settlement-frames" && i + 1 < argc) {
+            outConfig.maxSettlementFrames = std::stoi(argv[++i]);
+        }
         else if (arg == "--verbose") {
             outConfig.verbose = true;
         }
@@ -277,6 +286,43 @@ BenchmarkResults BenchmarkRunner::Run() {
         SimulateFrame(dt, m_totalSimTime);
         m_totalSimTime += dt;
         m_currentFrame++;
+    }
+    
+    // Settlement detection (Phase 5): Wait for orbits to stabilize
+    if (m_config.settlementCheckEnabled) {
+        LOG_INFO("[Benchmark] Settlement detection enabled (threshold: {:.1f}%)", 
+                 m_config.settlementEnergyThreshold * 100.0f);
+        
+        PhysicsSnapshot prevSnapshot = CaptureSnapshot();
+        float initialEnergy = prevSnapshot.totalEnergy;
+        uint32_t settlementFrames = 0;
+        bool settled = false;
+        
+        while (!settled && settlementFrames < m_config.maxSettlementFrames) {
+            // Run 50 frames between checks
+            for (int j = 0; j < 50 && settlementFrames < m_config.maxSettlementFrames; j++) {
+                SimulateFrame(dt, m_totalSimTime);
+                m_totalSimTime += dt;
+                m_currentFrame++;
+                settlementFrames++;
+            }
+            
+            PhysicsSnapshot currentSnapshot = CaptureSnapshot();
+            float energyDrift = std::abs((currentSnapshot.totalEnergy - initialEnergy) / initialEnergy);
+            
+            if (energyDrift < m_config.settlementEnergyThreshold) {
+                settled = true;
+                LOG_INFO("[Benchmark] System settled after {} extra frames (energy drift: {:.2f}%)", 
+                         settlementFrames, energyDrift * 100.0f);
+            }
+            
+            prevSnapshot = currentSnapshot;
+        }
+        
+        if (!settled) {
+            LOG_WARN("[Benchmark] System did NOT settle after {} frames - proceeding anyway", 
+                     m_config.maxSettlementFrames);
+        }
     }
     
     // Capture initial state for energy/angular momentum tracking
@@ -729,8 +775,11 @@ void PrintBenchmarkHelp() {
     LOG_INFO("  --velocity-clamp <f>   Max velocity magnitude (default: 20.0)");
     LOG_INFO("  --boundary-mode <n>    Boundary handling: 0=none, 1=reflect, 2=wrap, 3=respawn (default: 1)");
     LOG_INFO("");
-    LOG_INFO("  --warmup <n>           Warmup frames (default: 100)");
+    LOG_INFO("  --warmup <n>           Warmup frames (default: 300)");
     LOG_INFO("  --sample-interval <n>  Frames between samples (default: 10)");
+    LOG_INFO("  --no-settlement        Disable settlement detection (default: enabled)");
+    LOG_INFO("  --settlement-threshold <f>  Energy drift threshold 0.01-0.5 (default: 0.10)");
+    LOG_INFO("  --max-settlement-frames <n> Max settlement wait (default: 500)");
     LOG_INFO("  --output <path>        Output file path (default: benchmark_results.json)");
     LOG_INFO("  --output-format <fmt>  Format: json, csv, both (default: json)");
     LOG_INFO("  --generate-preset <p>  Generate preset file at path");

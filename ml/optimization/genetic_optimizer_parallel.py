@@ -26,20 +26,26 @@ from deap import base, creator, tools, algorithms
 
 @dataclass
 class ParameterBounds:
-    """Bounds for all physics parameters"""
+    """Bounds for all physics parameters
+    
+    Phase 5 UPDATED: Realistic world scale for volumetric particles (radius ~20 units)
+    - Inner radius must be >> particle diameter (40 units)
+    - Outer radius must give particles room to orbit
+    - Boundary should be off (mode 0) or very large
+    """
     # Gravitational
     gm: Tuple[float, float] = (50.0, 200.0)
     bh_mass: Tuple[float, float] = (0.1, 10.0)
 
     # Viscosity & Dynamics
     alpha: Tuple[float, float] = (0.01, 0.5)
-    damping: Tuple[float, float] = (0.9, 1.0)
-    angular_boost: Tuple[float, float] = (0.5, 3.0)
+    damping: Tuple[float, float] = (0.95, 1.0)  # Tighter range - too much damping kills orbits
+    angular_boost: Tuple[float, float] = (0.8, 2.0)  # Narrower range
 
-    # Disk Geometry
+    # Disk Geometry - PHASE 5: Scaled for volumetric particles
     disk_thickness: Tuple[float, float] = (0.05, 0.3)
-    inner_radius: Tuple[float, float] = (3.0, 10.0)
-    outer_radius: Tuple[float, float] = (200.0, 500.0)
+    inner_radius: Tuple[float, float] = (30.0, 80.0)    # Was 3-10, now 1.5-4× particle diameter
+    outer_radius: Tuple[float, float] = (500.0, 1500.0)  # Was 200-500, now 25-75× particle diameter
 
     # Material
     density_scale: Tuple[float, float] = (0.5, 3.0)
@@ -48,8 +54,8 @@ class ParameterBounds:
     force_clamp: Tuple[float, float] = (5.0, 50.0)
     velocity_clamp: Tuple[float, float] = (10.0, 50.0)
 
-    # Boundary
-    boundary_mode: Tuple[int, int] = (0, 3)
+    # Boundary - PHASE 5: Prefer OFF (mode 0) for realistic physics
+    boundary_mode: Tuple[int, int] = (0, 1)  # Was 0-3, now only none(0) or reflect(1)
 
 
 # Global variables for multiprocessing (set once, shared across workers)
@@ -268,11 +274,11 @@ class ParallelGeneticOptimizer:
         """
         Compute fitness from benchmark results
 
-        Multi-objective weighted score:
-        - 35% Stability
-        - 30% Accuracy
-        - 20% Performance
-        - 15% Visual quality
+        Multi-objective weighted score (Phase 5 - VISUAL EMPHASIS):
+        - 25% Stability (reduced from 35%)
+        - 15% Accuracy (reduced from 30%)
+        - 20% Performance (unchanged)
+        - 40% Visual quality (increased from 15% - THIS IS WHAT MATTERS!)
 
         Bonuses:
         - +10 for vortices (FUTURE: turbulence not implemented yet)
@@ -288,19 +294,19 @@ class ParallelGeneticOptimizer:
 
         # Stability score (0-100)
         stability = summary.get('stability_score', 0.0)
-        fitness += 0.35 * stability
+        fitness += 0.25 * stability  # Reduced from 0.35
 
         # Accuracy score (0-100)
         accuracy = summary.get('accuracy_score', 0.0)
-        fitness += 0.30 * accuracy
+        fitness += 0.15 * accuracy  # Reduced from 0.30
 
         # Performance score (0-100)
         performance = summary.get('performance_score', 0.0)
         fitness += 0.20 * performance
 
-        # Visual score (0-100, if available)
+        # Visual score (0-100, if available) - KEY METRIC FOR TURBULENCE!
         visual = summary.get('visual_score', 50.0)  # Default to 50 if missing
-        fitness += 0.15 * visual
+        fitness += 0.40 * visual  # Increased from 0.15 - visual quality is PRIMARY goal
 
         # Bonus for vortices (turbulence) - NOT YET IMPLEMENTED
         # TODO: Phase 5 - SIREN turbulence integration

@@ -18,8 +18,8 @@ struct PhysicsConfig {
 
     // Disk geometry
     float diskThickness = 0.1f;           // H/R ratio (0.01-0.5)
-    float innerRadius = 6.0f;             // ISCO
-    float outerRadius = 300.0f;           // Disk edge
+    float innerRadius = 50.0f;            // ISCO (increased for volumetric particles)
+    float outerRadius = 1000.0f;          // Disk edge (increased for realistic scale)
 
     // Density
     float densityScale = 1.0f;            // Global density multiplier
@@ -70,8 +70,13 @@ struct BenchmarkConfig {
     bool hybridMode = false;        // PINN + GPU hybrid (disabled by default)
     
     // Benchmark Settings
-    uint32_t warmupFrames = 100;   // Excluded from metrics
+    uint32_t warmupFrames = 300;   // Excluded from metrics (increased for orbit settling)
     uint32_t sampleInterval = 10;  // Frames between metric samples
+    
+    // Settlement detection (Phase 5)
+    bool settlementCheckEnabled = true;     // Wait for energy drift < threshold before benchmarking
+    float settlementEnergyThreshold = 0.10f; // 10% energy drift = settled (relaxed for turbulence)
+    uint32_t maxSettlementFrames = 500;      // Max extra warmup frames waiting for settlement
     
     // Output
     std::string outputPath = "benchmark_results.json";
