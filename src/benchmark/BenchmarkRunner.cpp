@@ -36,6 +36,7 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     LOG_INFO("[Benchmark]   Particles: {}", config.particleCount);
     LOG_INFO("[Benchmark]   Frames: {} (warmup: {})", config.frames, config.warmupFrames);
     LOG_INFO("[Benchmark]   Timestep: {:.4f}s, Timescale: {:.1f}x", config.timestep, config.timescale);
+    LOG_INFO("[Benchmark]   Physics Time Multiplier: {:.1f}x (accelerates orbit settling)", config.physicsTimeMultiplier);
     LOG_INFO("[Benchmark]   Output: {} ({})", config.outputPath, config.outputFormat);
     
     // Initialize minimal Device (needed for buffer creation even without rendering)
@@ -126,9 +127,11 @@ bool BenchmarkRunner::Initialize(const BenchmarkConfig& config) {
     if (config.enforceBoundaries) {
         LOG_INFO("[Benchmark] Enabling boundary enforcement");
         m_particleSystem->SetEnforceBoundaries(true);
+        m_particleSystem->SetPINNEnforceBoundaries(true);
     } else {
         LOG_INFO("[Benchmark] Boundary enforcement DISABLED (particles can escape)");
         m_particleSystem->SetEnforceBoundaries(false);
+        m_particleSystem->SetPINNEnforceBoundaries(false);  // CRITICAL: Disable PINN boundaries too!
     }
 
     // Configure hybrid mode
@@ -217,6 +220,9 @@ bool BenchmarkRunner::ParseCommandLine(int argc, char** argv, BenchmarkConfig& o
         }
         else if (arg == "--timescale" && i + 1 < argc) {
             outConfig.timescale = std::stof(argv[++i]);
+        }
+        else if (arg == "--physics-time-multiplier" && i + 1 < argc) {
+            outConfig.physicsTimeMultiplier = std::stof(argv[++i]);
         }
         else if (arg == "--warmup" && i + 1 < argc) {
             outConfig.warmupFrames = std::stoi(argv[++i]);
@@ -420,8 +426,13 @@ BenchmarkResults BenchmarkRunner::Run() {
 }
 
 void BenchmarkRunner::SimulateFrame(float deltaTime, float totalTime) {
+    // Apply physics time multiplier for faster orbit settling
+    // This multiplies the physics deltaTime, allowing particles to complete
+    // multiple orbits in the same wall-clock time without affecting visual rendering
+    float effectiveDeltaTime = deltaTime * m_config.physicsTimeMultiplier;
+
     // Update physics through ParticleSystem (PINN + optional SIREN)
-    m_particleSystem->Update(deltaTime, totalTime);
+    m_particleSystem->Update(effectiveDeltaTime, totalTime);
 
     // Execute and sync GPU commands if using GPU physics (non-PINN mode)
     // PINN runs on CPU so no GPU sync needed
@@ -755,7 +766,9 @@ void PrintBenchmarkHelp() {
     LOG_INFO("  --particles <n>        Particle count (default: 10000)");
     LOG_INFO("  --frames <n>           Simulation frames (default: 1000)");
     LOG_INFO("  --timestep <f>         Fixed timestep in seconds (default: 0.016)");
-    LOG_INFO("  --timescale <f>        Time multiplier 1-50 (default: 1.0)");
+    LOG_INFO("  --timescale <f>        Visual time multiplier 1-50 (default: 1.0)");
+    LOG_INFO("  --physics-time-multiplier <f>  Physics deltaTime multiplier 1-200 (default: 1.0)");
+    LOG_INFO("                                 Accelerates orbit settling without visual fast-forward");
     LOG_INFO("  --enforce-boundaries   Enable containment volume (default: OFF)");
     LOG_INFO("  --hybrid               Enable PINN+GPU hybrid mode (default: OFF)");
     LOG_INFO("");

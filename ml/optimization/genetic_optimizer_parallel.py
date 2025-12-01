@@ -85,7 +85,8 @@ class ParallelGeneticOptimizer:
                  mutation_prob: float = 0.2,
                  crossover_prob: float = 0.7,
                  output_dir: str = "results",
-                 num_workers: int = None):
+                 num_workers: int = None,
+                 physics_time_multiplier: float = 1.0):
         """
         Args:
             executable_path: Path to PlasmaDX-Clean.exe
@@ -111,6 +112,7 @@ class ParallelGeneticOptimizer:
         self.generations = generations
         self.mutation_prob = mutation_prob
         self.crossover_prob = crossover_prob
+        self.physics_time_multiplier = physics_time_multiplier
 
         # Parallel configuration
         self.num_workers = num_workers or max(1, cpu_count() - 2)  # Leave 2 cores for OS
@@ -216,6 +218,7 @@ class ParallelGeneticOptimizer:
             "--pinn", self.pinn_model,
             "--frames", "500",  # Shorter for GA speed
             "--particles", "5000",  # Smaller for GA speed
+            "--physics-time-multiplier", str(self.physics_time_multiplier),
             "--output", output_path_str,
             "--gm", str(params['gm']),
             "--bh-mass", str(params['bh_mass']),
@@ -484,6 +487,8 @@ def main():
                        help='Population size (default: 10)')
     parser.add_argument('--generations', type=int, default=5,
                        help='Number of generations (default: 5)')
+    parser.add_argument('--physics-time-multiplier', type=float, default=1.0,
+                       help='Physics deltaTime multiplier for faster orbit settling (default: 1.0, range: 1-200)')
     args = parser.parse_args()
 
     # Path to PlasmaDX executable (resolve relative to this script's location)
@@ -505,7 +510,8 @@ def main():
         generations=args.generations,
         mutation_prob=0.2,
         crossover_prob=0.7,
-        num_workers=args.workers
+        num_workers=args.workers,
+        physics_time_multiplier=args.physics_time_multiplier
     )
 
     # Run optimization

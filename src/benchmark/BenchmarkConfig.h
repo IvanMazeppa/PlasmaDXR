@@ -65,7 +65,8 @@ struct BenchmarkConfig {
     uint32_t particleCount = 10000;
     uint32_t frames = 1000;
     float timestep = 0.016f;       // 60 FPS equivalent
-    float timescale = 1.0f;        // Time multiplier
+    float timescale = 1.0f;        // Visual time multiplier (fast-forward rendering)
+    float physicsTimeMultiplier = 1.0f;  // Physics deltaTime multiplier (affects simulation speed, adjustable 1-200)
     bool enforceBoundaries = false; // Containment volume (disabled by default)
     bool hybridMode = false;        // PINN + GPU hybrid (disabled by default)
     

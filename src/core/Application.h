@@ -136,6 +136,7 @@ private:
     float m_cameraMoveSpeed = 100.0f;   // Camera movement speed
     float m_cameraRotateSpeed = 0.5f;   // Camera rotation speed
     bool m_physicsEnabled = true;       // ENABLED - physics shader initializes particles on GPU
+    float m_physicsTimeMultiplier = 1.0f; // Physics deltaTime multiplier (1-200) for accelerated orbit settling
 
     // RTXDI temporal accumulation state
     DirectX::XMFLOAT4X4 m_prevViewProj; // For planar reprojection

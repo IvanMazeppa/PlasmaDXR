@@ -422,7 +422,7 @@ private:
     float m_pinnTurbulence = 0.0f;            // Random velocity perturbation (0.0-1.0)
     float m_pinnDamping = 1.0f;               // Velocity damping per frame (1.0=none, PINN includes learned viscosity)
     float m_pinnRadialSpread = 1.0f;          // Initial radius distribution width (0.5=narrow, 2.0=wide)
-    bool m_pinnEnforceBoundaries = true;      // Whether to clamp particles to disk region
+    bool m_pinnEnforceBoundaries = false;     // Whether to clamp particles to disk region (DISABLED by default for realistic physics)
 
     DirectX::XMFLOAT3 m_blackHolePosition = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
     DirectX::XMFLOAT3 m_diskAxis = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);

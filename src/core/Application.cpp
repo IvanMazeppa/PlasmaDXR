@@ -250,6 +250,9 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("Successfully loaded PINN model: {}", m_particleSystem->GetPINNModelName());
             // Auto-enable PINN when model is specified via command line
             m_particleSystem->SetPINNEnabled(true);
+            // CRITICAL: Disable PINN boundaries by default (they can be re-enabled via ImGui if needed)
+            m_particleSystem->SetPINNEnforceBoundaries(false);
+            LOG_INFO("PINN boundaries DISABLED by default (particles can escape)");
         } else {
             LOG_WARN("Failed to load specified PINN model, using default");
         }
@@ -576,7 +579,11 @@ void Application::Render() {
     if (m_physicsEnabled && m_particleSystem) {
         // Sync runtime particle count control
         m_particleSystem->SetActiveParticleCount(m_activeParticleCount);
-        m_particleSystem->Update(m_deltaTime, m_totalTime);
+
+        // Apply physics time multiplier for accelerated orbit settling
+        // Allows particles to complete orbits faster for testing/benchmarking
+        float effectiveDeltaTime = m_deltaTime * m_physicsTimeMultiplier;
+        m_particleSystem->Update(effectiveDeltaTime, m_totalTime);
 
         // PHYSICS-DRIVEN LIGHTS: Update light positions to simulate orbital motion
         // Lights move like celestial bodies (stars/clusters) orbiting the black hole
@@ -4186,6 +4193,30 @@ void Application::RenderImGui() {
             ImGui::SameLine();
             if (ImGui::Button("2x")) { m_particleSystem->SetTimeScale(2.0f); }
 
+            // Physics Time Multiplier (Phase 5: Orbit Settling)
+            ImGui::Separator();
+            if (ImGui::SliderFloat("Physics Time Multiplier", &m_physicsTimeMultiplier, 1.0f, 200.0f, "%.1fx")) {
+                // Applied immediately on next Update()
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Accelerates physics simulation (NOT visual)\n"
+                                  "Multiplies deltaTime for faster orbit settling\n"
+                                  "1x = real-time, 50x = 50x faster orbits\n"
+                                  "200x = outer particles complete orbit in ~1.3 minutes\n\n"
+                                  "Use this to find the minimum multiplier that creates\n"
+                                  "stable orbits, then use that value for GA optimization");
+            }
+            // Quick presets
+            if (ImGui::Button("Real-Time (1x)")) { m_physicsTimeMultiplier = 1.0f; }
+            ImGui::SameLine();
+            if (ImGui::Button("Fast (50x)")) { m_physicsTimeMultiplier = 50.0f; }
+            ImGui::SameLine();
+            if (ImGui::Button("Very Fast (100x)")) { m_physicsTimeMultiplier = 100.0f; }
+            ImGui::SameLine();
+            if (ImGui::Button("Ultra Fast (200x)")) { m_physicsTimeMultiplier = 200.0f; }
+
             // Benchmark Physics Parameters (Phase 1: Runtime Controls)
             ImGui::Separator();
             if (ImGui::CollapsingHeader("Advanced Physics Parameters")) {
@@ -4301,6 +4332,7 @@ void Application::RenderImGui() {
                 bool enforceBoundaries = m_particleSystem->GetEnforceBoundaries();
                 if (ImGui::Checkbox("Enforce Boundaries##Advanced", &enforceBoundaries)) {
                     m_particleSystem->SetEnforceBoundaries(enforceBoundaries);
+                    m_particleSystem->SetPINNEnforceBoundaries(enforceBoundaries);  // Sync PINN boundaries
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Apply boundary constraints to particle motion");
