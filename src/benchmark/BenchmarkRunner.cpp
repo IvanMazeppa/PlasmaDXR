@@ -167,9 +167,18 @@ bool BenchmarkRunner::ParseCommandLine(int argc, char** argv, BenchmarkConfig& o
         }
         else if (arg == "--siren-intensity" && i + 1 < argc) {
             outConfig.turbulence.sirenIntensity = std::stof(argv[++i]);
+            if (outConfig.turbulence.sirenIntensity > 0.0f) {
+                outConfig.turbulence.sirenEnabled = true;  // Auto-enable SIREN if intensity > 0
+            }
         }
         else if (arg == "--siren-seed" && i + 1 < argc) {
             outConfig.turbulence.sirenSeed = std::stof(argv[++i]);
+        }
+        else if (arg == "--vortex-scale" && i + 1 < argc) {
+            outConfig.turbulence.vortexScale = std::stof(argv[++i]);
+        }
+        else if (arg == "--vortex-decay" && i + 1 < argc) {
+            outConfig.turbulence.vortexDecay = std::stof(argv[++i]);
         }
         // === PHYSICS PARAMETERS ===
         else if (arg == "--gm" && i + 1 < argc) {
@@ -761,8 +770,10 @@ void PrintBenchmarkHelp() {
     LOG_INFO("Options:");
     LOG_INFO("  --pinn <model>         PINN model: v1, v2, v3, v4, or path (default: v4)");
     LOG_INFO("  --siren                Enable SIREN turbulence");
-    LOG_INFO("  --siren-intensity <f>  SIREN intensity 0-5 (default: 0.5)");
+    LOG_INFO("  --siren-intensity <f>  SIREN intensity 0-1 (default: 0.5, auto-enables SIREN)");
     LOG_INFO("  --siren-seed <f>       SIREN random seed (default: 0.0)");
+    LOG_INFO("  --vortex-scale <f>     Eddy size multiplier 0.5-3.0 (default: 1.0)");
+    LOG_INFO("  --vortex-decay <f>     Temporal decay rate 0.01-0.5 (default: 0.1)");
     LOG_INFO("  --particles <n>        Particle count (default: 10000)");
     LOG_INFO("  --frames <n>           Simulation frames (default: 1000)");
     LOG_INFO("  --timestep <f>         Fixed timestep in seconds (default: 0.016)");

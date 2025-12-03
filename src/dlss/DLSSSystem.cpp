@@ -2,8 +2,11 @@
 
 #ifdef ENABLE_DLSS
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>  // For GetModuleFileNameW
 #include "../utils/Logger.h"
 #include <stdexcept>
+#include <filesystem>  // For absolute path resolution
 #include "nvsdk_ngx_helpers.h"  // For NGX_DLSS_GET_OPTIMAL_SETTINGS
 
 // DLSS Project ID for development (narrow string, NOT wide string)
@@ -32,7 +35,16 @@ bool DLSSSystem::Initialize(ID3D12Device* device, const wchar_t* appDataPath) {
     m_device = device;
 
     // Configure NGX common features (logging, DLL paths)
-    const wchar_t* dllPaths[] = { L"." };  // Search local directory first
+    // IMPORTANT: Use absolute path - relative paths can fail NGX DLL loading
+    static wchar_t exeDir[MAX_PATH] = {};
+    if (exeDir[0] == 0) {
+        // Get the directory where the executable is located
+        GetModuleFileNameW(nullptr, exeDir, MAX_PATH);
+        wchar_t* lastSlash = wcsrchr(exeDir, L'\\');
+        if (lastSlash) *lastSlash = L'\0';  // Remove executable name, keep directory
+        LOG_INFO("DLSS: Using DLL path: {}", std::filesystem::path(exeDir).string());
+    }
+    const wchar_t* dllPaths[] = { exeDir };  // Absolute path to exe directory
     NVSDK_NGX_FeatureCommonInfo featureInfo = {};
     featureInfo.LoggingInfo.LoggingCallback = nullptr;  // Use default file logging
     featureInfo.LoggingInfo.MinimumLoggingLevel = NVSDK_NGX_LOGGING_LEVEL_ON;  // Enable debugging

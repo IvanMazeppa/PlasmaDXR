@@ -57,6 +57,11 @@ class ParameterBounds:
     # Boundary - PHASE 5: Prefer OFF (mode 0) for realistic physics
     boundary_mode: Tuple[int, int] = (0, 1)  # Was 0-3, now only none(0) or reflect(1)
 
+    # SIREN Turbulence - PHASE 6: Realistic turbulent eddies for visual quality
+    siren_intensity: Tuple[float, float] = (0.0, 1.0)   # Turbulence strength (0=off, 1=max)
+    vortex_scale: Tuple[float, float] = (0.5, 3.0)      # Eddy size multiplier
+    vortex_decay: Tuple[float, float] = (0.01, 0.5)     # Temporal decay rate
+
 
 # Global variables for multiprocessing (set once, shared across workers)
 _GLOBAL_OPTIMIZER = None
@@ -123,7 +128,8 @@ class ParallelGeneticOptimizer:
         self.param_names = [
             'gm', 'bh_mass', 'alpha', 'damping', 'angular_boost',
             'disk_thickness', 'inner_radius', 'outer_radius',
-            'density_scale', 'force_clamp', 'velocity_clamp', 'boundary_mode'
+            'density_scale', 'force_clamp', 'velocity_clamp', 'boundary_mode',
+            'siren_intensity', 'vortex_scale', 'vortex_decay'
         ]
 
         self.toolbox = None
@@ -231,7 +237,10 @@ class ParallelGeneticOptimizer:
             "--density-scale", str(params['density_scale']),
             "--force-clamp", str(params['force_clamp']),
             "--velocity-clamp", str(params['velocity_clamp']),
-            "--boundary-mode", str(params['boundary_mode'])
+            "--boundary-mode", str(params['boundary_mode']),
+            "--siren-intensity", str(params['siren_intensity']),
+            "--vortex-scale", str(params['vortex_scale']),
+            "--vortex-decay", str(params['vortex_decay'])
         ]
 
         try:
