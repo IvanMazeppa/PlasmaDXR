@@ -43,16 +43,16 @@ class ParameterBounds:
     angular_boost: Tuple[float, float] = (0.8, 2.0)  # Narrower range
 
     # Disk Geometry - PHASE 5: Scaled for volumetric particles
-    disk_thickness: Tuple[float, float] = (0.05, 0.3)
+    disk_thickness: Tuple[float, float] = (0.05, 0.15)  # Narrowed: Thin disk regime (H/R ratio)
     inner_radius: Tuple[float, float] = (30.0, 80.0)    # Was 3-10, now 1.5-4× particle diameter
     outer_radius: Tuple[float, float] = (500.0, 1500.0)  # Was 200-500, now 25-75× particle diameter
 
     # Material
     density_scale: Tuple[float, float] = (0.5, 3.0)
 
-    # Safety Limits
-    force_clamp: Tuple[float, float] = (5.0, 50.0)
-    velocity_clamp: Tuple[float, float] = (10.0, 50.0)
+    # Safety Limits - CRITICAL: Must be high enough to not interfere with realistic physics
+    force_clamp: Tuple[float, float] = (100.0, 1000.0)    # Was 5-50, physics needs 100+
+    velocity_clamp: Tuple[float, float] = (100.0, 500.0)  # Was 10-50, Keplerian velocities need 100+
 
     # Boundary - PHASE 5: Prefer OFF (mode 0) for realistic physics
     boundary_mode: Tuple[int, int] = (0, 1)  # Was 0-3, now only none(0) or reflect(1)
