@@ -12,13 +12,17 @@
 
 // SIREN (Sinusoidal Representation Network) for vortex field evaluation
 //
-// Input: [x, y, z, t, seed] → 5D position/time/seed
+// Supports two model versions:
+//   v1: Input [x, y, z, t, seed] → 5D (legacy, destroys angular momentum)
+//   v2: Input [x, y, z, t, seed, r, φ] → 7D (physics-constrained, preserves L)
+//
 // Output: [ω_x, ω_y, ω_z] → 3D vorticity vector
 //
 // The vorticity is converted to turbulent forces via:
 //   F_turb = cross(velocity, vorticity) * intensity
 //
-// This is additive with PINN orbital forces for physically-based turbulence.
+// v2 produces primarily vertical vorticity (ω_z dominant) which creates
+// tangential forces that preserve angular momentum in the accretion disk.
 
 class SIRENVortexField {
 public:
@@ -82,6 +86,7 @@ public:
     // Model info
     std::string GetModelInfo() const;
     std::string GetModelName() const { return m_modelName; }
+    int GetModelVersion() const { return m_modelVersion; }  // 1 = legacy, 2 = physics-constrained
 
 private:
 #ifdef ENABLE_ML_FEATURES
@@ -109,6 +114,8 @@ private:
     // Model info
     std::string m_modelName = "none";
     std::string m_modelPath;
+    int m_modelVersion = 1;  // 1 = legacy (5 inputs), 2 = physics-constrained (7 inputs)
+    int m_inputDim = 5;      // Number of input dimensions
 
     // Performance tracking
     PerformanceMetrics m_metrics = {};

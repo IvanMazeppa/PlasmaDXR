@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "type": "physics_constrained_siren",
+  "parameters": 9027,
+  "hidden_dim": 64,
+  "n_layers": 3,
+  "omega": 30.0,
+  "lambda_angular": 10.0,
+  "lambda_vertical": 2.0,
+  "final_val_loss": 0.026999093219637872,
+  "final_angular_loss": 2.035758894791684e-10,
+  "final_vertical_ratio": 0.9988533719945487
+}

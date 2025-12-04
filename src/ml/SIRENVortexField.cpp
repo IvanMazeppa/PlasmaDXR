@@ -69,9 +69,17 @@ bool SIRENVortexField::Initialize(const std::string& modelPath) {
 
         LOG_INFO("[SIREN] Input: '{}', shape: [{}, {}]", m_inputNames[0], m_inputShape[0], m_inputShape[1]);
 
-        // Validate input dimensions
-        if (m_inputShape[1] != 5) {
-            LOG_ERROR("[SIREN] Invalid input shape. Expected 5 (x,y,z,t,seed), got {}", m_inputShape[1]);
+        // Detect model version based on input dimensions
+        m_inputDim = static_cast<int>(m_inputShape[1]);
+        if (m_inputDim == 5) {
+            m_modelVersion = 1;
+            LOG_INFO("[SIREN] Detected v1 model (5 inputs: x,y,z,t,seed)");
+            LOG_WARN("[SIREN] v1 models may cause angular momentum drift - consider upgrading to v2");
+        } else if (m_inputDim == 7) {
+            m_modelVersion = 2;
+            LOG_INFO("[SIREN] Detected v2 model (7 inputs: x,y,z,t,seed,r,phi) - physics-constrained");
+        } else {
+            LOG_ERROR("[SIREN] Invalid input shape. Expected 5 (v1) or 7 (v2), got {}", m_inputDim);
             return false;
         }
 
@@ -139,20 +147,32 @@ bool SIRENVortexField::PredictVorticityBatch(
     auto startTime = std::chrono::high_resolution_clock::now();
 
     try {
-        // Prepare input tensor: [particleCount, 5] = [x, y, z, t, seed]
+        // Prepare input tensor based on model version
         std::vector<float> inputData;
-        inputData.reserve(particleCount * 5);
+        inputData.reserve(particleCount * m_inputDim);
 
         for (uint32_t i = 0; i < particleCount; i++) {
-            inputData.push_back(positions[i].x);
-            inputData.push_back(positions[i].y);
-            inputData.push_back(positions[i].z);
+            float x = positions[i].x;
+            float y = positions[i].y;
+            float z = positions[i].z;
+
+            inputData.push_back(x);
+            inputData.push_back(y);
+            inputData.push_back(z);
             inputData.push_back(currentTime);
-            inputData.push_back(m_seed);  // Same seed for all particles (coherent field)
+            inputData.push_back(m_seed);
+
+            // v2 models require cylindrical coordinates
+            if (m_modelVersion >= 2) {
+                float r = std::sqrt(x * x + y * y);
+                float phi = std::atan2(y, x);
+                inputData.push_back(r);
+                inputData.push_back(phi);
+            }
         }
 
         // Create input tensor
-        std::vector<int64_t> inputShape = { static_cast<int64_t>(particleCount), 5 };
+        std::vector<int64_t> inputShape = { static_cast<int64_t>(particleCount), static_cast<int64_t>(m_inputDim) };
         Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
             m_memoryInfo,
             inputData.data(),
@@ -257,7 +277,14 @@ std::string SIRENVortexField::GetModelInfo() const {
     std::ostringstream oss;
     oss << "SIREN Vortex Field Model\n";
     oss << "  Name: " << m_modelName << "\n";
-    oss << "  Input: [batch, 5] (x, y, z, t, seed)\n";
+    oss << "  Version: " << m_modelVersion << (m_modelVersion >= 2 ? " (physics-constrained)" : " (legacy)") << "\n";
+    if (m_modelVersion >= 2) {
+        oss << "  Input: [batch, 7] (x, y, z, t, seed, r, phi)\n";
+        oss << "  Physics: Angular momentum preserving\n";
+    } else {
+        oss << "  Input: [batch, 5] (x, y, z, t, seed)\n";
+        oss << "  Physics: Unconstrained (may drift L)\n";
+    }
     oss << "  Output: [batch, 3] (vorticity)\n";
     oss << "  Intensity: " << m_intensity << "\n";
     oss << "  Seed: " << m_seed << "\n";

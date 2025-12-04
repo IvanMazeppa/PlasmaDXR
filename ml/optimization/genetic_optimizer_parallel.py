@@ -320,11 +320,14 @@ class ParallelGeneticOptimizer:
         visual = summary.get('visual_score', 50.0)  # Default to 50 if missing
         fitness += 0.40 * visual  # Increased from 0.15 - visual quality is PRIMARY goal
 
-        # Bonus for vortices (turbulence) - NOT YET IMPLEMENTED
-        # TODO: Phase 5 - SIREN turbulence integration
-        # vortex_count = results.get('turbulence', {}).get('vortex_count', {}).get('mean', 0)
-        # if vortex_count > 0:
-        #     fitness += 10.0
+        # Bonus for turbulence quality (SIREN v2 physics-constrained)
+        # turbulence_quality = 1 - coherent_motion_index (higher = more varied motion)
+        visual_quality = results.get('visual_quality', {})
+        turbulence_quality = visual_quality.get('turbulence_quality', 0.0)
+        if turbulence_quality > 0.5:  # Significant turbulent motion
+            # Scale from 0-15 bonus based on turbulence quality (0.5-1.0 range)
+            turbulence_bonus = (turbulence_quality - 0.5) * 30.0  # Max +15 at quality=1.0
+            fitness += turbulence_bonus
 
         # Bonus for high retention
         escape_rate = results.get('stability', {}).get('escape_rate', {}).get('mean', 100.0)

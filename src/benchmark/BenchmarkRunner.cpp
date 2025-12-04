@@ -602,7 +602,11 @@ bool BenchmarkRunner::SaveResultsJSON(const BenchmarkResults& results, const std
     file << "  \"visual_quality\": {\n";
     file << "    \"coherent_motion_index\": " << results.visual.coherentMotionIndex.mean << ",\n";
     file << "    \"disk_thickness_ratio\": " << results.visual.diskThicknessActual.mean << ",\n";
-    file << "    \"velocity_jerk\": " << results.visual.velocityJerk.mean << "\n";
+    file << "    \"velocity_jerk\": " << results.visual.velocityJerk.mean << ",\n";
+    file << "    \"turbulence_strength\": " << results.visual.turbulenceStrength.mean << ",\n";
+    // Inverse coherent motion = turbulence quality (0-1, higher is more turbulent)
+    float turbulenceQuality = 1.0f - std::clamp(results.visual.coherentMotionIndex.mean, 0.0f, 1.0f);
+    file << "    \"turbulence_quality\": " << turbulenceQuality << "\n";
     file << "  },\n";
     
     // Summary scores
