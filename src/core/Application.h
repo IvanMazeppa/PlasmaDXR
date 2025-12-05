@@ -21,6 +21,7 @@ class RTLightingSystem_RayQuery;
     class ProbeGridSystem;
     class ResourceManager;
 class AdaptiveQualitySystem;
+class NanoVDBSystem;
 #ifdef ENABLE_DLSS
 class DLSSSystem;
 #endif
@@ -95,6 +96,7 @@ private:
     std::unique_ptr<RTXDILightingSystem> m_rtxdiLightingSystem;     // RTXDI parallel lighting path
     std::unique_ptr<ProbeGridSystem> m_probeGridSystem;             // Probe Grid (Phase 0.13.1 - replaces ReSTIR)
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
+    std::unique_ptr<NanoVDBSystem> m_nanoVDBSystem;                  // NanoVDB volumetric fog/gas (Phase 5.x)
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)
 #endif
@@ -201,6 +203,15 @@ private:
     // DEPRECATED: Removed in favor of Gaussian Volume
     float m_godRayDensity = 0.0f;          // Global god ray density (0.0-1.0, 0=disabled)
     float m_godRayStepMultiplier = 1.0f;   // Ray march step multiplier (0.5-2.0, quality vs speed)
+
+    // === NanoVDB Volumetric System (Phase 5.x - TRUE Volumetrics) ===
+    bool m_enableNanoVDB = false;          // Toggle NanoVDB volumetric rendering
+    float m_nanoVDBDensityScale = 1.0f;    // Global density multiplier (0.1-5.0)
+    float m_nanoVDBEmission = 0.5f;        // Emission intensity (0.0-2.0)
+    float m_nanoVDBAbsorption = 0.1f;      // Beer-Lambert absorption coefficient (0.0-1.0)
+    float m_nanoVDBScattering = 0.5f;      // Henyey-Greenstein scattering coefficient (0.0-1.0)
+    float m_nanoVDBStepSize = 5.0f;        // Ray march step size (1.0-20.0)
+    bool m_nanoVDBTestSphere = false;      // Create procedural test fog sphere on startup
 
     // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;

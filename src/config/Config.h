@@ -120,6 +120,12 @@ namespace Config {
         float vortex_decay = 0.1f;           // Vortex temporal decay (0.01-0.5)
     };
 
+    struct PINNConfig {
+        bool enabled = false;                // Enable PINN physics
+        std::string model = "pinn_v3_total_forces";  // PINN model to use (v3 or v4)
+        bool enforce_boundaries = false;     // Enforce particle boundaries
+    };
+
     struct CameraConfig {
         float startDistance = 800.0f;
         float startHeight = 1200.0f;
@@ -158,6 +164,7 @@ namespace Config {
         LightingConfig lighting;
         PhysicsConfig physics;
         SIRENConfig siren;
+        PINNConfig pinn;
         CameraConfig camera;
         DebugConfig debug;
         PIXAnalysisConfig pixAnalysis;

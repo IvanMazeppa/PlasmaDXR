@@ -25,6 +25,11 @@
     "vortex_scale": 1.28,
     "vortex_decay": 0.019
   },
+  "pinn": {
+    "enabled": true,
+    "model": "pinn_v4_turbulence_robust",
+    "enforce_boundaries": false
+  },
   "particles": {
     "count": 10000
   },

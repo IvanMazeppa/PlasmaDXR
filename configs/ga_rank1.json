@@ -25,8 +25,13 @@
     "vortex_scale": 0.86,
     "vortex_decay": 0.019
   },
+  "pinn": {
+    "enabled": true,
+    "model": "pinn_v4_turbulence_robust",
+    "enforce_boundaries": false
+  },
   "particles": {
-    "count": 10000
+    "count": 5000
   },
   "notes": "Best individual from 3x physics multiplier run. High GM (115), moderate turbulence (0.19), tight inner radius (47)."
 }

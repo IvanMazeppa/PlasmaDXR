@@ -12,6 +12,7 @@
 #include "../utils/ResourceManager.h"
 #include "../utils/Logger.h"
 #include "../ml/AdaptiveQualitySystem.h"
+#include "../rendering/NanoVDBSystem.h"
 #include "../benchmark/BenchmarkRunner.h"
 #ifdef ENABLE_DLSS
 #include "../dlss/DLSSSystem.h"
@@ -338,8 +339,22 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     // ParticleSystem reserves last 1000 particles for explosions, so active count = total - pool
     m_activeParticleCount = m_particleSystem->GetActiveParticleCount();
     LOG_INFO("Active particle count synced from ParticleSystem: {} (explosion pool reserved)", m_activeParticleCount);
-    
-    // Load PINN model if specified via --pinn flag
+
+    // Load PINN model from config if specified
+    if (appConfig.pinn.enabled && m_particleSystem->IsPINNAvailable()) {
+        std::string modelPath = "ml/models/" + appConfig.pinn.model + ".onnx";
+        LOG_INFO("Loading PINN model from config: {}", modelPath);
+        if (m_particleSystem->LoadPINNModel(modelPath)) {
+            LOG_INFO("Successfully loaded PINN model from config: {}", m_particleSystem->GetPINNModelName());
+            m_particleSystem->SetPINNEnabled(true);
+            m_particleSystem->SetPINNEnforceBoundaries(appConfig.pinn.enforce_boundaries);
+            LOG_INFO("PINN boundaries: {}", appConfig.pinn.enforce_boundaries ? "ENABLED" : "DISABLED");
+        } else {
+            LOG_WARN("Failed to load PINN model from config, using default");
+        }
+    }
+
+    // Load PINN model if specified via --pinn flag (overrides config)
     if (!m_pinnModelPath.empty() && m_particleSystem->IsPINNAvailable()) {
         LOG_INFO("Loading specified PINN model: {}", m_pinnModelPath);
         if (m_particleSystem->LoadPINNModel(m_pinnModelPath)) {
@@ -545,6 +560,18 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Target: 10K particles @ 90-110 FPS");
     }
 
+    // Initialize NanoVDB Volumetric System (Phase 5.x - TRUE Volumetrics)
+    m_nanoVDBSystem = std::make_unique<NanoVDBSystem>();
+    if (!m_nanoVDBSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height)) {
+        LOG_ERROR("Failed to initialize NanoVDB System");
+        LOG_ERROR("  Volumetric fog/gas effects will not be available");
+        m_nanoVDBSystem.reset();
+    } else {
+        LOG_INFO("NanoVDB Volumetric System initialized successfully!");
+        LOG_INFO("  Sparse volumetric fog/gas/pyro rendering enabled");
+        LOG_INFO("  Press 'J' to create test fog sphere");
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -567,6 +594,7 @@ void Application::Shutdown() {
     m_dlssSystem.reset();
 #endif
 
+    m_nanoVDBSystem.reset();  // Release NanoVDB volumetric system
     m_rtLighting.reset();
     m_particleRenderer.reset();
     m_particleSystem.reset();
@@ -1214,6 +1242,28 @@ void Application::Render() {
                                   m_probeGridSystem.get(),  // Probe Grid System (Phase 0.13.1)
                                   m_particleSystem->GetMaterialPropertiesBuffer());  // Material System (Phase 3)
 
+            // NanoVDB Volumetric Fog/Gas rendering (Phase 5.x - TRUE Volumetrics)
+            // Composites sparse volumetric grids on top of Gaussian particles
+            if (m_enableNanoVDB && m_nanoVDBSystem && m_nanoVDBSystem->HasGrid()) {
+                // Update NanoVDB parameters from ImGui controls
+                m_nanoVDBSystem->SetDensityScale(m_nanoVDBDensityScale);
+                m_nanoVDBSystem->SetEmissionStrength(m_nanoVDBEmission);
+                m_nanoVDBSystem->SetAbsorptionCoeff(m_nanoVDBAbsorption);
+                m_nanoVDBSystem->SetScatteringCoeff(m_nanoVDBScattering);
+                m_nanoVDBSystem->SetStepSize(m_nanoVDBStepSize);
+
+                // Render NanoVDB volumetrics (composites with existing output)
+                // Note: Light buffer passed as nullptr for prototype - using procedural lighting
+                m_nanoVDBSystem->Render(
+                    cmdList,
+                    viewProjMat,
+                    cameraPosition,
+                    m_gaussianRenderer->GetOutputTexture(),
+                    nullptr,  // Light buffer (TODO: integrate with existing light system)
+                    static_cast<uint32_t>(m_lights.size())
+                );
+            }
+
             // HDR→SDR blit pass (replaces CopyTextureRegion) - shared by Gaussian and VolumetricReSTIR
             D3D12_RESOURCE_BARRIER blitBarriers[2] = {};
 
@@ -1666,34 +1716,36 @@ void Application::OnKeyPress(UINT8 key) {
         }
         break;
 
-    // Spawn explosion (Phase 2C) - J = (available key)
+    // NanoVDB Volumetric Test (Phase 5.x - TRUE Volumetrics)
+    // Repurposed from old explosion system which never worked properly
     case 'J':
-        if (m_particleSystem) {
-            // Cycle through explosion types: Supernova → Stellar Flare → Shockwave
-            static int explosionCycle = 0;
-            ParticleSystem::ParticleMaterialType type;
-            const char* typeName;
-            switch (explosionCycle) {
-                case 0:
-                    type = ParticleSystem::ParticleMaterialType::SUPERNOVA;
-                    typeName = "SUPERNOVA";
-                    break;
-                case 1:
-                    type = ParticleSystem::ParticleMaterialType::STELLAR_FLARE;
-                    typeName = "STELLAR_FLARE";
-                    break;
-                case 2:
-                    type = ParticleSystem::ParticleMaterialType::SHOCKWAVE;
-                    typeName = "SHOCKWAVE";
-                    break;
-                default:
-                    type = ParticleSystem::ParticleMaterialType::SUPERNOVA;
-                    typeName = "SUPERNOVA";
-                    break;
+        if (m_nanoVDBSystem) {
+            if (!m_nanoVDBSystem->HasGrid()) {
+                // Create a procedural fog sphere for testing
+                DirectX::XMFLOAT3 center(0.0f, 0.0f, 0.0f);  // Center of accretion disk
+                float radius = 200.0f;  // 200 world units radius
+                float voxelSize = 5.0f;  // 5 units per voxel (moderate resolution)
+                float halfWidth = 3.0f;  // Fog falloff in voxels
+
+                if (m_nanoVDBSystem->CreateFogSphere(radius, center, voxelSize, halfWidth)) {
+                    m_nanoVDBSystem->SetEnabled(true);
+                    m_enableNanoVDB = true;
+                    LOG_INFO("NanoVDB: Created fog sphere (radius={}, voxelSize={})", radius, voxelSize);
+                    LOG_INFO("  Grid size: {} bytes ({} voxels)",
+                             m_nanoVDBSystem->GetGridSizeBytes(),
+                             m_nanoVDBSystem->GetVoxelCount());
+                    LOG_INFO("  Press 'J' again to toggle, ImGui for parameters");
+                } else {
+                    LOG_ERROR("NanoVDB: Failed to create fog sphere");
+                }
+            } else {
+                // Toggle NanoVDB visibility if grid already created
+                m_enableNanoVDB = !m_enableNanoVDB;
+                m_nanoVDBSystem->SetEnabled(m_enableNanoVDB);
+                LOG_INFO("NanoVDB: {} (J key toggles)", m_enableNanoVDB ? "ENABLED" : "DISABLED");
             }
-            m_particleSystem->SpawnRandomExplosion(type);
-            LOG_INFO("Queued {} explosion (J key cycles types) - will spawn next frame", typeName);
-            explosionCycle = (explosionCycle + 1) % 3;
+        } else {
+            LOG_ERROR("NanoVDB: System not initialized");
         }
         break;
 
@@ -4784,11 +4836,79 @@ void Application::RenderImGui() {
             ImGui::PopID();
         }
 
-        // === GOD RAY SYSTEM (Phase 5 Milestone 5.3c) ===
+        // === NANOVDB VOLUMETRIC SYSTEM (Phase 5.x - TRUE Volumetrics) ===
         ImGui::Separator();
         ImGui::Separator();
 
-        if (ImGui::TreeNode("God Ray System")) {
+        if (ImGui::TreeNode("NanoVDB Volumetric System")) {
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.8f, 1.0f), "TRUE volumetric fog/gas/pyro (sparse VDB grids)");
+
+            // Enable toggle
+            ImGui::Checkbox("Enable NanoVDB", &m_enableNanoVDB);
+            if (m_nanoVDBSystem) {
+                m_nanoVDBSystem->SetEnabled(m_enableNanoVDB);
+            }
+
+            // Grid status
+            if (m_nanoVDBSystem && m_nanoVDBSystem->HasGrid()) {
+                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Grid: LOADED");
+                ImGui::Text("  Size: %.2f MB (%u voxels)",
+                           m_nanoVDBSystem->GetGridSizeBytes() / (1024.0f * 1024.0f),
+                           m_nanoVDBSystem->GetVoxelCount());
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "Grid: NOT LOADED");
+                ImGui::Text("  Press 'J' to create test fog sphere");
+            }
+
+            // Parameters
+            ImGui::Separator();
+            ImGui::Text("Rendering Parameters:");
+
+            ImGui::SliderFloat("Density Scale", &m_nanoVDBDensityScale, 0.1f, 5.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Global density multiplier\nHigher = thicker fog");
+            }
+
+            ImGui::SliderFloat("Emission", &m_nanoVDBEmission, 0.0f, 2.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Self-luminous emission intensity\n0 = no glow, 2 = bright");
+            }
+
+            ImGui::SliderFloat("Absorption", &m_nanoVDBAbsorption, 0.0f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Beer-Lambert absorption coefficient\nHigher = more light absorbed");
+            }
+
+            ImGui::SliderFloat("Scattering", &m_nanoVDBScattering, 0.0f, 1.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Henyey-Greenstein scattering coefficient\nHigher = more in-scattering from lights");
+            }
+
+            ImGui::SliderFloat("Step Size", &m_nanoVDBStepSize, 1.0f, 20.0f, "%.1f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Ray march step size (world units)\nSmaller = higher quality, slower");
+            }
+
+            // Test sphere creation
+            ImGui::Separator();
+            if (ImGui::Button("Create Test Fog Sphere")) {
+                if (m_nanoVDBSystem) {
+                    DirectX::XMFLOAT3 center(0.0f, 0.0f, 0.0f);
+                    if (m_nanoVDBSystem->CreateFogSphere(200.0f, center, 5.0f, 3.0f)) {
+                        m_enableNanoVDB = true;
+                        m_nanoVDBSystem->SetEnabled(true);
+                    }
+                }
+            }
+
+            ImGui::TreePop();
+        }
+
+        // === GOD RAY SYSTEM (Phase 5 Milestone 5.3c) - DEPRECATED ===
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::TreeNode("God Ray System (DEPRECATED)")) {
             ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.4f, 1.0f), "Volumetric light beams (static in world space)");
 
             // Global controls

@@ -307,10 +307,13 @@ bool ConfigManager::ParseJSON(const std::string& json) {
     // Parse physics section
     std::string physicsJSON = GetJSONObject(json, "physics");
     if (!physicsJSON.empty()) {
-        // Basic geometry
-        m_config.physics.innerRadius = GetJSONFloat(physicsJSON, "innerRadius", m_config.physics.innerRadius);
-        m_config.physics.outerRadius = GetJSONFloat(physicsJSON, "outerRadius", m_config.physics.outerRadius);
-        m_config.physics.diskThickness = GetJSONFloat(physicsJSON, "diskThickness", m_config.physics.diskThickness);
+        // Basic geometry (support both snake_case and camelCase)
+        m_config.physics.innerRadius = GetJSONFloat(physicsJSON, "inner_radius",
+                                        GetJSONFloat(physicsJSON, "innerRadius", m_config.physics.innerRadius));
+        m_config.physics.outerRadius = GetJSONFloat(physicsJSON, "outer_radius",
+                                        GetJSONFloat(physicsJSON, "outerRadius", m_config.physics.outerRadius));
+        m_config.physics.diskThickness = GetJSONFloat(physicsJSON, "disk_thickness",
+                                          GetJSONFloat(physicsJSON, "diskThickness", m_config.physics.diskThickness));
         m_config.physics.timeStep = GetJSONFloat(physicsJSON, "timeStep", m_config.physics.timeStep);
         m_config.physics.physicsEnabled = GetJSONBool(physicsJSON, "physicsEnabled", m_config.physics.physicsEnabled);
 
@@ -334,6 +337,17 @@ bool ConfigManager::ParseJSON(const std::string& json) {
         m_config.siren.intensity = GetJSONFloat(sirenJSON, "intensity", m_config.siren.intensity);
         m_config.siren.vortex_scale = GetJSONFloat(sirenJSON, "vortex_scale", m_config.siren.vortex_scale);
         m_config.siren.vortex_decay = GetJSONFloat(sirenJSON, "vortex_decay", m_config.siren.vortex_decay);
+    }
+
+    // Parse PINN section
+    std::string pinnJSON = GetJSONObject(json, "pinn");
+    if (!pinnJSON.empty()) {
+        m_config.pinn.enabled = GetJSONBool(pinnJSON, "enabled", m_config.pinn.enabled);
+        std::string model = GetJSONValue(pinnJSON, "model");
+        if (!model.empty()) {
+            m_config.pinn.model = model;
+        }
+        m_config.pinn.enforce_boundaries = GetJSONBool(pinnJSON, "enforce_boundaries", m_config.pinn.enforce_boundaries);
     }
 
     // Parse camera section
@@ -390,13 +404,17 @@ bool ConfigManager::ParseJSON(const std::string& json) {
     bool hasNonDefaultPhysics = (m_config.physics.gm != 100.0f) ||
                                 (m_config.physics.bh_mass != 5.0f) ||
                                 (m_config.physics.alpha != 0.1f) ||
-                                (m_config.siren.intensity > 0.0f);
+                                (m_config.siren.intensity > 0.0f) ||
+                                m_config.pinn.enabled;
     if (hasNonDefaultPhysics) {
         LOG_INFO("Physics: GM={:.2f}, BH_Mass={:.2f}, Alpha={:.4f}, Time_Mult={:.1f}x",
                  m_config.physics.gm, m_config.physics.bh_mass,
                  m_config.physics.alpha, m_config.physics.time_multiplier);
         if (m_config.siren.intensity > 0.0f) {
             LOG_INFO("SIREN: Enabled, Intensity={:.3f}", m_config.siren.intensity);
+        }
+        if (m_config.pinn.enabled) {
+            LOG_INFO("PINN: Enabled, Model={}", m_config.pinn.model);
         }
     }
 
@@ -530,6 +548,11 @@ bool ConfigManager::SaveToFile(const std::string& filepath) const {
     file << "    \"intensity\": " << m_config.siren.intensity << ",\n";
     file << "    \"vortex_scale\": " << m_config.siren.vortex_scale << ",\n";
     file << "    \"vortex_decay\": " << m_config.siren.vortex_decay << "\n";
+    file << "  },\n";
+    file << "  \"pinn\": {\n";
+    file << "    \"enabled\": " << (m_config.pinn.enabled ? "true" : "false") << ",\n";
+    file << "    \"model\": \"" << m_config.pinn.model << "\",\n";
+    file << "    \"enforce_boundaries\": " << (m_config.pinn.enforce_boundaries ? "true" : "false") << "\n";
     file << "  },\n";
     file << "  \"camera\": {\n";
     file << "    \"startDistance\": " << m_config.camera.startDistance << ",\n";
