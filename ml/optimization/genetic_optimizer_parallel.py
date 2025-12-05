@@ -18,6 +18,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple
 from multiprocessing import Pool, cpu_count
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 
 # DEAP imports
@@ -79,6 +80,18 @@ def _evaluate_individual_worker(individual):
     return _GLOBAL_OPTIMIZER.evaluate_individual(individual)
 
 
+def _evaluate_individual_indexed(args):
+    """
+    Worker function for GPU-aware parallel evaluation.
+
+    Takes (index, individual) tuple and returns (index, fitness) to preserve order
+    when using imap_unordered for better load balancing with GPU contention.
+    """
+    idx, individual = args
+    fitness = _evaluate_individual_worker(individual)
+    return (idx, fitness)
+
+
 class ParallelGeneticOptimizer:
     """Genetic Algorithm optimizer with parallel evaluation"""
 
@@ -91,7 +104,8 @@ class ParallelGeneticOptimizer:
                  crossover_prob: float = 0.7,
                  output_dir: str = "results",
                  num_workers: int = None,
-                 physics_time_multiplier: float = 1.0):
+                 max_gpu_concurrent: int = None,
+                 physics_time_multiplier: float = 3.0):  # Phase 6: 3x is stable with SIREN v2
         """
         Args:
             executable_path: Path to PlasmaDX-Clean.exe
@@ -102,6 +116,7 @@ class ParallelGeneticOptimizer:
             crossover_prob: Probability of crossover
             output_dir: Directory to save results (relative to script location)
             num_workers: Number of parallel workers (None = auto-detect CPU count)
+            max_gpu_concurrent: Max concurrent GPU benchmarks (None = same as workers, recommended: 4-8)
         """
         # Path resolution
         self.executable_path = str(Path(executable_path).absolute())
@@ -119,10 +134,35 @@ class ParallelGeneticOptimizer:
         self.crossover_prob = crossover_prob
         self.physics_time_multiplier = physics_time_multiplier
 
-        # Parallel configuration
-        self.num_workers = num_workers or max(1, cpu_count() - 2)  # Leave 2 cores for OS
+        # Parallel configuration - use half of logical cores for high-core systems
+        # This leaves resources for GPU operations and OS
+        if num_workers is None:
+            cores = cpu_count()
+            if cores >= 16:
+                self.num_workers = cores // 2  # 32 cores -> 16 workers
+            else:
+                self.num_workers = max(1, cores - 2)  # Low core: leave 2 for OS
+        else:
+            self.num_workers = num_workers
+
+        # GPU concurrency limit - prevents timeout from GPU contention
+        # Even with many CPU workers, limit concurrent GPU benchmarks
+        if max_gpu_concurrent is None:
+            # Auto-detect: limit to 6 for high-worker counts, otherwise use num_workers
+            self.max_gpu_concurrent = min(6, self.num_workers)
+        else:
+            self.max_gpu_concurrent = max_gpu_concurrent
+
         print(f"[Parallel GA] Using {self.num_workers} worker processes")
-        print(f"[Parallel GA] CPU count: {cpu_count()} (detected)")
+        print(f"[Parallel GA] Max concurrent GPU benchmarks: {self.max_gpu_concurrent}")
+        print(f"[Parallel GA] CPU count: {cpu_count()} logical cores (detected)")
+
+        # Runtime estimation (based on GPU concurrency, not CPU workers)
+        eval_time_sec = 20  # ~20s per benchmark evaluation
+        batches_per_gen = (population_size + self.max_gpu_concurrent - 1) // self.max_gpu_concurrent
+        time_per_gen_sec = batches_per_gen * eval_time_sec
+        total_time_min = (generations * time_per_gen_sec) / 60
+        print(f"[Parallel GA] Estimated runtime: ~{total_time_min:.0f} minutes ({total_time_min/60:.1f} hours)")
 
         self.bounds = ParameterBounds()
         self.param_names = [
@@ -196,6 +236,32 @@ class ParallelGeneticOptimizer:
                 value = int(round(value))
             params[param_name] = value
         return params
+
+    def _evaluate_parallel(self, individuals):
+        """
+        Evaluate individuals in parallel with GPU-aware batching.
+
+        Uses max_gpu_concurrent to limit simultaneous GPU operations,
+        preventing timeout from resource contention even with many workers.
+        """
+        if not individuals:
+            return []
+
+        # Use the smaller of num_workers and max_gpu_concurrent
+        effective_workers = min(self.num_workers, self.max_gpu_concurrent, len(individuals))
+
+        with Pool(processes=effective_workers, initializer=_init_worker, initargs=(self,)) as pool:
+            # Use imap_unordered for better load balancing with GPU contention
+            # chunksize=1 ensures individual tasks complete as GPU becomes available
+            results = list(pool.imap_unordered(
+                _evaluate_individual_indexed,
+                enumerate(individuals),
+                chunksize=1
+            ))
+
+        # Sort results back to original order
+        results.sort(key=lambda x: x[0])
+        return [r[1] for r in results]
 
     def run_benchmark(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -379,12 +445,11 @@ class ParallelGeneticOptimizer:
         logbook = tools.Logbook()
         logbook.header = ['gen', 'nevals'] + stats.fields
 
-        # Evaluate initial population IN PARALLEL
+        # Evaluate initial population IN PARALLEL (GPU-aware batching)
         print(f"[Gen 0] Evaluating initial population ({self.population_size} individuals)...")
         start_time = time.time()
 
-        with Pool(processes=self.num_workers, initializer=_init_worker, initargs=(self,)) as pool:
-            fitnesses = pool.map(_evaluate_individual_worker, population)
+        fitnesses = self._evaluate_parallel(population)
 
         for ind, fit in zip(population, fitnesses):
             ind.fitness.values = fit
@@ -419,13 +484,12 @@ class ParallelGeneticOptimizer:
                     self.toolbox.mutate(mutant)
                     del mutant.fitness.values
 
-            # Evaluate offspring IN PARALLEL
+            # Evaluate offspring IN PARALLEL (GPU-aware batching)
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
             print(f"[Gen {gen}] Evaluating {len(invalid_ind)} new individuals...")
             eval_start = time.time()
 
-            with Pool(processes=self.num_workers, initializer=_init_worker, initargs=(self,)) as pool:
-                fitnesses = pool.map(_evaluate_individual_worker, invalid_ind)
+            fitnesses = self._evaluate_parallel(invalid_ind)
 
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
@@ -487,6 +551,92 @@ class ParallelGeneticOptimizer:
             print(f"  {param_name:20s}: {value:.3f}")
         print(f"{'='*80}\n")
 
+        # Generate visualization
+        self._generate_convergence_plot(logbook, hof)
+
+    def _generate_convergence_plot(self, logbook, hof):
+        """Generate convergence visualization after optimization"""
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Non-interactive backend
+            import matplotlib.pyplot as plt
+
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            fig.suptitle('GA Optimization Results', fontsize=14, fontweight='bold')
+
+            # Extract data from logbook
+            gens = [r['gen'] for r in logbook]
+            maxs = [r['max'] for r in logbook]
+            avgs = [r['avg'] for r in logbook]
+            mins = [r['min'] for r in logbook]
+            stds = [r['std'] for r in logbook]
+
+            # Plot 1: Fitness over generations
+            ax1 = axes[0, 0]
+            ax1.plot(gens, maxs, 'g-', linewidth=2, label='Best')
+            ax1.plot(gens, avgs, 'b-', linewidth=1.5, label='Average')
+            ax1.fill_between(gens, mins, maxs, alpha=0.2, color='green')
+            ax1.set_xlabel('Generation')
+            ax1.set_ylabel('Fitness')
+            ax1.set_title('Fitness Convergence')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+
+            # Plot 2: Population diversity (std dev)
+            ax2 = axes[0, 1]
+            ax2.plot(gens, stds, 'r-', linewidth=2)
+            ax2.set_xlabel('Generation')
+            ax2.set_ylabel('Std Dev')
+            ax2.set_title('Population Diversity')
+            ax2.grid(True, alpha=0.3)
+
+            # Plot 3: Top 5 parameter comparison (radar-style bar chart)
+            ax3 = axes[1, 0]
+            if len(hof) >= 3:
+                # Key parameters to compare
+                key_params = ['gm', 'bh_mass', 'angular_boost', 'siren_intensity', 'damping']
+                x = np.arange(len(key_params))
+                width = 0.25
+
+                for i, ind in enumerate(hof[:3]):
+                    params = self.decode_individual(ind)
+                    # Normalize to 0-1 range for comparison
+                    bounds_vals = [getattr(self.bounds, p) for p in key_params]
+                    normalized = [(params[p] - b[0]) / (b[1] - b[0]) for p, b in zip(key_params, bounds_vals)]
+                    ax3.bar(x + i*width, normalized, width, label=f'Rank {i+1}', alpha=0.8)
+
+                ax3.set_xlabel('Parameter')
+                ax3.set_ylabel('Normalized Value (0-1)')
+                ax3.set_title('Top 3 Parameter Comparison')
+                ax3.set_xticks(x + width)
+                ax3.set_xticklabels(key_params, rotation=45, ha='right')
+                ax3.legend()
+                ax3.grid(True, alpha=0.3, axis='y')
+
+            # Plot 4: Best fitness improvement
+            ax4 = axes[1, 1]
+            improvements = [maxs[i] - maxs[i-1] if i > 0 else 0 for i in range(len(maxs))]
+            colors = ['green' if x > 0 else 'red' for x in improvements]
+            ax4.bar(gens, improvements, color=colors, alpha=0.7)
+            ax4.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+            ax4.set_xlabel('Generation')
+            ax4.set_ylabel('Fitness Change')
+            ax4.set_title('Generation-over-Generation Improvement')
+            ax4.grid(True, alpha=0.3, axis='y')
+
+            plt.tight_layout()
+
+            # Save plot
+            plot_file = self.output_dir / "convergence.png"
+            plt.savefig(plot_file, dpi=150, bbox_inches='tight')
+            plt.close()
+            print(f"[Results] Convergence plot saved to: {plot_file}")
+
+        except ImportError:
+            print("[Warning] matplotlib not available, skipping visualization")
+        except Exception as e:
+            print(f"[Warning] Failed to generate plot: {e}")
+
 
 def main():
     """Example usage with parallel evaluation"""
@@ -494,13 +644,15 @@ def main():
 
     parser = argparse.ArgumentParser(description="Parallel Genetic Algorithm Optimizer")
     parser.add_argument('--workers', type=int, default=None,
-                       help='Number of worker processes (default: CPU count - 2)')
-    parser.add_argument('--population', type=int, default=10,
-                       help='Population size (default: 10)')
-    parser.add_argument('--generations', type=int, default=5,
-                       help='Number of generations (default: 5)')
-    parser.add_argument('--physics-time-multiplier', type=float, default=1.0,
-                       help='Physics deltaTime multiplier for faster orbit settling (default: 1.0, range: 1-200)')
+                       help='Number of worker processes (default: CPU count // 2 for high-core systems)')
+    parser.add_argument('--population', type=int, default=20,
+                       help='Population size (default: 20)')
+    parser.add_argument('--generations', type=int, default=25,
+                       help='Number of generations (default: 25, ~1 hour with 16 workers)')
+    parser.add_argument('--physics-time-multiplier', type=float, default=3.0,
+                       help='Physics deltaTime multiplier for faster orbit settling (default: 3.0, stable with SIREN v2)')
+    parser.add_argument('--max-gpu-concurrent', type=int, default=None,
+                       help='Max concurrent GPU benchmarks (default: auto, recommended: 4-8 to avoid timeout)')
     args = parser.parse_args()
 
     # Path to PlasmaDX executable (resolve relative to this script's location)
@@ -523,6 +675,7 @@ def main():
         mutation_prob=0.2,
         crossover_prob=0.7,
         num_workers=args.workers,
+        max_gpu_concurrent=args.max_gpu_concurrent,
         physics_time_multiplier=args.physics_time_multiplier
     )
 

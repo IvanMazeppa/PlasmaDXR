@@ -93,11 +93,31 @@ namespace Config {
     };
 
     struct PhysicsConfig {
-        float innerRadius = 10.0f;
-        float outerRadius = 300.0f;
-        float diskThickness = 50.0f;
+        // Basic geometry
+        float innerRadius = 50.0f;
+        float outerRadius = 1000.0f;
+        float diskThickness = 100.0f;
         float timeStep = 1.0f / 120.0f;  // 120Hz physics
         bool physicsEnabled = true;
+
+        // GA-optimized physics parameters (Phase 5)
+        float gm = 100.0f;                   // Gravitational parameter (50-200)
+        float bh_mass = 5.0f;                // Black hole mass in solar masses (0.1-10)
+        float alpha = 0.1f;                  // Shakura-Sunyaev alpha viscosity (0.01-0.5)
+        float damping = 0.98f;               // Velocity damping factor (0.95-1.0)
+        float angular_boost = 1.5f;          // Angular momentum boost (0.8-2.0)
+        float density_scale = 2.0f;          // Particle density scaling (0.5-3.0)
+        float force_clamp = 500.0f;          // Maximum force magnitude (100-1000)
+        float velocity_clamp = 200.0f;       // Maximum velocity magnitude (100-500)
+        int boundary_mode = 0;               // Boundary mode: 0=none, 1=reflect
+        float time_multiplier = 1.0f;        // Physics time multiplier (1.0-5.0)
+    };
+
+    struct SIRENConfig {
+        bool enabled = false;                // Enable SIREN vortex turbulence
+        float intensity = 0.0f;              // Turbulence intensity (0-1)
+        float vortex_scale = 1.0f;           // Vortex eddy size (0.5-3)
+        float vortex_decay = 0.1f;           // Vortex temporal decay (0.01-0.5)
     };
 
     struct CameraConfig {
@@ -137,6 +157,7 @@ namespace Config {
         FeaturesConfig features;
         LightingConfig lighting;
         PhysicsConfig physics;
+        SIRENConfig siren;
         CameraConfig camera;
         DebugConfig debug;
         PIXAnalysisConfig pixAnalysis;

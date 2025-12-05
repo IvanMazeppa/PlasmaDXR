@@ -1,0 +1,35 @@
+{
+  "benchmark": {
+    "enabled": true,
+    "frames": 100,
+    "output_file": "rank1_verification.json"
+  },
+  "physics": {
+    "gm": 92.20873922953723,
+    "bh_mass": 9.000846895453007,
+    "alpha": 0.05386161086998175,
+    "damping": 0.9882067632857462,
+    "angular_boost": 1.7552642477233893,
+    "disk_thickness": 0.08578554610151888,
+    "inner_radius": 52.523090985469544,
+    "outer_radius": 1157.7980211521694,
+    "density_scale": 2.557257825645995,
+    "force_clamp": 640.8520011297388,
+    "velocity_clamp": 200.3406604557427,
+    "boundary_mode": 0,
+    "time_multiplier": 1.0
+  },
+  "siren": {
+    "enabled": true,
+    "intensity": 0.4559067401593665,
+    "vortex_scale": 2.503798552523403,
+    "vortex_decay": 0.051827366759182064
+  },
+  "particles": {
+    "count": 4000
+  },
+  "pinn": {
+    "enabled": true,
+    "model_path": "ml/models/pinn_v4_turbulence_robust.onnx"
+  }
+}

@@ -142,11 +142,28 @@ private:
     DirectX::XMFLOAT4X4 m_prevViewProj; // For planar reprojection
     bool m_firstFrame = true;           // To initialize prevViewProj on first run
 
-    // Physics system parameters (readonly for now - would require ParticleSystem API changes)
+    // Physics system parameters (can be set via command-line or config, applied to ParticleSystem)
     float m_innerRadius = 10.0f;        // Inner accretion disk radius
     float m_outerRadius = 300.0f;       // Outer accretion disk radius
     float m_diskThickness = 50.0f;      // Disk thickness
     float m_physicsTimeStep = 0.008333f; // Physics timestep (fixed at 120Hz)
+
+    // GA-optimized physics parameters (Phase 5 - command-line overridable)
+    float m_gm = 100.0f;                // Gravitational parameter (50-200)
+    float m_bhMass = 5.0f;              // Black hole mass in solar masses (0.1-10)
+    float m_alphaViscosity = 0.1f;      // Shakura-Sunyaev alpha parameter (0.01-0.5)
+    float m_damping = 0.98f;            // Velocity damping factor (0.95-1.0)
+    float m_angularBoost = 1.5f;        // Angular momentum boost (0.8-2.0)
+    float m_densityScale = 2.0f;        // Particle density scaling (0.5-3.0)
+    float m_forceClamp = 500.0f;        // Maximum force magnitude (100-1000)
+    float m_velocityClamp = 200.0f;     // Maximum velocity magnitude (100-500)
+    int m_boundaryMode = 0;             // Boundary mode: 0=none, 1=reflect
+    bool m_physicsParamsSet = false;    // Flag: did command-line specify physics params?
+
+    // SIREN turbulence parameters (Phase 6)
+    float m_sirenIntensity = 0.0f;      // SIREN turbulence intensity (0-1)
+    float m_vortexScale = 1.0f;         // Vortex eddy size (0.5-3)
+    float m_vortexDecay = 0.1f;         // Vortex temporal decay (0.01-0.5)
 
     // RT Lighting runtime controls
     bool m_enableRTLighting = true;  // Toggle for particle-to-particle RT lighting

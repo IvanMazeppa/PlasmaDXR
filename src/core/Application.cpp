@@ -87,6 +87,36 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
     m_cameraPitch = appConfig.camera.startPitch;
     m_particleSize = appConfig.camera.particleSize;
 
+    // Apply physics config (can be overridden by command-line args later)
+    m_gm = appConfig.physics.gm;
+    m_bhMass = appConfig.physics.bh_mass;
+    m_alphaViscosity = appConfig.physics.alpha;
+    m_damping = appConfig.physics.damping;
+    m_angularBoost = appConfig.physics.angular_boost;
+    m_diskThickness = appConfig.physics.diskThickness;
+    m_innerRadius = appConfig.physics.innerRadius;
+    m_outerRadius = appConfig.physics.outerRadius;
+    m_densityScale = appConfig.physics.density_scale;
+    m_forceClamp = appConfig.physics.force_clamp;
+    m_velocityClamp = appConfig.physics.velocity_clamp;
+    m_boundaryMode = appConfig.physics.boundary_mode;
+    m_physicsTimeMultiplier = appConfig.physics.time_multiplier;
+
+    // Apply SIREN config (can be overridden by command-line args later)
+    m_sirenIntensity = appConfig.siren.intensity;
+    m_vortexScale = appConfig.siren.vortex_scale;
+    m_vortexDecay = appConfig.siren.vortex_decay;
+
+    // Mark that config file has physics params (unless all are default values)
+    bool hasNonDefaultPhysics = (appConfig.physics.gm != 100.0f) ||
+                                (appConfig.physics.bh_mass != 5.0f) ||
+                                (appConfig.physics.alpha != 0.1f) ||
+                                (appConfig.siren.intensity > 0.0f);
+    if (hasNonDefaultPhysics && appConfig.loadedFromFile) {
+        m_physicsParamsSet = true;
+        LOG_INFO("Config file contains non-default physics parameters (will be applied after ParticleSystem init)");
+    }
+
     // Apply feature toggles
     m_useShadowRays = appConfig.features.enableShadowRays;
     m_useInScattering = appConfig.features.enableInScattering;
@@ -157,7 +187,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             }
         } else if (arg == "--pinn" && i + 1 < argc) {
             std::string modelArg = argv[++i];
-            
+
             // Allow shorthand versions (v3, v4) or full paths
             if (modelArg == "v3") {
                 m_pinnModelPath = "ml/models/pinn_v3_total_forces.onnx";
@@ -172,6 +202,58 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
                 m_pinnModelPath = modelArg;
             }
             LOG_INFO("PINN model specified: {}", m_pinnModelPath);
+        }
+        // === GA-OPTIMIZED PHYSICS PARAMETERS (Phase 5) ===
+        else if (arg == "--gm" && i + 1 < argc) {
+            m_gm = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--bh-mass" && i + 1 < argc) {
+            m_bhMass = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--alpha" && i + 1 < argc) {
+            m_alphaViscosity = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--damping" && i + 1 < argc) {
+            m_damping = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--angular-boost" && i + 1 < argc) {
+            m_angularBoost = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--disk-thickness" && i + 1 < argc) {
+            m_diskThickness = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--inner-radius" && i + 1 < argc) {
+            m_innerRadius = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--outer-radius" && i + 1 < argc) {
+            m_outerRadius = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--density-scale" && i + 1 < argc) {
+            m_densityScale = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--force-clamp" && i + 1 < argc) {
+            m_forceClamp = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--velocity-clamp" && i + 1 < argc) {
+            m_velocityClamp = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--boundary-mode" && i + 1 < argc) {
+            m_boundaryMode = std::atoi(argv[++i]);
+            m_physicsParamsSet = true;
+        } else if (arg == "--physics-time-multiplier" && i + 1 < argc) {
+            m_physicsTimeMultiplier = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        }
+        // === SIREN TURBULENCE PARAMETERS (Phase 6) ===
+        else if (arg == "--siren-intensity" && i + 1 < argc) {
+            m_sirenIntensity = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--vortex-scale" && i + 1 < argc) {
+            m_vortexScale = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
+        } else if (arg == "--vortex-decay" && i + 1 < argc) {
+            m_vortexDecay = static_cast<float>(std::atof(argv[++i]));
+            m_physicsParamsSet = true;
         } else if (arg == "--help" || arg == "-h") {
             LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
             LOG_INFO("  --config=<file>      : Load configuration from JSON file");
@@ -181,10 +263,24 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --rtxdi              : Use NVIDIA RTXDI lighting (Phase 4)");
             LOG_INFO("  --multi-light        : Use multi-light system (default, Phase 3.5)");
             LOG_INFO("  --pinn <model>       : Select PINN model (v1, v2, v3, v4, or path)");
-            LOG_INFO("                         v3 = Total Forces, v4 = Turbulence-Robust");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
             LOG_INFO("  --ground-plane [height] : Enable reflective ground plane (default: -500)");
+            LOG_INFO("");
+            LOG_INFO("  Physics Parameters (GA-optimized, Phase 5):");
+            LOG_INFO("  --gm <value>         : Gravitational parameter (default: 100, range: 50-200)");
+            LOG_INFO("  --bh-mass <value>    : Black hole mass (default: 5, range: 0.1-10)");
+            LOG_INFO("  --alpha <value>      : Alpha viscosity (default: 0.1, range: 0.01-0.5)");
+            LOG_INFO("  --damping <value>    : Velocity damping (default: 0.98, range: 0.95-1.0)");
+            LOG_INFO("  --angular-boost <value> : Angular momentum boost (default: 1.5, range: 0.8-2.0)");
+            LOG_INFO("  --inner-radius <value>  : Inner disk radius (default: 10, range: 30-80)");
+            LOG_INFO("  --outer-radius <value>  : Outer disk radius (default: 300, range: 500-1500)");
+            LOG_INFO("  --physics-time-multiplier <value> : Physics time scale (default: 1, range: 1-10)");
+            LOG_INFO("");
+            LOG_INFO("  SIREN Turbulence (Phase 6):");
+            LOG_INFO("  --siren-intensity <value> : Turbulence intensity (default: 0, range: 0-1)");
+            LOG_INFO("  --vortex-scale <value>    : Eddy size multiplier (default: 1, range: 0.5-3)");
+            LOG_INFO("  --vortex-decay <value>    : Temporal decay rate (default: 0.1, range: 0.01-0.5)");
         }
     }
 
@@ -257,7 +353,52 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_WARN("Failed to load specified PINN model, using default");
         }
     }
-    
+
+
+    // Apply GA-optimized physics parameters if set (from config file or command-line)
+    if (m_physicsParamsSet) {
+        LOG_INFO("=== APPLYING PHYSICS PARAMETERS ===");
+        LOG_INFO("  GM: {:.2f}", m_gm);
+        LOG_INFO("  BH Mass: {:.2f}", m_bhMass);
+        LOG_INFO("  Alpha: {:.4f}", m_alphaViscosity);
+        LOG_INFO("  Damping: {:.4f}", m_damping);
+        LOG_INFO("  Angular Boost: {:.2f}", m_angularBoost);
+        LOG_INFO("  Disk Thickness: {:.4f}", m_diskThickness);
+        LOG_INFO("  Inner Radius: {:.2f}", m_innerRadius);
+        LOG_INFO("  Outer Radius: {:.2f}", m_outerRadius);
+        LOG_INFO("  Density Scale: {:.2f}", m_densityScale);
+        LOG_INFO("  Force Clamp: {:.2f}", m_forceClamp);
+        LOG_INFO("  Velocity Clamp: {:.2f}", m_velocityClamp);
+        LOG_INFO("  Boundary Mode: {}", m_boundaryMode);
+        LOG_INFO("  Physics Time Multiplier: {:.1f}x", m_physicsTimeMultiplier);
+
+        // Apply to ParticleSystem
+        m_particleSystem->SetGM(m_gm);
+        m_particleSystem->SetBlackHoleMass(m_bhMass);
+        m_particleSystem->SetAlphaViscosity(m_alphaViscosity);
+        m_particleSystem->SetDamping(m_damping);
+        m_particleSystem->SetAngularMomentum(m_angularBoost);
+        m_particleSystem->SetDiskThickness(m_diskThickness);
+        m_particleSystem->SetInnerRadius(m_innerRadius);
+        m_particleSystem->SetOuterRadius(m_outerRadius);
+        m_particleSystem->SetDensityScale(m_densityScale);
+        m_particleSystem->SetForceClamp(m_forceClamp);
+        m_particleSystem->SetVelocityClamp(m_velocityClamp);
+        m_particleSystem->SetBoundaryMode(m_boundaryMode);
+        m_particleSystem->SetTimeScale(m_physicsTimeMultiplier);
+
+        // Apply SIREN turbulence if intensity > 0
+        if (m_sirenIntensity > 0.0f && m_particleSystem->IsSIRENAvailable()) {
+            LOG_INFO("  SIREN Turbulence: ENABLED (intensity: {:.3f})", m_sirenIntensity);
+            LOG_INFO("    Vortex Scale: {:.2f}", m_vortexScale);
+            LOG_INFO("    Vortex Decay: {:.3f}", m_vortexDecay);
+            m_particleSystem->SetSIRENEnabled(true);
+            m_particleSystem->SetSIRENIntensity(m_sirenIntensity);
+            // Note: vortex_scale and vortex_decay would need SetSIRENVortexScale/Decay methods
+        }
+        LOG_INFO("=== PHYSICS PARAMETERS APPLIED ===");
+    }
+
     // Cache available PINN models for ImGui dropdown
     m_availablePINNModels = m_particleSystem->GetAvailablePINNModels();
     LOG_INFO("Found {} available PINN models", m_availablePINNModels.size());

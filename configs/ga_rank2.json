@@ -1,0 +1,32 @@
+{
+  "description": "GA Optimizer Rank 2 - Fitness 76.51",
+  "benchmark": {
+    "enabled": true,
+    "frames": 1000
+  },
+  "physics": {
+    "gm": 118.09,
+    "bh_mass": 5.76,
+    "alpha": 0.380,
+    "damping": 0.957,
+    "angular_boost": 1.85,
+    "disk_thickness": 0.127,
+    "inner_radius": 46.94,
+    "outer_radius": 715.98,
+    "density_scale": 2.74,
+    "force_clamp": 771.74,
+    "velocity_clamp": 151.03,
+    "boundary_mode": 0,
+    "time_multiplier": 3.0
+  },
+  "siren": {
+    "enabled": true,
+    "intensity": 0.19,
+    "vortex_scale": 1.28,
+    "vortex_decay": 0.019
+  },
+  "particles": {
+    "count": 10000
+  },
+  "notes": "Second best. Slightly higher GM (118), no boundary mode, larger vortex scale (1.28)."
+}

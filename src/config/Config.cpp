@@ -307,11 +307,33 @@ bool ConfigManager::ParseJSON(const std::string& json) {
     // Parse physics section
     std::string physicsJSON = GetJSONObject(json, "physics");
     if (!physicsJSON.empty()) {
+        // Basic geometry
         m_config.physics.innerRadius = GetJSONFloat(physicsJSON, "innerRadius", m_config.physics.innerRadius);
         m_config.physics.outerRadius = GetJSONFloat(physicsJSON, "outerRadius", m_config.physics.outerRadius);
         m_config.physics.diskThickness = GetJSONFloat(physicsJSON, "diskThickness", m_config.physics.diskThickness);
         m_config.physics.timeStep = GetJSONFloat(physicsJSON, "timeStep", m_config.physics.timeStep);
         m_config.physics.physicsEnabled = GetJSONBool(physicsJSON, "physicsEnabled", m_config.physics.physicsEnabled);
+
+        // GA-optimized parameters (Phase 5)
+        m_config.physics.gm = GetJSONFloat(physicsJSON, "gm", m_config.physics.gm);
+        m_config.physics.bh_mass = GetJSONFloat(physicsJSON, "bh_mass", m_config.physics.bh_mass);
+        m_config.physics.alpha = GetJSONFloat(physicsJSON, "alpha", m_config.physics.alpha);
+        m_config.physics.damping = GetJSONFloat(physicsJSON, "damping", m_config.physics.damping);
+        m_config.physics.angular_boost = GetJSONFloat(physicsJSON, "angular_boost", m_config.physics.angular_boost);
+        m_config.physics.density_scale = GetJSONFloat(physicsJSON, "density_scale", m_config.physics.density_scale);
+        m_config.physics.force_clamp = GetJSONFloat(physicsJSON, "force_clamp", m_config.physics.force_clamp);
+        m_config.physics.velocity_clamp = GetJSONFloat(physicsJSON, "velocity_clamp", m_config.physics.velocity_clamp);
+        m_config.physics.boundary_mode = GetJSONInt(physicsJSON, "boundary_mode", m_config.physics.boundary_mode);
+        m_config.physics.time_multiplier = GetJSONFloat(physicsJSON, "time_multiplier", m_config.physics.time_multiplier);
+    }
+
+    // Parse SIREN section
+    std::string sirenJSON = GetJSONObject(json, "siren");
+    if (!sirenJSON.empty()) {
+        m_config.siren.enabled = GetJSONBool(sirenJSON, "enabled", m_config.siren.enabled);
+        m_config.siren.intensity = GetJSONFloat(sirenJSON, "intensity", m_config.siren.intensity);
+        m_config.siren.vortex_scale = GetJSONFloat(sirenJSON, "vortex_scale", m_config.siren.vortex_scale);
+        m_config.siren.vortex_decay = GetJSONFloat(sirenJSON, "vortex_decay", m_config.siren.vortex_decay);
     }
 
     // Parse camera section
@@ -363,6 +385,21 @@ bool ConfigManager::ParseJSON(const std::string& json) {
     LOG_INFO("Renderer: {}", m_config.rendering.rendererType == RendererType::Gaussian ? "Gaussian" : "Billboard");
     LOG_INFO("ReSTIR: {}", m_config.features.enableReSTIR ? "ENABLED" : "DISABLED");
     LOG_INFO("PIX: {}", m_config.debug.enablePIX ? "ENABLED" : "DISABLED");
+
+    // Log physics parameters if non-default
+    bool hasNonDefaultPhysics = (m_config.physics.gm != 100.0f) ||
+                                (m_config.physics.bh_mass != 5.0f) ||
+                                (m_config.physics.alpha != 0.1f) ||
+                                (m_config.siren.intensity > 0.0f);
+    if (hasNonDefaultPhysics) {
+        LOG_INFO("Physics: GM={:.2f}, BH_Mass={:.2f}, Alpha={:.4f}, Time_Mult={:.1f}x",
+                 m_config.physics.gm, m_config.physics.bh_mass,
+                 m_config.physics.alpha, m_config.physics.time_multiplier);
+        if (m_config.siren.intensity > 0.0f) {
+            LOG_INFO("SIREN: Enabled, Intensity={:.3f}", m_config.siren.intensity);
+        }
+    }
+
     LOG_INFO("============================");
 
     return true;
@@ -476,7 +513,23 @@ bool ConfigManager::SaveToFile(const std::string& filepath) const {
     file << "    \"outerRadius\": " << m_config.physics.outerRadius << ",\n";
     file << "    \"diskThickness\": " << m_config.physics.diskThickness << ",\n";
     file << "    \"timeStep\": " << m_config.physics.timeStep << ",\n";
-    file << "    \"physicsEnabled\": " << (m_config.physics.physicsEnabled ? "true" : "false") << "\n";
+    file << "    \"physicsEnabled\": " << (m_config.physics.physicsEnabled ? "true" : "false") << ",\n";
+    file << "    \"gm\": " << m_config.physics.gm << ",\n";
+    file << "    \"bh_mass\": " << m_config.physics.bh_mass << ",\n";
+    file << "    \"alpha\": " << m_config.physics.alpha << ",\n";
+    file << "    \"damping\": " << m_config.physics.damping << ",\n";
+    file << "    \"angular_boost\": " << m_config.physics.angular_boost << ",\n";
+    file << "    \"density_scale\": " << m_config.physics.density_scale << ",\n";
+    file << "    \"force_clamp\": " << m_config.physics.force_clamp << ",\n";
+    file << "    \"velocity_clamp\": " << m_config.physics.velocity_clamp << ",\n";
+    file << "    \"boundary_mode\": " << m_config.physics.boundary_mode << ",\n";
+    file << "    \"time_multiplier\": " << m_config.physics.time_multiplier << "\n";
+    file << "  },\n";
+    file << "  \"siren\": {\n";
+    file << "    \"enabled\": " << (m_config.siren.enabled ? "true" : "false") << ",\n";
+    file << "    \"intensity\": " << m_config.siren.intensity << ",\n";
+    file << "    \"vortex_scale\": " << m_config.siren.vortex_scale << ",\n";
+    file << "    \"vortex_decay\": " << m_config.siren.vortex_decay << "\n";
     file << "  },\n";
     file << "  \"camera\": {\n";
     file << "    \"startDistance\": " << m_config.camera.startDistance << ",\n";
