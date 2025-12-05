@@ -1255,16 +1255,19 @@ void Application::Render() {
 
                 // Render NanoVDB volumetrics (composites with existing output)
                 // Uses GPU descriptor handles for proper binding
+                // Depth buffer provides occlusion, time drives procedural animation
                 m_nanoVDBSystem->Render(
                     cmdList,
                     viewProjMat,
                     cameraPosition,
                     m_gaussianRenderer->GetOutputUAV(),    // Output texture UAV (u0)
                     m_gaussianRenderer->GetLightSRVGPU(),  // Light buffer SRV (t1)
+                    m_gaussianRenderer->GetRTDepthSRV(),   // Depth buffer SRV (t2) for occlusion
                     static_cast<uint32_t>(m_lights.size()),
                     m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
                     m_gaussianRenderer->GetRenderWidth(),  // Actual render width (DLSS-aware)
-                    m_gaussianRenderer->GetRenderHeight()  // Actual render height
+                    m_gaussianRenderer->GetRenderHeight(), // Actual render height
+                    m_totalTime                            // Animation time for procedural gas
                 );
             }
 

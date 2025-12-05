@@ -118,23 +118,28 @@ bool NanoVDBSystem::CreateComputePipeline() {
     LOG_INFO("[NanoVDB] Creating compute pipeline...");
 
     // Root signature with:
-    // [0] CBV - NanoVDBConstants
-    // [1] SRV - Light buffer (t1)
-    // [2] UAV - Output texture (u0)
+    // [0] CBV - NanoVDBConstants (b0)
+    // [1] SRV table - Light buffer (t1)
+    // [2] SRV table - Depth buffer (t2)
+    // [3] UAV table - Output texture (u0)
 
-    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1: light buffer
+    CD3DX12_DESCRIPTOR_RANGE1 lightSrvRange;
+    lightSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // t1: light buffer
+
+    CD3DX12_DESCRIPTOR_RANGE1 depthSrvRange;
+    depthSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // t2: depth buffer
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRange;
     uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: output
 
-    CD3DX12_ROOT_PARAMETER1 rootParams[3];
-    rootParams[0].InitAsConstantBufferView(0);              // b0: constants
-    rootParams[1].InitAsDescriptorTable(1, &srvRange);      // t1: lights
-    rootParams[2].InitAsDescriptorTable(1, &uavRange);      // u0: output
+    CD3DX12_ROOT_PARAMETER1 rootParams[4];
+    rootParams[0].InitAsConstantBufferView(0);               // b0: constants
+    rootParams[1].InitAsDescriptorTable(1, &lightSrvRange);  // t1: lights
+    rootParams[2].InitAsDescriptorTable(1, &depthSrvRange);  // t2: depth
+    rootParams[3].InitAsDescriptorTable(1, &uavRange);       // u0: output
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-    rootSigDesc.Init_1_1(3, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+    rootSigDesc.Init_1_1(4, rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     ComPtr<ID3DBlob> signature, error;
     HRESULT hr = D3D12SerializeVersionedRootSignature(&rootSigDesc, &signature, &error);
@@ -195,10 +200,12 @@ void NanoVDBSystem::Render(
     const DirectX::XMFLOAT3& cameraPos,
     D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
     D3D12_GPU_DESCRIPTOR_HANDLE lightSRV,
+    D3D12_GPU_DESCRIPTOR_HANDLE depthSRV,
     uint32_t lightCount,
     ID3D12DescriptorHeap* descriptorHeap,
     uint32_t renderWidth,
-    uint32_t renderHeight) {
+    uint32_t renderHeight,
+    float time) {
 
     if (!m_enabled || !m_hasGrid || !m_pipelineState) {
         return;  // Nothing to render
@@ -208,8 +215,10 @@ void NanoVDBSystem::Render(
     NanoVDBConstants constants = {};
 
     // Calculate inverse view-projection
+    // NOTE: DirectXMath is row-major, HLSL with row_major keyword expects row-major
+    // Do NOT transpose - store directly for row_major HLSL compatibility
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
-    XMStoreFloat4x4(&constants.invViewProj, XMMatrixTranspose(invViewProj));
+    XMStoreFloat4x4(&constants.invViewProj, invViewProj);
 
     constants.cameraPos = cameraPos;
     constants.densityScale = m_densityScale;
@@ -225,7 +234,7 @@ void NanoVDBSystem::Render(
     constants.lightCount = lightCount;
     constants.screenWidth = renderWidth;   // Use actual render dimensions
     constants.screenHeight = renderHeight; // (may differ from native due to DLSS)
-    constants.time = 0.0f;  // TODO: Pass actual time for animation
+    constants.time = time;                 // Animation time for procedural effects
     constants.debugMode = m_debugMode ? 1 : 0;
 
     // Map and update constants
@@ -243,12 +252,14 @@ void NanoVDBSystem::Render(
     commandList->SetPipelineState(m_pipelineState.Get());
 
     // Bind resources:
-    // [0] CBV - NanoVDBConstants
-    // [1] SRV - Light buffer (t1)
-    // [2] UAV - Output texture (u0)
+    // [0] CBV - NanoVDBConstants (b0)
+    // [1] SRV table - Light buffer (t1)
+    // [2] SRV table - Depth buffer (t2)
+    // [3] UAV table - Output texture (u0)
     commandList->SetComputeRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
     commandList->SetComputeRootDescriptorTable(1, lightSRV);
-    commandList->SetComputeRootDescriptorTable(2, outputUAV);
+    commandList->SetComputeRootDescriptorTable(2, depthSRV);
+    commandList->SetComputeRootDescriptorTable(3, outputUAV);
 
     // Dispatch compute shader using actual render dimensions
     uint32_t groupsX = (renderWidth + 7) / 8;
@@ -259,7 +270,7 @@ void NanoVDBSystem::Render(
     static int renderCount = 0;
     renderCount++;
     if (renderCount <= 3) {
-        LOG_INFO("[NanoVDB] Rendered frame (groups: {} x {}, res: {}x{})",
-                 groupsX, groupsY, renderWidth, renderHeight);
+        LOG_INFO("[NanoVDB] Rendered frame (groups: {} x {}, res: {}x{}, time: {:.2f})",
+                 groupsX, groupsY, renderWidth, renderHeight, time);
     }
 }

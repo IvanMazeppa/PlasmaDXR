@@ -85,10 +85,12 @@ public:
      * @param cameraPos Camera position in world space
      * @param outputUAV GPU descriptor handle for output texture UAV (u0)
      * @param lightSRV GPU descriptor handle for light buffer SRV (t1)
+     * @param depthSRV GPU descriptor handle for depth buffer SRV (t2) for occlusion
      * @param lightCount Number of active lights
      * @param descriptorHeap The descriptor heap to set for shader access
      * @param renderWidth Actual render target width (may differ from native due to DLSS)
      * @param renderHeight Actual render target height
+     * @param time Animation time in seconds for procedural effects
      */
     void Render(
         ID3D12GraphicsCommandList* commandList,
@@ -96,10 +98,12 @@ public:
         const DirectX::XMFLOAT3& cameraPos,
         D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
         D3D12_GPU_DESCRIPTOR_HANDLE lightSRV,
+        D3D12_GPU_DESCRIPTOR_HANDLE depthSRV,
         uint32_t lightCount,
         ID3D12DescriptorHeap* descriptorHeap,
         uint32_t renderWidth,
-        uint32_t renderHeight);
+        uint32_t renderHeight,
+        float time = 0.0f);
 
     /**
      * Enable/disable the system
