@@ -1251,16 +1251,20 @@ void Application::Render() {
                 m_nanoVDBSystem->SetAbsorptionCoeff(m_nanoVDBAbsorption);
                 m_nanoVDBSystem->SetScatteringCoeff(m_nanoVDBScattering);
                 m_nanoVDBSystem->SetStepSize(m_nanoVDBStepSize);
+                m_nanoVDBSystem->SetDebugMode(m_nanoVDBDebugMode);
 
                 // Render NanoVDB volumetrics (composites with existing output)
-                // Note: Light buffer passed as nullptr for prototype - using procedural lighting
+                // Uses GPU descriptor handles for proper binding
                 m_nanoVDBSystem->Render(
                     cmdList,
                     viewProjMat,
                     cameraPosition,
-                    m_gaussianRenderer->GetOutputTexture(),
-                    nullptr,  // Light buffer (TODO: integrate with existing light system)
-                    static_cast<uint32_t>(m_lights.size())
+                    m_gaussianRenderer->GetOutputUAV(),    // Output texture UAV (u0)
+                    m_gaussianRenderer->GetLightSRVGPU(),  // Light buffer SRV (t1)
+                    static_cast<uint32_t>(m_lights.size()),
+                    m_resources->GetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+                    m_gaussianRenderer->GetRenderWidth(),  // Actual render width (DLSS-aware)
+                    m_gaussianRenderer->GetRenderHeight()  // Actual render height
                 );
             }
 
@@ -1721,19 +1725,20 @@ void Application::OnKeyPress(UINT8 key) {
     case 'J':
         if (m_nanoVDBSystem) {
             if (!m_nanoVDBSystem->HasGrid()) {
-                // Create a procedural fog sphere for testing
+                // Create a procedural fog sphere for testing (uses configurable radius)
                 DirectX::XMFLOAT3 center(0.0f, 0.0f, 0.0f);  // Center of accretion disk
-                float radius = 200.0f;  // 200 world units radius
                 float voxelSize = 5.0f;  // 5 units per voxel (moderate resolution)
                 float halfWidth = 3.0f;  // Fog falloff in voxels
 
-                if (m_nanoVDBSystem->CreateFogSphere(radius, center, voxelSize, halfWidth)) {
+                if (m_nanoVDBSystem->CreateFogSphere(m_nanoVDBSphereRadius, center, voxelSize, halfWidth)) {
                     m_nanoVDBSystem->SetEnabled(true);
                     m_enableNanoVDB = true;
-                    LOG_INFO("NanoVDB: Created fog sphere (radius={}, voxelSize={})", radius, voxelSize);
+                    LOG_INFO("NanoVDB: Created fog sphere (radius={:.0f}, voxelSize={})", m_nanoVDBSphereRadius, voxelSize);
                     LOG_INFO("  Grid size: {} bytes ({} voxels)",
                              m_nanoVDBSystem->GetGridSizeBytes(),
                              m_nanoVDBSystem->GetVoxelCount());
+                    LOG_INFO("  Density={:.1f}, Emission={:.1f}, Absorption={:.4f}",
+                             m_nanoVDBDensityScale, m_nanoVDBEmission, m_nanoVDBAbsorption);
                     LOG_INFO("  Press 'J' again to toggle, ImGui for parameters");
                 } else {
                     LOG_ERROR("NanoVDB: Failed to create fog sphere");
@@ -4849,12 +4854,28 @@ void Application::RenderImGui() {
                 m_nanoVDBSystem->SetEnabled(m_enableNanoVDB);
             }
 
+            // Debug mode toggle
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Debug Mode", &m_nanoVDBDebugMode)) {
+                if (m_nanoVDBSystem) {
+                    m_nanoVDBSystem->SetDebugMode(m_nanoVDBDebugMode);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Debug: Magenta=fog hit, Cyan=bounds only, Red tint=miss");
+            }
+
             // Grid status
             if (m_nanoVDBSystem && m_nanoVDBSystem->HasGrid()) {
                 ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Grid: LOADED");
                 ImGui::Text("  Size: %.2f MB (%u voxels)",
                            m_nanoVDBSystem->GetGridSizeBytes() / (1024.0f * 1024.0f),
                            m_nanoVDBSystem->GetVoxelCount());
+                ImGui::Text("  Sphere: center=(%.0f,%.0f,%.0f), radius=%.0f",
+                           m_nanoVDBSystem->GetSphereCenter().x,
+                           m_nanoVDBSystem->GetSphereCenter().y,
+                           m_nanoVDBSystem->GetSphereCenter().z,
+                           m_nanoVDBSystem->GetSphereRadius());
             } else {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "Grid: NOT LOADED");
                 ImGui::Text("  Press 'J' to create test fog sphere");
@@ -4864,19 +4885,19 @@ void Application::RenderImGui() {
             ImGui::Separator();
             ImGui::Text("Rendering Parameters:");
 
-            ImGui::SliderFloat("Density Scale", &m_nanoVDBDensityScale, 0.1f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Density Scale", &m_nanoVDBDensityScale, 0.1f, 20.0f, "%.2f");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Global density multiplier\nHigher = thicker fog");
+                ImGui::SetTooltip("Global density multiplier\nHigher = thicker fog (try 5-10)");
             }
 
-            ImGui::SliderFloat("Emission", &m_nanoVDBEmission, 0.0f, 2.0f, "%.2f");
+            ImGui::SliderFloat("Emission", &m_nanoVDBEmission, 0.0f, 10.0f, "%.2f");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Self-luminous emission intensity\n0 = no glow, 2 = bright");
+                ImGui::SetTooltip("Self-luminous emission intensity\n0 = no glow, 3-5 = bright");
             }
 
-            ImGui::SliderFloat("Absorption", &m_nanoVDBAbsorption, 0.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("Absorption", &m_nanoVDBAbsorption, 0.0f, 0.1f, "%.4f");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Beer-Lambert absorption coefficient\nHigher = more light absorbed");
+                ImGui::SetTooltip("Beer-Lambert absorption coefficient\nKEEP LOW (0.001-0.01) or fog becomes black!");
             }
 
             ImGui::SliderFloat("Scattering", &m_nanoVDBScattering, 0.0f, 1.0f, "%.2f");
@@ -4889,15 +4910,29 @@ void Application::RenderImGui() {
                 ImGui::SetTooltip("Ray march step size (world units)\nSmaller = higher quality, slower");
             }
 
-            // Test sphere creation
+            // Sphere radius for new spheres
             ImGui::Separator();
+            ImGui::SliderFloat("Sphere Radius", &m_nanoVDBSphereRadius, 100.0f, 1000.0f, "%.0f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Radius for newly created fog spheres\n(existing sphere unchanged until recreated)");
+            }
+
+            // Test sphere creation
             if (ImGui::Button("Create Test Fog Sphere")) {
                 if (m_nanoVDBSystem) {
                     DirectX::XMFLOAT3 center(0.0f, 0.0f, 0.0f);
-                    if (m_nanoVDBSystem->CreateFogSphere(200.0f, center, 5.0f, 3.0f)) {
+                    if (m_nanoVDBSystem->CreateFogSphere(m_nanoVDBSphereRadius, center, 5.0f, 3.0f)) {
                         m_enableNanoVDB = true;
                         m_nanoVDBSystem->SetEnabled(true);
                     }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Grid")) {
+                if (m_nanoVDBSystem) {
+                    m_nanoVDBSystem->Shutdown();
+                    m_nanoVDBSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height);
+                    m_enableNanoVDB = false;
                 }
             }
 

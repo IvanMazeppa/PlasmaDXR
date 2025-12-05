@@ -69,6 +69,10 @@ bool NanoVDBSystem::CreateFogSphere(float radius, DirectX::XMFLOAT3 center,
     // Instead, the shader uses procedural density calculation
     // This lets us test the rendering pipeline before integrating full NanoVDB
 
+    // Store sphere parameters for shader
+    m_sphereCenter = center;
+    m_sphereRadius = radius;
+
     // Store grid bounds (used by shader for AABB culling)
     float boundsPadding = halfWidth * voxelSize;
     m_gridWorldMin = { center.x - radius - boundsPadding,
@@ -189,15 +193,18 @@ void NanoVDBSystem::Render(
     ID3D12GraphicsCommandList* commandList,
     const DirectX::XMMATRIX& viewProj,
     const DirectX::XMFLOAT3& cameraPos,
-    ID3D12Resource* outputTexture,
-    ID3D12Resource* lightBuffer,
-    uint32_t lightCount) {
+    D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
+    D3D12_GPU_DESCRIPTOR_HANDLE lightSRV,
+    uint32_t lightCount,
+    ID3D12DescriptorHeap* descriptorHeap,
+    uint32_t renderWidth,
+    uint32_t renderHeight) {
 
     if (!m_enabled || !m_hasGrid || !m_pipelineState) {
         return;  // Nothing to render
     }
 
-    // Update constant buffer
+    // Update constant buffer with actual render dimensions (important for DLSS)
     NanoVDBConstants constants = {};
 
     // Calculate inverse view-projection
@@ -210,13 +217,16 @@ void NanoVDBSystem::Render(
     constants.emissionStrength = m_emissionStrength;
     constants.gridWorldMax = m_gridWorldMax;
     constants.absorptionCoeff = m_absorptionCoeff;
+    constants.sphereCenter = m_sphereCenter;
     constants.scatteringCoeff = m_scatteringCoeff;
+    constants.sphereRadius = m_sphereRadius;
     constants.maxRayDistance = m_maxRayDistance;
     constants.stepSize = m_stepSize;
     constants.lightCount = lightCount;
-    constants.screenWidth = m_screenWidth;
-    constants.screenHeight = m_screenHeight;
+    constants.screenWidth = renderWidth;   // Use actual render dimensions
+    constants.screenHeight = renderHeight; // (may differ from native due to DLSS)
     constants.time = 0.0f;  // TODO: Pass actual time for animation
+    constants.debugMode = m_debugMode ? 1 : 0;
 
     // Map and update constants
     void* mappedData = nullptr;
@@ -224,24 +234,32 @@ void NanoVDBSystem::Render(
     memcpy(mappedData, &constants, sizeof(constants));
     m_constantBuffer->Unmap(0, nullptr);
 
+    // Set descriptor heap (required for shader-visible descriptors)
+    ID3D12DescriptorHeap* heaps[] = { descriptorHeap };
+    commandList->SetDescriptorHeaps(1, heaps);
+
     // Set pipeline state
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_pipelineState.Get());
 
-    // Bind resources
+    // Bind resources:
+    // [0] CBV - NanoVDBConstants
+    // [1] SRV - Light buffer (t1)
+    // [2] UAV - Output texture (u0)
     commandList->SetComputeRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
-    // TODO: Bind light buffer and output texture descriptors
-    // For now, the shader uses procedural density and doesn't need external buffers
+    commandList->SetComputeRootDescriptorTable(1, lightSRV);
+    commandList->SetComputeRootDescriptorTable(2, outputUAV);
 
-    // Dispatch compute shader
-    uint32_t groupsX = (m_screenWidth + 7) / 8;
-    uint32_t groupsY = (m_screenHeight + 7) / 8;
+    // Dispatch compute shader using actual render dimensions
+    uint32_t groupsX = (renderWidth + 7) / 8;
+    uint32_t groupsY = (renderHeight + 7) / 8;
     commandList->Dispatch(groupsX, groupsY, 1);
 
     // Log first few frames for verification
     static int renderCount = 0;
     renderCount++;
     if (renderCount <= 3) {
-        LOG_INFO("[NanoVDB] Rendered frame (groups: {} x {})", groupsX, groupsY);
+        LOG_INFO("[NanoVDB] Rendered frame (groups: {} x {}, res: {}x{})",
+                 groupsX, groupsY, renderWidth, renderHeight);
     }
 }

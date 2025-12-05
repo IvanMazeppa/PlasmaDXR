@@ -83,17 +83,23 @@ public:
      * @param commandList Command list for GPU work
      * @param viewProj View-projection matrix
      * @param cameraPos Camera position in world space
-     * @param outputTexture Texture to render into (or composite with)
-     * @param lightBuffer Light data for illumination
+     * @param outputUAV GPU descriptor handle for output texture UAV (u0)
+     * @param lightSRV GPU descriptor handle for light buffer SRV (t1)
      * @param lightCount Number of active lights
+     * @param descriptorHeap The descriptor heap to set for shader access
+     * @param renderWidth Actual render target width (may differ from native due to DLSS)
+     * @param renderHeight Actual render target height
      */
     void Render(
         ID3D12GraphicsCommandList* commandList,
         const DirectX::XMMATRIX& viewProj,
         const DirectX::XMFLOAT3& cameraPos,
-        ID3D12Resource* outputTexture,
-        ID3D12Resource* lightBuffer,
-        uint32_t lightCount);
+        D3D12_GPU_DESCRIPTOR_HANDLE outputUAV,
+        D3D12_GPU_DESCRIPTOR_HANDLE lightSRV,
+        uint32_t lightCount,
+        ID3D12DescriptorHeap* descriptorHeap,
+        uint32_t renderWidth,
+        uint32_t renderHeight);
 
     /**
      * Enable/disable the system
@@ -122,6 +128,13 @@ public:
     void SetStepSize(float size) { m_stepSize = size; }
     float GetStepSize() const { return m_stepSize; }
 
+    void SetDebugMode(bool debug) { m_debugMode = debug; }
+    bool GetDebugMode() const { return m_debugMode; }
+
+    // Sphere parameters (from CreateFogSphere)
+    DirectX::XMFLOAT3 GetSphereCenter() const { return m_sphereCenter; }
+    float GetSphereRadius() const { return m_sphereRadius; }
+
     // Grid info
     bool HasGrid() const { return m_hasGrid; }
     uint64_t GetGridSizeBytes() const { return m_gridSizeBytes; }
@@ -144,15 +157,18 @@ private:
         float emissionStrength;              // 4 bytes
         DirectX::XMFLOAT3 gridWorldMax;      // 12 bytes
         float absorptionCoeff;               // 4 bytes
+        DirectX::XMFLOAT3 sphereCenter;      // 12 bytes (procedural sphere center)
         float scatteringCoeff;               // 4 bytes
+        float sphereRadius;                  // 4 bytes (procedural sphere radius)
         float maxRayDistance;                // 4 bytes
         float stepSize;                      // 4 bytes
         uint32_t lightCount;                 // 4 bytes
         uint32_t screenWidth;                // 4 bytes
         uint32_t screenHeight;               // 4 bytes
         float time;                          // 4 bytes
-        float padding;                       // 4 bytes
-    };  // Total: 144 bytes (should be 256-aligned for cbuffer)
+        uint32_t debugMode;                  // 4 bytes (0=normal, 1=debug solid color)
+        float padding[3];                    // 12 bytes to align to 256
+    };  // Total: 176 bytes (padded to 256 for cbuffer)
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -182,6 +198,11 @@ private:
     float m_scatteringCoeff = 0.5f;
     float m_maxRayDistance = 2000.0f;
     float m_stepSize = 5.0f;
+    bool m_debugMode = false;
+
+    // Sphere parameters (set by CreateFogSphere)
+    DirectX::XMFLOAT3 m_sphereCenter = { 0.0f, 0.0f, 0.0f };
+    float m_sphereRadius = 200.0f;
 
     uint32_t m_screenWidth = 1920;
     uint32_t m_screenHeight = 1080;

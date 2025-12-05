@@ -24,7 +24,10 @@ cbuffer NanoVDBConstants : register(b0) {
     float3 gridWorldMax;               // Grid AABB maximum
     float absorptionCoeff;             // Beer-Lambert absorption
 
+    float3 sphereCenter;               // Procedural fog sphere center
     float scatteringCoeff;             // Henyey-Greenstein scattering
+
+    float sphereRadius;                // Procedural fog sphere radius
     float maxRayDistance;              // Maximum ray march distance
     float stepSize;                    // World-space step size
     uint lightCount;                   // Number of active lights
@@ -32,7 +35,7 @@ cbuffer NanoVDBConstants : register(b0) {
     uint screenWidth;
     uint screenHeight;
     float time;                        // Animation time
-    float padding;
+    uint debugMode;                    // 0=normal, 1=debug solid color
 };
 
 // ============================================================================
@@ -113,11 +116,10 @@ float3 TemperatureToColor(float temp) {
 // ============================================================================
 
 // Procedural fog sphere density - simulates what NanoVDB would provide
+// Uses constant buffer parameters for sphere center/radius
 float SampleProceduralDensity(float3 worldPos) {
-    // Sphere parameters (should match CreateFogSphere in C++)
-    float3 sphereCenter = float3(0.0, 0.0, 0.0);
-    float sphereRadius = 200.0;
-    float falloffWidth = 3.0 * 5.0;  // halfWidth * voxelSize
+    // Sphere parameters from constant buffer (set by CreateFogSphere in C++)
+    float falloffWidth = 3.0 * stepSize;  // halfWidth * voxelSize
 
     // Distance from center
     float dist = length(worldPos - sphereCenter);
@@ -246,7 +248,30 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     float3 rayOrigin, rayDir;
     GenerateRay(DTid.xy, rayOrigin, rayDir);
 
-    // Ray march through volume
+    // DEBUG MODE: Output solid magenta if ray hits grid AABB
+    if (debugMode == 1) {
+        float3 invDir = 1.0 / rayDir;
+        float tMin, tMax;
+        if (RayAABBIntersection(rayOrigin, invDir, gridWorldMin, gridWorldMax, tMin, tMax)) {
+            // Ray hits grid bounds - check if there's any density
+            float3 testPos = rayOrigin + rayDir * ((tMin + tMax) * 0.5);
+            float testDensity = SampleProceduralDensity(testPos);
+            if (testDensity > 0.001) {
+                // BRIGHT MAGENTA = fog sphere is being sampled
+                g_output[DTid.xy] = float4(1.0, 0.0, 1.0, 1.0);
+            } else {
+                // DARK CYAN = ray hits bounds but no density at midpoint
+                g_output[DTid.xy] = float4(0.0, 0.5, 0.5, 1.0);
+            }
+        } else {
+            // DARK RED = ray misses grid bounds entirely
+            float4 existing = g_output[DTid.xy];
+            g_output[DTid.xy] = float4(existing.rgb * 0.8 + float3(0.2, 0.0, 0.0), existing.a);
+        }
+        return;
+    }
+
+    // NORMAL MODE: Full ray marching
     float4 volumeColor = RayMarchVolume(rayOrigin, rayDir);
 
     // Read existing pixel color (for compositing)

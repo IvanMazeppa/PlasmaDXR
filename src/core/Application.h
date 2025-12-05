@@ -206,12 +206,14 @@ private:
 
     // === NanoVDB Volumetric System (Phase 5.x - TRUE Volumetrics) ===
     bool m_enableNanoVDB = false;          // Toggle NanoVDB volumetric rendering
-    float m_nanoVDBDensityScale = 1.0f;    // Global density multiplier (0.1-5.0)
-    float m_nanoVDBEmission = 0.5f;        // Emission intensity (0.0-2.0)
-    float m_nanoVDBAbsorption = 0.1f;      // Beer-Lambert absorption coefficient (0.0-1.0)
-    float m_nanoVDBScattering = 0.5f;      // Henyey-Greenstein scattering coefficient (0.0-1.0)
+    float m_nanoVDBDensityScale = 5.0f;    // Global density multiplier (0.1-20.0) - RAISED for visibility
+    float m_nanoVDBEmission = 3.0f;        // Emission intensity (0.0-10.0) - RAISED for glow
+    float m_nanoVDBAbsorption = 0.005f;    // Beer-Lambert absorption (0.0-0.1) - LOWERED! Was too high
+    float m_nanoVDBScattering = 0.8f;      // Henyey-Greenstein scattering (0.0-1.0)
     float m_nanoVDBStepSize = 5.0f;        // Ray march step size (1.0-20.0)
+    float m_nanoVDBSphereRadius = 400.0f;  // Fog sphere radius - larger for visibility
     bool m_nanoVDBTestSphere = false;      // Create procedural test fog sphere on startup
+    bool m_nanoVDBDebugMode = false;       // Debug visualization (solid color output)
 
     // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;

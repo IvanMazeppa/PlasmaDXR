@@ -175,6 +175,7 @@ public:
 
     // Get light buffer for probe grid system (Phase 0.13.1)
     ID3D12Resource* GetLightBuffer() const { return m_lightBuffer.Get(); }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetLightSRVGPU() const { return m_lightSRVGPU; }
 
     // Get RT depth buffer for RTXDI temporal reprojection (Phase 4 M5 fix)
     ID3D12Resource* GetRTDepthBuffer() const { return m_rtDepthBuffer.Get(); }
