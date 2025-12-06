@@ -196,48 +196,51 @@ float3 TemperatureToColor(float temp) {
 float SampleProceduralDensity(float3 worldPos) {
     // Base sphere distance
     float dist = length(worldPos - sphereCenter);
-    float falloffWidth = 3.0 * stepSize;
 
-    // Outside sphere entirely - early out
-    if (dist > sphereRadius + falloffWidth * 2.0) {
+    // Outside sphere - early out
+    if (dist > sphereRadius * 1.2) {
         return 0.0;
     }
 
-    // Base density from sphere falloff
-    float innerRadius = sphereRadius * 0.3;  // Denser core
+    // Base density from sphere with soft falloff
+    float innerRadius = sphereRadius * 0.4;  // Dense core
     float baseDensity;
     if (dist < innerRadius) {
         baseDensity = 1.0;
     } else {
-        float t = (dist - innerRadius) / (sphereRadius - innerRadius + falloffWidth);
+        float t = (dist - innerRadius) / (sphereRadius - innerRadius);
         baseDensity = 1.0 - smoothstep(0.0, 1.0, t);
     }
 
     // Add animated noise for gas-like turbulence
-    float noiseScale = 0.02;  // Controls detail frequency
+    float noiseScale = 0.015;  // Controls detail frequency
     float3 noisePos = worldPos * noiseScale;
 
     // Animate the noise (slow swirling)
-    float animSpeed = 0.1;
-    noisePos += float3(sin(time * animSpeed * 0.7), cos(time * animSpeed * 0.5), sin(time * animSpeed * 0.3)) * 2.0;
+    float animSpeed = 0.08;
+    noisePos += float3(
+        sin(time * animSpeed * 0.7),
+        cos(time * animSpeed * 0.5),
+        sin(time * animSpeed * 0.3)
+    ) * 1.5;
 
     // Multi-octave FBM for large-scale structure
-    float largeTurbulence = fbm(noisePos, 4) * 0.5 + 0.5;  // Remap to [0, 1]
+    float largeTurbulence = fbm(noisePos, 3) * 0.5 + 0.5;  // Remap to [0, 1]
 
     // Higher frequency turbulence for wispy details
-    float detailNoise = turbulence(noisePos * 3.0, 3);
+    float detailNoise = turbulence(noisePos * 2.5, 2);
 
     // Combine base shape with noise
-    float density = baseDensity * largeTurbulence;
+    float density = baseDensity * (0.5 + 0.5 * largeTurbulence);
 
     // Add wispy tendrils at the edges
-    float edgeFactor = smoothstep(0.2, 0.8, dist / sphereRadius);
-    density += detailNoise * edgeFactor * 0.3;
+    float edgeFactor = smoothstep(0.3, 0.9, dist / sphereRadius);
+    density += detailNoise * edgeFactor * 0.25;
 
-    // Add some swirling motion based on angle
-    float3 toCenter = normalize(worldPos - sphereCenter);
-    float swirl = sin(atan2(toCenter.z, toCenter.x) * 3.0 + time * 0.5) * 0.15;
-    density += swirl * baseDensity;
+    // Add gentle swirling motion based on angle
+    float3 toCenter = worldPos - sphereCenter;
+    float swirl = sin(atan2(toCenter.z, toCenter.x) * 4.0 + time * 0.3) * 0.1;
+    density += swirl * baseDensity * 0.5;
 
     return max(density, 0.0);
 }
@@ -343,9 +346,9 @@ void main(uint3 DTid : SV_DispatchThreadID) {
             float3 testPos = rayOrigin + rayDir * ((tMin + tMax) * 0.5);
             float testDensity = SampleProceduralDensity(testPos);
             if (testDensity > 0.001) {
-                g_output[DTid.xy] = float4(1.0, 0.0, 1.0, 1.0);
+                g_output[DTid.xy] = float4(1.0, 0.0, 1.0, 1.0);  // Magenta = density found
             } else {
-                g_output[DTid.xy] = float4(0.0, 0.5, 0.5, 1.0);
+                g_output[DTid.xy] = float4(0.0, 0.5, 0.5, 1.0);  // Cyan = in AABB but no density
             }
         } else {
             float4 existing = g_output[DTid.xy];
@@ -354,16 +357,18 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         return;
     }
 
-    // NORMAL MODE: Ray march with depth occlusion
-    float4 volumeColor = RayMarchVolume(rayOrigin, rayDir, sceneDepth);
+    // TEST 1: No depth (use max distance) + additive blend + noise enabled
+    float effectiveDepth = maxRayDistance;  // NO DEPTH TEST
 
-    // Composite volume BEHIND existing content (respects depth)
+    // Ray march the volume
+    float4 volumeColor = RayMarchVolume(rayOrigin, rayDir, effectiveDepth);
+
+    // Read existing content
     float4 existingColor = g_output[DTid.xy];
 
-    // If there's geometry in front, composite fog behind it
-    // This creates proper depth ordering
-    float3 finalColor = existingColor.rgb + volumeColor.rgb * (1.0 - existingColor.a);
-    float finalAlpha = existingColor.a + volumeColor.a * (1.0 - existingColor.a);
+    // ADDITIVE BLEND (known working)
+    float3 finalColor = existingColor.rgb + volumeColor.rgb;
+    float finalAlpha = max(existingColor.a, volumeColor.a);
 
     g_output[DTid.xy] = float4(finalColor, finalAlpha);
 }
