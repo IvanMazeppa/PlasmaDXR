@@ -2,7 +2,22 @@
 
 **Strategic Orchestrator for PlasmaDX-Clean Multi-Agent RAG System**
 
-Mission-Control is a Claude Agent SDK application that coordinates 4 specialist councils (rendering, materials, physics, diagnostics) in a hierarchical workflow based on NVIDIA's multi-agent RAG architecture. It provides strategic task orchestration, decision recording, status aggregation, and quality gate enforcement for the PlasmaDX-Clean DirectX 12 volumetric rendering project.
+Mission-Control coordinates 4 specialist councils (rendering, materials, physics, diagnostics) in a hierarchical workflow based on NVIDIA's multi-agent RAG architecture. It provides strategic task orchestration, decision recording, status aggregation, and quality gate enforcement for the PlasmaDX-Clean DirectX 12 volumetric rendering project.
+
+## Architecture Overview
+
+Mission-Control has two modes of operation:
+
+1. **MCP Server** (`mcp_server.py`) - FastMCP server that Claude Code connects to via stdio
+   - Exposes 4 strategic tools to Claude Code
+   - Runs as a standard MCP server
+
+2. **Autonomous Agent** (`autonomous_agent.py`) - Claude Agent SDK application with AI reasoning
+   - Uses Anthropic API for autonomous decision-making
+   - Connects to other MCP specialist servers as a client
+   - Requires `ANTHROPIC_API_KEY` with funds
+
+**Typical use**: Claude Code connects to the MCP server, which provides strategic coordination tools.
 
 ---
 

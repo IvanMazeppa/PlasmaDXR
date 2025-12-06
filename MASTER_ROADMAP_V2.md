@@ -478,6 +478,42 @@ This is the **first time** the RT volumetric lighting system has worked correctl
 **Status:** PARTIALLY COMPLETE ✅
 **User Progress:** Time control implemented, 3 controls pending
 
+---
+
+## Phase 3.4: PIX/AI Debugging Automation (Developer Experience) 🤖
+
+**Priority:** HIGH (Improves development velocity)
+**Timeline:** 2-4 weeks (20-28 hours total)
+**Status:** PLANNING COMPLETE ✅ - Ready to implement
+**Roadmap:** [PIX_AI_DEBUGGING_AUTOMATION_ROADMAP.md](PIX_AI_DEBUGGING_AUTOMATION_ROADMAP.md)
+
+### Quick Summary
+
+Investigation into GPU debugging automation (PIX vs Nsight vs RenderDoc) revealed that **PIX programmatic capture APIs** (pix3.h) enable AI-assisted debugging without needing Python APIs or file format reverse engineering.
+
+**Strategy:** Hybrid approach combining:
+1. **Programmatic PIX capture** - F3 hotkey triggers .wpix capture with rich metadata logging
+2. **Expanded buffer dumps** - Add RTXDI reservoirs, froxel grid, probe SH coefficients
+3. **D3D12 structured logging** - AI-friendly JSON logs for pattern-based diagnosis
+4. **GUI automation (optional)** - PyWinAssistant for extracting data PIX shows but pixtool can't access
+
+### Week 1 Goals (Quick Wins)
+- [ ] Add PIX programmatic capture API to Application.cpp
+- [ ] Implement F3 hotkey for on-demand capture with metadata
+- [ ] Expand buffer dumps (RTXDI, froxel, probe data)
+- [ ] Create JSON metadata sidecars for buffer dumps
+- [ ] Update pix-debug MCP agent to correlate metadata
+
+### Benefits
+- **90% of issues diagnosed** from logs/metadata without opening PIX
+- **Context-aware captures** - Know exactly what was happening when issue occurred
+- **AI pattern recognition** - Learn from historical captures
+- **Automated regression testing** - CI/CD can trigger captures on performance drops
+
+**Fits Between:** Phase 3.5 (Multi-Light) and Phase 4 (RTXDI) - Will improve RTXDI debugging significantly
+
+---
+
 ### Completed by User
 - ✅ Timescale control (speed up/slow down simulation)
 
