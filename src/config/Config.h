@@ -60,7 +60,7 @@ namespace Config {
         float rtLightingStrength = 2.0f;
 
         bool usePhysicalEmission = false;
-        float emissionStrength = 1.0f;
+        float emissionStrength = 0.0f;  // Default to 0.0f (disabled)
 
         bool useDopplerShift = false;
         float dopplerStrength = 1.0f;
@@ -104,7 +104,7 @@ namespace Config {
         float gm = 100.0f;                   // Gravitational parameter (50-200)
         float bh_mass = 5.0f;                // Black hole mass in solar masses (0.1-10)
         float alpha = 0.1f;                  // Shakura-Sunyaev alpha viscosity (0.01-0.5)
-        float damping = 0.98f;               // Velocity damping factor (0.95-1.0)
+        float damping = 0.995f;              // Velocity damping @ 120 FPS ref (0.95-1.0, frame-rate independent)
         float angular_boost = 1.5f;          // Angular momentum boost (0.8-2.0)
         float density_scale = 2.0f;          // Particle density scaling (0.5-3.0)
         float force_clamp = 500.0f;          // Maximum force magnitude (100-1000)

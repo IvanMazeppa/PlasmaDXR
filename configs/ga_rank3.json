@@ -8,7 +8,7 @@
     "gm": 115.13,
     "bh_mass": 5.76,
     "alpha": 0.369,
-    "damping": 0.961,
+    "damping": 0.998,
     "angular_boost": 1.85,
     "disk_thickness": 0.127,
     "inner_radius": 46.94,

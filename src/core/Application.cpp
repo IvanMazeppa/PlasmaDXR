@@ -23,6 +23,10 @@
 #include <algorithm>
 #include <filesystem>
 
+// STB Image Write for PNG screenshots
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../../DLSS/NVIDIAImageScaling/samples/third_party/stb/stb_image_write.h"
+
 // ImGui
 #include "../../external/imgui/imgui.h"
 #include "../../external/imgui/backends/imgui_impl_win32.h"
@@ -2723,7 +2727,10 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "      \"preset\": \"%s\",\n", meta.shadows.preset.c_str());
     fprintf(file, "      \"rays_per_light\": %d,\n", meta.shadows.raysPerLight);
     fprintf(file, "      \"temporal_filtering\": %s,\n", meta.shadows.temporalFilteringEnabled ? "true" : "false");
-    fprintf(file, "      \"temporal_blend\": %.3f\n", meta.shadows.temporalBlendFactor);
+    fprintf(file, "      \"temporal_blend\": %.3f,\n", meta.shadows.temporalBlendFactor);
+    fprintf(file, "      \"screen_space_shadows\": %s,\n", meta.shadows.useScreenSpaceShadows ? "true" : "false");
+    fprintf(file, "      \"screen_space_steps\": %d,\n", meta.shadows.screenSpaceSteps);
+    fprintf(file, "      \"debug_visualization\": %s\n", meta.shadows.debugVisualization ? "true" : "false");
     fprintf(file, "    }\n");
     fprintf(file, "  },\n");
 
@@ -2765,16 +2772,21 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "      \"shadow_rays\": %s,\n", meta.featureStatus.shadowRaysWorking ? "true" : "false");
     fprintf(file, "      \"phase_function\": %s,\n", meta.featureStatus.phaseFunctionWorking ? "true" : "false");
     fprintf(file, "      \"physical_emission\": %s,\n", meta.featureStatus.physicalEmissionWorking ? "true" : "false");
-    fprintf(file, "      \"anisotropic_gaussians\": %s\n", meta.featureStatus.anisotropicGaussiansWorking ? "true" : "false");
+    fprintf(file, "      \"anisotropic_gaussians\": %s,\n", meta.featureStatus.anisotropicGaussiansWorking ? "true" : "false");
+    fprintf(file, "      \"froxel_fog\": %s,\n", meta.featureStatus.froxelFogWorking ? "true" : "false");
+    fprintf(file, "      \"probe_grid\": %s,\n", meta.featureStatus.probeGridWorking ? "true" : "false");
+    fprintf(file, "      \"screen_space_shadows\": %s\n", meta.featureStatus.screenSpaceShadowsWorking ? "true" : "false");
     fprintf(file, "    },\n");
     fprintf(file, "    \"wip\": {\n");
     fprintf(file, "      \"doppler_shift\": %s,\n", !meta.featureStatus.dopplerShiftWorking ? "true" : "false");
     fprintf(file, "      \"gravitational_redshift\": %s,\n", !meta.featureStatus.redshiftWorking ? "true" : "false");
-    fprintf(file, "      \"rtxdi_m5\": %s\n", !meta.featureStatus.rtxdiM5Working ? "true" : "false");
+    fprintf(file, "      \"rtxdi_m5\": %s,\n", !meta.featureStatus.rtxdiM5Working ? "true" : "false");
+    fprintf(file, "      \"nanovdb\": %s\n", !meta.featureStatus.nanovdbWorking ? "true" : "false");
     fprintf(file, "    },\n");
     fprintf(file, "    \"deprecated\": {\n");
     fprintf(file, "      \"in_scattering\": %s,\n", meta.featureStatus.inScatteringDeprecated ? "true" : "false");
-    fprintf(file, "      \"god_rays\": %s\n", meta.featureStatus.godRaysDeprecated ? "true" : "false");
+    fprintf(file, "      \"god_rays\": %s,\n", meta.featureStatus.godRaysDeprecated ? "true" : "false");
+    fprintf(file, "      \"custom_restir\": %s\n", meta.featureStatus.customReSTIRDeprecated ? "true" : "false");
     fprintf(file, "    }\n");
     fprintf(file, "  },\n");
 
@@ -2810,15 +2822,122 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
 
     // === ML/QUALITY ===
     fprintf(file, "  \"ml_quality\": {\n");
-    fprintf(file, "    \"pinn_enabled\": %s,\n", meta.mlQuality.pinnEnabled ? "true" : "false");
-    fprintf(file, "    \"model_path\": \"%s\",\n", meta.mlQuality.modelPath.c_str());
-    fprintf(file, "    \"adaptive_quality_enabled\": %s,\n", meta.mlQuality.adaptiveQualityEnabled ? "true" : "false");
-    fprintf(file, "    \"adaptive_target_fps\": %.1f\n", meta.mlQuality.adaptiveTargetFPS);
+
+    // Adaptive Quality (legacy)
+    fprintf(file, "    \"adaptive_quality\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.mlQuality.adaptiveQuality.enabled ? "true" : "false");
+    fprintf(file, "      \"target_fps\": %.1f,\n", meta.mlQuality.adaptiveQuality.targetFPS);
+    fprintf(file, "      \"collect_training_data\": %s\n", meta.mlQuality.adaptiveQuality.collectTrainingData ? "true" : "false");
+    fprintf(file, "    },\n");
+
+    // PINN v4
+    fprintf(file, "    \"pinn\": {\n");
+    fprintf(file, "      \"enabled\": %s,\n", meta.mlQuality.pinn.enabled ? "true" : "false");
+    fprintf(file, "      \"model_path\": \"%s\",\n", meta.mlQuality.pinn.modelPath.c_str());
+
+    // Hybrid Mode
+    fprintf(file, "      \"hybrid_mode\": {\n");
+    fprintf(file, "        \"enabled\": %s,\n", meta.mlQuality.pinn.hybridMode.enabled ? "true" : "false");
+    fprintf(file, "        \"threshold_risco\": %.1f\n", meta.mlQuality.pinn.hybridMode.thresholdRISCO);
+    fprintf(file, "      },\n");
+
+    // Physics Parameters
+    fprintf(file, "      \"physics_params\": {\n");
+    fprintf(file, "        \"gm\": %.1f,\n", meta.mlQuality.pinn.physicsParams.gm);
+    fprintf(file, "        \"bh_mass\": %.1f,\n", meta.mlQuality.pinn.physicsParams.bhMass);
+    fprintf(file, "        \"alpha_viscosity\": %.2f,\n", meta.mlQuality.pinn.physicsParams.alphaViscosity);
+    fprintf(file, "        \"damping\": %.2f,\n", meta.mlQuality.pinn.physicsParams.damping);
+    fprintf(file, "        \"angular_boost\": %.1f,\n", meta.mlQuality.pinn.physicsParams.angularBoost);
+    fprintf(file, "        \"density_scale\": %.1f,\n", meta.mlQuality.pinn.physicsParams.densityScale);
+    fprintf(file, "        \"force_clamp\": %.1f,\n", meta.mlQuality.pinn.physicsParams.forceClamp);
+    fprintf(file, "        \"velocity_clamp\": %.1f,\n", meta.mlQuality.pinn.physicsParams.velocityClamp);
+    fprintf(file, "        \"boundary_mode\": %d,\n", meta.mlQuality.pinn.physicsParams.boundaryMode);
+    fprintf(file, "        \"inner_radius\": %.1f,\n", meta.mlQuality.pinn.physicsParams.innerRadius);
+    fprintf(file, "        \"outer_radius\": %.1f,\n", meta.mlQuality.pinn.physicsParams.outerRadius);
+    fprintf(file, "        \"disk_thickness\": %.1f\n", meta.mlQuality.pinn.physicsParams.diskThickness);
+    fprintf(file, "      },\n");
+
+    // SIREN Turbulence
+    fprintf(file, "      \"siren_turbulence\": {\n");
+    fprintf(file, "        \"intensity\": %.2f,\n", meta.mlQuality.pinn.sirenTurbulence.intensity);
+    fprintf(file, "        \"vortex_scale\": %.1f,\n", meta.mlQuality.pinn.sirenTurbulence.vortexScale);
+    fprintf(file, "        \"vortex_decay\": %.2f\n", meta.mlQuality.pinn.sirenTurbulence.vortexDecay);
+    fprintf(file, "      },\n");
+
+    // GA Optimization
+    fprintf(file, "      \"ga_optimization\": {\n");
+    fprintf(file, "        \"enabled\": %s,\n", meta.mlQuality.pinn.gaOptimization.enabled ? "true" : "false");
+    fprintf(file, "        \"generation\": %d,\n", meta.mlQuality.pinn.gaOptimization.generation);
+    fprintf(file, "        \"individual_id\": %d,\n", meta.mlQuality.pinn.gaOptimization.individualId);
+    fprintf(file, "        \"fitness_score\": %.3f\n", meta.mlQuality.pinn.gaOptimization.fitnessScore);
+    fprintf(file, "      }\n");
+    fprintf(file, "    }\n");
+    fprintf(file, "  },\n");
+
+    // === FROXEL VOLUMETRIC FOG ===
+    fprintf(file, "  \"froxel_fog\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.froxelFog.enabled ? "true" : "false");
+    fprintf(file, "    \"grid_min\": [%.1f, %.1f, %.1f],\n", meta.froxelFog.gridMinX, meta.froxelFog.gridMinY, meta.froxelFog.gridMinZ);
+    fprintf(file, "    \"grid_max\": [%.1f, %.1f, %.1f],\n", meta.froxelFog.gridMaxX, meta.froxelFog.gridMaxY, meta.froxelFog.gridMaxZ);
+    fprintf(file, "    \"grid_dimensions\": [%d, %d, %d],\n", meta.froxelFog.gridDimX, meta.froxelFog.gridDimY, meta.froxelFog.gridDimZ);
+    fprintf(file, "    \"density_multiplier\": %.2f\n", meta.froxelFog.densityMultiplier);
+    fprintf(file, "  },\n");
+
+    // === PROBE GRID SYSTEM ===
+    fprintf(file, "  \"probe_grid\": {\n");
+    fprintf(file, "    \"enabled\": %s\n", meta.probeGrid.enabled ? "true" : "false");
+    fprintf(file, "  },\n");
+
+    // === NANOVDB VOLUMETRIC SYSTEM ===
+    fprintf(file, "  \"nanovdb\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.nanovdb.enabled ? "true" : "false");
+    fprintf(file, "    \"density_scale\": %.1f,\n", meta.nanovdb.densityScale);
+    fprintf(file, "    \"emission\": %.1f,\n", meta.nanovdb.emission);
+    fprintf(file, "    \"absorption\": %.3f,\n", meta.nanovdb.absorption);
+    fprintf(file, "    \"scattering\": %.1f,\n", meta.nanovdb.scattering);
+    fprintf(file, "    \"step_size\": %.1f,\n", meta.nanovdb.stepSize);
+    fprintf(file, "    \"sphere_radius\": %.1f,\n", meta.nanovdb.sphereRadius);
+    fprintf(file, "    \"test_sphere\": %s,\n", meta.nanovdb.testSphere ? "true" : "false");
+    fprintf(file, "    \"debug_mode\": %s\n", meta.nanovdb.debugMode ? "true" : "false");
+    fprintf(file, "  },\n");
+
+    // === ADAPTIVE PARTICLE RADIUS ===
+    fprintf(file, "  \"adaptive_radius\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.adaptiveRadius.enabled ? "true" : "false");
+    fprintf(file, "    \"inner_zone_distance\": %.1f,\n", meta.adaptiveRadius.innerZoneDistance);
+    fprintf(file, "    \"outer_zone_distance\": %.1f,\n", meta.adaptiveRadius.outerZoneDistance);
+    fprintf(file, "    \"inner_scale_multiplier\": %.2f,\n", meta.adaptiveRadius.innerScaleMultiplier);
+    fprintf(file, "    \"outer_scale_multiplier\": %.2f,\n", meta.adaptiveRadius.outerScaleMultiplier);
+    fprintf(file, "    \"density_scale_min\": %.2f,\n", meta.adaptiveRadius.densityScaleMin);
+    fprintf(file, "    \"density_scale_max\": %.2f\n", meta.adaptiveRadius.densityScaleMax);
+    fprintf(file, "  },\n");
+
+    // === DLSS INTEGRATION ===
+    fprintf(file, "  \"dlss\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.dlss.enabled ? "true" : "false");
+    fprintf(file, "    \"quality_mode\": \"%s\",\n", meta.dlss.qualityMode.c_str());
+    fprintf(file, "    \"internal_resolution\": [%d, %d],\n", meta.dlss.internalResolutionWidth, meta.dlss.internalResolutionHeight);
+    fprintf(file, "    \"output_resolution\": [%d, %d],\n", meta.dlss.outputResolutionWidth, meta.dlss.outputResolutionHeight);
+    fprintf(file, "    \"motion_vectors_enabled\": %s\n", meta.dlss.motionVectorsEnabled ? "true" : "false");
+    fprintf(file, "  },\n");
+
+    // === MATERIAL SYSTEM ===
+    fprintf(file, "  \"material_system\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.materialSystem.enabled ? "true" : "false");
+    fprintf(file, "    \"particle_struct_size_bytes\": %d,\n", meta.materialSystem.particleStructSizeBytes);
+    fprintf(file, "    \"material_types_count\": %d,\n", meta.materialSystem.materialTypesCount);
+    fprintf(file, "    \"distribution\": {\n");
+    fprintf(file, "      \"plasma\": %d,\n", meta.materialSystem.distribution.plasmaCount);
+    fprintf(file, "      \"star\": %d,\n", meta.materialSystem.distribution.starCount);
+    fprintf(file, "      \"gas\": %d,\n", meta.materialSystem.distribution.gasCount);
+    fprintf(file, "      \"rocky\": %d,\n", meta.materialSystem.distribution.rockyCount);
+    fprintf(file, "      \"icy\": %d\n", meta.materialSystem.distribution.icyCount);
+    fprintf(file, "    }\n");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
 
     fclose(file);
-    LOG_INFO("Metadata v3.0 saved: {}", metaPath);
+    LOG_INFO("Metadata v4.0 saved: {}", metaPath);
 }
 
 void Application::CaptureScreenshot() {
@@ -2833,7 +2952,7 @@ void Application::CaptureScreenshot() {
     char timestamp[100];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", localtime(&timeT));
 
-    std::string filename = m_screenshotOutputDir + "screenshot_" + std::string(timestamp) + ".bmp";
+    std::string filename = m_screenshotOutputDir + "screenshot_" + std::string(timestamp) + ".png";
 
     // Get the current back buffer
     auto backBuffer = m_swapChain->GetCurrentBackBuffer();
@@ -2929,53 +3048,33 @@ void Application::SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::st
     hr = readbackBuffer->Map(0, &readRange, &mappedData);
 
     if (SUCCEEDED(hr)) {
-        // Convert BGRA to RGB and flip vertically for BMP
+        // Convert BGRA to RGB (no vertical flip needed - PNG is top-down like GPU data)
         std::vector<uint8_t> rgbData(desc.Width * desc.Height * 3);
         uint8_t* src = reinterpret_cast<uint8_t*>(mappedData);
 
         for (UINT y = 0; y < desc.Height; ++y) {
             for (UINT x = 0; x < desc.Width; ++x) {
                 UINT srcIdx = (y * footprint.Footprint.RowPitch) + (x * 4);
-                UINT dstIdx = ((desc.Height - 1 - y) * desc.Width + x) * 3;
+                UINT dstIdx = (y * desc.Width + x) * 3;
 
-                rgbData[dstIdx + 0] = src[srcIdx + 2]; // R
+                rgbData[dstIdx + 0] = src[srcIdx + 2]; // R (from B in BGRA)
                 rgbData[dstIdx + 1] = src[srcIdx + 1]; // G
-                rgbData[dstIdx + 2] = src[srcIdx + 0]; // B
+                rgbData[dstIdx + 2] = src[srcIdx + 0]; // B (from R in BGRA)
             }
         }
 
-        // Write BMP file
-        FILE* file = fopen(filename.c_str(), "wb");
-        if (file) {
-            uint32_t fileSize = 54 + (desc.Width * desc.Height * 3);
-            uint32_t imageSize = desc.Width * desc.Height * 3;
+        // Write PNG file using stb_image_write
+        int result = stbi_write_png(
+            filename.c_str(),
+            static_cast<int>(desc.Width),
+            static_cast<int>(desc.Height),
+            3,  // RGB (3 channels)
+            rgbData.data(),
+            static_cast<int>(desc.Width) * 3  // Row stride in bytes
+        );
 
-            uint8_t header[54] = {
-                'B', 'M',
-                0, 0, 0, 0,
-                0, 0, 0, 0,
-                54, 0, 0, 0,
-                40, 0, 0, 0,
-                0, 0, 0, 0,
-                0, 0, 0, 0,
-                1, 0,
-                24, 0,
-                0, 0, 0, 0,
-                0, 0, 0, 0,
-                0x13, 0x0B, 0, 0,
-                0x13, 0x0B, 0, 0,
-                0, 0, 0, 0,
-                0, 0, 0, 0
-            };
-
-            memcpy(header + 2, &fileSize, 4);
-            memcpy(header + 18, &desc.Width, 4);
-            memcpy(header + 22, &desc.Height, 4);
-            memcpy(header + 34, &imageSize, 4);
-
-            fwrite(header, 1, 54, file);
-            fwrite(rgbData.data(), 1, imageSize, file);
-            fclose(file);
+        if (!result) {
+            LOG_ERROR("Failed to write PNG screenshot: {}", filename);
         }
 
         readbackBuffer->Unmap(0, nullptr);
@@ -4032,21 +4131,20 @@ void Application::RenderImGui() {
 
     // Physical effects
     if (ImGui::CollapsingHeader("Physical Effects")) {
-        // DISABLED: Physical Emission (focusing on RT lighting)
-        // ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
-        // if (m_usePhysicalEmission) {
-        //     ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
-        //     ImGui::SliderFloat("Artistic ↔ Physical Blend", &m_emissionBlendFactor, 0.0f, 1.0f);
-        //     ImGui::SameLine();
-        //     ImGui::TextDisabled("(?)");
-        //     if (ImGui::IsItemHovered()) {
-        //         ImGui::SetTooltip("0.0 = Pure artistic (warm colors)\n"
-        //                          "1.0 = Pure physical (accurate blackbody)\n"
-        //                          "Auto-blends based on temperature:\n"
-        //                          "  Cool (<8000K): Stays artistic\n"
-        //                          "  Hot (>18000K): Goes physical");
-        //     }
-        // }
+        ImGui::Checkbox("Physical Emission (E)", &m_usePhysicalEmission);
+        if (m_usePhysicalEmission) {
+            ImGui::SliderFloat("Emission Strength (Ctrl/Shift+E)", &m_emissionStrength, 0.0f, 5.0f);
+            ImGui::SliderFloat("Artistic ↔ Physical Blend", &m_emissionBlendFactor, 0.0f, 1.0f);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("0.0 = Pure artistic (warm colors)\n"
+                                 "1.0 = Pure physical (accurate blackbody)\n"
+                                 "Auto-blends based on temperature:\n"
+                                 "  Cool (<8000K): Stays artistic\n"
+                                 "  Hot (>18000K): Goes physical");
+            }
+        }
         ImGui::Checkbox("Doppler Shift (R)", &m_useDopplerShift);
         if (m_useDopplerShift) {
             ImGui::SliderFloat("Doppler Strength (Ctrl/Shift+R)", &m_dopplerStrength, 0.0f, 5.0f);

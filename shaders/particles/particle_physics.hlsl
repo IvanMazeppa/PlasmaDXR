@@ -276,8 +276,9 @@ void main(uint3 id : SV_DispatchThreadID) {
         // Update position
         position += velocity * constants.deltaTime;
 
-        // Apply damping
-        velocity *= constants.dampingFactor;
+        // Apply frame-rate independent damping
+        // Normalized to 120 FPS reference so damping behaves consistently at any frame rate
+        velocity *= pow(constants.dampingFactor, constants.deltaTime * 120.0);
 
         // Keep particles within bounds
         if (distance > constants.outerRadius * 2.0) {

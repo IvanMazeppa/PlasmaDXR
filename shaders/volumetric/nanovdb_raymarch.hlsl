@@ -190,42 +190,110 @@ float3 TemperatureToColor(float temp) {
 }
 
 // ============================================================================
-// PROCEDURAL GAS DENSITY
+// CURL NOISE (Divergence-Free Velocity Field)
+// ============================================================================
+
+// Calculate curl (rotation) of a 3D noise field
+// This creates natural swirling, turbulent fluid motion
+float3 CurlNoise(float3 p) {
+    const float eps = 0.1;
+
+    // Sample noise at offset positions to get derivatives
+    float n1, n2, a, b;
+
+    // Curl X component: ∂z/∂y - ∂y/∂z
+    n1 = gradientNoise(p + float3(0, eps, 0));
+    n2 = gradientNoise(p - float3(0, eps, 0));
+    a = (n1 - n2) / (2.0 * eps);
+
+    n1 = gradientNoise(p + float3(0, 0, eps));
+    n2 = gradientNoise(p - float3(0, 0, eps));
+    b = (n1 - n2) / (2.0 * eps);
+
+    float curlX = a - b;
+
+    // Curl Y component: ∂x/∂z - ∂z/∂x
+    n1 = gradientNoise(p + float3(0, 0, eps));
+    n2 = gradientNoise(p - float3(0, 0, eps));
+    a = (n1 - n2) / (2.0 * eps);
+
+    n1 = gradientNoise(p + float3(eps, 0, 0));
+    n2 = gradientNoise(p - float3(eps, 0, 0));
+    b = (n1 - n2) / (2.0 * eps);
+
+    float curlY = a - b;
+
+    // Curl Z component: ∂y/∂x - ∂x/∂y
+    n1 = gradientNoise(p + float3(eps, 0, 0));
+    n2 = gradientNoise(p - float3(eps, 0, 0));
+    a = (n1 - n2) / (2.0 * eps);
+
+    n1 = gradientNoise(p + float3(0, eps, 0));
+    n2 = gradientNoise(p - float3(0, eps, 0));
+    b = (n1 - n2) / (2.0 * eps);
+
+    float curlZ = a - b;
+
+    return float3(curlX, curlY, curlZ);
+}
+
+// ============================================================================
+// PROCEDURAL GAS DENSITY WITH FLUID ADVECTION
 // ============================================================================
 
 float SampleProceduralDensity(float3 worldPos) {
-    // Base sphere distance
-    float dist = length(worldPos - sphereCenter);
+    // IRREGULAR BOUNDARY: Use noise to deform sphere into nebula-like shape
+    float3 toCenter = worldPos - sphereCenter;
+    float dist = length(toCenter);
+    float3 direction = normalize(toCenter);
 
-    // Outside sphere - early out
-    if (dist > sphereRadius * 1.2) {
+    // Sample noise on sphere surface to create lobes/arms
+    float shapeComplexity = 1.8;  // Lower = larger features
+    float irregularity = 0.7;     // How much the shape deviates from sphere (0-1)
+
+    float boundaryNoise = fbm(direction * shapeComplexity + time * 0.015, 3);
+
+    // Create directional asymmetry (like bipolar nebula)
+    float verticalBias = abs(direction.y) * 0.3;  // Compress vertically
+    float equatorialExpansion = (1.0 - abs(direction.y)) * 0.4;  // Expand at equator
+
+    // Combine to get irregular radius
+    float radiusModulation = 1.0 + (boundaryNoise - 0.5) * irregularity + equatorialExpansion - verticalBias;
+    float irregularRadius = sphereRadius * radiusModulation;
+
+    // Early out if outside deformed boundary
+    if (dist > irregularRadius * 1.2) {
         return 0.0;
     }
 
-    // Base density from sphere with soft falloff
-    float innerRadius = sphereRadius * 0.4;  // Dense core
+    // CURL NOISE ADVECTION: Make gas flow along velocity field
+    float curlScale = 0.012;           // Size of vortices (smaller = larger vortices)
+    float advectionStrength = 25.0;    // How much gas flows
+    float timeScale = 0.05;            // Animation speed
+
+    // Generate curl velocity field
+    float3 curlPos = worldPos * curlScale + time * timeScale;
+    float3 curlVelocity = CurlNoise(curlPos);
+
+    // Advect (move) the sampling position along the velocity field
+    float3 advectedPos = worldPos + curlVelocity * advectionStrength;
+
+    // Base density from IRREGULAR shape with soft falloff
+    float innerRadius = irregularRadius * 0.4;  // Dense core
     float baseDensity;
     if (dist < innerRadius) {
         baseDensity = 1.0;
     } else {
-        float t = (dist - innerRadius) / (sphereRadius - innerRadius);
+        float t = (dist - innerRadius) / (irregularRadius - innerRadius);
         baseDensity = 1.0 - smoothstep(0.0, 1.0, t);
     }
 
-    // Add animated noise for gas-like turbulence
-    float noiseScale = 0.015;  // Controls detail frequency
-    float3 noisePos = worldPos * noiseScale;
-
-    // Animate the noise (slow swirling)
-    float animSpeed = 0.08;
-    noisePos += float3(
-        sin(time * animSpeed * 0.7),
-        cos(time * animSpeed * 0.5),
-        sin(time * animSpeed * 0.3)
-    ) * 1.5;
+    // Sample density at advected position (gas follows the flow)
+    float noiseScale = 0.015;
+    float3 noisePos = advectedPos * noiseScale;
 
     // Multi-octave FBM for large-scale structure
-    float largeTurbulence = fbm(noisePos, 3) * 0.5 + 0.5;  // Remap to [0, 1]
+    float largeTurbulence = fbm(noisePos, 3) * 0.5 + 0.5;
 
     // Higher frequency turbulence for wispy details
     float detailNoise = turbulence(noisePos * 2.5, 2);
@@ -234,13 +302,12 @@ float SampleProceduralDensity(float3 worldPos) {
     float density = baseDensity * (0.5 + 0.5 * largeTurbulence);
 
     // Add wispy tendrils at the edges
-    float edgeFactor = smoothstep(0.3, 0.9, dist / sphereRadius);
+    float edgeFactor = smoothstep(0.3, 0.9, dist / irregularRadius);
     density += detailNoise * edgeFactor * 0.25;
 
-    // Add gentle swirling motion based on angle
-    float3 toCenter = worldPos - sphereCenter;
-    float swirl = sin(atan2(toCenter.z, toCenter.x) * 4.0 + time * 0.3) * 0.1;
-    density += swirl * baseDensity * 0.5;
+    // Add some rotation to the curl field itself (reuse toCenter from above)
+    float rotation = sin(atan2(direction.z, direction.x) * 3.0 + time * 0.2) * 0.08;
+    density += rotation * baseDensity * 0.3;
 
     return max(density, 0.0);
 }
