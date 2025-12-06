@@ -2435,7 +2435,7 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     ScreenshotMetadata meta;
 
     // Schema version
-    meta.schemaVersion = "3.0";
+    meta.schemaVersion = "4.0";
 
     // === RENDERING CONFIGURATION ===
 
@@ -2483,6 +2483,11 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.shadows.temporalFilteringEnabled = m_enableTemporalFiltering;
     meta.shadows.temporalBlendFactor = m_temporalBlend;
 
+    // Screen-space shadows (Phase 2)
+    meta.shadows.useScreenSpaceShadows = m_useScreenSpaceShadows;
+    meta.shadows.screenSpaceSteps = static_cast<int>(m_ssSteps);
+    meta.shadows.debugVisualization = m_debugScreenSpaceShadows;
+
     // Quality preset detection (call helper)
     DetectQualityPreset(meta);
 
@@ -2505,20 +2510,24 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.physicalEffects.anisotropyStrength = m_anisotropyStrength;
 
     // === FEATURE STATUS FLAGS ===
-    // (These are hardcoded based on FEATURE_STATUS.md audit)
 
     meta.featureStatus.multiLightWorking = true;
     meta.featureStatus.shadowRaysWorking = true;
     meta.featureStatus.phaseFunctionWorking = true;
     meta.featureStatus.physicalEmissionWorking = true;
     meta.featureStatus.anisotropicGaussiansWorking = true;
+    meta.featureStatus.froxelFogWorking = true;
+    meta.featureStatus.probeGridWorking = true;
+    meta.featureStatus.screenSpaceShadowsWorking = true;
 
     meta.featureStatus.dopplerShiftWorking = false;      // No visible effect (needs debugging)
     meta.featureStatus.redshiftWorking = false;          // No visible effect (needs debugging)
     meta.featureStatus.rtxdiM5Working = false;           // Temporal accumulation WIP
+    meta.featureStatus.nanovdbWorking = false;           // Phase 5.x - experimental
 
     meta.featureStatus.inScatteringDeprecated = true;
     meta.featureStatus.godRaysDeprecated = true;
+    meta.featureStatus.customReSTIRDeprecated = true;    // Replaced by RTXDI
 
     // === PARTICLES ===
 
@@ -2555,10 +2564,102 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
 
     // === ML/QUALITY ===
 
-    meta.mlQuality.pinnEnabled = false;  // Would need to check m_adaptiveQuality system
-    meta.mlQuality.modelPath = "";
-    meta.mlQuality.adaptiveQualityEnabled = m_enableAdaptiveQuality;
-    meta.mlQuality.adaptiveTargetFPS = m_adaptiveTargetFPS;
+    // Adaptive Quality (legacy)
+    meta.mlQuality.adaptiveQuality.enabled = m_enableAdaptiveQuality;
+    meta.mlQuality.adaptiveQuality.targetFPS = m_adaptiveTargetFPS;
+    meta.mlQuality.adaptiveQuality.collectTrainingData = m_collectPerformanceData;
+
+    // PINN v4
+    meta.mlQuality.pinn.enabled = (!m_pinnModelPath.empty());  // Enabled if model path was set via --pinn
+    meta.mlQuality.pinn.modelPath = m_pinnModelPath;
+
+    // PINN Hybrid Mode (not yet implemented)
+    meta.mlQuality.pinn.hybridMode.enabled = false;
+    meta.mlQuality.pinn.hybridMode.thresholdRISCO = 10.0f;
+
+    // PINN Physics Parameters
+    meta.mlQuality.pinn.physicsParams.gm = m_gm;
+    meta.mlQuality.pinn.physicsParams.bhMass = m_bhMass;
+    meta.mlQuality.pinn.physicsParams.alphaViscosity = m_alphaViscosity;
+    meta.mlQuality.pinn.physicsParams.damping = m_damping;
+    meta.mlQuality.pinn.physicsParams.angularBoost = m_angularBoost;
+    meta.mlQuality.pinn.physicsParams.densityScale = m_densityScale;
+    meta.mlQuality.pinn.physicsParams.forceClamp = m_forceClamp;
+    meta.mlQuality.pinn.physicsParams.velocityClamp = m_velocityClamp;
+    meta.mlQuality.pinn.physicsParams.boundaryMode = m_boundaryMode;
+    meta.mlQuality.pinn.physicsParams.innerRadius = m_innerRadius;
+    meta.mlQuality.pinn.physicsParams.outerRadius = m_outerRadius;
+    meta.mlQuality.pinn.physicsParams.diskThickness = m_diskThickness;
+
+    // SIREN Turbulence
+    meta.mlQuality.pinn.sirenTurbulence.intensity = m_sirenIntensity;
+    meta.mlQuality.pinn.sirenTurbulence.vortexScale = m_vortexScale;
+    meta.mlQuality.pinn.sirenTurbulence.vortexDecay = m_vortexDecay;
+
+    // GA Optimization (placeholder - not yet implemented)
+    meta.mlQuality.pinn.gaOptimization.enabled = false;
+    meta.mlQuality.pinn.gaOptimization.generation = 0;
+    meta.mlQuality.pinn.gaOptimization.individualId = 0;
+    meta.mlQuality.pinn.gaOptimization.fitnessScore = 0.0f;
+
+    // === FROXEL VOLUMETRIC FOG ===
+    // NOTE: Froxel is embedded in Gaussian renderer, using known defaults
+    // TODO: Add getter methods to ParticleRenderer_Gaussian to retrieve runtime values
+    meta.froxelFog.enabled = (m_config.rendererType == RendererType::Gaussian);  // Always on for Gaussian renderer
+    meta.froxelFog.gridMinX = -1500.0f;
+    meta.froxelFog.gridMinY = -1500.0f;
+    meta.froxelFog.gridMinZ = -1500.0f;
+    meta.froxelFog.gridMaxX = 1500.0f;
+    meta.froxelFog.gridMaxY = 1500.0f;
+    meta.froxelFog.gridMaxZ = 1500.0f;
+    meta.froxelFog.gridDimX = 160;
+    meta.froxelFog.gridDimY = 90;
+    meta.froxelFog.gridDimZ = 128;
+    meta.froxelFog.densityMultiplier = 1.0f;  // Default value
+
+    // === PROBE GRID SYSTEM ===
+    meta.probeGrid.enabled = (m_useProbeGrid != 0);
+
+    // === NANOVDB VOLUMETRIC SYSTEM ===
+    meta.nanovdb.enabled = m_enableNanoVDB;
+    meta.nanovdb.densityScale = m_nanoVDBDensityScale;
+    meta.nanovdb.emission = m_nanoVDBEmission;
+    meta.nanovdb.absorption = m_nanoVDBAbsorption;
+    meta.nanovdb.scattering = m_nanoVDBScattering;
+    meta.nanovdb.stepSize = m_nanoVDBStepSize;
+    meta.nanovdb.sphereRadius = m_nanoVDBSphereRadius;
+    meta.nanovdb.testSphere = m_nanoVDBTestSphere;
+    meta.nanovdb.debugMode = m_nanoVDBDebugMode;
+
+    // === ADAPTIVE PARTICLE RADIUS ===
+    meta.adaptiveRadius.enabled = m_enableAdaptiveRadius;
+    meta.adaptiveRadius.innerZoneDistance = m_adaptiveInnerZone;
+    meta.adaptiveRadius.outerZoneDistance = m_adaptiveOuterZone;
+    meta.adaptiveRadius.innerScaleMultiplier = m_adaptiveInnerScale;
+    meta.adaptiveRadius.outerScaleMultiplier = m_adaptiveOuterScale;
+    meta.adaptiveRadius.densityScaleMin = m_densityScaleMin;
+    meta.adaptiveRadius.densityScaleMax = m_densityScaleMax;
+
+    // === DLSS INTEGRATION ===
+#ifdef ENABLE_DLSS
+    meta.dlss.enabled = m_enableDLSS;
+    switch (m_dlssQualityMode) {
+        case 0: meta.dlss.qualityMode = "Quality"; break;
+        case 1: meta.dlss.qualityMode = "Balanced"; break;
+        case 2: meta.dlss.qualityMode = "Performance"; break;
+        case 3: meta.dlss.qualityMode = "UltraPerformance"; break;
+        default: meta.dlss.qualityMode = "Unknown"; break;
+    }
+    // TODO: Get actual internal/output resolutions from DLSSSystem
+    meta.dlss.internalResolutionWidth = m_width;   // Placeholder
+    meta.dlss.internalResolutionHeight = m_height; // Placeholder
+    meta.dlss.outputResolutionWidth = m_width;
+    meta.dlss.outputResolutionHeight = m_height;
+    meta.dlss.motionVectorsEnabled = false;  // TODO: Query from DLSSSystem
+#else
+    meta.dlss.enabled = false;
+    meta.dlss.qualityMode = "Disabled (ENABLE_DLSS not defined)";
+#endif
 
     // === METADATA ===
 

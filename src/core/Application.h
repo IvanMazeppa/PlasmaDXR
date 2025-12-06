@@ -394,10 +394,10 @@ private:
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
 
-    // Screenshot metadata structure v3.0 (Enhanced Configuration Capture)
+    // Screenshot metadata structure v4.0 (Complete System Audit)
     struct ScreenshotMetadata {
         // Schema versioning
-        std::string schemaVersion = "3.0";
+        std::string schemaVersion = "4.0";
 
         // === RENDERING CONFIGURATION ===
 
@@ -431,6 +431,11 @@ private:
             int raysPerLight = 0;
             bool temporalFilteringEnabled = false;
             float temporalBlendFactor = 0.0f;
+
+            // Screen-space shadows (Phase 2)
+            bool useScreenSpaceShadows = false;
+            int screenSpaceSteps = 16;  // Quality: 8=fast, 16=balanced, 32=quality
+            bool debugVisualization = false;
         } shadows;
 
         // === QUALITY PRESET ===
@@ -470,15 +475,20 @@ private:
             bool phaseFunctionWorking = true;
             bool physicalEmissionWorking = true;
             bool anisotropicGaussiansWorking = true;
+            bool froxelFogWorking = true;
+            bool probeGridWorking = true;
+            bool screenSpaceShadowsWorking = true;
 
             // WIP features (visible but not fully functional)
             bool dopplerShiftWorking = false;      // No visible effect currently
             bool redshiftWorking = false;          // No visible effect currently
             bool rtxdiM5Working = false;           // Temporal accumulation in progress
+            bool nanovdbWorking = false;           // Phase 5.x - experimental
 
             // Deprecated/non-functional
             bool inScatteringDeprecated = true;
             bool godRaysDeprecated = true;
+            bool customReSTIRDeprecated = true;    // Replaced by RTXDI
         } featureStatus;
 
         // === PARTICLES ===
@@ -518,17 +528,88 @@ private:
         // === ML/QUALITY ===
 
         struct MLQuality {
-            bool pinnEnabled = false;
-            std::string modelPath;
-            bool adaptiveQualityEnabled = false;
-            float adaptiveTargetFPS = 0.0f;
+            // Adaptive Quality (legacy ML system)
+            struct AdaptiveQuality {
+                bool enabled = false;
+                float targetFPS = 120.0f;
+                bool collectTrainingData = false;
+            } adaptiveQuality;
 
-            // PINN hybrid mode details (Phase 5)
-            bool hybridModeEnabled = false;
-            float hybridThresholdRISCO = 10.0f;  // × R_ISCO
+            // PINN v4 Physics ML
+            struct PINN {
+                bool enabled = false;
+                std::string modelPath;
+
+                // Hybrid mode
+                struct HybridMode {
+                    bool enabled = false;
+                    float thresholdRISCO = 10.0f;  // × R_ISCO
+                } hybridMode;
+
+                // Stable physics parameters (Application.h:153-163)
+                struct PhysicsParams {
+                    float gm = 100.0f;
+                    float bhMass = 5.0f;
+                    float alphaViscosity = 0.1f;
+                    float damping = 0.98f;
+                    float angularBoost = 1.5f;
+                    float densityScale = 2.0f;
+                    float forceClamp = 500.0f;
+                    float velocityClamp = 200.0f;
+                    int boundaryMode = 0;
+                    float innerRadius = 10.0f;
+                    float outerRadius = 300.0f;
+                    float diskThickness = 50.0f;
+                } physicsParams;
+
+                // SIREN v2 turbulence (Application.h:166-168)
+                struct SIRENTurbulence {
+                    float intensity = 0.0f;
+                    float vortexScale = 1.0f;
+                    float vortexDecay = 0.1f;
+                } sirenTurbulence;
+
+                // GA optimization metadata (placeholder for future)
+                struct GAOptimization {
+                    bool enabled = false;
+                    int generation = 0;
+                    int individualId = 0;
+                    float fitnessScore = 0.0f;
+                } gaOptimization;
+            } pinn;
         } mlQuality;
 
-        // === MATERIAL SYSTEM (Phase 5 / Sprint 1) ===
+        // === FROXEL VOLUMETRIC FOG (Phase 8 - COMPLETE) ===
+
+        struct FroxelFog {
+            bool enabled = false;
+            float gridMinX = -1500.0f, gridMinY = -1500.0f, gridMinZ = -1500.0f;
+            float gridMaxX = 1500.0f, gridMaxY = 1500.0f, gridMaxZ = 1500.0f;
+            int gridDimX = 160, gridDimY = 90, gridDimZ = 128;
+            float densityMultiplier = 1.0f;
+        } froxelFog;
+
+        // === PROBE GRID SYSTEM (Phase 0.13.1 - COMPLETE) ===
+
+        struct ProbeGrid {
+            bool enabled = false;
+        } probeGrid;
+
+        // === NANOVDB VOLUMETRIC SYSTEM (Phase 5.x - EXPERIMENTAL) ===
+
+        struct NanoVDB {
+            bool enabled = false;
+            float densityScale = 5.0f;
+            float emission = 3.0f;
+            float absorption = 0.005f;
+            float scattering = 0.8f;
+            float stepSize = 5.0f;
+            float sphereRadius = 400.0f;
+            bool testSphere = false;
+            bool debugMode = false;
+        } nanovdb;
+
+        // === MATERIAL SYSTEM (Phase 5 / Sprint 1 - FUTURE) ===
 
         struct MaterialSystem {
             bool enabled = false;
@@ -548,12 +629,12 @@ private:
 
         struct AdaptiveRadius {
             bool enabled = false;
-            float innerZoneDistance = 150.0f;
-            float outerZoneDistance = 800.0f;
-            float innerScaleMultiplier = 0.3f;
-            float outerScaleMultiplier = 3.0f;
-            float densityScaleMin = 0.5f;
-            float densityScaleMax = 1.5f;
+            float innerZoneDistance = 100.0f;
+            float outerZoneDistance = 300.0f;
+            float innerScaleMultiplier = 0.5f;
+            float outerScaleMultiplier = 2.0f;
+            float densityScaleMin = 0.3f;
+            float densityScaleMax = 3.0f;
         } adaptiveRadius;
 
         // === DLSS INTEGRATION (Phase 7 - PARTIAL) ===
@@ -567,15 +648,6 @@ private:
             int outputResolutionHeight = 0;
             bool motionVectorsEnabled = false;
         } dlss;
-
-        // === DYNAMIC EMISSION (Phase 3.8 - COMPLETE) ===
-
-        struct DynamicEmission {
-            float emissionStrength = 0.25f;
-            float temperatureThreshold = 22000.0f;  // Kelvin
-            float rtSuppressionFactor = 0.7f;
-            float temporalModulationRate = 0.03f;
-        } dynamicEmission;
 
         // === PERFORMANCE FEATURES ===
 
