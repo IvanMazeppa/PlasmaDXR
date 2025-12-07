@@ -141,8 +141,43 @@ public:
 
     // Grid info
     bool HasGrid() const { return m_hasGrid; }
+    bool HasFileGrid() const { return m_hasFileGrid; }
     uint64_t GetGridSizeBytes() const { return m_gridSizeBytes; }
     uint32_t GetVoxelCount() const { return m_voxelCount; }
+
+    // Grid bounds (for positioning/scaling loaded grids)
+    DirectX::XMFLOAT3 GetGridWorldMin() const { return m_gridWorldMin; }
+    DirectX::XMFLOAT3 GetGridWorldMax() const { return m_gridWorldMax; }
+    void SetGridWorldMin(const DirectX::XMFLOAT3& min) { m_gridWorldMin = min; }
+    void SetGridWorldMax(const DirectX::XMFLOAT3& max) { m_gridWorldMax = max; }
+
+    // Scale grid bounds uniformly around center
+    void ScaleGridBounds(float scale) {
+        DirectX::XMFLOAT3 center = {
+            (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
+            (m_gridWorldMin.y + m_gridWorldMax.y) * 0.5f,
+            (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
+        };
+        DirectX::XMFLOAT3 halfExtent = {
+            (m_gridWorldMax.x - m_gridWorldMin.x) * 0.5f * scale,
+            (m_gridWorldMax.y - m_gridWorldMin.y) * 0.5f * scale,
+            (m_gridWorldMax.z - m_gridWorldMin.z) * 0.5f * scale
+        };
+        m_gridWorldMin = { center.x - halfExtent.x, center.y - halfExtent.y, center.z - halfExtent.z };
+        m_gridWorldMax = { center.x + halfExtent.x, center.y + halfExtent.y, center.z + halfExtent.z };
+    }
+
+    // Move grid center
+    void SetGridCenter(const DirectX::XMFLOAT3& newCenter) {
+        DirectX::XMFLOAT3 halfExtent = {
+            (m_gridWorldMax.x - m_gridWorldMin.x) * 0.5f,
+            (m_gridWorldMax.y - m_gridWorldMin.y) * 0.5f,
+            (m_gridWorldMax.z - m_gridWorldMin.z) * 0.5f
+        };
+        m_gridWorldMin = { newCenter.x - halfExtent.x, newCenter.y - halfExtent.y, newCenter.z - halfExtent.z };
+        m_gridWorldMax = { newCenter.x + halfExtent.x, newCenter.y + halfExtent.y, newCenter.z + halfExtent.z };
+        m_sphereCenter = newCenter;  // Also update sphere center for fallback
+    }
 
     // GPU resources for external binding
     ID3D12Resource* GetGridBuffer() const { return m_gridBuffer.Get(); }
@@ -171,7 +206,8 @@ private:
         uint32_t screenHeight;               // 4 bytes
         float time;                          // 4 bytes
         uint32_t debugMode;                  // 4 bytes (0=normal, 1=debug solid color)
-        float padding[3];                    // 12 bytes to align to 256
+        uint32_t useGridBuffer;              // 4 bytes (0=procedural, 1=file-loaded grid)
+        float padding[2];                    // 8 bytes to align to 256
     };  // Total: 176 bytes (padded to 256 for cbuffer)
 
     Device* m_device = nullptr;
@@ -179,6 +215,7 @@ private:
 
     // Grid data
     bool m_hasGrid = false;
+    bool m_hasFileGrid = false;  // True if grid was loaded from file (vs procedural)
     uint64_t m_gridSizeBytes = 0;
     uint32_t m_voxelCount = 0;
     DirectX::XMFLOAT3 m_gridWorldMin = { -500, -500, -500 };

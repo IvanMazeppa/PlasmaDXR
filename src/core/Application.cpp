@@ -5087,15 +5087,68 @@ void Application::RenderImGui() {
 
             // Grid status
             if (m_nanoVDBSystem && m_nanoVDBSystem->HasGrid()) {
-                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Grid: LOADED");
+                if (m_nanoVDBSystem->HasFileGrid()) {
+                    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Grid: FILE LOADED");
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "Grid: PROCEDURAL");
+                }
                 ImGui::Text("  Size: %.2f MB (%u voxels)",
                            m_nanoVDBSystem->GetGridSizeBytes() / (1024.0f * 1024.0f),
                            m_nanoVDBSystem->GetVoxelCount());
-                ImGui::Text("  Sphere: center=(%.0f,%.0f,%.0f), radius=%.0f",
-                           m_nanoVDBSystem->GetSphereCenter().x,
-                           m_nanoVDBSystem->GetSphereCenter().y,
-                           m_nanoVDBSystem->GetSphereCenter().z,
-                           m_nanoVDBSystem->GetSphereRadius());
+
+                // Show actual grid bounds (CRITICAL for debugging visibility)
+                auto gridMin = m_nanoVDBSystem->GetGridWorldMin();
+                auto gridMax = m_nanoVDBSystem->GetGridWorldMax();
+                float gridSizeX = gridMax.x - gridMin.x;
+                float gridSizeY = gridMax.y - gridMin.y;
+                float gridSizeZ = gridMax.z - gridMin.z;
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f),
+                    "  Bounds: (%.1f, %.1f, %.1f) to (%.1f, %.1f, %.1f)",
+                    gridMin.x, gridMin.y, gridMin.z,
+                    gridMax.x, gridMax.y, gridMax.z);
+                ImGui::Text("  Grid Size: %.1f x %.1f x %.1f units",
+                    gridSizeX, gridSizeY, gridSizeZ);
+
+                // Grid transform controls (for scaling small VDB files to scene scale)
+                if (m_nanoVDBSystem->HasFileGrid()) {
+                    ImGui::Separator();
+                    ImGui::Text("Grid Transform (scale to scene):");
+
+                    static float gridScale = 1.0f;
+                    if (ImGui::SliderFloat("Scale", &gridScale, 0.1f, 1000.0f, "%.1fx")) {
+                        // Will apply on button press
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Apply Scale")) {
+                        m_nanoVDBSystem->ScaleGridBounds(gridScale);
+                        gridScale = 1.0f;  // Reset slider
+                        LOG_INFO("Grid scaled. New bounds: ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
+                            m_nanoVDBSystem->GetGridWorldMin().x, m_nanoVDBSystem->GetGridWorldMin().y, m_nanoVDBSystem->GetGridWorldMin().z,
+                            m_nanoVDBSystem->GetGridWorldMax().x, m_nanoVDBSystem->GetGridWorldMax().y, m_nanoVDBSystem->GetGridWorldMax().z);
+                    }
+
+                    // Quick scale presets
+                    if (ImGui::Button("10x")) { m_nanoVDBSystem->ScaleGridBounds(10.0f); }
+                    ImGui::SameLine();
+                    if (ImGui::Button("50x")) { m_nanoVDBSystem->ScaleGridBounds(50.0f); }
+                    ImGui::SameLine();
+                    if (ImGui::Button("100x")) { m_nanoVDBSystem->ScaleGridBounds(100.0f); }
+                    ImGui::SameLine();
+                    if (ImGui::Button("500x")) { m_nanoVDBSystem->ScaleGridBounds(500.0f); }
+
+                    // Move grid center
+                    static float gridCenterPos[3] = {0.0f, 0.0f, 0.0f};
+                    ImGui::DragFloat3("Center", gridCenterPos, 10.0f, -5000.0f, 5000.0f);
+                    if (ImGui::Button("Move to Center")) {
+                        DirectX::XMFLOAT3 newCenter(gridCenterPos[0], gridCenterPos[1], gridCenterPos[2]);
+                        m_nanoVDBSystem->SetGridCenter(newCenter);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Center at Origin")) {
+                        m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
+                        gridCenterPos[0] = gridCenterPos[1] = gridCenterPos[2] = 0.0f;
+                    }
+                }
             } else {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "Grid: NOT LOADED");
                 ImGui::Text("  Press 'J' to create test fog sphere");
@@ -5154,6 +5207,37 @@ void Application::RenderImGui() {
                     m_nanoVDBSystem->Initialize(m_device.get(), m_resources.get(), m_width, m_height);
                     m_enableNanoVDB = false;
                 }
+            }
+
+            // NanoVDB file loading
+            ImGui::Separator();
+            ImGui::Text("Load NanoVDB File:");
+
+            // Static buffer for file path input
+            // Path is relative to build/bin/Debug/ (where exe runs from)
+            static char nvdbFilePath[512] = "../../../VDBs/NanoVDB/cloud_01.nvdb";
+            ImGui::InputText("File Path", nvdbFilePath, sizeof(nvdbFilePath));
+
+            if (ImGui::Button("Load .nvdb File")) {
+                if (m_nanoVDBSystem) {
+                    std::string filepath(nvdbFilePath);
+                    LOG_INFO("Attempting to load NanoVDB file: {}", filepath);
+
+                    if (m_nanoVDBSystem->LoadFromFile(filepath)) {
+                        m_nanoVDBSystem->SetEnabled(true);
+                        m_enableNanoVDB = true;
+                        LOG_INFO("NanoVDB file loaded successfully!");
+                        LOG_INFO("  Grid size: {} bytes ({:.2f} MB)",
+                                 m_nanoVDBSystem->GetGridSizeBytes(),
+                                 m_nanoVDBSystem->GetGridSizeBytes() / (1024.0 * 1024.0));
+                    } else {
+                        LOG_ERROR("Failed to load NanoVDB file: {}", filepath);
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Load a .nvdb file (NanoVDB format)\nConvert .vdb files using Blender first");
             }
 
             ImGui::TreePop();
