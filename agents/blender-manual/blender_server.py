@@ -54,9 +54,11 @@ mcp = FastMCP("Blender Manual")
 SERVER_DIR = Path(__file__).parent
 # Manual HTML files location (separate from server)
 MANUAL_DIR = Path("/mnt/d/Users/dilli/AndroidStudioProjects/blender_manual_mcp")
+# Python API reference location (separate archive)
+PYTHON_API_DIR = Path("/mnt/d/Users/dilli/AndroidStudioProjects/blender_python_reference_mcp")
 CACHE_FILE = SERVER_DIR / "manual_index.json"
 EMBEDDINGS_FILE = SERVER_DIR / "embeddings.npy"
-CACHE_VERSION = "3.0"  # Updated for semantic search
+CACHE_VERSION = "4.0"  # Updated for Python API integration
 
 # Token optimization defaults
 DEFAULT_LIMIT = 5          # Reduced from 10
@@ -97,13 +99,31 @@ def normalize_path(path: str) -> str:
     return path.replace('\\', '/')
 
 
-def extract_category_from_path(rel_path: str) -> tuple[str, str, str]:
+def extract_category_from_path(rel_path: str, source: str = "manual") -> tuple[str, str, str]:
     """
     Extract category, subcategory, and page type from file path.
     Returns: (category, subcategory, page_type)
+
+    For Python API docs, extracts module structure from filename.
     """
     # Normalize path separators
     rel_path = normalize_path(rel_path)
+
+    # Handle Python API docs (flat structure with module naming)
+    if source == "python_api":
+        # Extract module info from filename like "bpy.ops.mesh.html"
+        filename = Path(rel_path).stem  # Remove .html
+        parts = filename.split('.')
+
+        if len(parts) >= 2:
+            # bpy.ops.mesh -> category="bpy", subcategory="ops"
+            category = parts[0]  # bpy, bmesh, aud, etc.
+            subcategory = parts[1] if len(parts) > 1 else ""
+            return (category, subcategory, "api")
+        else:
+            return (filename, "", "api")
+
+    # Handle manual docs (hierarchical structure)
     parts = rel_path.split('/')
 
     if len(parts) == 0:
@@ -120,6 +140,12 @@ def extract_category_from_path(rel_path: str) -> tuple[str, str, str]:
         page_type = "api"
 
     return (category, subcategory, page_type)
+
+
+def extract_module_path(filename: str) -> str:
+    """Extract Python module path from API doc filename."""
+    # bpy.ops.mesh.html -> bpy.ops.mesh
+    return Path(filename).stem
 
 
 def extract_keywords(content: str, title: str, category: str, subcategory: str) -> List[str]:
@@ -349,15 +375,18 @@ def semantic_search(query: str, top_k: int = 10) -> List[Dict]:
         return []
 
 
-def build_index():
-    """Walk through the manual directory and build an enhanced index with metadata."""
+def index_directory(base_dir: Path, source: str) -> int:
+    """Index a single directory and return count of indexed pages."""
     global search_index
-    search_index = []
-
-    logger.info(f"Building index from {MANUAL_DIR}...")
-
     count = 0
-    for root, _, files in os.walk(MANUAL_DIR):
+
+    if not base_dir.exists():
+        logger.warning(f"Directory not found: {base_dir}")
+        return 0
+
+    logger.info(f"Indexing {source} from {base_dir}...")
+
+    for root, _, files in os.walk(base_dir):
         for file in files:
             if file.endswith(".html") and not file.startswith("genindex") and not file.startswith("search"):
                 path = Path(root) / file
@@ -366,12 +395,16 @@ def build_index():
                         html_content = f.read()
                         soup = BeautifulSoup(html_content, "html.parser")
 
-                        # Extract title
+                        # Extract title - different handling for API docs
                         title = "Untitled"
                         if soup.title:
                             title_text = soup.title.string
                             if title_text:
-                                title = title_text.replace("— Blender Manual", "").replace("— Blender 5.0 Manual", "").strip()
+                                if source == "python_api":
+                                    # Python API titles: "bpy.ops.mesh — Blender Python API"
+                                    title = title_text.replace("— Blender Python API", "").strip()
+                                else:
+                                    title = title_text.replace("— Blender Manual", "").replace("— Blender 5.0 Manual", "").strip()
 
                         # Extract main content
                         content_div = soup.find("article", role="main")
@@ -384,13 +417,20 @@ def build_index():
                             continue
 
                         text = clean_text(content_div.get_text())
-                        rel_path = normalize_path(str(path.relative_to(MANUAL_DIR)))
+                        rel_path = normalize_path(str(path.relative_to(base_dir)))
 
-                        # Extract metadata
-                        category, subcategory, page_type = extract_category_from_path(rel_path)
+                        # Extract metadata - pass source for correct category extraction
+                        category, subcategory, page_type = extract_category_from_path(rel_path, source)
                         keywords = extract_keywords(text, title, category, subcategory)
                         headers = extract_headers(soup)[:5]  # Limit headers
                         code_blocks = extract_code_blocks(soup)
+
+                        # For Python API, add module path as keyword
+                        if source == "python_api":
+                            module_path = extract_module_path(file)
+                            keywords.append(module_path)
+                            # Add individual module parts as keywords
+                            keywords.extend(module_path.split('.'))
 
                         # Build index entry with rich metadata
                         index_entry = {
@@ -400,10 +440,11 @@ def build_index():
                             "category": category,
                             "subcategory": subcategory,
                             "page_type": page_type,
-                            "keywords": keywords[:10],  # Limit keywords
+                            "keywords": keywords[:15],  # Slightly higher limit for API docs
                             "headers": headers,
                             "code_count": len(code_blocks),
-                            # FUTURE: "embeddings": [] for semantic search
+                            "source": source,  # "manual" or "python_api"
+                            "module_path": extract_module_path(file) if source == "python_api" else None,
                         }
 
                         search_index.append(index_entry)
@@ -412,7 +453,25 @@ def build_index():
                 except Exception as e:
                     logger.error(f"Failed to index {path}: {e}")
 
-    logger.info(f"Indexed {count} pages.")
+    return count
+
+
+def build_index():
+    """Walk through both manual and Python API directories and build an enhanced index."""
+    global search_index
+    search_index = []
+
+    # Index main Blender Manual
+    manual_count = index_directory(MANUAL_DIR, "manual")
+    logger.info(f"Indexed {manual_count} manual pages.")
+
+    # Index Python API Reference
+    api_count = index_directory(PYTHON_API_DIR, "python_api")
+    logger.info(f"Indexed {api_count} Python API pages.")
+
+    total = manual_count + api_count
+    logger.info(f"Total indexed: {total} pages ({manual_count} manual + {api_count} API)")
+
     save_cache()
 
     # NOTE: Embedding generation is now lazy - happens on first semantic search call
@@ -752,15 +811,16 @@ def search_vdb_workflow(query: str, limit: int = DEFAULT_LIMIT, offset: int = 0,
 
 
 @mcp.tool()
-def search_python_api(operation: str, limit: int = DEFAULT_LIMIT, compact: bool = False) -> str:
+def search_python_api(operation: str, limit: int = DEFAULT_LIMIT, compact: bool = False, api_only: bool = False) -> str:
     """
     Search for Python API documentation (bpy.ops, bpy.types, bpy.data).
-    Find Python scripts and API calls for automation and scripting.
+    Now searches BOTH the official Python API reference AND manual scripting pages.
 
     Args:
         operation: API operation or concept (e.g., "bpy.ops.fluid", "export script", "volume")
         limit: Maximum results (default: 5)
         compact: Minimal output mode
+        api_only: If True, only search official API docs (not manual)
 
     Returns:
         Python API documentation and code examples.
@@ -769,6 +829,7 @@ def search_python_api(operation: str, limit: int = DEFAULT_LIMIT, compact: bool 
         - "bpy.ops.fluid.bake"
         - "export volume script"
         - "bpy.data.objects"
+        - "bmesh.types"
     """
     if not search_index:
         if not load_cache():
@@ -778,32 +839,51 @@ def search_python_api(operation: str, limit: int = DEFAULT_LIMIT, compact: bool 
     results = []
 
     for item in search_index:
+        is_api_doc = item.get("source") == "python_api"
         has_code = item.get("code_count", 0) > 0
         has_python_api = "python_api" in item.get("keywords", [])
 
-        if not (has_code or has_python_api or "advanced/scripting" in item["path"]):
+        # Filter based on api_only flag
+        if api_only and not is_api_doc:
+            continue
+
+        if not api_only and not (is_api_doc or has_code or has_python_api or "advanced/scripting" in item["path"]):
             continue
 
         score = compute_score(item, query_terms,
-                            boost_categories=["advanced", "scripting"],
-                            boost_keywords=["python", "bpy", "script", "api"])
+                            boost_categories=["bpy", "bmesh", "aud", "advanced", "scripting"],
+                            boost_keywords=["python", "bpy", "script", "api", "ops", "types", "data"])
+
+        # Strong boost for official API docs
+        if is_api_doc:
+            score += 50
 
         if has_code:
             score += 30
 
+        # Module path exact match bonus
+        if is_api_doc and item.get("module_path"):
+            module_lower = item["module_path"].lower()
+            for term in query_terms:
+                if term in module_lower:
+                    score += 25
+
         if score > 0:
             snippet = ""
+            source_tag = "[API]" if is_api_doc else "[Manual]"
             if not compact:
                 snippet = create_snippet(item["content"], query_terms)
                 if item.get("code_count"):
                     snippet += f" [{item['code_count']} code block(s)]"
 
             results.append({
-                "title": item["title"],
+                "title": f"{source_tag} {item['title']}",
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
-                "snippet": snippet
+                "snippet": snippet,
+                "source": item.get("source", "manual"),
+                "module_path": item.get("module_path")
             })
 
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -923,31 +1003,65 @@ def search_modifiers(modifier_name: Optional[str] = None, limit: int = DEFAULT_L
 
 
 @mcp.tool()
-def read_page(path: str, max_length: int = MAX_PAGE_LENGTH) -> str:
+def read_page(path: str, max_length: int = MAX_PAGE_LENGTH, source: str = "auto") -> str:
     """
-    Read the full content of a manual page with enhanced formatting.
+    Read the full content of a manual or API page with enhanced formatting.
     Use paths returned from search results.
 
     Args:
-        path: Relative path to HTML file (e.g., 'render/volumetrics.html')
+        path: Relative path to HTML file (e.g., 'render/volumetrics.html' or 'bpy.ops.mesh.html')
         max_length: Maximum characters to return (default: 4000, use 0 for unlimited)
+        source: "manual", "python_api", or "auto" (tries both, default)
 
     Returns:
         Full page content with headers, paragraphs, code blocks, and lists.
 
     Examples:
         - read_page("render/cycles/world_settings.html")
+        - read_page("bpy.ops.mesh.html")  # Python API doc
         - read_page("physics/fluid/type/domain/cache.html")
-        - read_page("render/materials/components/volume.html", max_length=2000)
     """
     # Normalize path and try both separators
     path = normalize_path(path)
-    full_path = MANUAL_DIR / path
+
+    # Determine which directory to look in
+    full_path = None
+    detected_source = None
+
+    if source == "python_api":
+        full_path = PYTHON_API_DIR / path
+        detected_source = "python_api"
+    elif source == "manual":
+        full_path = MANUAL_DIR / path
+        detected_source = "manual"
+    else:
+        # Auto-detect: try Python API first for .html files that look like modules
+        if path.startswith("bpy.") or path.startswith("bmesh.") or path.startswith("aud.") or path.startswith("bl_"):
+            full_path = PYTHON_API_DIR / path
+            if full_path.exists():
+                detected_source = "python_api"
+
+        # Try manual directory
+        if full_path is None or not full_path.exists():
+            full_path = MANUAL_DIR / path
+            if full_path.exists():
+                detected_source = "manual"
+
+        # Try Python API directory as fallback
+        if not full_path.exists():
+            full_path = PYTHON_API_DIR / path
+            if full_path.exists():
+                detected_source = "python_api"
 
     # Try with backslashes if forward slashes don't work
     if not full_path.exists():
         alt_path = path.replace('/', '\\')
-        full_path = MANUAL_DIR / alt_path
+        for base_dir, src in [(MANUAL_DIR, "manual"), (PYTHON_API_DIR, "python_api")]:
+            test_path = base_dir / alt_path
+            if test_path.exists():
+                full_path = test_path
+                detected_source = src
+                break
 
     if not full_path.exists():
         return f"Error: File not found: {path}\n\nTip: Use search tools to find the correct path."
@@ -961,7 +1075,10 @@ def read_page(path: str, max_length: int = MAX_PAGE_LENGTH) -> str:
         if soup.title:
             title_text = soup.title.string
             if title_text:
-                title = title_text.replace("— Blender Manual", "").replace("— Blender 5.0 Manual", "").strip()
+                if detected_source == "python_api":
+                    title = title_text.replace("— Blender Python API", "").strip()
+                else:
+                    title = title_text.replace("— Blender Manual", "").replace("— Blender 5.0 Manual", "").strip()
 
         # Find main content
         content = soup.find("article", role="main")
@@ -974,7 +1091,8 @@ def read_page(path: str, max_length: int = MAX_PAGE_LENGTH) -> str:
             return "Error: Could not parse page content."
 
         # Build formatted output
-        output = f"# {title}\n**Path:** `{path}`\n---\n\n"
+        source_label = "[Python API]" if detected_source == "python_api" else "[Manual]"
+        output = f"# {title}\n**Source:** {source_label} | **Path:** `{path}`\n---\n\n"
 
         # Extract structured content
         for element in content.children:
@@ -993,10 +1111,17 @@ def read_page(path: str, max_length: int = MAX_PAGE_LENGTH) -> str:
             elif element.name == 'pre':
                 code = element.get_text().strip()
                 if code:
-                    output += f"```\n{code}\n```\n\n"
+                    output += f"```python\n{code}\n```\n\n"
             elif element.name in ['ul', 'ol']:
                 for li in element.find_all('li', recursive=False):
                     output += f"- {li.get_text().strip()}\n"
+                output += "\n"
+            elif element.name == 'dl':
+                # Handle definition lists (common in API docs)
+                for dt in element.find_all('dt', recursive=False):
+                    output += f"**{dt.get_text().strip()}**\n"
+                for dd in element.find_all('dd', recursive=False):
+                    output += f"  {dd.get_text().strip()}\n"
                 output += "\n"
 
             # Check length limit
@@ -1017,6 +1142,230 @@ def read_page(path: str, max_length: int = MAX_PAGE_LENGTH) -> str:
 
     except Exception as e:
         return f"Error reading file: {e}"
+
+
+# ============================================================================
+# PYTHON API SPECIALIZED TOOLS
+# ============================================================================
+
+@mcp.tool()
+def list_api_modules(category: Optional[str] = None, limit: int = 30) -> str:
+    """
+    List available Python API modules from the official Blender Python API reference.
+
+    Args:
+        category: Optional filter by module category (e.g., "bpy", "bmesh", "aud")
+        limit: Maximum modules to list (default: 30)
+
+    Returns:
+        List of available API modules with brief descriptions.
+
+    Examples:
+        - list_api_modules()  # List all top-level modules
+        - list_api_modules("bpy")  # List all bpy.* modules
+        - list_api_modules("bmesh")  # List all bmesh.* modules
+    """
+    if not search_index:
+        if not load_cache():
+            build_index()
+
+    modules = []
+    seen = set()
+
+    for item in search_index:
+        if item.get("source") != "python_api":
+            continue
+
+        module_path = item.get("module_path", "")
+        if not module_path:
+            continue
+
+        # Filter by category if specified
+        if category and not module_path.startswith(category):
+            continue
+
+        if module_path in seen:
+            continue
+        seen.add(module_path)
+
+        modules.append({
+            "module": module_path,
+            "title": item["title"],
+            "path": item["path"]
+        })
+
+    # Sort by module name
+    modules.sort(key=lambda x: x["module"])
+
+    # Format output
+    if not modules:
+        return f"No API modules found" + (f" matching '{category}'" if category else "")
+
+    output = f"# Blender Python API Modules"
+    if category:
+        output += f" ({category}.*)"
+    output += f"\n\nFound {len(modules)} modules (showing up to {limit}):\n\n"
+
+    for mod in modules[:limit]:
+        output += f"- **{mod['module']}** → `{mod['path']}`\n"
+
+    if len(modules) > limit:
+        output += f"\n[{len(modules) - limit} more modules - use higher limit or filter by category]"
+
+    return output
+
+
+@mcp.tool()
+def search_bpy_operators(category: str, operation: Optional[str] = None, limit: int = DEFAULT_LIMIT) -> str:
+    """
+    Search for Blender Python operators (bpy.ops.*) by category.
+
+    Args:
+        category: Operator category (e.g., "mesh", "object", "fluid", "curve", "anim")
+        operation: Optional specific operation name to search for
+        limit: Maximum results (default: 5)
+
+    Returns:
+        List of operators in the category with descriptions.
+
+    Examples:
+        - search_bpy_operators("mesh")  # All mesh operators
+        - search_bpy_operators("fluid", "bake")  # Fluid bake operators
+        - search_bpy_operators("object", "select")  # Object selection operators
+    """
+    if not search_index:
+        if not load_cache():
+            build_index()
+
+    target_module = f"bpy.ops.{category}"
+    query_terms = [category.lower()]
+    if operation:
+        query_terms.append(operation.lower())
+
+    results = []
+
+    for item in search_index:
+        if item.get("source") != "python_api":
+            continue
+
+        module_path = item.get("module_path", "")
+        if not module_path.startswith(target_module):
+            continue
+
+        score = 100  # Base score for matching category
+
+        # Boost for operation match
+        if operation:
+            if operation.lower() in item["content"].lower():
+                score += 50
+            if operation.lower() in item["title"].lower():
+                score += 30
+
+        results.append({
+            "title": item["title"],
+            "path": item["path"],
+            "module": module_path,
+            "headers": item.get("headers", [])[:3],
+            "score": score,
+            "snippet": item["content"][:150] + "..."
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    if not results:
+        return f"No operators found for bpy.ops.{category}" + (f" matching '{operation}'" if operation else "")
+
+    output = f"# bpy.ops.{category} Operators\n\n"
+    output += f"Found {len(results)} operator modules:\n\n"
+
+    for i, r in enumerate(results[:limit], 1):
+        output += f"## {i}. {r['title']}\n"
+        output += f"**Module:** `{r['module']}` | **Path:** `{r['path']}`\n"
+        if r['headers']:
+            output += f"**Contains:** {', '.join(r['headers'])}\n"
+        output += f"{r['snippet']}\n\n"
+
+    if len(results) > limit:
+        output += f"[{len(results) - limit} more - increase limit to see all]"
+
+    return output
+
+
+@mcp.tool()
+def search_bpy_types(typename: str, limit: int = DEFAULT_LIMIT) -> str:
+    """
+    Search for Blender Python types (bpy.types.*) by name.
+
+    Args:
+        typename: Type name to search for (e.g., "Object", "Mesh", "FluidModifier", "Volume")
+        limit: Maximum results (default: 5)
+
+    Returns:
+        Matching types with their properties and methods.
+
+    Examples:
+        - search_bpy_types("Object")
+        - search_bpy_types("FluidModifier")
+        - search_bpy_types("Volume")
+        - search_bpy_types("Particle")
+    """
+    if not search_index:
+        if not load_cache():
+            build_index()
+
+    query_terms = typename.lower().split()
+    results = []
+
+    for item in search_index:
+        if item.get("source") != "python_api":
+            continue
+
+        module_path = item.get("module_path", "")
+        # Look in bpy.types docs
+        if not (module_path.startswith("bpy.types") or "types" in module_path):
+            continue
+
+        score = 0
+
+        # Title/content match
+        title_lower = item["title"].lower()
+        content_lower = item["content"].lower()
+
+        for term in query_terms:
+            if term in title_lower:
+                score += 30
+            if term in content_lower:
+                score += min(content_lower.count(term), 10)
+
+        if score > 0:
+            results.append({
+                "title": item["title"],
+                "path": item["path"],
+                "module": module_path,
+                "headers": item.get("headers", [])[:5],
+                "score": score,
+                "snippet": create_snippet(item["content"], query_terms, 200)
+            })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    if not results:
+        return f"No types found matching '{typename}'"
+
+    output = f"# Blender Python Types matching '{typename}'\n\n"
+    output += f"Found {len(results)} matching types:\n\n"
+
+    for i, r in enumerate(results[:limit], 1):
+        output += f"## {i}. {r['title']}\n"
+        output += f"**Path:** `{r['path']}`\n"
+        if r['headers']:
+            output += f"**Properties/Methods:** {', '.join(r['headers'])}\n"
+        output += f"{r['snippet']}\n\n"
+
+    if len(results) > limit:
+        output += f"[{len(results) - limit} more - increase limit to see all]"
+
+    return output
 
 
 @mcp.tool()
@@ -1108,33 +1457,41 @@ def search_semantic(query: str, limit: int = DEFAULT_LIMIT, compact: bool = Fals
 
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info("Blender Manual MCP Server v3.0 - Semantic Search Edition")
-    logger.info("Optimized for NanoVDB/Volumetrics Workflow")
+    logger.info("Blender Manual MCP Server v4.0 - Python API Integration")
+    logger.info("Manual + Python API Reference | NanoVDB/Volumetrics Workflow")
     logger.info("=" * 60)
 
     if load_cache():
         logger.info("✓ Index loaded from cache. Server ready!")
     else:
-        logger.info("Building fresh index... (this may take 30-60 seconds)")
+        logger.info("Building fresh index... (this may take 60-90 seconds)")
         build_index()
         logger.info("✓ Index built and cached. Server ready!")
 
-    logger.info(f"Indexed {len(search_index)} pages from Blender Manual")
+    # Count sources
+    manual_count = sum(1 for item in search_index if item.get("source") == "manual")
+    api_count = sum(1 for item in search_index if item.get("source") == "python_api")
+    logger.info(f"Indexed {len(search_index)} pages ({manual_count} manual + {api_count} Python API)")
 
     # Show semantic search status (note: semantic is lazy-loaded to avoid MCP timeout)
     logger.info("ℹ Semantic search will be loaded on first use (lazy-load to avoid MCP timeout)")
 
     logger.info("=" * 60)
-    logger.info("Available tools (9 total):")
+    logger.info("Available tools (12 total):")
+    logger.info("  -- General Search --")
     logger.info("  1. search_manual(query, limit=5, offset=0, compact=False)")
     logger.info("  2. search_tutorials(topic, technique, limit=5, compact=False)")
     logger.info("  3. browse_hierarchy(path)")
     logger.info("  4. search_vdb_workflow(query, limit=5, offset=0, compact=False)")
-    logger.info("  5. search_python_api(operation, limit=5, compact=False)")
-    logger.info("  6. search_nodes(node_type, category, limit=5, compact=False)")
-    logger.info("  7. search_modifiers(modifier_name, limit=5, compact=False)")
-    logger.info("  8. read_page(path, max_length=4000)")
-    logger.info("  9. search_semantic(query, limit=5, compact=False) [NEW]")
+    logger.info("  5. search_nodes(node_type, category, limit=5, compact=False)")
+    logger.info("  6. search_modifiers(modifier_name, limit=5, compact=False)")
+    logger.info("  7. read_page(path, max_length=4000, source='auto')")
+    logger.info("  8. search_semantic(query, limit=5, compact=False)")
+    logger.info("  -- Python API Search --")
+    logger.info("  9. search_python_api(operation, limit=5, compact=False, api_only=False)")
+    logger.info(" 10. list_api_modules(category, limit=30)")
+    logger.info(" 11. search_bpy_operators(category, operation, limit=5)")
+    logger.info(" 12. search_bpy_types(typename, limit=5)")
     logger.info("=" * 60)
 
     mcp.run()

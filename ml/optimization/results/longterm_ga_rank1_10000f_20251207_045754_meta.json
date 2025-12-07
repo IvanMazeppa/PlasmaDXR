@@ -1,0 +1,15 @@
+{
+  "status": "completed",
+  "config_file": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/configs/ga_rank1.json",
+  "frames_requested": 10000,
+  "timeout_minutes": 25.0,
+  "output_file": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/ml/optimization/results/longterm_ga_rank1_10000f_20251207_045754.json",
+  "start_time": "20251207_045754",
+  "duration_seconds": 86.19477272033691,
+  "exit_code": 1,
+  "error": null,
+  "frames_simulated": 10000,
+  "final_particle_count": 0,
+  "stability_score": 0,
+  "accuracy_score": 0
+}
