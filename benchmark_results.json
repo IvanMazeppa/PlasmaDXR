@@ -1,15 +1,15 @@
 {
   "benchmark": {
     "version": "1.0",
-    "timestamp": "2025-12-04T21:27:05",
-    "duration_seconds": 18.7540,
+    "timestamp": "2025-12-06T21:25:26",
+    "duration_seconds": 13.8391,
     "config": {
       "pinn_model": "ml/models/pinn_v4_turbulence_robust.onnx",
       "pinn_version": 4,
-      "siren_enabled": true,
-      "siren_intensity": 0.4600,
+      "siren_enabled": false,
+      "siren_intensity": 0.5000,
       "particle_count": 10000,
-      "frames": 500,
+      "frames": 1000,
       "timestep": 0.0160,
       "timescale": 1.0000
     }
@@ -17,36 +17,36 @@
   "stability": {
     "escape_rate": { "mean": 0.0000, "max": 0.0000 },
     "collapse_rate": { "mean": 0.0000, "max": 0.0000 },
-    "energy_drift_percent": 0.2741,
-    "angular_momentum_drift_percent": -14.9180,
-    "velocity": { "mean": 0.5966, "max": 1.4223 }
+    "energy_drift_percent": 1.2581,
+    "angular_momentum_drift_percent": 0.1375,
+    "velocity": { "mean": 0.5976, "max": 1.4211 }
   },
   "performance": {
-    "physics_ms": { "mean": 22.4023, "max": 24.9729 },
-    "pinn_inference_ms": { "mean": 11.3640, "max": 12.9445 },
-    "siren_inference_ms": { "mean": 9.9241, "max": 11.2948 },
-    "integration_ms": { "mean": 1.1141, "max": 1.7146 },
-    "frames_per_second": 44.4813,
-    "particles_per_second": 444812.8438
+    "physics_ms": { "mean": 10.1689, "max": 14.7830 },
+    "pinn_inference_ms": { "mean": 9.6486, "max": 14.3064 },
+    "siren_inference_ms": { "mean": 0.0000, "max": 0.0000 },
+    "integration_ms": { "mean": 0.5204, "max": 1.1421 },
+    "frames_per_second": 97.6761,
+    "particles_per_second": 976761.5000
   },
   "physical_accuracy": {
-    "keplerian_velocity_error_percent": 9.3412,
+    "keplerian_velocity_error_percent": 0.8926,
     "radial_force_sign_correct_percent": 100.0000,
-    "avg_force_magnitude": 0.0106
+    "avg_force_magnitude": 0.0027
   },
   "visual_quality": {
-    "coherent_motion_index": 0.0025,
-    "disk_thickness_ratio": 0.0276,
+    "coherent_motion_index": 0.0017,
+    "disk_thickness_ratio": 0.0249,
     "velocity_jerk": 0.0000,
     "turbulence_strength": 0.0000,
-    "turbulence_quality": 0.9975
+    "turbulence_quality": 0.9983
   },
   "summary": {
-    "stability_score": 99.4518,
-    "performance_score": 37.0677,
-    "accuracy_score": 53.2938,
-    "visual_score": 49.7488,
-    "overall_score": 65.6721,
-    "recommendation": "POOR - Significant issues, consider different model"
+    "stability_score": 97.4839,
+    "performance_score": 81.3968,
+    "accuracy_score": 95.5368,
+    "visual_score": 49.8288,
+    "overall_score": 86.5341,
+    "recommendation": "GOOD - Suitable for production with minor caveats"
   }
 }
