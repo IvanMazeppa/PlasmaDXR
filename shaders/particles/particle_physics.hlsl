@@ -47,10 +47,111 @@ struct ParticleConstants {
     float constraintRadius;
     float constraintThickness;
     float particleCount;
+    uint integrationMethod;  // 0 = Euler (legacy), 1 = Velocity Verlet (energy-conserving)
 };
 
 RWStructuredBuffer<Particle> particles : register(u0);
 ConstantBuffer<ParticleConstants> constants : register(b0);
+
+// ============================================================================
+// VELOCITY VERLET INTEGRATION
+// ============================================================================
+// Computes acceleration at a given position (for Verlet integration)
+// Returns: acceleration vector (force / mass, assuming unit mass)
+//
+// Forces included:
+// - Gravitational attraction to black hole
+// - Keplerian orbital correction (maintains circular orbits)
+// - Alpha viscosity (Shakura-Sunyaev inward drift)
+// - Boundary pushback
+// ============================================================================
+float3 ComputeAcceleration(float3 position, float3 velocity) {
+    float3 acceleration = float3(0, 0, 0);
+
+    // Vector to black hole center
+    float3 toCenter = constants.blackHolePosition - position;
+    float distance = max(length(toCenter), 0.1);
+    float3 toCenterNorm = distance > 0.01 ? toCenter / distance : float3(0, 1, 0);
+
+    // 1. GRAVITY: F = GM/r^2 toward center
+    float gravityMagnitude = constants.gravityStrength / (distance * distance + 1.0);
+    acceleration += toCenterNorm * gravityMagnitude;
+
+    // 2. KEPLERIAN ORBITAL CORRECTION
+    // For stable circular orbit: v = sqrt(GM/r)
+    float3 tangent = cross(toCenterNorm, constants.diskAxis);
+    float tangentLen = length(tangent);
+    if (tangentLen < 0.01) {
+        tangent = cross(toCenterNorm, float3(1.0, 0.0, 0.0));
+        tangentLen = length(tangent);
+    }
+    tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
+
+    // Target Keplerian speed at this radius
+    float keplerianSpeed = sqrt(constants.blackHoleMass / (distance + 0.1)) * 0.01 * constants.angularMomentumBoost;
+    float currentOrbitalSpeed = dot(velocity, tangent);
+    float speedDifference = keplerianSpeed - currentOrbitalSpeed;
+
+    // Gentle correction force (reduced from 2.5 to 0.5 for Verlet stability)
+    acceleration += tangent * speedDifference * 0.5;
+
+    // 3. ALPHA VISCOSITY - Shakura-Sunyaev accretion (inward spiral)
+    if (constants.viscosity > 0.001) {
+        acceleration += -toCenterNorm * constants.viscosity * 0.01;
+    }
+
+    // 4. BOUNDARY PUSHBACK (soft wall at outer edge)
+    if (distance > constants.outerRadius * 2.0) {
+        acceleration += -toCenterNorm * 2.0;
+    }
+
+    return acceleration;
+}
+
+// Compute turbulence velocity perturbation (not a conservative force)
+// This is intentionally separate from acceleration - turbulence adds stochastic noise
+float3 ComputeTurbulence(float3 position, uint particleIndex) {
+    float3 turbulenceVelocity = float3(0, 0, 0);
+
+    // CURL NOISE TURBULENCE - creates vortices
+    float3 curlPos = position * 0.08 + float3(constants.totalTime * 0.03, 0, 0);
+    float epsilon = 0.05;
+
+    // Sample potential field at 6 points
+    float px1 = sin(curlPos.x + epsilon) * cos(curlPos.y * 1.7) * sin(curlPos.z * 2.3);
+    float px2 = sin(curlPos.x - epsilon) * cos(curlPos.y * 1.7) * sin(curlPos.z * 2.3);
+    float py1 = sin(curlPos.x) * cos((curlPos.y + epsilon) * 1.7) * sin(curlPos.z * 2.3);
+    float py2 = sin(curlPos.x) * cos((curlPos.y - epsilon) * 1.7) * sin(curlPos.z * 2.3);
+    float pz1 = sin(curlPos.x) * cos(curlPos.y * 1.7) * sin((curlPos.z + epsilon) * 2.3);
+    float pz2 = sin(curlPos.x) * cos(curlPos.y * 1.7) * sin((curlPos.z - epsilon) * 2.3);
+
+    // Calculate curl (rotating flow field)
+    float3 curl;
+    curl.x = (pz1 - pz2) / (2.0 * epsilon) - (py1 - py2) / (2.0 * epsilon);
+    curl.y = (px1 - px2) / (2.0 * epsilon) - (pz1 - pz2) / (2.0 * epsilon);
+    curl.z = (py1 - py2) / (2.0 * epsilon) - (px1 - px2) / (2.0 * epsilon);
+
+    // Add smaller scale eddies
+    float3 curlPos2 = position * 0.25 + float3(constants.totalTime * 0.08, 0, 0);
+    curl += float3(
+        sin(curlPos2.y * 5.1) * cos(curlPos2.z * 4.3),
+        sin(curlPos2.z * 5.1) * cos(curlPos2.x * 4.3),
+        sin(curlPos2.x * 5.1) * cos(curlPos2.y * 4.3)
+    ) * 0.2;
+
+    turbulenceVelocity += curl * constants.turbulenceStrength;
+
+    // Add per-particle random noise that varies over time
+    float randomPhase = float(particleIndex) * 0.1 + constants.totalTime * 0.5;
+    float3 randomNoise = float3(
+        sin(randomPhase * 1.7),
+        sin(randomPhase * 2.3),
+        sin(randomPhase * 3.1)
+    ) * 8.0;
+    turbulenceVelocity += randomNoise;
+
+    return turbulenceVelocity;
+}
 
 // Apply shape constraints to particles
 void ApplyConstraints(inout float3 position, inout float3 velocity) {
@@ -186,118 +287,64 @@ void main(uint3 id : SV_DispatchThreadID) {
         p.spawnTime = constants.totalTime;
         p.flags = FLAG_IMMORTAL;  // Accretion disk particles never die
     } else {
-        // Physics update for existing particles
+        // ====================================================================
+        // PHYSICS INTEGRATION (Selectable: Euler or Velocity Verlet)
+        // ====================================================================
         float3 position = p.position;
         float3 velocity = p.velocity;
+        float dt = constants.deltaTime;
 
-        // Calculate gravity
-        float3 toCenter = constants.blackHolePosition - position;
-        float distance = max(length(toCenter), 0.1);
+        if (constants.integrationMethod == 1) {
+            // ================================================================
+            // VELOCITY VERLET (Symplectic - conserves energy/momentum)
+            // ================================================================
+            // Algorithm:
+            // 1. a_old = F(x, v) / m
+            // 2. x_new = x + v*dt + 0.5*a_old*dt^2
+            // 3. a_new = F(x_new, v) / m
+            // 4. v_new = v + 0.5*(a_old + a_new)*dt
 
-        // Safe normalize: avoid NaN when toCenter is zero
-        float3 toCenterNorm = distance > 0.01 ? toCenter / distance : float3(0, 1, 0);
+            float3 accel_old = ComputeAcceleration(position, velocity);
+            float3 position_new = position + velocity * dt + 0.5 * accel_old * dt * dt;
+            float3 accel_new = ComputeAcceleration(position_new, velocity);
+            float3 velocity_new = velocity + 0.5 * (accel_old + accel_new) * dt;
 
-        float gravityMagnitude = constants.gravityStrength / (distance * distance + 1.0);
-        float3 gravityForce = toCenterNorm * gravityMagnitude;
+            // Apply turbulence
+            float3 turbulence = ComputeTurbulence(position_new, particleIndex);
+            velocity_new += turbulence * dt;
 
-        // CURL NOISE TURBULENCE - creates vortices
-        float3 curlPos = position * 0.08 + float3(constants.totalTime * 0.03, 0, 0);
-        float epsilon = 0.05;
+            position = position_new;
+            velocity = velocity_new;
+        } else {
+            // ================================================================
+            // EULER INTEGRATION (Legacy - simple but accumulates error)
+            // ================================================================
+            float3 acceleration = ComputeAcceleration(position, velocity);
+            velocity += acceleration * dt;
 
-        // Sample potential field at 6 points
-        float px1 = sin(curlPos.x + epsilon) * cos(curlPos.y * 1.7) * sin(curlPos.z * 2.3);
-        float px2 = sin(curlPos.x - epsilon) * cos(curlPos.y * 1.7) * sin(curlPos.z * 2.3);
-        float py1 = sin(curlPos.x) * cos((curlPos.y + epsilon) * 1.7) * sin(curlPos.z * 2.3);
-        float py2 = sin(curlPos.x) * cos((curlPos.y - epsilon) * 1.7) * sin(curlPos.z * 2.3);
-        float pz1 = sin(curlPos.x) * cos(curlPos.y * 1.7) * sin((curlPos.z + epsilon) * 2.3);
-        float pz2 = sin(curlPos.x) * cos(curlPos.y * 1.7) * sin((curlPos.z - epsilon) * 2.3);
+            // Apply turbulence
+            float3 turbulence = ComputeTurbulence(position, particleIndex);
+            velocity += turbulence * dt;
 
-        // Calculate curl (rotating flow field)
-        float3 curl;
-        curl.x = (pz1 - pz2) / (2.0 * epsilon) - (py1 - py2) / (2.0 * epsilon);
-        curl.y = (px1 - px2) / (2.0 * epsilon) - (pz1 - pz2) / (2.0 * epsilon);
-        curl.z = (py1 - py2) / (2.0 * epsilon) - (px1 - px2) / (2.0 * epsilon);
-
-        // Add smaller scale eddies
-        float3 curlPos2 = position * 0.25 + float3(constants.totalTime * 0.08, 0, 0);
-        curl += float3(
-            sin(curlPos2.y * 5.1) * cos(curlPos2.z * 4.3),
-            sin(curlPos2.z * 5.1) * cos(curlPos2.x * 4.3),
-            sin(curlPos2.x * 5.1) * cos(curlPos2.y * 4.3)
-        ) * 0.2;
-
-        // Apply turbulence to velocity
-        velocity += curl * constants.turbulenceStrength * constants.deltaTime;
-
-        // Add per-particle random noise that varies over time
-        float randomPhase = float(particleIndex) * 0.1 + constants.totalTime * 0.5;
-        float3 randomNoise = float3(
-            sin(randomPhase * 1.7),
-            sin(randomPhase * 2.3),
-            sin(randomPhase * 3.1)
-        ) * 8.0;
-        velocity += randomNoise * constants.deltaTime;
-
-        // KEPLERIAN ORBITAL MECHANICS
-        // For stable circular orbit: v = sqrt(GM/r)
-        // Calculate orbital velocity perpendicular to radius
-        float3 tangent = cross(toCenterNorm, constants.diskAxis);
-        float tangentLen = length(tangent);
-        if (tangentLen < 0.01) {
-            // Fallback if particle is along disk axis
-            tangent = cross(toCenterNorm, float3(1.0, 0.0, 0.0));
-            tangentLen = length(tangent);
-        }
-        tangent = tangentLen > 0.01 ? tangent / tangentLen : float3(1, 0, 0);
-
-        // Calculate Keplerian orbital speed for this radius: v = sqrt(GM/r)
-        // Use 0.01 scaling factor to keep velocities reasonable with large mass values
-        float keplerianSpeed = sqrt(constants.blackHoleMass / (distance + 0.1)) * 0.01 * constants.angularMomentumBoost;
-
-        // Project current velocity onto orbital direction
-        float currentOrbitalSpeed = dot(velocity, tangent);
-
-        // Calculate correction needed to achieve Keplerian orbit
-        float speedDifference = keplerianSpeed - currentOrbitalSpeed;
-        float3 orbitalCorrection = tangent * speedDifference * 2.5;  // Strong correction for stable orbits
-
-        // Apply forces
-        float3 acceleration = gravityForce + orbitalCorrection;
-        velocity += acceleration * constants.deltaTime;
-
-        // NEW: Alpha viscosity - Shakura-Sunyaev accretion (inward spiral)
-        // Creates gradual radial drift toward black hole
-        if (constants.viscosity > 0.001) {
-            // Radial drift: particles slowly spiral inward while maintaining angular momentum
-            float3 radialDrift = -toCenterNorm * constants.viscosity * 0.01;
-            velocity += radialDrift * constants.deltaTime;
+            // Update position
+            position += velocity * dt;
         }
 
-        // Update position
-        position += velocity * constants.deltaTime;
-
-        // Apply frame-rate independent damping
-        // Normalized to 120 FPS reference so damping behaves consistently at any frame rate
-        velocity *= pow(constants.dampingFactor, constants.deltaTime * 120.0);
-
-        // Keep particles within bounds
-        if (distance > constants.outerRadius * 2.0) {
-            float3 pushBack = -normalize(position) * 2.0;
-            velocity += pushBack * constants.deltaTime;
-        }
+        // Apply frame-rate independent damping (both methods)
+        velocity *= pow(constants.dampingFactor, dt * 120.0);
 
         // Update temperature based on distance (hotter near center)
-        // Use dynamic radius range from constants (not hardcoded)
+        float3 toCenter = constants.blackHolePosition - position;
+        float distance = max(length(toCenter), 0.1);
         float tempFactor = saturate(1.0 - (distance - constants.innerRadius) /
-                                    (constants.outerRadius - constants.innerRadius));  // 0=outer, 1=inner
-        float targetTemp = 800.0 + 25200.0 * pow(tempFactor, 2.0);  // 800K-26000K range
+                                    (constants.outerRadius - constants.innerRadius));
+        float targetTemp = 800.0 + 25200.0 * pow(tempFactor, 2.0);
 
-        // Apply exponential smoothing to prevent abrupt color changes (flashing/blinking)
-        // 0.90 = 90% previous temperature, 10% new temperature = smooth transition over ~10 frames
+        // Smooth temperature transition to prevent flashing
         p.temperature = lerp(targetTemp, p.temperature, 0.90);
 
         // Update density to match temperature/distance
-        p.density = 0.2 + 2.8 * pow(tempFactor, 1.5);  // 0.2-3.0 range (denser near center)
+        p.density = 0.2 + 2.8 * pow(tempFactor, 1.5);
 
         p.position = position;
         p.velocity = velocity;

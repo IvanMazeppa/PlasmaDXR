@@ -384,6 +384,7 @@ void ParticleSystem::UpdatePhysics_GPU(float deltaTime, float totalTime) {
         float constraintRadius;
         float constraintThickness;
         float particleCount;
+        uint32_t integrationMethod;  // 0 = Euler, 1 = Velocity Verlet
     } constants = {};
 
     constants.deltaTime = deltaTime;
@@ -403,6 +404,7 @@ void ParticleSystem::UpdatePhysics_GPU(float deltaTime, float totalTime) {
     constants.constraintRadius = 50.0f;
     constants.constraintThickness = 5.0f;
     constants.particleCount = static_cast<float>(m_activeParticleCount);  // Use active count for physics
+    constants.integrationMethod = m_integrationMethod;  // 0 = Euler, 1 = Verlet
 
     cmdList->SetComputeRoot32BitConstants(0, sizeof(constants) / 4, &constants, 0);
     cmdList->SetComputeRootUnorderedAccessView(1, m_particleBuffer->GetGPUVirtualAddress());

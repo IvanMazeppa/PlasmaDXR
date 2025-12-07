@@ -136,6 +136,12 @@ public:
     void SetDamping(float value) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, value)); }
     void AdjustDamping(float delta) { m_dampingFactor = (std::max)(0.0f, (std::min)(1.0f, m_dampingFactor + delta)); }
 
+    // Integration method: 0 = Euler (legacy), 1 = Velocity Verlet (energy-conserving)
+    uint32_t GetIntegrationMethod() const { return m_integrationMethod; }
+    void SetIntegrationMethod(uint32_t method) { m_integrationMethod = (std::min)(method, 1u); }
+    bool IsVerletEnabled() const { return m_integrationMethod == 1; }
+    void SetVerletEnabled(bool enabled) { m_integrationMethod = enabled ? 1 : 0; }
+
     // NEW: Black hole mass parameter (affects orbital velocity)
     float GetBlackHoleMass() const { return m_blackHoleMass; }
     void SetBlackHoleMass(float value) { m_blackHoleMass = (std::max)(1.0f, value); } // Min 1 solar mass
@@ -396,6 +402,7 @@ private:
     float m_turbulenceStrength = 15.0f;
     float m_dampingFactor = 0.99f;
     float m_angularMomentumBoost = 1.0f;
+    uint32_t m_integrationMethod = 1;  // 0 = Euler, 1 = Velocity Verlet (default to Verlet)
     float m_viscosity = 0.01f;  // Legacy - replaced by m_alphaViscosity
     uint32_t m_constraintShape = 0;  // 0=NONE, 1=SPHERE, 2=DISC, 3=TORUS, 4=ACCRETION_DISK
 

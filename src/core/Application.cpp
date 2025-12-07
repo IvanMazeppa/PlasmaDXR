@@ -4518,6 +4518,24 @@ void Application::RenderImGui() {
                 if (ImGui::SliderFloat("Damping (M)", &damping, 0.0f, 1.0f)) {
                     m_particleSystem->SetDamping(damping);
                 }
+
+                // Integration Method Toggle
+                ImGui::Separator();
+                ImGui::Text("Integration Method");
+                bool useVerlet = m_particleSystem->IsVerletEnabled();
+                if (ImGui::Checkbox("Velocity Verlet (Energy-Conserving)", &useVerlet)) {
+                    m_particleSystem->SetVerletEnabled(useVerlet);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip(
+                        "Velocity Verlet: Symplectic integrator that conserves\n"
+                        "energy and angular momentum. Better for stable orbits.\n\n"
+                        "Euler: Simple but accumulates error over time.\n"
+                        "Particles will spiral inward with Euler integration."
+                    );
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled(useVerlet ? "(Verlet)" : "(Euler)");
             } else {
                 // Show read-only info when PINN is active
                 ImGui::Separator();
