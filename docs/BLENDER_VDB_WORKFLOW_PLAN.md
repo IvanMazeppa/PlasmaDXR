@@ -104,49 +104,111 @@ Create Volume Object  -->  Export .vdb file  -->  NanoVDB loader reads
 
 ---
 
-### Phase 3: Agent Architecture (Only If Proven Needed)
+### Phase 3: Agent Architecture ✅ DESIGNED
 
-**Prerequisite:** Complete Phase 0-2 and identify clear agent responsibilities
+**Status:** Agent architecture designed and documented (2025-12-07)
 
-#### Proposed Agent Structure
+#### Agent Ecosystem
 
 ```
-                    ┌─────────────────────────┐
-                    │   Workflow Orchestrator │
-                    │  (workflow-optimizer)   │
-                    └───────────┬─────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        │                       │                       │
-        v                       v                       v
-┌───────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ blender-manual│    │ blender-scripting│    │ nanovdb-engineer│
-│   (MCP docs)  │    │   (new agent)    │    │   (new agent)   │
-│   ✅ EXISTS   │    │                  │    │                 │
-└───────────────┘    └──────────────────┘    └─────────────────┘
-        │                       │                       │
-        v                       v                       v
-  Documentation           Python Scripts         C++ Integration
-  & Tutorials             for Blender            for PlasmaDX
+                         ┌─────────────────────────────────┐
+                         │      User Intent (Ben)          │
+                         │  "Create a nebula for my scene" │
+                         └───────────────┬─────────────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    │                    │                    │
+                    v                    v                    v
+         ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐
+         │ blender-manual  │  │ blender-scripting│  │celestial-body-  │
+         │   (MCP docs)    │  │    (new agent)   │  │    curator      │
+         │   ✅ EXISTS     │  │   ✅ CREATED     │  │  ✅ CREATED     │
+         │   12 tools      │  │                  │  │                 │
+         └────────┬────────┘  └────────┬─────────┘  └────────┬────────┘
+                  │                    │                     │
+                  v                    v                     v
+           Blender API           Python Scripts        Recipe Library
+           Documentation          for Blender         (curated docs)
+                  │                    │                     │
+                  └────────────────────┼─────────────────────┘
+                                       │
+                                       v
+                         ┌─────────────────────────────────┐
+                         │         VDB Export              │
+                         │   (OpenVDB files on disk)       │
+                         └───────────────┬─────────────────┘
+                                         │
+                         ┌───────────────┼───────────────┐
+                         │               │               │
+                         v               v               v
+              ┌─────────────────┐ ┌────────────┐ ┌──────────────────┐
+              │gaussian-analyzer│ │ materials- │ │dxr-volumetric-   │
+              │  (existing)     │ │ council    │ │pyro-specialist   │
+              │                 │ │ (existing) │ │    (existing)    │
+              └─────────────────┘ └────────────┘ └──────────────────┘
+                         │               │               │
+                         v               v               v
+                         └───────────────┼───────────────┘
+                                         │
+                         ┌───────────────────────────────┐
+                         │   PlasmaDX-Clean Renderer     │
+                         │  (Real-time volumetric RT)    │
+                         └───────────────────────────────┘
 ```
 
-#### Agent Responsibilities (Draft)
+#### Agent Responsibilities (Finalized)
 
-| Agent | Responsibility | Tools/Capabilities |
-|-------|---------------|-------------------|
-| `blender-manual` | Blender documentation lookup | MCP search tools (exists) |
-| `blender-scripting` | Write/debug Blender Python scripts | bpy API knowledge, script generation |
-| `nanovdb-engineer` | C++ NanoVDB integration | VDB format knowledge, shader integration |
-| `workflow-optimizer` | Orchestrate handoffs, identify bottlenecks | Task routing, dependency tracking |
+| Agent | Status | Responsibility | Location |
+|-------|--------|---------------|----------|
+| `blender-manual` | ✅ Exists | Blender 5.0 documentation (12 search tools) | `agents/blender-manual/` |
+| `blender-scripting` | ✅ Created | Write/debug bpy Python scripts, teach Blender patterns | `agents/blender-scripting/` |
+| `celestial-body-curator` | ✅ Created | Author/maintain recipe library for celestial bodies | `agents/celestial-body-curator/` |
+| `gaussian-analyzer` | ✅ Exists | Validate material properties, performance estimates | `agents/gaussian-analyzer/` |
+| `materials-council` | ✅ Exists | Material system design, particle structure | `agents/materials-council/` |
+| `dxr-volumetric-pyro-specialist` | ✅ Exists | Pyro/explosion effect design | `agents/dxr-volumetric-pyro-specialist/` |
 
-#### When to Build Each Agent
+#### Recipe Library Structure
 
-| Agent | Build When... |
-|-------|---------------|
-| `blender-manual` | Already built! |
-| `blender-scripting` | Phase 2 reveals repetitive scripting needs |
-| `nanovdb-engineer` | VDB loading/rendering needs iteration |
-| `workflow-optimizer` | Multi-step workflows become error-prone |
+```
+docs/blender_recipes/
+├── README.md                     # Library index ✅ Created
+├── emission_nebulae/
+│   ├── hydrogen_cloud.md         # Basic wispy cloud
+│   ├── emission_pillar.md        # Pillars of Creation style
+│   └── orion_style.md            # Complex star-forming region
+├── explosions/
+│   ├── supernova_remnant.md      # Expanding shell
+│   ├── stellar_flare.md          # Arc plasma
+│   └── coronal_ejection.md       # CME event
+├── stellar_phenomena/
+│   ├── protoplanetary_disk.md    # Young star disk
+│   ├── accretion_corona.md       # Hot plasma corona
+│   └── planetary_nebula.md       # Dying star shell
+├── dark_structures/
+│   ├── dark_nebula.md            # Absorption cloud
+│   └── dust_lane.md              # Galaxy dust lane
+└── scripts/
+    ├── quick_smoke_setup.py      # Basic smoke domain
+    ├── vdb_export_batch.py       # Batch export
+    └── celestial_presets.py      # Material presets
+```
+
+#### How Agents Work Together
+
+**Example: "Create a supernova for my accretion disk scene"**
+
+1. **celestial-body-curator** → Provides supernova recipe from library
+2. **blender-scripting** → Generates/debugs Python script from recipe
+3. **blender-manual** → Provides API documentation when script fails
+4. **dxr-volumetric-pyro-specialist** → Designs explosion dynamics
+5. **gaussian-analyzer** → Validates material properties for PlasmaDX
+6. **materials-council** → Maps Blender properties to particle materials
+
+**Example: "Why isn't my VDB loading?"**
+
+1. **blender-scripting** → Checks export script for issues
+2. **blender-manual** → Looks up cache settings documentation
+3. **celestial-body-curator** → Provides troubleshooting from recipes
 
 ---
 
