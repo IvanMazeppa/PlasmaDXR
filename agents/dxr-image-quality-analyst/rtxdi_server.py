@@ -77,20 +77,60 @@ async def list_recent_screenshots(limit: int = 10) -> str:
         result += f"   Time: {timestamp}\n"
         result += f"   Size: {size_mb:.2f} MB\n"
 
-        # Load metadata if available (Phase 1 enhancement)
+        # Load metadata if available (Phase 1 enhancement, updated for v4.0 schema)
         metadata = load_screenshot_metadata(str(screenshot))
         if metadata:
-            result += f"   Metadata: ✅ Available\n"
+            schema_version = metadata.get('schema_version', 'unknown')
+            result += f"   Metadata: ✅ v{schema_version}\n"
+
             if 'rendering' in metadata:
                 r = metadata['rendering']
-                rtxdi_status = 'M5' if r.get('rtxdi_m5_enabled') else ('M4' if r.get('rtxdi_enabled') else 'OFF')
-                result += f"     RTXDI: {rtxdi_status}\n"
-                result += f"     Shadow rays: {r.get('shadow_rays_per_light', 'N/A')}\n"
+
+                # v4.0 nested structure
+                rtxdi = r.get('rtxdi', {})
+                if rtxdi.get('m5_enabled'):
+                    rtxdi_status = 'M5'
+                elif rtxdi.get('m4_enabled'):
+                    rtxdi_status = 'M4'
+                elif rtxdi.get('enabled'):
+                    rtxdi_status = 'ON'
+                else:
+                    rtxdi_status = 'OFF'
+
+                lighting_system = r.get('active_lighting_system', 'Unknown')
+                result += f"     Lighting: {lighting_system}"
+                if lighting_system == 'RTXDI':
+                    result += f" ({rtxdi_status})"
+                result += "\n"
+
+                # Shadow info (v4.0 nested structure)
+                shadows = r.get('shadows', {})
+                shadow_preset = shadows.get('preset', 'N/A')
+                shadow_rays = shadows.get('rays_per_light', 'N/A')
+                result += f"     Shadows: {shadow_preset} ({shadow_rays} rays)\n"
+
+                # Light count (v4.0 nested structure)
+                lights = r.get('lights', {})
+                light_count = lights.get('count', 0)
+                result += f"     Lights: {light_count}\n"
+
+            # Volumetric systems (v4.0)
+            systems = []
+            if metadata.get('froxel_fog', {}).get('enabled'):
+                systems.append('Froxel')
+            if metadata.get('probe_grid', {}).get('enabled'):
+                systems.append('ProbeGrid')
+            if metadata.get('nanovdb', {}).get('enabled'):
+                systems.append('NanoVDB')
+            if systems:
+                result += f"     Volumetrics: {', '.join(systems)}\n"
+
             if 'performance' in metadata:
                 p = metadata['performance']
-                result += f"     FPS: {p.get('fps', 'N/A'):.1f}\n"
+                fps = p.get('fps', 0)
+                result += f"     FPS: {fps:.1f}\n"
         else:
-            result += f"   Metadata: ❌ Not available (captured before Phase 1)\n"
+            result += f"   Metadata: ❌ Not available (pre-v4.0)\n"
 
         result += "\n"
 
@@ -178,13 +218,13 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="assess_visual_quality",
-            description="Analyze screenshot for volumetric rendering quality using AI vision. Returns the screenshot as an image for Claude to analyze against the quality rubric (7 dimensions: volumetric depth, rim lighting, temperature gradient, RTXDI stability, shadows, scattering, temporal stability).",
+            description="Analyze screenshot for volumetric rendering quality using AI vision and v4.0 metadata. Returns screenshot + metadata context for Claude to analyze. Evaluates 7 quality dimensions: volumetric depth, rim lighting, temperature gradient, lighting stability, shadows, scattering, temporal stability. Now includes: Froxel fog, probe grid, NanoVDB, screen-space shadows, adaptive radius, DLSS status.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "screenshot_path": {
                         "type": "string",
-                        "description": "Path to screenshot to analyze (BMP or PNG)"
+                        "description": "Path to screenshot to analyze (BMP or PNG). Will auto-load .json metadata sidecar if available."
                     },
                     "comparison_before": {
                         "type": "string",

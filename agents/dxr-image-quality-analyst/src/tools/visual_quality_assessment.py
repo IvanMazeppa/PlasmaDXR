@@ -14,6 +14,20 @@ the Visual Quality Rubric. It evaluates 7 key dimensions:
 
 The tool is designed to be used by Claude Code's vision models (GPT-4V or
 Claude 3.5 Sonnet with vision) to provide human-like qualitative assessment.
+
+Schema Version Compatibility:
+- v4.0 (current): Full feature set with nested structures for RTXDI, shadows, etc.
+- v2.0 (legacy): Flat structure, limited features
+
+New Features in v4.0:
+- Screen-space shadows (Phase 2)
+- NanoVDB volumetric system (Phase 5.x)
+- Froxel fog (Phase 8)
+- Probe grid indirect lighting
+- Adaptive particle radius
+- Material system (future)
+- SIREN turbulence for physics
+- Quality presets with target FPS
 """
 
 from pathlib import Path
@@ -91,9 +105,10 @@ class VisualQualityAssessment:
         """
         warnings = {}
 
-        # Check schema version
-        if metadata.get('schema_version') != "2.0":
-            warnings['schema'] = f"Metadata schema is {metadata.get('schema_version', 'unknown')}, expected 2.0"
+        # Check schema version (support v4.0 and v2.0 for backwards compatibility)
+        schema_version = metadata.get('schema_version', 'unknown')
+        if schema_version not in ["4.0", "2.0"]:
+            warnings['schema'] = f"Metadata schema is {schema_version}, expected 4.0 or 2.0"
 
         # Validate rendering section
         if 'rendering' in metadata:
@@ -318,55 +333,155 @@ def assess_screenshot_quality(screenshot_path: str,
                 r = metadata['rendering']
                 context += "**Rendering Configuration:**\n"
 
-                # RTXDI status (nested structure)
+                # Active lighting system
+                lighting_system = r.get('active_lighting_system', 'Unknown')
+                renderer_type = r.get('renderer_type', 'Unknown')
+                context += f"- Lighting System: `{lighting_system}`\n"
+                context += f"- Renderer Type: `{renderer_type}`\n"
+
+                # RTXDI status (nested structure in v4.0)
                 rtxdi = r.get('rtxdi', {})
                 rtxdi_enabled = rtxdi.get('enabled', False)
                 m4_enabled = rtxdi.get('m4_enabled', False)
                 m5_enabled = rtxdi.get('m5_enabled', False)
 
-                if m5_enabled:
-                    rtxdi_status = "M5 ENABLED"
-                elif m4_enabled:
-                    rtxdi_status = "M4 ONLY (M5 disabled)"
-                elif rtxdi_enabled:
-                    rtxdi_status = "ENABLED (legacy)"
-                else:
-                    rtxdi_status = "DISABLED"
+                if lighting_system == "RTXDI":
+                    if m5_enabled:
+                        rtxdi_status = "M5 ENABLED (temporal accumulation active)"
+                    elif m4_enabled:
+                        rtxdi_status = "M4 ONLY (M5 disabled - expect patchwork pattern)"
+                    elif rtxdi_enabled:
+                        rtxdi_status = "ENABLED (legacy mode)"
+                    else:
+                        rtxdi_status = "DISABLED"
+                    context += f"- RTXDI Status: `{rtxdi_status}`\n"
+                    context += f"- Temporal Blend Factor: `{rtxdi.get('temporal_blend_factor', 0.0):.3f}`\n"
 
-                context += f"- RTXDI Status: `{rtxdi_status}`\n"
+                    if rtxdi_enabled and not m5_enabled:
+                        context += "  ⚠️ **CRITICAL:** M5 temporal accumulation is disabled - expect visible patchwork pattern!\n"
 
-                if rtxdi_enabled and not m5_enabled:
-                    context += "  ⚠️ **CRITICAL:** M5 temporal accumulation is disabled - expect visible patchwork pattern!\n"
-
-                context += f"- Temporal Blend Factor: `{rtxdi.get('temporal_blend_factor', 0.0):.3f}`\n"
-
-                # Shadows (nested structure)
+                # Shadows (nested structure in v4.0)
                 shadows = r.get('shadows', {})
+                shadow_preset = shadows.get('preset', 'Unknown')
                 shadow_rays_per_light = shadows.get('rays_per_light', 1)
-                context += f"- Shadow Rays Per Light: `{shadow_rays_per_light}`\n"
+                temporal_filtering = shadows.get('temporal_filtering', False)
+                screen_space = shadows.get('screen_space_shadows', False)
+                ss_steps = shadows.get('screen_space_steps', 16)
 
-                if shadow_rays_per_light == 1:
-                    context += "  ℹ️ Using Performance preset (1-ray + temporal filtering)\n"
+                context += f"- Shadow Preset: `{shadow_preset}` ({shadow_rays_per_light} rays/light)\n"
+                if temporal_filtering:
+                    context += f"  ℹ️ Temporal filtering enabled (blend: {shadows.get('temporal_blend', 0.1):.2f})\n"
 
-                # CRITICAL FIX: Lights are nested under r['lights']['count'], not r['light_count']
+                # Screen-space shadows (Phase 2 - NEW)
+                if screen_space:
+                    context += f"- Screen-Space Shadows: `ENABLED` ({ss_steps} steps)\n"
+                    if shadows.get('debug_visualization', False):
+                        context += "  ⚠️ Debug visualization is ON (red=shadow, green=lit)\n"
+
+                # Lights (nested structure in v4.0)
                 lights = r.get('lights', {})
                 light_count = lights.get('count', 0)
                 context += f"- Light Count: `{light_count}` lights\n"
 
                 # Validation: Warn if light count seems wrong
                 if light_count == 0:
-                    context += "  ⚠️ **CRITICAL VALIDATION WARNING:** Metadata shows 0 lights. Verify if this is accurate or a metadata bug!\n"
-                    context += "  ⚠️ Check metadata JSON file directly before concluding lights are disabled.\n"
+                    light_list = lights.get('light_list', [])
+                    if len(light_list) > 0:
+                        context += f"  ⚠️ **BUG DETECTED:** Metadata shows 0 lights but light_list has {len(light_list)} entries!\n"
+                    else:
+                        context += "  ⚠️ **CRITICAL:** Zero lights active - scene will be completely dark!\n"
 
-                # Physical effects (nested structure)
-                physical_effects = metadata.get('physical_effects', {})
-                phase_function = physical_effects.get('phase_function', {})
-                context += f"- Phase Function: `{'ENABLED' if phase_function.get('enabled', False) else 'DISABLED'}`\n"
+            # Quality preset (NEW in v4.0)
+            if 'quality' in metadata:
+                q = metadata['quality']
+                context += f"- Quality Preset: `{q.get('preset', 'Unknown')}` (target: {q.get('target_fps', 0):.0f} FPS)\n\n"
 
-                # Feature status (nested structure)
-                feature_status = metadata.get('feature_status', {}).get('working', {})
-                context += f"- Shadow Rays: `{'ENABLED' if feature_status.get('shadow_rays', False) else 'DISABLED'}`\n"
-                context += f"- In-Scattering: `{'ENABLED (deprecated)' if metadata.get('feature_status', {}).get('deprecated', {}).get('in_scattering', False) else 'DISABLED'}`\n\n"
+            # Physical effects (nested structure)
+            if 'physical_effects' in metadata:
+                pe = metadata['physical_effects']
+                context += "**Physical Effects:**\n"
+
+                # Phase function
+                phase = pe.get('phase_function', {})
+                context += f"- Phase Function: `{'ENABLED' if phase.get('enabled', False) else 'DISABLED'}` (strength: {phase.get('strength', 0):.1f})\n"
+
+                # Anisotropic Gaussians
+                aniso = pe.get('anisotropic_gaussians', {})
+                context += f"- Anisotropic Gaussians: `{'ENABLED' if aniso.get('enabled', False) else 'DISABLED'}` (strength: {aniso.get('strength', 0):.1f})\n"
+
+                # Physical emission
+                emission = pe.get('physical_emission', {})
+                if emission.get('enabled', False):
+                    context += f"- Physical Emission: `ENABLED` (strength: {emission.get('strength', 0):.2f})\n"
+
+                # Relativistic effects
+                doppler = pe.get('doppler_shift', {})
+                redshift = pe.get('gravitational_redshift', {})
+                if doppler.get('enabled', False) or redshift.get('enabled', False):
+                    context += f"- Relativistic Effects: Doppler={'ENABLED' if doppler.get('enabled') else 'OFF'}, Redshift={'ENABLED' if redshift.get('enabled') else 'OFF'}\n"
+                context += "\n"
+
+            # Feature status (v4.0 categorized by working/wip/deprecated)
+            if 'feature_status' in metadata:
+                fs = metadata['feature_status']
+                context += "**Feature Status:**\n"
+
+                working = fs.get('working', {})
+                wip = fs.get('wip', {})
+                deprecated = fs.get('deprecated', {})
+
+                # Show active features
+                active_features = [k.replace('_', ' ').title() for k, v in working.items() if v]
+                if active_features:
+                    context += f"- Working: {', '.join(active_features[:5])}"
+                    if len(active_features) > 5:
+                        context += f" (+{len(active_features)-5} more)"
+                    context += "\n"
+
+                # Show WIP features
+                wip_features = [k.replace('_', ' ').title() for k, v in wip.items() if v]
+                if wip_features:
+                    context += f"- WIP (experimental): {', '.join(wip_features)}\n"
+
+                # Warn about deprecated features that are enabled
+                deprecated_enabled = [k for k, v in deprecated.items() if v]
+                if deprecated_enabled:
+                    context += f"- ⚠️ Deprecated (should be OFF): {', '.join([d.replace('_', ' ').title() for d in deprecated_enabled])}\n"
+                context += "\n"
+
+            # Volumetric systems (NEW in v4.0)
+            # Froxel fog
+            if 'froxel_fog' in metadata and metadata['froxel_fog'].get('enabled', False):
+                ff = metadata['froxel_fog']
+                context += "**Froxel Volumetric Fog (Phase 8):**\n"
+                context += f"- Grid: {ff.get('grid_dimensions', [0,0,0])} ({ff.get('density_multiplier', 1.0):.2f}x density)\n\n"
+
+            # Probe grid
+            if 'probe_grid' in metadata and metadata['probe_grid'].get('enabled', False):
+                context += "**Probe Grid (Indirect Lighting):** ENABLED\n\n"
+
+            # NanoVDB
+            if 'nanovdb' in metadata and metadata['nanovdb'].get('enabled', False):
+                nv = metadata['nanovdb']
+                context += "**NanoVDB Volumetric System (Phase 5.x - Experimental):**\n"
+                context += f"- Density: {nv.get('density_scale', 0):.1f}, Emission: {nv.get('emission', 0):.1f}\n"
+                context += f"- Scattering: {nv.get('scattering', 0):.2f}, Step Size: {nv.get('step_size', 0):.1f}\n\n"
+
+            # Adaptive radius
+            if 'adaptive_radius' in metadata and metadata['adaptive_radius'].get('enabled', False):
+                ar = metadata['adaptive_radius']
+                context += "**Adaptive Particle Radius (Phase 1.5):**\n"
+                context += f"- Inner Zone: {ar.get('inner_zone_distance', 0):.0f}u ({ar.get('inner_scale_multiplier', 0):.1f}x)\n"
+                context += f"- Outer Zone: {ar.get('outer_zone_distance', 0):.0f}u ({ar.get('outer_scale_multiplier', 0):.1f}x)\n\n"
+
+            # DLSS
+            if 'dlss' in metadata and metadata['dlss'].get('enabled', False):
+                dlss = metadata['dlss']
+                context += "**DLSS Super Resolution:**\n"
+                context += f"- Mode: {dlss.get('quality_mode', 'Unknown')}\n"
+                internal = dlss.get('internal_resolution', [0, 0])
+                output = dlss.get('output_resolution', [0, 0])
+                context += f"- Resolution: {internal[0]}x{internal[1]} → {output[0]}x{output[1]}\n\n"
 
             # Performance metrics
             if 'performance' in metadata:
@@ -385,17 +500,31 @@ def assess_screenshot_quality(screenshot_path: str,
 
             # Configuration-specific recommendations
             context += "## CONFIG-SPECIFIC RECOMMENDATIONS\n\n"
-            context += "Based on the captured metadata, provide SPECIFIC recommendations that reference:\n"
-            context += "1. **Exact config values** (e.g., `rtxdi_m5_enabled: false`)\n"
-            context += "2. **File locations** where changes should be made\n"
+            context += "Based on the captured metadata (schema v4.0), provide SPECIFIC recommendations that reference:\n"
+            context += "1. **Exact config values** from the metadata (e.g., `rendering.rtxdi.m5_enabled: false`)\n"
+            context += "2. **ImGui controls** for runtime adjustments\n"
             context += "3. **Expected improvements** with quantitative estimates\n\n"
 
-            context += "Example format:\n"
-            context += "> Your RTXDI M5 is disabled (`rtxdi_m5_enabled: false` in metadata).\n"
-            context += "> Enable via:\n"
-            context += ">   - ImGui: Check 'RTXDI M5 Temporal Accumulation'\n"
-            context += ">   - Config: Set `rtxdi_temporal_accumulation: true` in configs/builds/Debug.json\n"
-            context += ">   - Expected improvement: Patchwork pattern disappears in ~67ms (8 frames @ 120 FPS)\n\n"
+            context += "### Example recommendations:\n\n"
+            context += "**If RTXDI patchwork visible:**\n"
+            context += "> RTXDI M5 is disabled (`rendering.rtxdi.m5_enabled: false`).\n"
+            context += "> Enable via ImGui: RTXDI Controls > Enable M5 Temporal Accumulation\n"
+            context += "> Expected: Patchwork pattern disappears in ~67ms\n\n"
+
+            context += "**If shadows are too hard:**\n"
+            context += "> Shadow preset is `Performance` with 1 ray/light.\n"
+            context += "> Try: ImGui > Shadows > Preset: Balanced (4 rays) or Quality (8 rays)\n"
+            context += "> Alternative: Enable screen-space shadows for contact shadows\n\n"
+
+            context += "**If volumetric fog is missing:**\n"
+            context += "> Froxel fog is disabled (`froxel_fog.enabled: false`).\n"
+            context += "> Enable via ImGui: Rendering > Froxel Fog > Enable\n"
+            context += "> Expected: Adds atmospheric depth and light scattering\n\n"
+
+            context += "**If indirect lighting is flat:**\n"
+            context += "> Probe grid is disabled (`probe_grid.enabled: false`).\n"
+            context += "> Enable via ImGui: Lighting > Probe Grid > Enable\n"
+            context += "> Expected: Adds ambient occlusion and color bleeding\n\n"
 
         except Exception as e:
             context += f"\n\n⚠️ Metadata file found but failed to parse: {str(e)}\n\n"

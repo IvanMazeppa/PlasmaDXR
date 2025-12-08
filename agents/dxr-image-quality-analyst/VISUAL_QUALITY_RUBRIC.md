@@ -5,10 +5,18 @@
 PlasmaDX renders a black hole accretion disk using:
 - **Volumetric 3D Gaussian splatting** (not 2D splats)
 - **DXR 1.1 ray tracing** for lighting and shadows
-- **RTXDI weighted reservoir sampling** for many-light scenarios
+- **Multi-Light system** (13 lights, Fibonacci sphere distribution)
+- **RTXDI weighted reservoir sampling** for many-light scenarios (WIP)
+- **Froxel volumetric fog** (Phase 8) for atmospheric scattering
+- **Probe grid** (Phase 0.13.1) for indirect lighting/SH
+- **NanoVDB** (Phase 5.x) for volumetric file loading (experimental)
+- **Screen-space shadows** (Phase 2) for contact shadows
+- **Adaptive particle radius** (Phase 1.5) for camera-distance sizing
 - **Physically-based rendering** with blackbody emission (800K-26000K)
 
 **Target aesthetic:** Photorealistic astrophysical simulation with cinematic volumetric atmosphere
+
+**Metadata Schema:** v4.0 (see screenshot .json sidecar files)
 
 ---
 

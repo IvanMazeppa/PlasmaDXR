@@ -113,14 +113,20 @@ float3 ComputeGaussianScale(
         // CRITICAL FIX: Clamp AFTER anisotropic stretching to prevent BLAS explosion
         // Without this, paraRadius can reach 360+ units with small baseRadius + high adaptive scaling
         // This causes VRAM overflow during BLAS build → TDR crash
-        float maxAllowedRadius = 100.0; // Maximum radius for any axis (conservative)
+        //
+        // PERFORMANCE FIX (2025-12-08): Changed from fixed 100.0 to baseRadius-proportional cap
+        // PIX analysis showed fixed cap caused identical massive AABBs regardless of particleRadius
+        // resulting in 1.3B+ ray intersections. Now scales with actual particle size.
+        // Minimum floor of 24 units prevents degenerate AABBs for very small particles.
+        float maxAllowedRadius = max(baseRadius * 4.0, 24.0); // 4× base radius, min 24 units
         perpRadius = min(perpRadius, maxAllowedRadius);
         paraRadius = min(paraRadius, maxAllowedRadius);
 
         return float3(perpRadius, perpRadius, paraRadius);
     } else {
         // Spherical (isotropic) Gaussians
-        float clampedRadius = min(radius, 100.0); // Apply same cap for consistency
+        float maxAllowedRadius = max(baseRadius * 4.0, 24.0); // Same proportional cap
+        float clampedRadius = min(radius, maxAllowedRadius);
         return float3(clampedRadius, clampedRadius, clampedRadius);
     }
 }
@@ -180,9 +186,11 @@ AABB ComputeGaussianAABB(
     );
 
     // Conservative bound: max of all axes (axis-aligned)
-    // CRITICAL FIX: 4σ padding for anisotropic Gaussians (3σ insufficient for ellipsoids)
-    // 3σ = 99.7% for spherical, but anisotropic can stretch 3× → need 4σ = 99.99% coverage
-    float maxRadius = max(scale.x, max(scale.y, scale.z)) * 4.0; // 4 std devs
+    // PERFORMANCE FIX (2025-12-08): Reduced from 4σ to 2.5σ
+    // 4σ = 99.99% coverage created massive AABBs causing 1.3B+ ray intersections
+    // 2.5σ = 98.8% coverage is acceptable for visual rendering (edge clipping not noticeable)
+    // Combined with baseRadius-proportional cap, this dramatically reduces AABB volume
+    float maxRadius = max(scale.x, max(scale.y, scale.z)) * 2.5; // 2.5 std devs (was 4.0)
 
     AABB result;
     result.minPoint = p.position - maxRadius;
