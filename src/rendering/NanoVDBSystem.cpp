@@ -349,16 +349,16 @@ bool NanoVDBSystem::UploadGridToGPU(const void* gridData, uint64_t sizeBytes) {
         CloseHandle(fenceEvent);
     }
 
-    // Create SRV for the grid buffer (ByteAddressBuffer)
-    // The shader will use this as a raw buffer (uint32 access)
+    // Create SRV for the grid buffer as StructuredBuffer<uint>
+    // PNanoVDB.h expects StructuredBuffer<uint> (pnanovdb_buf_t) in HLSL mode
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;  // Structured buffers use UNKNOWN format
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Buffer.FirstElement = 0;
-    srvDesc.Buffer.NumElements = static_cast<UINT>(sizeBytes / 4);  // Number of uint32s
-    srvDesc.Buffer.StructureByteStride = 0;
-    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+    srvDesc.Buffer.NumElements = static_cast<UINT>(sizeBytes / 4);  // Number of uint32 elements
+    srvDesc.Buffer.StructureByteStride = sizeof(uint32_t);  // 4 bytes per element
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;  // Not a raw buffer
 
     // Allocate descriptor from ResourceManager
     m_gridBufferSRV_CPU = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);

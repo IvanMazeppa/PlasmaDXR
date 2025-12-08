@@ -43,12 +43,22 @@ cbuffer NanoVDBConstants : register(b0) {
 };
 
 // ============================================================================
+// PNANOVDB - Portable NanoVDB for HLSL
+// ============================================================================
+
+// Define HLSL mode before including PNanoVDB
+#define PNANOVDB_HLSL
+
+// Include the portable NanoVDB header
+#include "PNanoVDB.h"
+
+// ============================================================================
 // RESOURCES
 // ============================================================================
 
-// NanoVDB grid buffer (raw buffer for PNanoVDB access)
-// Only used when useGridBuffer == 1
-ByteAddressBuffer g_gridBuffer : register(t0);
+// NanoVDB grid buffer - using PNanoVDB's expected buffer type
+// StructuredBuffer<uint> maps to pnanovdb_buf_t in HLSL mode
+StructuredBuffer<uint> g_gridBuffer : register(t0);
 
 // Light data (reuse existing light structure)
 struct Light {
@@ -68,105 +78,124 @@ Texture2D<float> g_depthBuffer : register(t2);
 RWTexture2D<float4> g_output : register(u0);
 
 // ============================================================================
-// PNANOVDB GRID SAMPLING (Portable NanoVDB for HLSL)
+// PNANOVDB GRID SAMPLING
 // ============================================================================
-
-// Simplified NanoVDB grid sampling using raw buffer access
-// NanoVDB structure: GridData (header) -> TreeData -> RootData -> NodeData -> LeafData
-// For now, we use a simplified trilinear sampling from grid bounds
 
 // Forward declarations (defined below noise functions)
 float SampleProceduralDensity(float3 worldPos);
-float fbm(float3 p, int octaves);
-float gradientNoise(float3 p);
 
-// Read a float from the grid buffer at byte offset
-float ReadGridFloat(uint byteOffset) {
-    return asfloat(g_gridBuffer.Load(byteOffset));
-}
-
-// Read uint from grid buffer
-uint ReadGridUint(uint byteOffset) {
-    return g_gridBuffer.Load(byteOffset);
-}
-
-// ============================================================================
-// NanoVDB GRID STRUCTURE CONSTANTS
-// Based on nanovdb/NanoVDB.h
-// ============================================================================
-
-// NanoVDB magic number "NanoVDB0" as uint64 (little-endian)
-static const uint NANOVDB_MAGIC_LO = 0x566F4E61;  // "NaoV" reversed
-static const uint NANOVDB_MAGIC_HI = 0x30424244;  // "DBB0" reversed
-
-// GridData offsets (from NanoVDB.h)
-static const uint GRID_MAGIC_OFFSET = 0;           // uint64 mMagic
-static const uint GRID_CHECKSUM_OFFSET = 8;        // uint64 mChecksum
-static const uint GRID_VERSION_OFFSET = 16;        // Version mVersion (uint32)
-static const uint GRID_FLAGS_OFFSET = 20;          // uint32 mFlags
-static const uint GRID_INDEX_OFFSET = 24;          // uint32 mGridIndex
-static const uint GRID_COUNT_OFFSET = 28;          // uint32 mGridCount
-static const uint GRID_SIZE_OFFSET = 32;           // uint64 mGridSize
-static const uint GRID_NAME_OFFSET = 40;           // char[256] mGridName
-static const uint GRID_MAP_OFFSET = 296;           // Map mMap (8x8 = 64 bytes)
-static const uint GRID_WORLD_BBOX_OFFSET = 360;    // BBox<Vec3d> mWorldBBox (48 bytes)
-static const uint GRID_VOXEL_SIZE_OFFSET = 408;    // Vec3d mVoxelSize (24 bytes)
-static const uint GRID_CLASS_OFFSET = 432;         // GridClass mGridClass
-static const uint GRID_TYPE_OFFSET = 436;          // GridType mGridType
-static const uint GRID_BLIND_DATA_COUNT_OFFSET = 440;  // uint64 mBlindMetadataCount
-static const uint GRID_BLIND_DATA_OFFSET = 448;    // uint64 mBlindMetadataOffset
-static const uint GRID_DATA_OFFSET = 672;          // TreeData starts here (approximately)
-
-// Sample NanoVDB density at world position
-// Reads actual data from the grid buffer
+// Sample NanoVDB density at world position using PNanoVDB tree traversal
 float SampleNanoVDBDensity(float3 worldPos) {
-    // Transform world position to normalized grid coordinates [0,1]
-    float3 gridSize = gridWorldMax - gridWorldMin;
-    float3 normalizedPos = (worldPos - gridWorldMin) / gridSize;
+    // Create grid handle at offset 0 (grid data starts at beginning of buffer)
+    pnanovdb_grid_handle_t grid;
+    grid.address = pnanovdb_address_null();
 
-    // Check bounds
-    if (any(normalizedPos < 0.0) || any(normalizedPos > 1.0)) {
+    // Get grid type to determine how to read values
+    pnanovdb_uint32_t gridType = pnanovdb_grid_get_grid_type(g_gridBuffer, grid);
+
+    // Only support float grids (density fields) for now
+    // PNANOVDB_GRID_TYPE_FLOAT = 1
+    if (gridType != 1u) {
         return 0.0;
     }
 
-    // Verify magic number to confirm grid is valid
-    uint magicLo = ReadGridUint(GRID_MAGIC_OFFSET);
-    uint magicHi = ReadGridUint(GRID_MAGIC_OFFSET + 4);
+    // Get the tree and root handles
+    pnanovdb_tree_handle_t tree = pnanovdb_grid_get_tree(g_gridBuffer, grid);
+    pnanovdb_root_handle_t root = pnanovdb_tree_get_root(g_gridBuffer, tree);
 
-    // Check if magic number is valid (first 4 bytes should be "NanoV" or similar)
-    bool validGrid = (magicLo != 0);  // Simple check - grid data exists
+    // Initialize read accessor for efficient tree traversal with caching
+    pnanovdb_readaccessor_t acc;
+    pnanovdb_readaccessor_init(acc, root);
 
-    if (!validGrid) {
-        // Grid buffer is empty or invalid - return distance-based fallback
-        float3 center = float3(0.5, 0.5, 0.5);
-        float dist = length(normalizedPos - center);
-        return saturate(1.0 - dist * 1.5) * 0.5;  // Dim fallback
+    // Convert world position to index space using the grid's transform
+    pnanovdb_vec3_t worldVec;
+    worldVec.x = worldPos.x;
+    worldVec.y = worldPos.y;
+    worldVec.z = worldPos.z;
+
+    pnanovdb_vec3_t indexVec = pnanovdb_grid_world_to_indexf(g_gridBuffer, grid, worldVec);
+
+    // Convert to integer coordinates (floor for voxel lookup)
+    pnanovdb_coord_t ijk;
+    ijk.x = pnanovdb_float_to_int32(floor(indexVec.x));
+    ijk.y = pnanovdb_float_to_int32(floor(indexVec.y));
+    ijk.z = pnanovdb_float_to_int32(floor(indexVec.z));
+
+    // Get the value address in the grid using cached accessor
+    pnanovdb_address_t valueAddr = pnanovdb_readaccessor_get_value_address(
+        PNANOVDB_GRID_TYPE_FLOAT, g_gridBuffer, acc, ijk);
+
+    // Read the float value from the grid
+    float density = pnanovdb_read_float(g_gridBuffer, valueAddr);
+
+    return max(density, 0.0);
+}
+
+// Sample with trilinear interpolation for smoother results
+float SampleNanoVDBDensityTrilinear(float3 worldPos) {
+    // Create grid handle
+    pnanovdb_grid_handle_t grid;
+    grid.address = pnanovdb_address_null();
+
+    // Get grid type
+    pnanovdb_uint32_t gridType = pnanovdb_grid_get_grid_type(g_gridBuffer, grid);
+    if (gridType != 1u) return 0.0;
+
+    // Get tree and root
+    pnanovdb_tree_handle_t tree = pnanovdb_grid_get_tree(g_gridBuffer, grid);
+    pnanovdb_root_handle_t root = pnanovdb_tree_get_root(g_gridBuffer, tree);
+
+    // Initialize accessor
+    pnanovdb_readaccessor_t acc;
+    pnanovdb_readaccessor_init(acc, root);
+
+    // Convert world to index space
+    pnanovdb_vec3_t worldVec;
+    worldVec.x = worldPos.x;
+    worldVec.y = worldPos.y;
+    worldVec.z = worldPos.z;
+
+    pnanovdb_vec3_t indexVec = pnanovdb_grid_world_to_indexf(g_gridBuffer, grid, worldVec);
+
+    // Get fractional parts for interpolation
+    float3 indexFloat = float3(indexVec.x, indexVec.y, indexVec.z);
+    int3 indexBase = int3(floor(indexFloat));
+    float3 frac_part = indexFloat - float3(indexBase);
+
+    // Sample 8 corners for trilinear interpolation
+    float values[8];
+
+    [unroll]
+    for (int i = 0; i < 8; i++) {
+        pnanovdb_coord_t ijk;
+        ijk.x = indexBase.x + ((i & 1) ? 1 : 0);
+        ijk.y = indexBase.y + ((i & 2) ? 1 : 0);
+        ijk.z = indexBase.z + ((i & 4) ? 1 : 0);
+
+        pnanovdb_address_t addr = pnanovdb_readaccessor_get_value_address(
+            PNANOVDB_GRID_TYPE_FLOAT, g_gridBuffer, acc, ijk);
+        values[i] = pnanovdb_read_float(g_gridBuffer, addr);
     }
 
-    // For now, use a shape-based density that confirms grid bounds are correct
-    // Full NanoVDB tree traversal would require PNanoVDB.h port to HLSL
-    // This visualizes EXACTLY where the grid bounds are
+    // Trilinear interpolation
+    float c00 = lerp(values[0], values[1], frac_part.x);
+    float c10 = lerp(values[2], values[3], frac_part.x);
+    float c01 = lerp(values[4], values[5], frac_part.x);
+    float c11 = lerp(values[6], values[7], frac_part.x);
 
-    // Create a cloud-like density based on position within grid bounds
-    float3 center = float3(0.5, 0.5, 0.5);
-    float dist = length(normalizedPos - center);
+    float c0 = lerp(c00, c10, frac_part.y);
+    float c1 = lerp(c01, c11, frac_part.y);
 
-    // Soft falloff cloud shape
-    float baseDensity = saturate(1.0 - dist * 1.8);
+    float density = lerp(c0, c1, frac_part.z);
 
-    // Add some noise variation to make it look more cloud-like
-    float noiseScale = 3.0;
-    float noise = fbm(normalizedPos * noiseScale + time * 0.1, 3) * 0.5 + 0.5;
-
-    float density = baseDensity * noise;
-
-    return density;
+    return max(density, 0.0);
 }
 
 // Full density sampling: chooses between grid and procedural
 float SampleDensity(float3 worldPos) {
     if (useGridBuffer != 0) {
-        return SampleNanoVDBDensity(worldPos);
+        // Use trilinear interpolation for smoother results
+        return SampleNanoVDBDensityTrilinear(worldPos);
     } else {
         return SampleProceduralDensity(worldPos);
     }
