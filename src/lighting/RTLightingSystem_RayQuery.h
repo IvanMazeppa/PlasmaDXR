@@ -125,6 +125,7 @@ private:
         uint32_t particleCount;                                     // Number of particles in this set
         size_t blasSize;                                            // BLAS size in bytes
         size_t tlasSize;                                            // TLAS size in bytes
+        bool blasBuiltOnce = false;                                 // BLAS update optimization (2025-12-08)
     };
 
     static constexpr uint32_t PROBE_GRID_PARTICLE_LIMIT = 2044;    // Max particles before bug threshold

@@ -43,7 +43,7 @@ The user is named Ben, he is a novice programmer but has some experience with C+
 
 **Current Status (2025-11-24):**
 - **Primary Renderer:** Gaussian volumetric RT lighting (particle_gaussian_raytrace.hlsl) ✅ ACTIVE
-- **Froxel Volumetric Fog System:** Voxel-based volumetric lighting with density injection ✅ COMPLETE
+- **Froxel Volumetric Fog System:** ⚠️ DEPRECATED (replaced by NanoVDB, shaders removed from build)
 - **Probe Grid System:** Spherical harmonics (L2) for indirect lighting ✅ COMPLETE
 - **Volumetric ReSTIR System:** Path generation and shading passes ✅ COMPLETE
 - **Multi-Light System:** 13 lights with dynamic control ✅ COMPLETE
@@ -178,43 +178,28 @@ Hierarchical JSON config loading:
 
 ---
 
-## Froxel Volumetric Fog System (NEW - Phase 8) ✅ COMPLETE
+## Froxel Volumetric Fog System (Phase 8) ⚠️ DEPRECATED
 
-**Status:** Recently integrated (Nov 2025) for volumetric fog rendering
+**Status:** DEPRECATED as of Dec 2025. Replaced by NanoVDB volumetric system.
 
-**What is a Froxel?** A "frustum voxel" - 3D grid aligned to camera frustum for efficient volumetric rendering.
+**Reason for Deprecation:**
+- Froxel grid never worked properly (race conditions, visual artifacts)
+- HLSL source files removed from build (only stale DXIL binaries remain)
+- NanoVDB provides superior volumetric rendering with proper sparse data structures
+- Configuration constants remain in code but are unused
 
-**Implementation:**
-- **Grid Resolution:** 160×90×128 (X×Y×Z) covering view frustum
-- **Density Injection:** Particles splat density into grid via trilinear interpolation (`inject_density.hlsl`)
-- **Lighting Pass:** Multi-light accumulation per voxel (`light_voxels.hlsl`)
-- **Sampling:** Ray marching through grid during Gaussian rendering (`sample_froxel_grid.hlsl`)
+**Historical Context:**
+The froxel system was an experimental frustum-aligned voxel grid (160×90×128) for volumetric fog. It suffered from:
+- Non-atomic density injection (`+=` on RWTexture3D)
+- Debug visualization accidentally left enabled in shaders
+- Performance overhead without visual quality benefit
 
-**Architecture:**
-```
-Particle System → Inject Density → Froxel Grid (160×90×128)
-                                      ↓
-                               Light Voxels (multi-light)
-                                      ↓
-                     Gaussian Renderer samples via ray march
-                                      ↓
-                              Final composite image
-```
+**Replacement:** Use NanoVDB system (`src/rendering/NanoVDBSystem.h/cpp`) for volumetric effects.
 
-**Key Files:**
-- `src/rendering/FroxelSystem.h/cpp` - C++ management
-- `shaders/froxel/inject_density.hlsl` - Pass 1: Density injection
-- `shaders/froxel/light_voxels.hlsl` - Pass 2: Lighting calculation
-- `shaders/froxel/sample_froxel_grid.hlsl` - Sampling utilities for Gaussian renderer
-
-**Performance:** ~1.5-2ms for both passes @ 1080p
-
-**Known Issues:**
-- Race condition in density injection (`+=` on RWTexture3D not atomic) - visually acceptable for fog
-- Debug visualization mode can be accidentally left enabled in compiled shaders
-- Grid parameters tunable via `FroxelConstants` cbuffer (density scale, light accumulation strength)
-
-**Recent Fix (Nov 23, 2025):** Debug visualization mistakenly left enabled in particle_gaussian_raytrace.hlsl, causing red/yellow/green density heat map to show instead of proper fog rendering. Fixed by calling `RayMarchFroxelGrid()` instead of `DebugVisualizeFroxelDensity()`.
+**Cleanup Status:**
+- [ ] Remove FroxelSystem.h/cpp (currently dead code)
+- [ ] Remove froxel DXIL binaries from build output
+- [ ] Remove froxel constants from ParticleRenderer_Gaussian.h
 
 ---
 
