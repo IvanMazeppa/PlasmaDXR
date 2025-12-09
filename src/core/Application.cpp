@@ -1249,6 +1249,9 @@ void Application::Render() {
             // NanoVDB Volumetric Fog/Gas rendering (Phase 5.x - TRUE Volumetrics)
             // Composites sparse volumetric grids on top of Gaussian particles
             if (m_enableNanoVDB && m_nanoVDBSystem && m_nanoVDBSystem->HasGrid()) {
+                // Update animation playback (switches frame buffers based on time)
+                m_nanoVDBSystem->UpdateAnimation(m_deltaTime);
+
                 // Update NanoVDB parameters from ImGui controls
                 m_nanoVDBSystem->SetDensityScale(m_nanoVDBDensityScale);
                 m_nanoVDBSystem->SetEmissionStrength(m_nanoVDBEmission);
@@ -5136,22 +5139,79 @@ void Application::RenderImGui() {
                     ImGui::SameLine();
                     if (ImGui::Button("500x")) { m_nanoVDBSystem->ScaleGridBounds(500.0f); }
 
-                    // Move grid center
+                    // Move grid center - updates LIVE when dragging
                     static float gridCenterPos[3] = {0.0f, 0.0f, 0.0f};
-                    ImGui::DragFloat3("Center", gridCenterPos, 10.0f, -5000.0f, 5000.0f);
-                    if (ImGui::Button("Move to Center")) {
+                    if (ImGui::DragFloat3("Center", gridCenterPos, 10.0f, -5000.0f, 5000.0f)) {
+                        // Update immediately on drag (smooth movement)
                         DirectX::XMFLOAT3 newCenter(gridCenterPos[0], gridCenterPos[1], gridCenterPos[2]);
                         m_nanoVDBSystem->SetGridCenter(newCenter);
                     }
-                    ImGui::SameLine();
                     if (ImGui::Button("Center at Origin")) {
                         m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
                         gridCenterPos[0] = gridCenterPos[1] = gridCenterPos[2] = 0.0f;
+                    }
+
+                    // ============================================================
+                    // ANIMATION CONTROLS
+                    // ============================================================
+                    size_t frameCount = m_nanoVDBSystem->GetAnimationFrameCount();
+                    if (frameCount > 0) {
+                        ImGui::Separator();
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Animation (%zu frames)", frameCount);
+
+                        // Play/Pause button
+                        bool isPlaying = m_nanoVDBSystem->IsAnimationPlaying();
+                        if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
+                            m_nanoVDBSystem->SetAnimationPlaying(!isPlaying);
+                        }
+                        ImGui::SameLine();
+
+                        // Stop (reset to frame 0)
+                        if (ImGui::Button("Stop")) {
+                            m_nanoVDBSystem->SetAnimationPlaying(false);
+                            m_nanoVDBSystem->SetAnimationFrame(0);
+                        }
+                        ImGui::SameLine();
+
+                        // Loop toggle
+                        bool loop = m_nanoVDBSystem->GetAnimationLoop();
+                        if (ImGui::Checkbox("Loop", &loop)) {
+                            m_nanoVDBSystem->SetAnimationLoop(loop);
+                        }
+
+                        // Frame scrubber
+                        int currentFrame = static_cast<int>(m_nanoVDBSystem->GetAnimationFrame());
+                        if (ImGui::SliderInt("Frame", &currentFrame, 0, static_cast<int>(frameCount - 1))) {
+                            m_nanoVDBSystem->SetAnimationFrame(static_cast<size_t>(currentFrame));
+                        }
+
+                        // Speed control (FPS)
+                        float fps = m_nanoVDBSystem->GetAnimationSpeed();
+                        if (ImGui::SliderFloat("Speed (FPS)", &fps, 1.0f, 60.0f, "%.1f")) {
+                            m_nanoVDBSystem->SetAnimationSpeed(fps);
+                        }
                     }
                 }
             } else {
                 ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f), "Grid: NOT LOADED");
                 ImGui::Text("  Press 'J' to create test fog sphere");
+            }
+
+            // Load Animation from Directory button
+            if (m_nanoVDBSystem) {
+                ImGui::Separator();
+                ImGui::Text("Load Animation:");
+                if (ImGui::Button("Load Chimney Smoke")) {
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("VDBs/NanoVDB/chimney_smoke");
+                    if (frames > 0) {
+                        LOG_INFO("Loaded {} animation frames", frames);
+                        // Auto-scale to reasonable size
+                        m_nanoVDBSystem->ScaleGridBounds(50.0f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load all .nvdb files from VDBs/NanoVDB/chimney_smoke/");
+                }
             }
 
             // Parameters

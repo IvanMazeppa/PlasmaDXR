@@ -69,7 +69,12 @@ MAX_PAGE_LENGTH = 4000     # Default max for read_page
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Fast, 384-dim embeddings
 EMBEDDING_BATCH_SIZE = 32
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging to go to stderr with less verbosity to reduce MCP noise
+logging.basicConfig(
+    level=logging.WARNING,  # Changed from INFO to WARNING
+    format='%(levelname)s:%(name)s:%(message)s',
+    stream=sys.stderr
+)
 logger = logging.getLogger("blender_mcp")
 
 # In-memory data
@@ -1396,12 +1401,15 @@ def search_semantic(query: str, limit: int = DEFAULT_LIMIT, compact: bool = Fals
             build_index()
 
     # Generate embeddings if needed (lazy loading)
+    # WARNING: This can take 5-10 minutes and will timeout MCP requests!
+    # Only attempt if embeddings file doesn't exist and we're in rebuild mode
     if _check_semantic_available() and embeddings is None:
         if load_embedding_model():
             if not load_embeddings():
-                # Embeddings don't exist, generate them now
-                logger.info("Embeddings not found, generating now...")
-                generate_embeddings()
+                # Embeddings don't exist - DO NOT generate during MCP operation
+                # This would timeout the MCP request (takes 5-10 minutes)
+                logger.warning("Embeddings not found. Run 'python generate_embeddings.py' offline to enable semantic search.")
+                # Fall through to keyword search instead
 
     # Try semantic search first
     if _check_semantic_available() and embeddings is not None and embedding_model is not None:
@@ -1456,42 +1464,25 @@ def search_semantic(query: str, limit: int = DEFAULT_LIMIT, compact: bool = Fals
 # ============================================================================
 
 if __name__ == "__main__":
-    logger.info("=" * 60)
-    logger.info("Blender Manual MCP Server v4.0 - Python API Integration")
-    logger.info("Manual + Python API Reference | NanoVDB/Volumetrics Workflow")
-    logger.info("=" * 60)
+    # Minimal startup logging to avoid MCP interference
+    logger.warning("Blender Manual MCP Server v4.0 starting...")
 
-    if load_cache():
-        logger.info("✓ Index loaded from cache. Server ready!")
-    else:
-        logger.info("Building fresh index... (this may take 60-90 seconds)")
-        build_index()
-        logger.info("✓ Index built and cached. Server ready!")
+    try:
+        if load_cache():
+            logger.warning(f"Loaded cache: {len(search_index)} pages")
+        else:
+            logger.warning("Building fresh index (60-90s)...")
+            build_index()
+            logger.warning("Index built and cached")
+    except Exception as e:
+        logger.error(f"Failed to initialize: {e}")
+        sys.exit(1)
 
-    # Count sources
-    manual_count = sum(1 for item in search_index if item.get("source") == "manual")
-    api_count = sum(1 for item in search_index if item.get("source") == "python_api")
-    logger.info(f"Indexed {len(search_index)} pages ({manual_count} manual + {api_count} Python API)")
+    logger.warning("Server ready - 12 tools available")
 
-    # Show semantic search status (note: semantic is lazy-loaded to avoid MCP timeout)
-    logger.info("ℹ Semantic search will be loaded on first use (lazy-load to avoid MCP timeout)")
-
-    logger.info("=" * 60)
-    logger.info("Available tools (12 total):")
-    logger.info("  -- General Search --")
-    logger.info("  1. search_manual(query, limit=5, offset=0, compact=False)")
-    logger.info("  2. search_tutorials(topic, technique, limit=5, compact=False)")
-    logger.info("  3. browse_hierarchy(path)")
-    logger.info("  4. search_vdb_workflow(query, limit=5, offset=0, compact=False)")
-    logger.info("  5. search_nodes(node_type, category, limit=5, compact=False)")
-    logger.info("  6. search_modifiers(modifier_name, limit=5, compact=False)")
-    logger.info("  7. read_page(path, max_length=4000, source='auto')")
-    logger.info("  8. search_semantic(query, limit=5, compact=False)")
-    logger.info("  -- Python API Search --")
-    logger.info("  9. search_python_api(operation, limit=5, compact=False, api_only=False)")
-    logger.info(" 10. list_api_modules(category, limit=30)")
-    logger.info(" 11. search_bpy_operators(category, operation, limit=5)")
-    logger.info(" 12. search_bpy_types(typename, limit=5)")
-    logger.info("=" * 60)
-
-    mcp.run()
+    # Run the MCP server
+    try:
+        mcp.run()
+    except Exception as e:
+        logger.error(f"Server crashed: {e}")
+        sys.exit(1)

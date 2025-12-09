@@ -167,7 +167,7 @@ public:
         m_gridWorldMax = { center.x + halfExtent.x, center.y + halfExtent.y, center.z + halfExtent.z };
     }
 
-    // Move grid center
+    // Move grid center - updates AABB and calculates offset for shader
     void SetGridCenter(const DirectX::XMFLOAT3& newCenter) {
         DirectX::XMFLOAT3 halfExtent = {
             (m_gridWorldMax.x - m_gridWorldMin.x) * 0.5f,
@@ -177,7 +177,50 @@ public:
         m_gridWorldMin = { newCenter.x - halfExtent.x, newCenter.y - halfExtent.y, newCenter.z - halfExtent.z };
         m_gridWorldMax = { newCenter.x + halfExtent.x, newCenter.y + halfExtent.y, newCenter.z + halfExtent.z };
         m_sphereCenter = newCenter;  // Also update sphere center for fallback
+
+        // Calculate offset from original grid center (for shader sampling)
+        m_gridOffset = {
+            newCenter.x - m_originalGridCenter.x,
+            newCenter.y - m_originalGridCenter.y,
+            newCenter.z - m_originalGridCenter.z
+        };
     }
+
+    // ========================================================================
+    // ANIMATION SUPPORT
+    // ========================================================================
+
+    /**
+     * Load an animation sequence from multiple .nvdb files
+     * @param filepaths Vector of paths to .nvdb files (in order)
+     * @return true if at least one frame loaded successfully
+     */
+    bool LoadAnimationSequence(const std::vector<std::string>& filepaths);
+
+    /**
+     * Load animation from a directory pattern (e.g., "smoke_*.nvdb")
+     * @param directory Directory containing .nvdb files
+     * @param pattern Glob pattern for matching files
+     * @return Number of frames loaded
+     */
+    size_t LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern = "*.nvdb");
+
+    // Animation playback control
+    void SetAnimationPlaying(bool playing) { m_animPlaying = playing; }
+    bool IsAnimationPlaying() const { return m_animPlaying; }
+
+    void SetAnimationSpeed(float fps) { m_animFPS = fps; }
+    float GetAnimationSpeed() const { return m_animFPS; }
+
+    void SetAnimationLoop(bool loop) { m_animLoop = loop; }
+    bool GetAnimationLoop() const { return m_animLoop; }
+
+    void SetAnimationFrame(size_t frame);
+    size_t GetAnimationFrame() const { return m_animCurrentFrame; }
+    size_t GetAnimationFrameCount() const { return m_animFrames.size(); }
+
+    // Call each frame to advance animation based on delta time
+    void UpdateAnimation(float deltaTime);
 
     // GPU resources for external binding
     ID3D12Resource* GetGridBuffer() const { return m_gridBuffer.Get(); }
@@ -207,8 +250,9 @@ private:
         float time;                          // 4 bytes
         uint32_t debugMode;                  // 4 bytes (0=normal, 1=debug solid color)
         uint32_t useGridBuffer;              // 4 bytes (0=procedural, 1=file-loaded grid)
-        float padding[2];                    // 8 bytes to align to 256
-    };  // Total: 176 bytes (padded to 256 for cbuffer)
+        DirectX::XMFLOAT3 gridOffset;        // 12 bytes (offset from original grid position)
+        float padding;                       // 4 bytes to align to 256
+    };  // Total: 192 bytes (padded to 256 for cbuffer)
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -245,6 +289,30 @@ private:
     DirectX::XMFLOAT3 m_sphereCenter = { 0.0f, 0.0f, 0.0f };
     float m_sphereRadius = 200.0f;
 
+    // Grid repositioning (for file-loaded grids)
+    DirectX::XMFLOAT3 m_originalGridCenter = { 0.0f, 0.0f, 0.0f };  // Center when file was loaded
+    DirectX::XMFLOAT3 m_gridOffset = { 0.0f, 0.0f, 0.0f };          // Current offset from original
+
     uint32_t m_screenWidth = 1920;
     uint32_t m_screenHeight = 1080;
+
+    // ========================================================================
+    // ANIMATION STATE
+    // ========================================================================
+
+    // Animation frame data - each frame is a separate GPU buffer + SRV
+    struct AnimationFrame {
+        ComPtr<ID3D12Resource> buffer;
+        D3D12_GPU_DESCRIPTOR_HANDLE srvGPU = {};
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCPU = {};
+        uint64_t sizeBytes = 0;
+    };
+    std::vector<AnimationFrame> m_animFrames;
+
+    // Playback state
+    bool m_animPlaying = false;
+    bool m_animLoop = true;
+    float m_animFPS = 24.0f;              // Frames per second
+    float m_animAccumulator = 0.0f;       // Time accumulator for frame advancement
+    size_t m_animCurrentFrame = 0;
 };

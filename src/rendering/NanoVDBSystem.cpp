@@ -5,6 +5,9 @@
 #include "../utils/d3dx12/d3dx12.h"
 
 #include <d3dcompiler.h>  // For D3DReadFileToBlob
+#include <filesystem>     // For directory iteration (animation loading)
+#include <algorithm>      // For std::sort
+#include <fstream>        // For file reading
 
 // NanoVDB file I/O
 #include <nanovdb/NanoVDB.h>
@@ -542,5 +545,261 @@ void NanoVDBSystem::Render(
     if (renderCount <= 3) {
         LOG_INFO("[NanoVDB] Rendered frame (groups: {} x {}, res: {}x{}, time: {:.2f})",
                  groupsX, groupsY, renderWidth, renderHeight, time);
+    }
+}
+
+// ============================================================================
+// ANIMATION SUPPORT IMPLEMENTATION
+// ============================================================================
+
+bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepaths) {
+    if (filepaths.empty()) {
+        LOG_ERROR("[NanoVDB] LoadAnimationSequence: No filepaths provided");
+        return false;
+    }
+
+    LOG_INFO("[NanoVDB] Loading animation sequence with {} frames...", filepaths.size());
+
+    // Clear existing animation frames
+    m_animFrames.clear();
+    m_animCurrentFrame = 0;
+    m_animAccumulator = 0.0f;
+
+    size_t loadedCount = 0;
+    auto* d3dDevice = m_device->GetDevice();
+
+    for (size_t i = 0; i < filepaths.size(); ++i) {
+        const auto& filepath = filepaths[i];
+
+        try {
+            // Read file
+            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+            if (!file.is_open()) {
+                LOG_WARN("[NanoVDB] Failed to open frame {}: {}", i, filepath);
+                continue;
+            }
+
+            std::streamsize fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            std::vector<char> fileData(fileSize);
+            if (!file.read(fileData.data(), fileSize)) {
+                LOG_WARN("[NanoVDB] Failed to read frame {}: {}", i, filepath);
+                continue;
+            }
+
+            const void* bufferData = fileData.data();
+            uint64_t bufferSize = static_cast<uint64_t>(fileSize);
+
+            // Create GPU buffer for this frame
+            AnimationFrame frame;
+            frame.sizeBytes = bufferSize;
+
+            D3D12_HEAP_PROPERTIES defaultHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+            D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+
+            HRESULT hr = d3dDevice->CreateCommittedResource(
+                &defaultHeapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &bufferDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&frame.buffer));
+
+            if (FAILED(hr)) {
+                LOG_WARN("[NanoVDB] Failed to create GPU buffer for frame {}", i);
+                continue;
+            }
+
+            // Create upload buffer
+            D3D12_HEAP_PROPERTIES uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+            ComPtr<ID3D12Resource> uploadBuffer;
+            hr = d3dDevice->CreateCommittedResource(
+                &uploadHeapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &bufferDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&uploadBuffer));
+
+            if (FAILED(hr)) {
+                LOG_WARN("[NanoVDB] Failed to create upload buffer for frame {}", i);
+                continue;
+            }
+
+            // Copy data to upload buffer
+            void* mappedData = nullptr;
+            uploadBuffer->Map(0, nullptr, &mappedData);
+            memcpy(mappedData, bufferData, bufferSize);
+            uploadBuffer->Unmap(0, nullptr);
+
+            // Create command allocator and list for upload (same pattern as UploadGridToGPU)
+            ComPtr<ID3D12CommandAllocator> cmdAllocator;
+            ComPtr<ID3D12GraphicsCommandList> cmdList;
+
+            hr = d3dDevice->CreateCommandAllocator(
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                IID_PPV_ARGS(&cmdAllocator));
+            if (FAILED(hr)) {
+                LOG_WARN("[NanoVDB] Failed to create command allocator for frame {}", i);
+                continue;
+            }
+
+            hr = d3dDevice->CreateCommandList(
+                0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                cmdAllocator.Get(), nullptr,
+                IID_PPV_ARGS(&cmdList));
+            if (FAILED(hr)) {
+                LOG_WARN("[NanoVDB] Failed to create command list for frame {}", i);
+                continue;
+            }
+
+            // Copy and transition
+            cmdList->CopyBufferRegion(frame.buffer.Get(), 0, uploadBuffer.Get(), 0, bufferSize);
+
+            CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                frame.buffer.Get(),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            cmdList->ResourceBarrier(1, &barrier);
+            cmdList->Close();
+
+            // Execute and wait
+            ID3D12CommandList* cmdLists[] = { cmdList.Get() };
+            m_device->GetCommandQueue()->ExecuteCommandLists(1, cmdLists);
+
+            // Create fence and wait for upload
+            ComPtr<ID3D12Fence> fence;
+            hr = d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+            if (SUCCEEDED(hr)) {
+                HANDLE fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+                m_device->GetCommandQueue()->Signal(fence.Get(), 1);
+                if (fence->GetCompletedValue() < 1) {
+                    fence->SetEventOnCompletion(1, fenceEvent);
+                    WaitForSingleObject(fenceEvent, INFINITE);
+                }
+                CloseHandle(fenceEvent);
+            }
+
+            // Create SRV for this frame (StructuredBuffer<uint> like existing code)
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Buffer.FirstElement = 0;
+            srvDesc.Buffer.NumElements = static_cast<UINT>(bufferSize / sizeof(uint32_t));
+            srvDesc.Buffer.StructureByteStride = sizeof(uint32_t);
+            srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+            frame.srvCPU = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            d3dDevice->CreateShaderResourceView(frame.buffer.Get(), &srvDesc, frame.srvCPU);
+            frame.srvGPU = m_resources->GetGPUHandle(frame.srvCPU);
+
+            m_animFrames.push_back(std::move(frame));
+            loadedCount++;
+
+            if (loadedCount % 5 == 0 || i == filepaths.size() - 1) {
+                LOG_INFO("[NanoVDB] Loaded {}/{} frames...", loadedCount, filepaths.size());
+            }
+
+        } catch (const std::exception& e) {
+            LOG_WARN("[NanoVDB] Exception loading frame {}: {}", i, e.what());
+            continue;
+        }
+    }
+
+    if (loadedCount > 0) {
+        LOG_INFO("[NanoVDB] Animation loaded: {} frames ({:.1f} MB total)",
+                 loadedCount,
+                 m_animFrames.size() > 0 ?
+                     (m_animFrames[0].sizeBytes * loadedCount) / (1024.0 * 1024.0) : 0.0);
+
+        // Use first frame as current grid
+        if (!m_animFrames.empty()) {
+            m_gridBuffer = m_animFrames[0].buffer;
+            m_gridBufferSRV_GPU = m_animFrames[0].srvGPU;
+            m_gridBufferSRV_CPU = m_animFrames[0].srvCPU;
+            m_gridSizeBytes = m_animFrames[0].sizeBytes;
+            m_hasGrid = true;
+            m_hasFileGrid = true;
+        }
+        return true;
+    }
+
+    LOG_ERROR("[NanoVDB] Failed to load any animation frames");
+    return false;
+}
+
+size_t NanoVDBSystem::LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern) {
+    namespace fs = std::filesystem;
+
+    std::vector<std::string> filepaths;
+
+    try {
+        for (const auto& entry : fs::directory_iterator(directory)) {
+            if (entry.is_regular_file()) {
+                std::string ext = entry.path().extension().string();
+                if (ext == ".nvdb") {
+                    filepaths.push_back(entry.path().string());
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("[NanoVDB] Failed to enumerate directory {}: {}", directory, e.what());
+        return 0;
+    }
+
+    if (filepaths.empty()) {
+        LOG_WARN("[NanoVDB] No .nvdb files found in {}", directory);
+        return 0;
+    }
+
+    // Sort files by name (assumes numbered sequence like smoke_0001.nvdb)
+    std::sort(filepaths.begin(), filepaths.end());
+
+    LOG_INFO("[NanoVDB] Found {} .nvdb files in {}", filepaths.size(), directory);
+
+    if (LoadAnimationSequence(filepaths)) {
+        return m_animFrames.size();
+    }
+    return 0;
+}
+
+void NanoVDBSystem::SetAnimationFrame(size_t frame) {
+    if (m_animFrames.empty()) return;
+
+    frame = frame % m_animFrames.size();  // Clamp/wrap
+    m_animCurrentFrame = frame;
+
+    // Update current grid buffer to this frame
+    m_gridBuffer = m_animFrames[frame].buffer;
+    m_gridBufferSRV_GPU = m_animFrames[frame].srvGPU;
+    m_gridBufferSRV_CPU = m_animFrames[frame].srvCPU;
+    m_gridSizeBytes = m_animFrames[frame].sizeBytes;
+}
+
+void NanoVDBSystem::UpdateAnimation(float deltaTime) {
+    if (!m_animPlaying || m_animFrames.empty() || m_animFPS <= 0.0f) {
+        return;
+    }
+
+    m_animAccumulator += deltaTime;
+    float frameTime = 1.0f / m_animFPS;
+
+    while (m_animAccumulator >= frameTime) {
+        m_animAccumulator -= frameTime;
+
+        size_t nextFrame = m_animCurrentFrame + 1;
+
+        if (nextFrame >= m_animFrames.size()) {
+            if (m_animLoop) {
+                nextFrame = 0;
+            } else {
+                m_animPlaying = false;
+                return;
+            }
+        }
+
+        SetAnimationFrame(nextFrame);
     }
 }
