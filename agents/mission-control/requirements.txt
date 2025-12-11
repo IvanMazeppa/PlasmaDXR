@@ -1,3 +1,16 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:5975dd6ce445306b7bcc4f537c6cec3101f5b286b6e795b04d361112e7f333b4
-size 406
+# Mission-Control Agent - Production Dependencies
+# Python 3.10+ required
+
+# MCP Server for Claude Code integration
+mcp>=1.0.0
+
+# Claude Agent SDK - For autonomous reasoning (autonomous_agent.py)
+claude-agent-sdk>=0.1.13
+
+# HTTP Bridge (for Claude Code integration via HTTP)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0

@@ -1,3 +1,23 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:65e1e47432586e1e0099c51854d17bba9bc1f8f616a3d5ad8e23d04891f14728
-size 428
+# Core dependencies with compatible versions
+langchain-nvidia-ai-endpoints==0.3.5
+langchain-community==0.3.7
+langchain==0.3.7
+langgraph==0.2.34
+
+# Vector stores
+chromadb==0.5.20
+faiss-cpu==1.9.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.10.3
+rich==13.7.0
+
+# Claude Agent SDK
+claude-agent-sdk==0.1.6
+
+# BM25 for hybrid retrieval
+rank-bm25==0.2.2
+
+# MCP (will add when building MCP server)
+# mcp==1.1.0

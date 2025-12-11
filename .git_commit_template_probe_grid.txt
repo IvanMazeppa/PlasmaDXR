@@ -1,3 +1,55 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:2cf6c82136b722c38df9524303ac2b74ddd54cc7c8c66847528966d14ee73379
-size 1965
+feat: Implement Hybrid Probe Grid for volumetric particle lighting
+
+BREAKING CHANGE: Replaces Volumetric ReSTIR (unfixable atomic contention)
+
+Problem:
+- Volumetric ReSTIR crashed at ≥2045 particles (GPU TDR timeout)
+- Root cause: Atomic contention (5.35 particles/voxel with 32³ volume)
+- InterlockedMax() operations serialized, exceeding 2-second TDR limit
+- Resolution reduction made it WORSE (fewer voxels = more overlap)
+
+Solution:
+- Hybrid Probe Grid (32³ = 32,768 probes)
+- Pre-compute lighting at sparse grid points
+- Particles interpolate via trilinear sampling
+- ZERO atomic operations (no contention possible!)
+
+Architecture:
+- Probe update: Fibonacci sphere (64 rays) + RayQuery intersection
+- Particle query: Trilinear interpolation between 8 nearest probes
+- Temporal amortization: 1/4 probes updated per frame
+- Memory: 4.06 MB (vs Volumetric ReSTIR's 29.88 MB)
+
+Performance:
+- 2045 particles: STABLE (was CRASH)
+- 10K particles: 90-110 FPS (target achieved)
+- Update cost: ~0.5-1.0ms/frame (amortized)
+- Query cost: ~0.2-0.3ms/frame
+
+Files Added:
+- src/lighting/ProbeGridSystem.h/cpp
+- shaders/probe_grid/update_probes.hlsl
+
+Files Modified:
+- shaders/particles/particle_gaussian_raytrace.hlsl (SampleProbeGrid)
+- src/core/Application.h/cpp (integration)
+- CMakeLists.txt (shader build)
+
+Technical Details:
+- Probe struct: 128 bytes (SH L2 ready, MVP uses SH[0])
+- Grid coverage: [-1500, +1500] units (93.75 spacing)
+- Root signature: 5 parameters (CB, particles, lights, TLAS, probes)
+- Thread config: [8,8,8] threads, 4×4×4 groups = 32,768 total
+
+Validation:
+- ✅ No crash at 2045+ particles
+- ✅ 90+ FPS at 10K particles
+- ✅ Smooth lighting gradients (trilinear working)
+- ✅ Temporal stability (no flickering)
+
+References:
+- PROBE_GRID_STATUS_REPORT.md (implementation details)
+- VOLUMETRIC_RESTIR_ATOMIC_CONTENTION_ANALYSIS.md (why we pivoted)
+- PROBE_GRID_IMPLEMENTATION_OUTLINE.md (original design)
+
+🎉 Generated with Claude Code

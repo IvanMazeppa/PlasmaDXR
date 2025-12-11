@@ -1,3 +1,66 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:cc23619cf6889bcd80652405c7530a2b493906a9fbb47508f45f5afc8a49846f
-size 3853
+═══════════════════════════════════════════════════════════════════════════
+                    RESTIR BUG FIX - EXACT PATCH
+═══════════════════════════════════════════════════════════════════════════
+
+FILE: shaders/particles/particle_gaussian_raytrace.hlsl
+LINES: 472-478
+
+
+FIND THIS CODE (lines 472-478):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Reuse temporal sample if valid
+        if (temporalValid && prevReservoir.M > 0) {
+            // Decay M to prevent infinite accumulation
+            float temporalM = prevReservoir.M * restirTemporalWeight;
+            currentReservoir = prevReservoir;
+            currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
+        }
+
+
+REPLACE WITH:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        // Reuse temporal sample if valid AND has non-zero weight
+        if (temporalValid && prevReservoir.M > 0 && prevReservoir.weightSum > 0.0001) {
+            // Decay M to prevent infinite accumulation
+            float temporalM = prevReservoir.M * restirTemporalWeight;
+            currentReservoir = prevReservoir;
+            currentReservoir.M = max(1, uint(temporalM)); // Keep at least 1 sample
+
+            // IMPORTANT: Also decay weightSum to match M decay!
+            currentReservoir.weightSum = prevReservoir.weightSum * restirTemporalWeight;
+        }
+
+
+CHANGES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Line 473: ADD condition "&& prevReservoir.weightSum > 0.0001"
+   BEFORE: if (temporalValid && prevReservoir.M > 0) {
+   AFTER:  if (temporalValid && prevReservoir.M > 0 && prevReservoir.weightSum > 0.0001) {
+
+2. After line 477: ADD weightSum decay
+   NEW LINE: currentReservoir.weightSum = prevReservoir.weightSum * restirTemporalWeight;
+
+
+VERIFICATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After making these changes:
+1. Recompile shaders (rebuild project)
+2. Run application
+3. Run PIX capture on same scene
+4. Check reservoir values: (M > 0) should ALWAYS mean (weightSum > 0)
+
+
+EXPECTED RESULT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BEFORE: M=713 weightSum=0.000000  ✗ BUG (M > 0 but weightSum = 0)
+AFTER:  M=0   weightSum=0.000000  ✓ FIXED (both zero, valid state)
+
+
+═══════════════════════════════════════════════════════════════════════════
+                         END OF PATCH
+═══════════════════════════════════════════════════════════════════════════

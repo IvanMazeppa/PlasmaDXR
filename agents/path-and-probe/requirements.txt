@@ -1,3 +1,7 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:4d99b8bf73823529a169558d5f2b1ff902e63fdb75c9e1a0269dfb1b0e84005e
-size 142
+# MCP Server dependencies
+mcp==1.12.4
+python-dotenv==1.0.0
+
+# Optional: For future buffer analysis
+# numpy==1.26.0
+# struct (built-in)

@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:06328e1b3975b8f6e221a370d68dd7012cc2fd8d61241555151122aab0db4809
-size 141
+mcp
+beautifulsoup4
+# sentence-transformers  # Optional: only needed for semantic search
+# numpy  # Optional: only needed for semantic search

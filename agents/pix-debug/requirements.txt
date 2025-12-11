@@ -1,3 +1,13 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e00e6024ae4e92de7f9d32d407724750e0f4c40f004e041042789c69b81bca89
-size 294
+# Claude Agent SDK
+claude-agent-sdk==0.1.6
+
+# Data processing and analysis
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# JSON handling (for metadata and PIX analysis)
+# Built-in json module is sufficient, but adding for structured data validation
+pydantic>=2.0.0

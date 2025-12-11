@@ -1,3 +1,48 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:071e5a68e3a23e0f6448a5fc0338b8de423958f62a4e2436b9935edc3093c988
-size 3008
+/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/./pinn_v3_total_forces.py:417: UserWarning: # 'dynamic_axes' is not recommended when dynamo=True, and may lead to 'torch._dynamo.exc.UserError: Constraints violated.' Supply the 'dynamic_shapes' argument instead if export is unsuccessful.
+  torch.onnx.export(
+W1126 20:48:55.235000 53796 ml/venv/lib/python3.12/site-packages/torch/onnx/_internal/exporter/_compat.py:114] Setting ONNX exporter to use operator set version 18 because the requested opset_version 14 is a lower version than we have implementations for. Automatic version conversion will be performed, which may not be successful at converting to the requested version. If version conversion is unsuccessful, the opset version of the exported model will be kept at 18. Please consider setting opset_version >=18 to leverage latest ONNX features
+The model version conversion is not supported by the onnxscript version converter and fallback is enabled. The model will be converted using the onnx C API (target version: 14).
+================================================================================
+PINN v3 Training - Total Force Output
+================================================================================
+
+Loading training data from ml/training_data/pinn_v3_total_forces.npz...
+  Loaded 100000 training samples
+  State shape: torch.Size([100000, 10])
+  Force shape: torch.Size([100000, 3])
+
+Using device: cuda
+Model parameters: 67,843
+
+Training for 200 epochs...
+Epoch 10/200 - Loss: 0.000031 - LR: 0.001000
+Epoch 20/200 - Loss: 0.000022 - LR: 0.001000
+Epoch 30/200 - Loss: 0.000005 - LR: 0.001000
+Epoch 40/200 - Loss: 0.000001 - LR: 0.001000
+Epoch 50/200 - Loss: 0.000001 - LR: 0.000500
+Epoch 60/200 - Loss: 0.000005 - LR: 0.000500
+Epoch 70/200 - Loss: 0.000002 - LR: 0.000250
+Epoch 80/200 - Loss: 0.000001 - LR: 0.000125
+Epoch 90/200 - Loss: 0.000001 - LR: 0.000063
+Epoch 100/200 - Loss: 0.000001 - LR: 0.000031
+Epoch 110/200 - Loss: 0.000001 - LR: 0.000031
+Epoch 120/200 - Loss: 0.000001 - LR: 0.000016
+Epoch 130/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 140/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 150/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 160/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 170/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 180/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 190/200 - Loss: 0.000001 - LR: 0.000008
+Epoch 200/200 - Loss: 0.000001 - LR: 0.000008
+
+Exporting to ONNX: ml/models/pinn_v3_total_forces.onnx
+[torch.onnx] Obtain model graph for `AccretionDiskPINN_v3([...]` with `torch.export.export(..., strict=False)`...
+[torch.onnx] Obtain model graph for `AccretionDiskPINN_v3([...]` with `torch.export.export(..., strict=False)`... ✅
+[torch.onnx] Run decomposition...
+[torch.onnx] Run decomposition... ✅
+[torch.onnx] Translate the graph into ONNX...
+[torch.onnx] Translate the graph into ONNX... ✅
+✅ Model saved to ml/models/pinn_v3_total_forces.onnx
+   Final loss: 0.000001
+   Training curve saved to ml/models/pinn_v3_training_loss.png

@@ -1,3 +1,10 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:5ca1f2c1e6528e466a292bc80da76e3cbf586443ccbf6e3b5eefc033a1287ddb
-size 329
+# Claude Agent SDK - Latest version with enhanced vision capabilities
+claude-agent-sdk==0.1.6
+
+# Environment variable management
+python-dotenv==1.0.1
+
+# Optional: Additional utilities for pyro effects research and analysis
+# Uncomment if needed for numerical analysis or data processing
+# numpy>=1.24.0
+# scipy>=1.10.0

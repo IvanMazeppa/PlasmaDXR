@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:1a314c6b45a7c455c5fb1fb7b4071edd0027b22a0395d094560749c20c965163
-size 108
+langchain-nvidia-ai-endpoints==0.3.5
+langchain-community==0.3.7
+langchain-core==0.3.15
+langchain==0.3.7

@@ -1,3 +1,2 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:703ac49b58357bfee0eaffc87be8b69e3d2e5514f0c97784e3688debaef55621
-size 34
+mcp>=0.9.0
+python-dotenv>=1.0.0

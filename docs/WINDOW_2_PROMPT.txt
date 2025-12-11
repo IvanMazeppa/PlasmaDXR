@@ -1,3 +1,34 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e50425152c78a36d340111589b1e2517c4c1fce4db60156dd7ea9167ac8df6fe
-size 1642
+I'm working on Branch 0.17.0 of PlasmaDX-Clean, a DirectX 12 volumetric rendering project with autonomous multi-agent system.
+
+**Your task**: Fix 2 MCP server connection issues, then production test the autonomous agent.
+
+**Context documents to read first**:
+1. docs/CURRENT_STATE_SUMMARY_2025-11-16.md (project status)
+2. docs/WINDOW_2_HANDOFF_MCP_FIXES.md (detailed instructions)
+3. docs/VISION_REALIZATION_ROADMAP.md (architectural context)
+4. https://docs.claude.com/en/docs/agent-sdk/overview (Agent SDK specification)
+
+**Summary**:
+- Mission-control autonomous agent is working (agents/mission-control/autonomous_agent.py)
+- 4/6 specialist MCP servers connected successfully
+- 2/6 failing: log-analysis-rag and pix-debug (likely virtual env issues)
+- Your job: Fix those 2 connections, then test autonomous agent on a real problem
+
+**Tasks** (read WINDOW_2_HANDOFF_MCP_FIXES.md for details):
+1. Fix log-analysis-rag connection (30 min)
+2. Fix pix-debug connection (30 min)
+3. Production test: Choose one real problem (probe grid brightness, DLSS-SR breakage, or Nov 2-4 visual regression)
+
+**Success criteria**:
+- 6/6 specialist MCP servers show "connected" in mission-control startup
+- Autonomous agent completes production test workflow autonomously
+- Agent coordinates 3+ tools and provides evidence-based recommendation
+
+**Report back** to Window 1 (main session) with:
+- Connection fix results
+- Production test findings
+- Any blockers encountered
+
+**Important**: Don't modify mission-control autonomous agent - it's working correctly. Only fix specialist MCP server connections.
+
+Ready to start?
