@@ -1,218 +1,342 @@
-\# tmux + worktrees + Claude CLI (WSL)
+# Tmux + Git Worktrees + Claude Code Workflow
 
-
-
-This doc shows two patterns to run multiple Claude CLIs across your worktrees with minimal IDE windows:
-
-\- \*\*Single session / many windows\*\* (recommended): one `tmux` session named `plasma` with windows for each worktree plus dedicated Claude windows.
-
-\- \*\*Per-AI sessions\*\* (optional): separate `tmux` sessions for each Claude instance.
-
-
-
-Everything here assumes WSL/Ubuntu paths. Adjust `ROOT` if your paths differ.
-
-
+Single-window workflow for running multiple Claude instances across git worktrees.
 
 ---
 
+## Setup Summary
 
-
-\## Prereqs
-
-\- ` `
-
-\- Worktrees on the server, e.g.:
-
-&nbsp; - `/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Blender`
-
-&nbsp; - `/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-PINN-v4`
-
-&nbsp; - `/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-MultiAgent`
-
-\- Claude CLI already configured (API key/org). Each tmux window just runs the CLI; it will connect on its own.
-
-
-
-\## Quick tmux keys
-
-\- List/switch windows: `Ctrl-b w` (choose) or `Ctrl-b 1/2/3...`
-
-\- Splits (same worktree window): `Ctrl-b %` (vertical), `Ctrl-b "` (horizontal)
-
-\- Detach: `Ctrl-b d` (everything keeps running)
-
-\- Reattach: `tmux attach -t plasma` (or session name)
-
-
+| Component | Location |
+|-----------|----------|
+| Worktrees | `/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-*` |
+| Tmux config | `~/.tmux.conf` |
+| Shell aliases | `~/.bashrc` |
+| Session saves | `~/.tmux/resurrect/` (auto-managed) |
 
 ---
 
+## Daily Workflow
 
-
-\## Pattern A: One session, many windows (recommended)
-
-Script: `scripts/tmux\_single\_session.sh`
-
-
-
-What it does:
-
-\- Creates/attaches to session `plasma`.
-
-\- Windows (rename as needed):
-
-&nbsp; - `blender` → `/PlasmaDX-Blender`
-
-&nbsp; - `pinn` → `/PlasmaDX-PINN-v4`
-
-&nbsp; - `multi` → `/PlasmaDX-MultiAgent`
-
-&nbsp; - `claude-blender` → same dir, run Claude Sonnet here.
-
-&nbsp; - `claude-pinn` → same dir, run Claude Opus here.
-
-&nbsp; - `claude-multi` → same dir, run Claude Opus here.
-
-\- Attaches to the session.
-
-
-
-Run it:
-
+### Start of Day
 ```bash
-
-chmod +x scripts/tmux\_single\_session.sh
-
-./scripts/tmux\_single\_session.sh
-
+tmux                    # Start tmux
+Ctrl+B, Ctrl+R          # Restore yesterday's sessions
+tb                      # Attach to blender session (or tm, tp, etc.)
+claude                  # Start Claude in the session
 ```
 
-
-
-After attaching, start the CLIs in their windows:
-
-\- In `claude-blender`: `claude ... --model sonnet` (example)
-
-\- In `claude-pinn`: `claude ... --model opus`
-
-\- In `claude-multi`: `claude ... --model opus`
-
-
-
-Day-to-day loop:
-
-1\) SSH into the server (from client) → `tmux attach -t plasma`
-
-2\) `Ctrl-b w` to jump between worktrees/CLIs
-
-3\) `Ctrl-b d` to leave everything running
-
-
-
----
-
-
-
-\## Pattern B: Separate sessions per Claude (optional isolation)
-
-Script: `scripts/tmux\_per\_ai\_sessions.sh`
-
-
-
-What it does:
-
-\- Creates detached sessions: `claude-pinn`, `claude-blender`, `claude-multi`, each in its own worktree.
-
-\- Prints the session list.
-
-
-
-Run it:
-
+### End of Day
 ```bash
-
-chmod +x scripts/tmux\_per\_ai\_sessions.sh
-
-./scripts/tmux\_per\_ai\_sessions.sh
-
-tmux attach -t claude-blender   # or claude-pinn / claude-multi
-
+Ctrl+B, Ctrl+S          # Save all sessions (or just type: tsave)
+# Now safe to shut down
 ```
 
-
-
-Detach with `Ctrl-b d`; repeat `tmux attach -t <name>` as needed. `tmux ls` to list them.
-
-
-
----
-
-
-
-\## Optional helpers
-
-\- Put tmux QOL in `~/.tmux.conf`:
-
-&nbsp; ```bash
-
-&nbsp; set -g mouse on
-
-&nbsp; set -g base-index 1
-
-&nbsp; set -g renumber-windows on
-
-&nbsp; setw -g automatic-rename on
-
-&nbsp; ```
-
-&nbsp; Reload in-session: `tmux source-file ~/.tmux.conf`
-
-
-
-\- Simple shell aliases (add to `~/.bashrc` or `~/.zshrc`):
-
-&nbsp; ```bash
-
-&nbsp; alias ta='tmux attach -t plasma'
-
-&nbsp; alias tls='tmux ls'
-
-&nbsp; alias t1="tmux switch-client -t plasma \\; select-window -t 1"
-
-&nbsp; alias t2="tmux switch-client -t plasma \\; select-window -t 2"
-
-&nbsp; alias t3="tmux switch-client -t plasma \\; select-window -t 3"
-
-&nbsp; ```
-
-
+### Quick Reference
+```bash
+tls                     # List all sessions
+tb                      # Attach to claude-blender
+tm                      # Attach to claude-multi
+tp                      # Attach to claude-pinn
+tsave                   # Save sessions (before shutdown)
+trestore                # Restore sessions (after startup)
+tshutdown               # Save + confirmation message
+tstart                  # Create fresh sessions (if needed)
+```
 
 ---
 
+## Working Inside Tmux
 
+### While Claude is Running - Access Shell
 
-\## Notes on IDE windows
+**Option 1: Split pane** (recommended)
+```
+Ctrl+B, -               # Split horizontal (shell below Claude)
+Ctrl+B, |               # Split vertical (shell beside Claude)
+Ctrl+B, ↑/↓/←/→         # Navigate between panes
+Ctrl+B, x               # Close current pane
+Ctrl+B, z               # Zoom pane (toggle fullscreen)
+```
 
-\- You can keep \*\*one\*\* Cursor/IDE window. Use its terminal to attach to tmux; switch tmux windows instead of opening more IDE windows.
+**Option 2: New window** (like a tab)
+```
+Ctrl+B, c               # Create new window
+Ctrl+B, n / p           # Next / Previous window
+Ctrl+B, 1/2/3           # Jump to window number
+Ctrl+B, w               # Visual window picker
+```
 
-\- The CLI windows keep running after you close/detach the IDE terminal; reattach later from any client.
+### Session Management
+```
+Ctrl+B, d               # Detach (leave everything running)
+Ctrl+B, s               # Switch between sessions
+Ctrl+B, $               # Rename current session
+Ctrl+B, ,               # Rename current window
+```
 
-
+### Scrolling / Copy Mode
+```
+Ctrl+B, [               # Enter scroll mode
+q                       # Exit scroll mode
+↑/↓ or PgUp/PgDn        # Scroll
+```
+Mouse wheel also works (scrolling enters copy mode automatically).
 
 ---
 
+## Creating New Worktrees
 
+From a shell pane (Ctrl+B, - to split):
 
-\## Troubleshooting
+```bash
+# Create new worktree
+cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean
+git worktree add ../PlasmaDX-MultiAgent -b feature/multi-agent
 
-\- “Session already exists”: `tmux kill-session -t plasma` (or the name) if you truly want a fresh start.
+# Create tmux session for it
+tmux new-session -d -s claude-multi -c /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-MultiAgent
 
-\- “Path doesn’t exist”: update `ROOT` in the scripts to your actual mount/drive.
+# Save the new session layout
+tsave
+```
 
-\- “CLI won’t connect”: re-check your Claude CLI auth/env vars; tmux itself just keeps the process alive.
+---
 
+## Session Persistence & Crash Protection
 
+### Automatic Protection (tmux-continuum)
+- **Auto-saves every 5 minutes** - protects against crashes
+- **Auto-restores on tmux start** - just run `tmux` after a crash
 
+### What Gets Saved
+- All sessions and their names
+- Window layouts and pane splits
+- Working directory of each pane
+- Scroll history
 
+### What Doesn't Get Saved
+- Running processes (Claude won't auto-restart)
+- Unsaved editor buffers
+- **Uncommitted git changes** - commit frequently!
 
+### Manual Save/Restore
+```
+Ctrl+B, Ctrl+S          # Save (inside tmux)
+Ctrl+B, Ctrl+R          # Restore (inside tmux)
+```
+Or from shell:
+```bash
+tsave                   # Save from command line
+trestore                # Restore from command line
+```
+
+### Crash Recovery
+After a crash, just run:
+```bash
+tmux                    # Auto-restores last saved state
+```
+Then start Claude in each session again.
+
+### Best Practices for Unreliable Systems
+1. **Commit early, commit often** - git commits survive crashes
+2. **Push to GitHub** - protects against disk failure
+3. **Claude conversations are auto-saved** to `~/.claude/`
+4. tmux auto-saves every 5 min, but layouts only (not running processes)
+
+---
+
+## MCP Servers
+
+MCP servers are configured at **user scope** in `~/.claude.json` and are automatically available in all worktrees. No per-project configuration needed.
+
+To check available servers:
+```bash
+claude mcp list
+```
+
+---
+
+## Troubleshooting
+
+### "No sessions" after restart
+```bash
+tmux
+Ctrl+B, Ctrl+R          # Restore saved sessions
+# OR
+tstart                  # Create fresh sessions
+```
+
+### Session won't restore
+```bash
+ls ~/.tmux/resurrect/   # Check if saves exist
+# If empty, sessions weren't saved before shutdown
+```
+
+### Kill a stuck session
+```bash
+tmux kill-session -t session-name
+```
+
+### Claude won't start in session
+- Check you're in the right directory: `pwd`
+- Check Claude is installed: `which claude`
+- Check auth: `claude --version`
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Your Terminal (one window)                             │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  tmux                                             │  │
+│  │  ┌─────────────────┬─────────────────────────┐   │  │
+│  │  │ [1] blender     │ [2] multi    [3] pinn   │   │  │
+│  │  │                 │                         │   │  │
+│  │  │  Claude Code    │  Claude Code            │   │  │
+│  │  │  (Blender wt)   │  (Multi-Agent wt)       │   │  │
+│  │  │                 │                         │   │  │
+│  │  │─────────────────┤                         │   │  │
+│  │  │  Shell pane     │                         │   │  │
+│  │  │  (git, etc.)    │                         │   │  │
+│  │  └─────────────────┴─────────────────────────┘   │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+Switch between windows with `Ctrl+B, 1/2/3` or `Ctrl+B, w`.
+
+---
+
+---
+
+## Worktree Types & Risk Levels
+
+### Safe Worktrees (Documentation/Scripts Only)
+Examples: `PlasmaDX-Blender`, agent development, recipe writing
+
+**These don't touch C++/HLSL code, so they can't break the build.**
+
+Workflow:
+```bash
+# Work on your changes
+git add -A && git commit -m "Add blender recipes"
+git push
+
+# Can merge to main anytime via PR - no testing needed
+```
+
+### Risky Worktrees (Code Changes)
+Examples: `PlasmaDX-MultiAgent` (acceleration structures), `PlasmaDX-PINN-v4`
+
+**These modify C++/HLSL and could cause crashes.**
+
+Workflow:
+```bash
+# 1. Make changes and commit
+git add -A && git commit -m "WIP: optimize BLAS rebuild"
+git push
+
+# 2. Build and test IN THE WORKTREE (see below)
+# 3. Only create PR after testing passes
+```
+
+---
+
+## Building in Worktrees
+
+Each worktree needs its own build directory. **Do not share builds between worktrees.**
+
+### Quick Commands (Recommended)
+```bash
+wt-init      # First-time setup: creates build/ and runs cmake
+wt-build     # Compile the project
+wt-run       # Run the executable
+```
+
+### Manual Commands (if needed)
+
+**First-Time Setup:**
+```bash
+cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-MultiAgent
+mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+```
+
+**Rebuild:**
+```bash
+"/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" \
+  build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64 /t:PlasmaDX-Clean /v:minimal
+```
+
+**Run:**
+```bash
+./build/bin/Debug/PlasmaDX-Clean.exe
+```
+
+---
+
+## Safe Merge Protocol
+
+### For Safe Changes (docs, scripts, agents)
+```
+1. Commit and push to your branch
+2. Create PR on GitHub
+3. Merge immediately (no testing needed)
+```
+
+### For Risky Changes (C++/HLSL code)
+```
+1. Commit and push to your branch
+2. Build in the worktree (cmake + MSBuild)
+3. Run and test:
+   - Does it launch without crashing?
+   - Do the changes work as intended?
+   - Is performance acceptable?
+4. If tests pass → Create PR
+5. Merge to main
+6. Rebuild PlasmaDX-Clean to verify
+```
+
+### Emergency Rollback
+If something breaks main after merging:
+```bash
+cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean
+git revert HEAD      # Creates a new commit that undoes the last one
+git push
+```
+
+---
+
+## Commit Message Convention
+
+Use prefixes to indicate risk level:
+
+| Prefix | Meaning | Example |
+|--------|---------|---------|
+| `docs:` | Documentation only | `docs: add hydrogen cloud recipe` |
+| `agent:` | Agent prompts/scripts | `agent: add blender guardrails` |
+| `feat:` | New feature (needs testing) | `feat: add BLAS update optimization` |
+| `fix:` | Bug fix (needs testing) | `fix: resolve particle flicker` |
+| `perf:` | Performance change (needs testing) | `perf: optimize acceleration structure` |
+| `WIP:` | Work in progress (don't merge yet) | `WIP: experimenting with mesh shaders` |
+
+---
+
+## Git Push Commands
+
+### From Any Worktree
+```bash
+git push                           # Push current branch
+git push -u origin branch-name     # First push of new branch
+```
+
+### If Worktree Push Fails (fallback)
+```bash
+gpush                              # Uses main repo to push
+```
+
+---
+
+*Last updated: 2025-12-11*
