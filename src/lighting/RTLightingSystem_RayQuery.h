@@ -152,11 +152,12 @@ private:
     bool CreateAccelerationStructures();
 
     // Dual AS helpers (Phase 1)
+    // UAV barrier batching optimization (2025-12-10): skipBarrier parameter allows caller to batch barriers
     bool CreateAccelerationStructureSet(AccelerationStructureSet& asSet, uint32_t particleCount, const std::string& namePrefix);
     void GenerateAABBs_Dual(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer, uint32_t totalParticleCount);
-    void BuildBLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, uint32_t particleOffset);
-    void BuildTLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet);
-    void BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList);  // Combined TLAS with 2 instances for full visibility
+    void BuildBLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, uint32_t particleOffset, bool skipBarrier = false);
+    void BuildTLAS_ForSet(ID3D12GraphicsCommandList4* cmdList, AccelerationStructureSet& asSet, bool skipBarrier = false);
+    void BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList, bool skipBarrier = false);  // Combined TLAS with 2 instances for full visibility
 
     // Ground plane helpers
     bool CreateGroundPlaneGeometry();
