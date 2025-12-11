@@ -12,63 +12,72 @@
 // Frustum Plane Extraction (2025-12-11 optimization)
 // ============================================================================
 // Extracts 6 frustum planes from view-projection matrix using Gribb/Hartmann method
+// For DirectX Left-Handed coordinate system with row-major matrices
 // Planes are normalized and point INWARD (positive half-space is inside frustum)
+//
+// XMFLOAT4X4 uses _RC naming where R=row(1-4), C=column(1-4)
+// Example: m._14 means row 1, column 4; m._41 means row 4, column 1
+//
+// Reference: https://www.braynzarsoft.net/viewtutorial/q16390-34-aabb-cpu-side-frustum-culling
+// The Braynzar tutorial shows exact element access for DirectX matrices
 static void ExtractFrustumPlanes(const DirectX::XMMATRIX& viewProj, DirectX::XMFLOAT4 planes[6]) {
     using namespace DirectX;
 
-    // Transpose to get row-major access
-    XMFLOAT4X4 vp;
-    XMStoreFloat4x4(&vp, XMMatrixTranspose(viewProj));
+    XMFLOAT4X4 m;
+    XMStoreFloat4x4(&m, viewProj);
 
-    // Left plane: row3 + row0
+    // Gribb/Hartmann frustum extraction - combine column 4 with other columns
+    // Pattern: plane.x uses row 1 elements, plane.y uses row 2, plane.z uses row 3, plane.w uses row 4
+
+    // Left plane: col4 + col1
     planes[0] = XMFLOAT4(
-        vp._14 + vp._11,
-        vp._24 + vp._21,
-        vp._34 + vp._31,
-        vp._44 + vp._41
+        m._14 + m._11,
+        m._24 + m._21,
+        m._34 + m._31,
+        m._44 + m._41
     );
 
-    // Right plane: row3 - row0
+    // Right plane: col4 - col1
     planes[1] = XMFLOAT4(
-        vp._14 - vp._11,
-        vp._24 - vp._21,
-        vp._34 - vp._31,
-        vp._44 - vp._41
+        m._14 - m._11,
+        m._24 - m._21,
+        m._34 - m._31,
+        m._44 - m._41
     );
 
-    // Bottom plane: row3 + row1
+    // Bottom plane: col4 + col2
     planes[2] = XMFLOAT4(
-        vp._14 + vp._12,
-        vp._24 + vp._22,
-        vp._34 + vp._32,
-        vp._44 + vp._42
+        m._14 + m._12,
+        m._24 + m._22,
+        m._34 + m._32,
+        m._44 + m._42
     );
 
-    // Top plane: row3 - row1
+    // Top plane: col4 - col2
     planes[3] = XMFLOAT4(
-        vp._14 - vp._12,
-        vp._24 - vp._22,
-        vp._34 - vp._32,
-        vp._44 - vp._42
+        m._14 - m._12,
+        m._24 - m._22,
+        m._34 - m._32,
+        m._44 - m._42
     );
 
-    // Near plane: row2 (for LH coordinate system)
+    // Near plane: col3 (DirectX LH uses [0,1] depth range)
     planes[4] = XMFLOAT4(
-        vp._13,
-        vp._23,
-        vp._33,
-        vp._43
+        m._13,
+        m._23,
+        m._33,
+        m._43
     );
 
-    // Far plane: row3 - row2
+    // Far plane: col4 - col3
     planes[5] = XMFLOAT4(
-        vp._14 - vp._13,
-        vp._24 - vp._23,
-        vp._34 - vp._33,
-        vp._44 - vp._43
+        m._14 - m._13,
+        m._24 - m._23,
+        m._34 - m._33,
+        m._44 - m._43
     );
 
-    // Normalize all planes
+    // Normalize all planes (essential for distance calculations)
     for (int i = 0; i < 6; i++) {
         float length = sqrtf(planes[i].x * planes[i].x +
                             planes[i].y * planes[i].y +

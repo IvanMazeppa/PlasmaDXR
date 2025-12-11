@@ -3848,6 +3848,36 @@ void Application::RenderImGui() {
             }
         }
 
+        // === GPU Frustum Culling (2025-12-11 optimization) ===
+        ImGui::Separator();
+        ImGui::Text("GPU Frustum Culling (Optimization)");
+        if (m_rtLighting) {
+            bool frustumEnabled = m_rtLighting->IsFrustumCullingEnabled();
+            if (ImGui::Checkbox("Enable Frustum Culling", &frustumEnabled)) {
+                m_rtLighting->SetFrustumCullingEnabled(frustumEnabled);
+                LOG_INFO("[Frustum Culling] {}", frustumEnabled ? "ENABLED" : "DISABLED");
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("GPU-side frustum culling for particle AABBs\n"
+                                  "- Culls particles outside view frustum before BLAS build\n"
+                                  "- Reduces BLAS build time and ray traversal cost\n"
+                                  "- Toggle OFF to compare performance");
+            }
+
+            if (frustumEnabled) {
+                float expansion = 1.5f; // Default value, would need getter to read actual
+                if (ImGui::SliderFloat("Frustum Expansion", &expansion, 1.0f, 3.0f, "%.1fx")) {
+                    m_rtLighting->SetFrustumExpansion(expansion);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Expand frustum to prevent particle pop-in at edges\n"
+                                      "1.0x = Exact frustum (may cause pop-in)\n"
+                                      "1.5x = Default (conservative)\n"
+                                      "2.0x+ = Very conservative (less culling)");
+                }
+            }
+        }
+
         // === Phase 2C: Explosion System ===
         ImGui::Separator();
         ImGui::Text("Explosion System (Phase 2C)");
