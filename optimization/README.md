@@ -47,8 +47,8 @@ The toolkit uses **4 specialized optimization agents** running in parallel:
 - **Focus:** BLAS/TLAS acceleration structure rebuilds
 - **Projected Gain:** +41 FPS (+29%)
 - **Recommendations:**
-  - Implement BLAS update (not rebuild)
-  - Add frustum culling before TLAS build
+  - ✅ Implement BLAS update (not rebuild) - **DONE 2025-12-08**
+  - ✅ Add frustum culling before TLAS build - **DONE 2025-12-11**
   - Distance-based LOD for particle density
 
 #### 2. Shader_Optimizer
@@ -170,7 +170,7 @@ python3 optimization/multi_agent_optimizer.py .
 ### Phase 3: Medium-Complexity (Week 2)
 **Target:** 170 FPS → 200 FPS (+30 FPS)
 
-1. **Frustum Culling**
+1. ✅ **Frustum Culling** - **DONE 2025-12-11** (see `FRUSTUM_CULLING_IMPLEMENTATION.md`)
 2. **Atomic Froxel Injection**
 3. **ONNX Runtime Setup**
 
@@ -235,8 +235,11 @@ optimization/
 ├── README.md                           # This file
 ├── OPTIMIZATION_ACTION_PLAN.md         # Detailed implementation plan
 ├── OPTIMIZATION_ROADMAP.txt            # Visual roadmap diagram
+├── IMPLEMENTED_2025-12-08.md           # AABB sizing + BLAS update implementation
+├── FRUSTUM_CULLING_IMPLEMENTATION.md   # GPU frustum culling implementation (2025-12-11)
 ├── multi_agent_optimizer.py            # Main optimization framework
 ├── performance_dashboard.py            # Real-time performance monitoring
+├── frustum_culling_benchmark.py        # Benchmark script for frustum culling
 └── reports/
     └── optimization_report_<timestamp>.json  # Analysis results
 ```

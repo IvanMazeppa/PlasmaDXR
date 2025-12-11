@@ -23,7 +23,11 @@ Multi-agent performance analysis identified **4 critical optimization domains** 
 ### 🎯 Priority 1: BLAS/TLAS Acceleration Structure Optimization
 **Projected Gain:** +41 FPS (+29%)
 **Domain:** Raytracing Traversal
-**Status:** 🔄 Ready to Implement
+**Status:** ✅ IMPLEMENTED (Phases 1 & 2 Complete)
+
+> **Implementation Notes:**
+> - Phase 1 (BLAS Update): Implemented 2025-12-08 - see `IMPLEMENTED_2025-12-08.md`
+> - Phase 2 (Frustum Culling): Implemented 2025-12-11 - see `FRUSTUM_CULLING_IMPLEMENTATION.md`
 
 #### Current Bottleneck
 - Full BLAS rebuild every frame: 2.1ms
@@ -32,7 +36,7 @@ Multi-agent performance analysis identified **4 critical optimization domains** 
 
 #### Optimization Strategy
 
-**Phase 1: BLAS Update (Week 1)**
+**Phase 1: BLAS Update (Week 1)** ✅ DONE 2025-12-08
 ```cpp
 // src/lighting/RTLightingSystem.cpp
 D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags =
@@ -49,16 +53,12 @@ BuildRaytracingAccelerationStructure(..., buildFlags, ..., pSourceAccelerationSt
 
 **Expected:** 2.1ms → 0.8ms (-62%), +20 FPS
 
-**Phase 2: Frustum Culling (Week 2)**
+**Phase 2: Frustum Culling (Week 2)** ✅ DONE 2025-12-11
 ```cpp
-// Add before TLAS build
-std::vector<D3D12_RAYTRACING_INSTANCE_DESC> visibleInstances;
-for (auto& instance : allInstances) {
-    if (FrustumContainsAABB(m_camera.GetFrustum(), instance.AABB)) {
-        visibleInstances.push_back(instance);
-    }
-}
-// Build TLAS with visibleInstances only
+// GPU-side frustum culling in AABB generation shader
+// Particles outside frustum output degenerate AABBs (min > max)
+// See: shaders/dxr/generate_particle_aabbs.hlsl
+// See: FRUSTUM_CULLING_IMPLEMENTATION.md for full details
 ```
 
 **Expected:** Additional +21 FPS (+15%), **Total: +41 FPS**

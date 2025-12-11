@@ -9,6 +9,9 @@
 
 Two major performance optimizations implemented targeting ray intersection overhead:
 
+> **UPDATE 2025-12-11:** GPU Frustum Culling has been implemented as a follow-up optimization.
+> See `FRUSTUM_CULLING_IMPLEMENTATION.md` for details.
+
 | Optimization | File(s) | Expected Gain |
 |--------------|---------|---------------|
 | AABB Proportional Sizing | gaussian_common.hlsl | **+50-100% FPS** (reduced ray tests) |
