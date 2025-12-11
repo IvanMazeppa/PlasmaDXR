@@ -56,7 +56,13 @@ public:
     void ComputeLighting(ID3D12GraphicsCommandList4* cmdList,
                         ID3D12Resource* particleBuffer,
                         uint32_t particleCount,
-                        const DirectX::XMFLOAT3& cameraPosition);
+                        const DirectX::XMFLOAT3& cameraPosition,
+                        const DirectX::XMMATRIX* viewProjMatrix = nullptr);  // Optional: for frustum culling
+
+    // Frustum culling settings
+    void SetFrustumCullingEnabled(bool enabled) { m_enableFrustumCulling = enabled; }
+    void SetFrustumExpansion(float expansion) { m_frustumExpansion = expansion; }
+    bool IsFrustumCullingEnabled() const { return m_enableFrustumCulling; }
 
     // Get output lighting buffer
     ID3D12Resource* GetLightingBuffer() const { return m_lightingBuffer.Get(); }
@@ -195,6 +201,11 @@ private:
     float m_adaptiveOuterScale = 2.0f;
     float m_densityScaleMin = 0.3f;
     float m_densityScaleMax = 3.0f;
+
+    // Frustum Culling (2025-12-11 optimization)
+    bool m_enableFrustumCulling = true;       // Enable GPU-side frustum culling for AABBs
+    float m_frustumExpansion = 1.5f;          // Expand frustum by this factor to avoid pop-in
+    DirectX::XMFLOAT4 m_frustumPlanes[6];     // Cached frustum planes (Left, Right, Bottom, Top, Near, Far)
 
     // Compute shaders (RayQuery approach - no lib_6_x needed!)
     Microsoft::WRL::ComPtr<ID3DBlob> m_aabbGenShader;

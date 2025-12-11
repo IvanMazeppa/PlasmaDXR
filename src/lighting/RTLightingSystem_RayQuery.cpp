@@ -8,6 +8,80 @@
 
 #pragma comment(lib, "d3dcompiler.lib")
 
+// ============================================================================
+// Frustum Plane Extraction (2025-12-11 optimization)
+// ============================================================================
+// Extracts 6 frustum planes from view-projection matrix using Gribb/Hartmann method
+// Planes are normalized and point INWARD (positive half-space is inside frustum)
+static void ExtractFrustumPlanes(const DirectX::XMMATRIX& viewProj, DirectX::XMFLOAT4 planes[6]) {
+    using namespace DirectX;
+
+    // Transpose to get row-major access
+    XMFLOAT4X4 vp;
+    XMStoreFloat4x4(&vp, XMMatrixTranspose(viewProj));
+
+    // Left plane: row3 + row0
+    planes[0] = XMFLOAT4(
+        vp._14 + vp._11,
+        vp._24 + vp._21,
+        vp._34 + vp._31,
+        vp._44 + vp._41
+    );
+
+    // Right plane: row3 - row0
+    planes[1] = XMFLOAT4(
+        vp._14 - vp._11,
+        vp._24 - vp._21,
+        vp._34 - vp._31,
+        vp._44 - vp._41
+    );
+
+    // Bottom plane: row3 + row1
+    planes[2] = XMFLOAT4(
+        vp._14 + vp._12,
+        vp._24 + vp._22,
+        vp._34 + vp._32,
+        vp._44 + vp._42
+    );
+
+    // Top plane: row3 - row1
+    planes[3] = XMFLOAT4(
+        vp._14 - vp._12,
+        vp._24 - vp._22,
+        vp._34 - vp._32,
+        vp._44 - vp._42
+    );
+
+    // Near plane: row2 (for LH coordinate system)
+    planes[4] = XMFLOAT4(
+        vp._13,
+        vp._23,
+        vp._33,
+        vp._43
+    );
+
+    // Far plane: row3 - row2
+    planes[5] = XMFLOAT4(
+        vp._14 - vp._13,
+        vp._24 - vp._23,
+        vp._34 - vp._33,
+        vp._44 - vp._43
+    );
+
+    // Normalize all planes
+    for (int i = 0; i < 6; i++) {
+        float length = sqrtf(planes[i].x * planes[i].x +
+                            planes[i].y * planes[i].y +
+                            planes[i].z * planes[i].z);
+        if (length > 0.0001f) {
+            planes[i].x /= length;
+            planes[i].y /= length;
+            planes[i].z /= length;
+            planes[i].w /= length;
+        }
+    }
+}
+
 RTLightingSystem_RayQuery::~RTLightingSystem_RayQuery() {
     Shutdown();
 }
@@ -106,12 +180,13 @@ bool RTLightingSystem_RayQuery::CreateRootSignatures() {
     HRESULT hr;
 
     // AABB Generation Root Signature
-    // b0: AABBConstants
+    // b0: AABBConstants (expanded for frustum culling)
     // t0: StructuredBuffer<Particle> particles
     // u0: RWStructuredBuffer<AABB> particleAABBs
     {
         CD3DX12_ROOT_PARAMETER1 rootParams[3];
-        rootParams[0].InitAsConstants(12, 0);  // b0: AABBConstants (12 DWORDs - Phase 1.5: added particleOffset + padding1)
+        // 12 existing + 24 (6 frustum planes) + 2 (enable + expansion) = 38 DWORDs
+        rootParams[0].InitAsConstants(38, 0);  // b0: AABBConstants (38 DWORDs - frustum culling 2025-12-11)
         rootParams[1].InitAsShaderResourceView(0);  // t0: particles
         rootParams[2].InitAsUnorderedAccessView(0);  // u0: AABBs
 
@@ -651,11 +726,13 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
         // Bind Probe Grid AABB buffer (u0)
         cmdList->SetComputeRootUnorderedAccessView(2, m_probeGridAS.aabbBuffer->GetGPUVirtualAddress());
 
-        // Constants for probe grid
+        // Constants for probe grid (expanded for frustum culling 2025-12-11)
+        // 38 DWORDs total: 12 original + 24 (6 planes) + 2 (enable + expansion)
         struct AABBConstants {
+            // Original constants (12 DWORDs)
             uint32_t particleCount;
             float particleRadius;
-            uint32_t particleOffset;        // Phase 1.5: Start reading from this particle index
+            uint32_t particleOffset;
             uint32_t padding1;
             uint32_t enableAdaptiveRadius;
             float adaptiveInnerZone;
@@ -665,6 +742,10 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             float densityScaleMin;
             float densityScaleMax;
             float padding2;
+            // Frustum culling (26 DWORDs: 24 for planes + 2 for flags)
+            DirectX::XMFLOAT4 frustumPlanes[6];  // Left, Right, Bottom, Top, Near, Far
+            uint32_t enableFrustumCulling;
+            float frustumExpansion;
         } probeGridConstants = {
             probeGridCount,
             m_particleRadius,
@@ -677,7 +758,12 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             m_adaptiveOuterScale,
             m_densityScaleMin,
             m_densityScaleMax,
-            0.0f
+            0.0f,
+            // Frustum planes
+            m_frustumPlanes[0], m_frustumPlanes[1], m_frustumPlanes[2],
+            m_frustumPlanes[3], m_frustumPlanes[4], m_frustumPlanes[5],
+            m_enableFrustumCulling ? 1u : 0u,
+            m_frustumExpansion
         };
         cmdList->SetComputeRoot32BitConstants(0, sizeof(probeGridConstants) / 4, &probeGridConstants, 0);
 
@@ -697,11 +783,13 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
         // Bind Direct RT AABB buffer (u0)
         cmdList->SetComputeRootUnorderedAccessView(2, m_directRTAS.aabbBuffer->GetGPUVirtualAddress());
 
-        // Constants for direct RT - reads overflow particles only (2044+)
+        // Constants for direct RT (expanded for frustum culling 2025-12-11)
+        // 38 DWORDs total: 12 original + 24 (6 planes) + 2 (enable + expansion)
         struct AABBConstants {
+            // Original constants (12 DWORDs)
             uint32_t particleCount;
             float particleRadius;
-            uint32_t particleOffset;        // Phase 1.5: Start reading from this particle index
+            uint32_t particleOffset;
             uint32_t padding1;
             uint32_t enableAdaptiveRadius;
             float adaptiveInnerZone;
@@ -711,6 +799,10 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             float densityScaleMin;
             float densityScaleMax;
             float padding2;
+            // Frustum culling (26 DWORDs: 24 for planes + 2 for flags)
+            DirectX::XMFLOAT4 frustumPlanes[6];  // Left, Right, Bottom, Top, Near, Far
+            uint32_t enableFrustumCulling;
+            float frustumExpansion;
         } directRTConstants = {
             directRTCount,                   // CRITICAL FIX: Only overflow count, not total!
             m_particleRadius,
@@ -723,7 +815,12 @@ void RTLightingSystem_RayQuery::GenerateAABBs_Dual(
             m_adaptiveOuterScale,
             m_densityScaleMin,
             m_densityScaleMax,
-            0.0f
+            0.0f,
+            // Frustum planes
+            m_frustumPlanes[0], m_frustumPlanes[1], m_frustumPlanes[2],
+            m_frustumPlanes[3], m_frustumPlanes[4], m_frustumPlanes[5],
+            m_enableFrustumCulling ? 1u : 0u,
+            m_frustumExpansion
         };
         cmdList->SetComputeRoot32BitConstants(0, sizeof(directRTConstants) / 4, &directRTConstants, 0);
 
@@ -1057,9 +1154,18 @@ void RTLightingSystem_RayQuery::DispatchRayQueryLighting(ID3D12GraphicsCommandLi
 void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdList,
                                                 ID3D12Resource* particleBuffer,
                                                 uint32_t particleCount,
-                                                const DirectX::XMFLOAT3& cameraPosition) {
+                                                const DirectX::XMFLOAT3& cameraPosition,
+                                                const DirectX::XMMATRIX* viewProjMatrix) {
     m_particleCount = particleCount;
     m_frameCount++;
+
+    // ========================================================================
+    // FRUSTUM CULLING SETUP (2025-12-11 optimization)
+    // ========================================================================
+    // Extract frustum planes from view-projection matrix if provided
+    if (viewProjMatrix && m_enableFrustumCulling) {
+        ExtractFrustumPlanes(*viewProjMatrix, m_frustumPlanes);
+    }
 
     // ========================================================================
     // PHASE 1: Dual Acceleration Structure Pipeline (ACTIVE)
@@ -1072,6 +1178,7 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
                              : 0;
 
     // 1. Generate AABBs for both AS sets (barriers batched internally)
+    // Frustum culling applied here - particles outside frustum get degenerate AABBs
     GenerateAABBs_Dual(cmdList, particleBuffer, particleCount);
 
     // ========================================================================

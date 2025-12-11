@@ -914,7 +914,8 @@ void Application::Render() {
         m_rtLighting->ComputeLighting(cmdList,
                                      m_particleSystem->GetParticleBuffer(),
                                      m_config.particleCount,
-                                     cameraPosition); // NEW: Pass camera for dynamic emission!
+                                     cameraPosition,
+                                     &viewProjMat); // Pass view-proj matrix for GPU frustum culling (2025-12-11)
 
         rtLightingBuffer = m_rtLighting->GetLightingBuffer();
 

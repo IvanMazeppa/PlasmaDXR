@@ -1,11 +1,13 @@
 // DXR Per-Particle AABB Generation for 3D Gaussian Splatting
 // Generates conservative AABBs for Gaussian ellipsoids
 // Updates every frame as particles move
+// Now includes GPU-side frustum culling (2025-12-11)
 
 #include "../particles/gaussian_common.hlsl"
 
 cbuffer AABBConstants : register(b0)
 {
+    // Original constants (12 DWORDs)
     uint particleCount;
     float particleRadius;  // Base particle radius for Gaussian sizing
 
@@ -22,6 +24,11 @@ cbuffer AABBConstants : register(b0)
     float densityScaleMin;         // Min density scale clamp
     float densityScaleMax;         // Max density scale clamp
     float padding2;                // Padding for alignment
+
+    // Frustum Culling (2025-12-11 optimization) - 26 DWORDs
+    float4 frustumPlanes[6];       // Left, Right, Bottom, Top, Near, Far (normalized, inward-facing)
+    uint enableFrustumCulling;     // Toggle for frustum culling
+    float frustumExpansion;        // Expand particle radius by this factor to avoid pop-in (1.5 default)
 };
 
 StructuredBuffer<Particle> particles : register(t0);
@@ -34,6 +41,47 @@ struct AABBOutput
 };
 
 RWStructuredBuffer<AABBOutput> particleAABBs : register(u0);
+
+// ============================================================================
+// Frustum Culling Helper Functions
+// ============================================================================
+
+// Test if a sphere is completely outside a frustum plane
+// Returns true if the sphere is entirely behind (outside) the plane
+bool SphereOutsidePlane(float3 center, float radius, float4 plane)
+{
+    // plane.xyz = normal (points inward), plane.w = distance
+    // Signed distance from center to plane
+    float dist = dot(center, plane.xyz) + plane.w;
+
+    // If center + radius is still behind plane, sphere is completely outside
+    return dist < -radius;
+}
+
+// Test if a sphere is outside the view frustum
+// Returns true if the sphere is completely outside ANY frustum plane
+bool SphereOutsideFrustum(float3 center, float radius)
+{
+    // Expand radius to prevent pop-in at frustum edges
+    float expandedRadius = radius * frustumExpansion;
+
+    // Test against all 6 frustum planes
+    // If sphere is completely behind any plane, it's outside the frustum
+    [unroll]
+    for (uint i = 0; i < 6; i++)
+    {
+        if (SphereOutsidePlane(center, expandedRadius, frustumPlanes[i]))
+        {
+            return true;  // Outside this plane, therefore outside frustum
+        }
+    }
+
+    return false;  // Inside all planes, therefore visible
+}
+
+// ============================================================================
+// Main AABB Generation
+// ============================================================================
 
 [numthreads(256, 1, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
@@ -61,7 +109,35 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         densityScaleMax
     );
 
-    // Write to output buffer in D3D12 format
+    // ========================================================================
+    // FRUSTUM CULLING (2025-12-11 optimization)
+    // ========================================================================
+    // If particle's bounding sphere is completely outside the frustum,
+    // write a degenerate AABB (min > max) that DXR will treat as empty
+    if (enableFrustumCulling)
+    {
+        // Compute bounding sphere radius from AABB extent
+        float3 extent = gaussianAABB.maxPoint - gaussianAABB.minPoint;
+        float boundingRadius = length(extent) * 0.5;
+
+        if (SphereOutsideFrustum(p.position, boundingRadius))
+        {
+            // Write degenerate AABB - DXR handles this gracefully
+            // Inverted bounds (min > max) result in zero-volume geometry
+            AABBOutput degenerateAABB;
+            degenerateAABB.minX = 1.0;
+            degenerateAABB.maxX = 0.0;
+            degenerateAABB.minY = 1.0;
+            degenerateAABB.maxY = 0.0;
+            degenerateAABB.minZ = 1.0;
+            degenerateAABB.maxZ = 0.0;
+
+            particleAABBs[particleIndex] = degenerateAABB;
+            return;  // Skip normal AABB write
+        }
+    }
+
+    // Write normal AABB to output buffer in D3D12 format
     AABBOutput aabb;
     aabb.minX = gaussianAABB.minPoint.x;
     aabb.minY = gaussianAABB.minPoint.y;
