@@ -1,0 +1,18 @@
+2025-12-12 03:36:14.273 [info] Resolving ssh remote authority 'nanovdb' (Unparsed 'ssh-remote+7b22686f73744e616d65223a226e616e6f766462227d') (attempt #1)
+2025-12-12 03:36:14.278 [info] SSH askpass server listening on port 59605
+2025-12-12 03:36:14.279 [info] Using configured platform windows for remote host nanovdb
+2025-12-12 03:36:14.281 [info] Using askpass script: c:\Users\dilli\.cursor\extensions\anysphere.remote-ssh-1.0.35\dist\scripts\launchSSHAskpass.bat with javascript file c:\Users\dilli\.cursor\extensions\anysphere.remote-ssh-1.0.35\dist\scripts\sshAskClient.js. Askpass handle: 59605
+2025-12-12 03:36:14.284 [info] Command length (8191 max): 7778
+2025-12-12 03:36:14.303 [info] Launching SSH server via shell with command: type "C:\Users\dilli\AppData\Local\Temp\cursor_remote_install_307b2b43-446c-427f-af28-c6b85fa69d1e.ps1" | ssh -T -D 59606 nanovdb powershell -NoProfile
+2025-12-12 03:36:14.303 [info] Establishing SSH connection: type "C:\Users\dilli\AppData\Local\Temp\cursor_remote_install_307b2b43-446c-427f-af28-c6b85fa69d1e.ps1" | ssh -T -D 59606 nanovdb powershell -NoProfile
+2025-12-12 03:36:14.303 [info] Waiting for server to install. Timeout: 30000ms
+2025-12-12 03:36:14.596 [info] Askpass server received request: POST /
+2025-12-12 03:36:14.597 [info] Askpass server received request body: {"request":"maz3ppa@192.168.0.237's password: "}
+2025-12-12 03:36:14.597 [info] Pausing timeout; waiting for askpass response
+2025-12-12 03:36:14.597 [info] Received SSH askpass request: maz3ppa@192.168.0.237's password: 
+2025-12-12 03:36:35.064 [info] Resuming timeout; askpass response received
+2025-12-12 03:36:35.696 [info] (ssh_tunnel) stderr: bash: line 1: powershell: command not found
+
+2025-12-12 03:36:35.703 [error] Error installing server: Failed to connect to the remote SSH host. Please check the logs for more details.
+2025-12-12 03:36:35.703 [info] Deleting local script C:\Users\dilli\AppData\Local\Temp\cursor_remote_install_307b2b43-446c-427f-af28-c6b85fa69d1e.ps1
+2025-12-12 03:36:35.706 [error] Error resolving SSH authority Failed to connect to the remote SSH host. Please check the logs for more details.
