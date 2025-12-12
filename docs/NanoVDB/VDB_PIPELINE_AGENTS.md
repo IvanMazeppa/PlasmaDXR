@@ -1,6 +1,6 @@
 # VDB Pipeline Agent Ecosystem
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Production + Proposed Extensions
 **Last Updated:** 2025-12-11
 
@@ -9,6 +9,35 @@
 ## Overview
 
 The VDB pipeline uses a specialized agent ecosystem spanning both the **Blender worktree** (asset creation) and **NanoVDB worktree** (rendering). This document describes existing agents and proposes new specialized agents to improve the pipeline.
+
+---
+
+## Agent Architecture for Claude Max Subscribers
+
+**Important:** This project uses a hybrid approach optimized for **Claude Max subscribers** who want to avoid paying twice (subscription + API keys).
+
+### Agent Types Explained
+
+| Type | Requires API Key | How It Works | Best For |
+|------|------------------|--------------|----------|
+| **MCP Server** | No | Python server exposing tools via Model Context Protocol | Specialized tools (conversion, analysis, profiling) |
+| **Legacy Agent Prompt** | No | Markdown file with expertise/instructions loaded by Claude Code | Domain expertise (recipes, diagnostics, scripting) |
+| **Agent SDK** | **Yes** | Full autonomous agents via `@anthropic-ai/agent-sdk` | Complex orchestration (only `mission-control` uses this) |
+
+### Why This Architecture?
+
+As of December 2025, the **Claude Agent SDK still requires API keys** - it does not work with Claude Max OAuth tokens. This was confirmed via:
+- Official Agent SDK documentation
+- GitHub issues #11, #6536 discussing OAuth token support
+
+**Our Solution:**
+- **MCP Servers** provide specialized tools (no API key needed)
+- **Legacy Agent Prompts** provide domain expertise (no API key needed)
+- Only **`mission-control`** uses Agent SDK (accepts API key cost for strategic orchestration)
+
+### Practical Impact
+
+When you see "Agent Spec" in this document, it means a **Legacy Agent Prompt** (`AGENT_PROMPT.md` file) - NOT an Agent SDK agent. These work entirely within your Claude Max subscription.
 
 ---
 
@@ -35,7 +64,7 @@ The VDB pipeline uses a specialized agent ecosystem spanning both the **Blender 
 │  └─────────────────────────────────────────────────────────────────────┘ │
 │                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │ blender-scripting (Agent Spec)                                      │ │
+│  │ blender-scripting (Legacy Agent Prompt)                             │ │
 │  │ Status: PRODUCTION                                                  │ │
 │  │ Location: agents/blender-scripting/AGENT_PROMPT.md                  │ │
 │  │                                                                     │ │
@@ -47,7 +76,7 @@ The VDB pipeline uses a specialized agent ecosystem spanning both the **Blender 
 │  └─────────────────────────────────────────────────────────────────────┘ │
 │                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │ celestial-body-curator (Agent Spec)                                 │ │
+│  │ celestial-body-curator (Legacy Agent Prompt)                        │ │
 │  │ Status: PRODUCTION                                                  │ │
 │  │ Location: agents/celestial-body-curator/AGENT_PROMPT.md             │ │
 │  │                                                                     │ │
@@ -59,7 +88,7 @@ The VDB pipeline uses a specialized agent ecosystem spanning both the **Blender 
 │  └─────────────────────────────────────────────────────────────────────┘ │
 │                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │ blender-diagnostics (Agent Spec)                                    │ │
+│  │ blender-diagnostics (Legacy Agent Prompt)                           │ │
 │  │ Status: PRODUCTION                                                  │ │
 │  │ Location: agents/blender-diagnostics/AGENT_PROMPT.md                │ │
 │  │                                                                     │ │
@@ -135,7 +164,7 @@ The VDB pipeline uses a specialized agent ecosystem spanning both the **Blender 
 
 **Purpose:** Coordinate the full VDB asset pipeline from Blender to PlasmaDX.
 
-**Type:** Agent Spec (prompt-based)
+**Type:** Legacy Agent Prompt (no API key required)
 
 **Responsibilities:**
 - Guide users through complete asset creation workflow
@@ -167,7 +196,7 @@ vdb-pipeline-orchestrator
 
 **Purpose:** Automate VDB format conversion and validation.
 
-**Type:** MCP Server
+**Type:** MCP Server (no API key required)
 
 **Proposed Tools:**
 
@@ -205,7 +234,7 @@ async def inspect_vdb(path: str):
 
 **Purpose:** Profile and optimize NanoVDB rendering performance.
 
-**Type:** MCP Server
+**Type:** MCP Server (no API key required)
 
 **Proposed Tools:**
 
@@ -235,7 +264,7 @@ async def capture_nanovdb_frame():
 
 **Purpose:** Validate Blender scenes before export to catch common issues.
 
-**Type:** MCP Server (runs in Blender Python context)
+**Type:** MCP Server (no API key required, runs in Blender Python context)
 
 **Proposed Tools:**
 
@@ -359,9 +388,9 @@ blender-diagnostics
 
 ## Configuration
 
-### MCP Server Registration
+### MCP Server Registration (No API Key)
 
-Add new agents to `.claude/settings.json`:
+Add MCP servers to `.claude/settings.json`. These run locally and don't require API keys:
 
 ```json
 {
@@ -378,9 +407,25 @@ Add new agents to `.claude/settings.json`:
 }
 ```
 
-### Agent Prompt Registration
+### Legacy Agent Prompt Registration (No API Key)
 
-Add agent specs to Claude Code's agent list in CLAUDE.md.
+Add agent prompts to `.claude/commands/` as markdown files or reference them in CLAUDE.md. These provide domain expertise without requiring API keys.
+
+Example: `agents/celestial-body-curator/AGENT_PROMPT.md`
+
+### Agent SDK (Requires API Key)
+
+Only `mission-control` uses the Claude Agent SDK, which requires an API key:
+
+```bash
+# mission-control is the ONLY Agent SDK agent
+# It provides strategic orchestration across multiple councils
+# Uses API key authentication (separate from Max subscription)
+cd agents/mission-control
+ANTHROPIC_API_KEY=your_key node index.js
+```
+
+**Cost consideration:** The Agent SDK incurs per-token API costs separate from your Claude Max subscription. Use sparingly for high-value orchestration tasks.
 
 ---
 
