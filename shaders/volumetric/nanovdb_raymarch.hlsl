@@ -40,6 +40,9 @@ cbuffer NanoVDBConstants : register(b0) {
     float time;                        // Animation time
     uint debugMode;                    // 0=normal, 1=debug solid color
     uint useGridBuffer;                // 0=procedural, 1=file-loaded grid
+
+    float3 gridOffset;                 // Offset from original grid position (for repositioning)
+    float padding;                     // Alignment padding
 };
 
 // ============================================================================
@@ -107,11 +110,15 @@ float SampleNanoVDBDensity(float3 worldPos) {
     pnanovdb_readaccessor_t acc;
     pnanovdb_readaccessor_init(acc, root);
 
+    // Transform world position back to original grid space by subtracting the offset
+    // This allows repositioning the grid without modifying the NanoVDB data
+    float3 originalPos = worldPos - gridOffset;
+
     // Convert world position to index space using the grid's transform
     pnanovdb_vec3_t worldVec;
-    worldVec.x = worldPos.x;
-    worldVec.y = worldPos.y;
-    worldVec.z = worldPos.z;
+    worldVec.x = originalPos.x;
+    worldVec.y = originalPos.y;
+    worldVec.z = originalPos.z;
 
     pnanovdb_vec3_t indexVec = pnanovdb_grid_world_to_indexf(g_gridBuffer, grid, worldVec);
 
@@ -149,11 +156,15 @@ float SampleNanoVDBDensityTrilinear(float3 worldPos) {
     pnanovdb_readaccessor_t acc;
     pnanovdb_readaccessor_init(acc, root);
 
+    // Transform world position back to original grid space by subtracting the offset
+    // This allows repositioning the grid without modifying the NanoVDB data
+    float3 originalPos = worldPos - gridOffset;
+
     // Convert world to index space
     pnanovdb_vec3_t worldVec;
-    worldVec.x = worldPos.x;
-    worldVec.y = worldPos.y;
-    worldVec.z = worldPos.z;
+    worldVec.x = originalPos.x;
+    worldVec.y = originalPos.y;
+    worldVec.z = originalPos.z;
 
     pnanovdb_vec3_t indexVec = pnanovdb_grid_world_to_indexf(g_gridBuffer, grid, worldVec);
 

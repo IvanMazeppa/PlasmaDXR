@@ -201,16 +201,22 @@ bool NanoVDBSystem::LoadFromFile(const std::string& filepath) {
             return false;
         }
 
-        // Set procedural sphere center to grid center for fallback
-        m_sphereCenter = {
+        // Calculate and store original grid center (needed for repositioning)
+        m_originalGridCenter = {
             (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
             (m_gridWorldMin.y + m_gridWorldMax.y) * 0.5f,
             (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
         };
+
+        // Set procedural sphere center to grid center for fallback
+        m_sphereCenter = m_originalGridCenter;
         float dx = m_gridWorldMax.x - m_gridWorldMin.x;
         float dy = m_gridWorldMax.y - m_gridWorldMin.y;
         float dz = m_gridWorldMax.z - m_gridWorldMin.z;
         m_sphereRadius = 0.5f * std::sqrt(dx*dx + dy*dy + dz*dz);
+
+        // Reset grid offset since this is a fresh load
+        m_gridOffset = { 0.0f, 0.0f, 0.0f };
 
         m_hasGrid = true;
         m_hasFileGrid = true;  // Mark as file-loaded grid
@@ -502,6 +508,7 @@ void NanoVDBSystem::Render(
     constants.time = time;                 // Animation time for procedural effects
     constants.debugMode = m_debugMode ? 1 : 0;
     constants.useGridBuffer = (m_hasFileGrid && m_gridBuffer) ? 1 : 0;
+    constants.gridOffset = m_gridOffset;  // Transform sampling position back to original grid space
 
     // Map and update constants
     void* mappedData = nullptr;

@@ -58,6 +58,9 @@ Thumbs.db
 !external/D3D12/*.dll
 !shaders/**/*.dxil
 
+# VDB/NanoVDB asset files (large binary data)
+VDBs/
+
 # PIX captures and screenshots
 PIX/
 PIX/GPU 8_GpuId9_API Parameters.bmp
