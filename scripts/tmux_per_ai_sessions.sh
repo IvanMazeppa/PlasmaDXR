@@ -1,22 +1,15 @@
 #!/usr/bin/env bash
-# Start separate tmux sessions per Claude CLI to keep them isolated.
-# Assumes WSL/Ubuntu paths; update ROOT if needed.
+# Start tmux sessions for Blender and NanoVDB worktrees
 set -euo pipefail
 
 ROOT="/mnt/d/Users/dilli/AndroidStudioProjects"
 
-declare -A SESSIONS=(
-  [claude-pinn]="$ROOT/PlasmaDX-PINN-v4"
-  [claude-blender]="$ROOT/PlasmaDX-Blender"
-  [claude-multi]="$ROOT/PlasmaDX-MultiAgent"
-)
+# Create sessions if they don't exist
+tmux has-session -t claude-blender 2>/dev/null || tmux new-session -d -s claude-blender -c "$ROOT/PlasmaDX-Blender"
+tmux has-session -t claude-nanovdb 2>/dev/null || tmux new-session -d -s claude-nanovdb -c "$ROOT/PlasmaDX-NanoVDB"
 
-for name in "${!SESSIONS[@]}"; do
-  dir="${SESSIONS[$name]}"
-  tmux has-session -t "$name" 2>/dev/null || tmux new-session -d -s "$name" -c "$dir"
-done
-
-echo "Available sessions:"
+echo "Sessions ready:"
 tmux ls
-echo "Attach with: tmux attach -t <session-name> (e.g., tmux attach -t claude-blender)"
-
+echo ""
+echo "Attach with: tb (blender) or tn (nanovdb)"
+echo "Switch with: F9 (blender) or F10 (nanovdb)"

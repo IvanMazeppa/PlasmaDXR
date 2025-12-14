@@ -86,11 +86,31 @@ float ComputeVolumetricShadowOcclusion(
             float distThroughParticle = min(occluder.radius * 2.0, shadowRay.TMax - tHit);
 
             // Beer-Lambert law: I = I0 * exp(-density * distance)
-            // Use temperature as proxy for density (hotter particles = denser = darker shadows)
-            float density = saturate(occluder.temperature / 26000.0);
+            // Phase 3: Use physical density and material properties
+            float density = occluder.density;
+            
+            // Apply material opacity and lifetime fade
+            MaterialTypeProperties mat = g_materials[occluder.materialType];
+            
+            // Calculate lifetime fade (same as renderer)
+            float lifetimeFade = 1.0;
+            if (occluder.maxLifetime > 0.0 && (occluder.flags & FLAG_IMMORTAL) == 0) {
+                float lifetimeRatio = occluder.lifetime / occluder.maxLifetime;
+                if (lifetimeRatio > mat.fadeStartRatio) {
+                    float fadeProgress = (lifetimeRatio - mat.fadeStartRatio) / (1.0 - mat.fadeStartRatio);
+                    lifetimeFade = 1.0 - saturate(fadeProgress);
+                }
+            }
+            
+            // Combine particle density with material opacity
+            float effectiveDensity = density * mat.opacity * lifetimeFade;
+            
+            // Enhance shadow darkness for denser cores (matches visual appearance better)
+            effectiveDensity *= 2.0; 
 
             // Volumetric attenuation through this particle
-            float attenuation = 1.0 - exp(-density * distThroughParticle * 0.5);
+            // We use a simplified chord integration: density * distance
+            float attenuation = 1.0 - exp(-effectiveDensity * distThroughParticle * 0.5);
 
             // Accumulate opacity (blend with existing opacity)
             shadowOpacity += attenuation * (1.0 - shadowOpacity);

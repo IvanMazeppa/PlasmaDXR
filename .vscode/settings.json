@@ -1,3 +1,4 @@
 {
-    "editor.wordWrap": "on"
+    "editor.wordWrap": "on",
+    "workbench.statusBar.visible": true
 }

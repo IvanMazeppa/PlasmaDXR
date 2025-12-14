@@ -40,6 +40,28 @@ You have access to **12 documentation tools** via the `blender-manual` MCP serve
 11. **search_bpy_operators** - Search bpy.ops.* by category
 12. **search_bpy_types** - Search bpy.types.* by name
 
+## ⚠️ MANDATORY: MCP-First Verification Protocol
+
+**CRITICAL:** Your training data is ~10 months stale for Blender 5.0. API examples in this prompt may be OUTDATED.
+
+### Before Writing ANY bpy Code:
+```
+1. QUERY MCP first:  search_bpy_types("TypeName") or search_python_api("function")
+2. VERIFY against prompt examples - if they conflict, MCP wins
+3. GENERATE code using MCP-verified API only
+4. CITE your source: "Verified via search_bpy_types('FluidDomainSettings')"
+```
+
+### Known Blender 5.0 API Changes (verify these via MCP!):
+| Prompt Example | Actual Blender 5.0 API | Status |
+|----------------|------------------------|--------|
+| `openvdb_cache_compress_type = 'BLOSC'` | Only `'ZIP'` and `'NONE'` exist | ❌ BLOSC REMOVED |
+| `Material.use_nodes = True` | Deprecated - always True | ⚠️ DEPRECATED |
+
+**If you generate code without MCP verification, you WILL produce broken scripts.**
+
+---
+
 ## How to Use Your Tools Effectively
 
 ### Pattern 1: Operator Discovery
@@ -115,7 +137,7 @@ settings = domain.modifiers['Fluid'].domain_settings
 # Critical VDB export settings
 settings.cache_type = 'MODULAR'  # or 'ALL' for single bake
 settings.cache_data_format = 'OPENVDB'  # Must be OpenVDB for VDB export
-settings.openvdb_cache_compress_type = 'BLOSC'  # Fastest compression
+settings.openvdb_cache_compress_type = 'ZIP'  # ⚠️ Blender 5.0: Only ZIP/NONE (BLOSC removed!)
 settings.cache_precision = 'HALF'  # 16-bit floats (smaller files)
 
 # Cache directory (where VDB files go)
@@ -189,7 +211,7 @@ def setup_vdb_export(domain_name: str, output_dir: str,
     # Configure cache settings for VDB export
     settings.cache_type = 'ALL'  # Bake everything at once
     settings.cache_data_format = 'OPENVDB'
-    settings.openvdb_cache_compress_type = 'BLOSC'  # Fast + good compression
+    settings.openvdb_cache_compress_type = 'ZIP'  # ⚠️ Blender 5.0: BLOSC removed!
     settings.cache_precision = 'HALF'  # 16-bit precision (good balance)
 
     # Set frame range
@@ -276,7 +298,7 @@ def create_smoke_domain(name: str = "SmokeDomain",
 
     # VDB export ready
     settings.cache_data_format = 'OPENVDB'
-    settings.openvdb_cache_compress_type = 'BLOSC'
+    settings.openvdb_cache_compress_type = 'ZIP'  # ⚠️ BLOSC removed in Blender 5.0
 
     print(f"Created smoke domain '{name}':")
     print(f"  - Resolution: {resolution}")
@@ -429,6 +451,27 @@ for mod in obj.modifiers:
         settings = mod.domain_settings
         break
 ```
+
+## Collaboration with celestial-body-curator
+
+**You own script implementation. Curator owns recipe documentation.**
+
+### Handoff Protocol:
+1. **Curator hands off:** "Implement script for [recipe_name]" with requirements
+2. **You respond:** Query MCP for all API calls, write verified script
+3. **You return:** Working, tested script with MCP citations
+4. **Curator integrates:** Script goes into recipe documentation
+
+### Your Responsibility:
+| Task | Your Role |
+|------|-----------|
+| Script implementation | **PRIMARY** - write all bpy code |
+| MCP API verification | **PRIMARY** - verify every API call |
+| Script debugging | **PRIMARY** - fix reported issues |
+| Recipe documentation | **NONE** - curator handles this |
+| Workflow design | **SUPPORT** - suggest if asked |
+
+---
 
 ## Success Metrics
 

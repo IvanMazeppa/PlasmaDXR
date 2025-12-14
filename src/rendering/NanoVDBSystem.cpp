@@ -729,6 +729,40 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
             m_gridSizeBytes = m_animFrames[0].sizeBytes;
             m_hasGrid = true;
             m_hasFileGrid = true;
+
+            // Extract grid bounds from the first frame using NanoVDB
+            try {
+                nanovdb::GridHandle<nanovdb::HostBuffer> handle =
+                    nanovdb::io::readGrid<nanovdb::HostBuffer>(filepaths[0], 0, 0);
+                if (handle) {
+                    const nanovdb::NanoGrid<float>* floatGrid = handle.grid<float>();
+                    if (floatGrid) {
+                        auto worldBBox = floatGrid->worldBBox();
+                        m_gridWorldMin = {
+                            static_cast<float>(worldBBox.min()[0]),
+                            static_cast<float>(worldBBox.min()[1]),
+                            static_cast<float>(worldBBox.min()[2])
+                        };
+                        m_gridWorldMax = {
+                            static_cast<float>(worldBBox.max()[0]),
+                            static_cast<float>(worldBBox.max()[1]),
+                            static_cast<float>(worldBBox.max()[2])
+                        };
+                        // Store original center for repositioning
+                        m_originalGridCenter = {
+                            (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
+                            (m_gridWorldMin.y + m_gridWorldMax.y) * 0.5f,
+                            (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
+                        };
+                        m_gridOffset = { 0.0f, 0.0f, 0.0f };
+                        LOG_INFO("[NanoVDB] Animation bounds: ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
+                                 m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
+                                 m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+                    }
+                }
+            } catch (const std::exception& e) {
+                LOG_WARN("[NanoVDB] Could not extract animation bounds: {}", e.what());
+            }
         }
         return true;
     }

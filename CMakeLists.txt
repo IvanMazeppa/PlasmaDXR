@@ -308,6 +308,16 @@ add_custom_command(
 )
 list(APPEND SHADER_OUTPUTS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/shadows/depth_prepass.dxil")
 
+# shadows depth_buffer_clear (compute shader for clearing shadow depth buffer - Phase 2)
+add_custom_command(
+    OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/shadows/depth_buffer_clear.dxil"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/shadows"
+    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadows/depth_buffer_clear.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/shadows/depth_buffer_clear.dxil"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/shadows/depth_buffer_clear.hlsl"
+    COMMENT "Compiling depth_buffer_clear.hlsl (Phase 2: Screen-Space Shadows)"
+)
+list(APPEND SHADER_OUTPUTS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/shadows/depth_buffer_clear.dxil")
+
 # blit_hdr_to_sdr (vertex + pixel shader for HDR->SDR conversion)
 add_custom_command(
     OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/util/blit_hdr_to_sdr_vs.dxil"

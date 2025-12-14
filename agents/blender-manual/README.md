@@ -1,23 +1,39 @@
-# Blender Manual MCP Server (Enhanced Edition)
+# Blender Manual MCP Server (Enhanced Edition v4.0)
 
-An advanced Model Context Protocol (MCP) server providing comprehensive search and read access to the Blender 5.0 Manual. Optimized for NanoVDB/volumetrics workflows with 8 specialized search tools, persistent caching, and rich metadata extraction.
+An advanced Model Context Protocol (MCP) server providing comprehensive search and read access to the **Blender 5.0 Manual** and **Blender Python API Reference**. Optimized for NanoVDB/volumetrics workflows with 12 specialized search tools, persistent caching, and rich metadata extraction.
 
 ## Features
 
 🚀 **Fast Performance**
 - Persistent caching system (~2 second startup after first run)
-- First-time index build: 30-60 seconds for 2,196 pages
-- Search queries: <100ms
+- First-time index build: 60-90 seconds for 2,500+ pages
+- Search queries: <100ms with improved phrase matching
 
-🔍 **8 Specialized Search Tools**
+🔍 **12 Specialized Search Tools**
+
+### Manual Search (7 tools)
 1. `search_manual` - General keyword search with enhanced scoring
 2. `search_tutorials` - Find tutorials and getting started guides
 3. `browse_hierarchy` - Navigate manual structure like a file tree
 4. `search_vdb_workflow` - VDB/OpenVDB/NanoVDB specialized search
-5. `search_python_api` - Python API documentation (bpy.ops, bpy.types)
-6. `search_nodes` - Shader/compositor/geometry nodes
-7. `search_modifiers` - Modifier documentation
-8. `read_page` - Read full page content with enhanced formatting
+5. `search_nodes` - Shader/compositor/geometry nodes
+6. `search_modifiers` - Modifier documentation
+7. `read_page` - Read full page content with enhanced formatting
+
+### Python API Reference (4 tools)
+8. `search_python_api` - Unified API + manual scripting search
+9. `list_api_modules` - Browse bpy/bmesh/aud modules
+10. `search_bpy_operators` - Search bpy.ops.* by category
+11. `search_bpy_types` - Search bpy.types.* documentation
+
+### AI-Powered Search (1 tool)
+12. `search_semantic` - Semantic similarity with embeddings (requires setup)
+
+🤖 **Semantic Search**
+- AI-powered natural language queries
+- Finds conceptually related content without exact keyword matches
+- Uses sentence-transformers (all-MiniLM-L6-v2, 384-dim embeddings)
+- Pre-computed embeddings for 4,227 pages
 
 🎯 **Rich Metadata**
 - Category/subcategory auto-detection
@@ -67,6 +83,43 @@ An advanced Model Context Protocol (MCP) server providing comprehensive search a
    ```
    Loaded 2196 pages from cache (built at ...)
    ✓ Index loaded from cache. Server ready!
+   ```
+
+### Semantic Search Setup (Optional but Recommended)
+
+To enable AI-powered semantic search:
+
+1. Create and activate virtual environment:
+   ```bash
+   cd agents/blender-manual
+   python3 -m venv venv
+   ```
+
+2. Install semantic search dependencies:
+   ```bash
+   ./venv/bin/pip install sentence-transformers numpy
+   ```
+
+3. Generate embeddings (one-time, ~5 seconds):
+   ```bash
+   ./venv/bin/python generate_embeddings.py
+   ```
+
+   Expected output:
+   ```
+   Loading index from manual_index.json...
+   Loaded 4227 pages from cache.
+   Loading embedding model: all-MiniLM-L6-v2...
+   Generating embeddings for 4227 pages...
+   Saved 4227 embeddings to embeddings.npy
+   File size: 6.2 MB
+   SUCCESS! Semantic search is now available.
+   ```
+
+4. Run server using venv (with semantic search):
+   ```bash
+   ./run_server.sh
+   # Or: ./venv/bin/python blender_server.py
    ```
 
 ### Configuration for Claude Desktop
@@ -213,12 +266,55 @@ search_modifiers("Fluid")
 Read full page content.
 
 **Parameters:**
+
 - `path` (str): Relative path to HTML file
 
 **Example:**
+
 ```python
 read_page("render/cycles/world_settings.html")
 ```
+
+### 9-11. Python API Tools
+
+- `list_api_modules(category=None)` - List bpy/bmesh/aud modules
+- `search_bpy_operators(category, operation=None)` - Search operators by category
+- `search_bpy_types(typename)` - Search type definitions
+
+**Example:**
+
+```python
+list_api_modules("bpy")
+search_bpy_operators("mesh", "select")
+search_bpy_types("FluidModifier")
+```
+
+### 12. `search_semantic(query, limit=5, compact=False)`
+AI-powered semantic similarity search using embeddings.
+
+**Parameters:**
+
+- `query` (str): Natural language query
+- `limit` (int, optional): Max results (default: 5)
+- `compact` (bool, optional): Minimal output mode
+
+**When to Use:**
+
+| Use Semantic Search | Use Keyword Search |
+|---------------------|-------------------|
+| Natural language questions | Exact term lookup |
+| Conceptual queries | API/function names |
+| "How do I..." questions | Specific settings |
+| Exploring related topics | Known page paths |
+
+**Example:**
+
+```python
+search_semantic("how to create realistic volumetric smoke effects")
+search_semantic("baking simulations for game engines")
+```
+
+**Note:** Requires venv setup. Falls back to keyword search if embeddings unavailable.
 
 ## Performance Characteristics
 
@@ -233,16 +329,21 @@ read_page("render/cycles/world_settings.html")
 
 ## Architecture
 
-### Search Scoring
+### Search Scoring (v4.0 Enhanced)
 
-Enhanced multi-factor relevance scoring:
-- Title match: 20 points
-- Header match: 10 points
-- Keyword match: 15 points
-- Content match: 1 point per occurrence
-- Category boost: +25 points (specialized searches)
-- Keyword boost: +10 points (VDB terms, etc.)
-- Path depth penalty: -2 points per level
+Multi-factor relevance scoring with phrase and proximity matching:
+- **Exact phrase match in title**: 50 points
+- **Exact phrase match in content**: 25 points
+- **All query terms in title**: 30 bonus points
+- **Title match**: 20 points per term
+- **Header match**: 10 points per term
+- **Keyword match**: 15 points per term
+- **Content match**: 1 point per occurrence (capped at 10/term)
+- **Term proximity bonus**: 5 points (terms within 50 chars)
+- **Category boost**: +25 points (specialized searches)
+- **Keyword boost**: +10 points (VDB terms, etc.)
+- **Index/overview page boost**: +5 points
+- **Path depth penalty**: -1 point per level
 
 ### VDB Keyword Expansion
 
@@ -358,4 +459,6 @@ This project indexes and provides access to the Blender Manual, which is license
 
 ---
 
-**Optimized for NanoVDB/Volumetrics Workflow** | **8 Specialized Tools** | **<2s Startup** | **2,196 Pages Indexed**
+**Optimized for NanoVDB/Volumetrics Workflow** | **12 Specialized Tools** | **<2s Startup** | **2,500+ Pages Indexed**
+
+*Version 4.0 - December 2024*

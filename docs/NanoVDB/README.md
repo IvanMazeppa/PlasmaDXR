@@ -12,6 +12,7 @@ This directory contains documentation for the NanoVDB volumetric rendering syste
 | [NANOVDB_SYSTEM_OVERVIEW.md](./NANOVDB_SYSTEM_OVERVIEW.md) | Technical system overview |
 | [TWO_WORKTREE_WORKFLOW.md](./TWO_WORKTREE_WORKFLOW.md) | Development architecture |
 | [VDB_PIPELINE_AGENTS.md](./VDB_PIPELINE_AGENTS.md) | AI agent ecosystem |
+| [TROUBLESHOOTING_ASSET_VISIBILITY_AND_ANIMATION.md](./TROUBLESHOOTING_ASSET_VISIBILITY_AND_ANIMATION.md) | Why file-loaded volumes are invisible / not animating + fixes |
 
 ---
 

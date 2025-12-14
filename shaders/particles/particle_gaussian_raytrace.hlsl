@@ -319,11 +319,30 @@ float ComputeVolumetricShadowOcclusion(
             float distThroughParticle = min(occluderRadius * 2.0, shadowRay.TMax - tHit);
 
             // Beer-Lambert law: I = I0 * exp(-density * distance)
-            // Use temperature as proxy for density (hotter particles = denser = darker shadows)
-            float density = saturate(occluder.temperature / 26000.0);
+            // Phase 3: Use physical density and material properties
+            float density = occluder.density;
+            
+            // Apply material opacity and lifetime fade
+            MaterialTypeProperties mat = g_materials[occluder.materialType];
+            
+            // Calculate lifetime fade (same as renderer)
+            float lifetimeFade = 1.0;
+            if (occluder.maxLifetime > 0.0 && (occluder.flags & FLAG_IMMORTAL) == 0) {
+                float lifetimeRatio = occluder.lifetime / occluder.maxLifetime;
+                if (lifetimeRatio > mat.fadeStartRatio) {
+                    float fadeProgress = (lifetimeRatio - mat.fadeStartRatio) / (1.0 - mat.fadeStartRatio);
+                    lifetimeFade = 1.0 - saturate(fadeProgress);
+                }
+            }
+            
+            // Combine particle density with material opacity
+            float effectiveDensity = density * mat.opacity * lifetimeFade;
+            
+            // Enhance shadow darkness for denser cores (matches visual appearance better)
+            effectiveDensity *= 2.0;
 
             // Volumetric attenuation through this particle
-            float attenuation = 1.0 - exp(-density * distThroughParticle * 0.5);
+            float attenuation = 1.0 - exp(-effectiveDensity * distThroughParticle * 0.5);
 
             // Accumulate opacity (blend with existing opacity)
             shadowOpacity += attenuation * (1.0 - shadowOpacity);
@@ -1607,39 +1626,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
                         // Cast shadow ray to this light (if enabled)
                         float shadowTerm = 1.0;
 
-                        // Phase 2: Screen-space shadows (replaces PCSS when enabled)
-                        if (useScreenSpaceShadows != 0) {
-                            // Screen-space contact shadows - ray march through depth buffer
-                            shadowTerm = ScreenSpaceShadow(pos, lightDir, lightDist, ssSteps);
-
-                            // DEBUG VISUALIZATION: Override lighting with shadow debug colors
-                            if (debugScreenSpaceShadows != 0 && lightIdx == 0) {
-                                // Enhanced debug visualization with dramatic color gradient:
-                                // shadowTerm: 1.0 = fully lit (bright green)
-                                //           : 0.5-0.8 = partial shadow (yellow/orange gradient)
-                                //           : 0.0 = fully shadowed (bright red)
-
-                                float3 debugColor;
-                                if (shadowTerm < 0.5) {
-                                    // Heavy shadow: Red to orange (0.0-0.5)
-                                    float t = shadowTerm / 0.5;
-                                    debugColor = float3(1.0, t * 0.5, 0.0);  // Red → orange
-                                } else if (shadowTerm < 0.8) {
-                                    // Partial shadow: Orange to yellow (0.5-0.8)
-                                    float t = (shadowTerm - 0.5) / 0.3;
-                                    debugColor = float3(1.0, 0.5 + t * 0.5, 0.0);  // Orange → yellow
-                                } else {
-                                    // Mostly lit: Yellow to green (0.8-1.0)
-                                    float t = (shadowTerm - 0.8) / 0.2;
-                                    debugColor = float3(1.0 - t, 1.0, 0.0);  // Yellow → green
-                                }
-
-                                totalLighting = debugColor * 500.0;  // 10× boost for visibility
-                                break;  // Only show first light
-                            }
-                        }
-                        else if (useShadowRays != 0) {
-                            // Legacy PCSS shadow rays (being replaced)
+                        // Phase 2: Screen-space shadows (DISABLED per user request to improve quality)
+                        // Replaced with high-quality volumetric self-shadowing
+                        if (useShadowRays != 0) {
+                            // Always use volumetric ray-traced shadows for physical accuracy
+                            // This eliminates the "ellipsoid" artifacts from screen-space depth
                             shadowTerm = CastPCSSShadowRay(pos, light.position, light.radius, pixelPos, shadowRaysPerLight);
                         }
 

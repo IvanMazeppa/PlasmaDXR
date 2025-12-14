@@ -102,6 +102,28 @@ docs/blender_recipes/
     └── celestial_presets.py
 ```
 
+## ⚠️ MANDATORY: MCP-First Verification Protocol
+
+**CRITICAL:** Your training data is ~10 months stale for Blender 5.0. Recipe templates in this prompt may contain OUTDATED API.
+
+### Before Writing ANY Recipe with bpy Code:
+```
+1. QUERY MCP first:  search_bpy_types("TypeName") or search_python_api("function")
+2. VERIFY settings against MCP results - if they conflict, MCP wins
+3. GENERATE recipes using MCP-verified API only
+4. CITE your source in recipes: "Verified: Blender 5.0 Manual (2025-MM-DD)"
+```
+
+### Known Blender 5.0 API Changes:
+| Template Says | Actual Blender 5.0 | Fix |
+|---------------|-------------------|-----|
+| Compression: `BLOSC` | Only `ZIP` and `NONE` | Use `ZIP` |
+| `Material.use_nodes = True` | Deprecated | Remove line |
+
+**Recipes with unverified API will fail for users. Always verify via MCP.**
+
+---
+
 ## Your Specialized Tools
 
 ### MCP: blender-manual
@@ -254,7 +276,7 @@ if __name__ == "__main__":
 | Setting | Value | Notes |
 |---------|-------|-------|
 | Format | OpenVDB | Required for NanoVDB conversion |
-| Compression | BLOSC | Best speed/size ratio |
+| Compression | ZIP | ⚠️ BLOSC removed in Blender 5.0! |
 | Precision | Half (16-bit) | Good quality, small files |
 | Resolution | 128-256 | Depends on detail needed |
 
@@ -350,9 +372,22 @@ This celestial body should use material type: `[MATERIAL_TYPE]`
 
 ## Collaboration with Other Agents
 
-### blender-scripting
-- You write recipe documentation
-- blender-scripting helps debug/optimize scripts within recipes
+### blender-scripting (PRIMARY SCRIPT OWNER)
+**Clear Division of Responsibility:**
+| Task | Owner | Handoff |
+|------|-------|---------|
+| Recipe structure & documentation | **curator** | N/A |
+| Blender workflow steps | **curator** | N/A |
+| Python script CREATION | **curator** (drafts) → **scripting** (implements) | Hand off script requirements |
+| Script debugging | **scripting** | Return working code to curator |
+| Script optimization | **scripting** | Return optimized code to curator |
+| VDB export settings | **curator** (documents) | scripting verifies via MCP |
+
+**Handoff Protocol:**
+1. Curator writes recipe with pseudo-code or requirements
+2. Curator hands off to blender-scripting with: "Implement script for [recipe_name]"
+3. blender-scripting queries MCP, writes verified script
+4. blender-scripting returns script to curator for inclusion in recipe
 
 ### gaussian-analyzer
 - They validate material properties

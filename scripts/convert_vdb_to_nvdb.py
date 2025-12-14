@@ -1,18 +1,25 @@
 """
-OpenVDB to NanoVDB Converter for PlasmaDX-Clean
+OpenVDB (.vdb) -> NanoVDB (.nvdb) converter for PlasmaDX-Clean.
 
-This script converts OpenVDB (.vdb) files to NanoVDB (.nvdb) format
-for use with PlasmaDX-Clean's volumetric rendering system.
+Why this exists:
+- PlasmaDX-Clean's `nanovdb_raymarch.hlsl` currently only supports **FLOAT** grids.
+- Blender/Mantaflow VDBs often contain multiple grids (e.g. density=float, velocity=vec3).
+- If the wrong grid gets converted, the volume may render as "invisible" in-game.
+
+This script therefore defaults to converting a **single** grid, preferring:
+1) A grid explicitly selected via `--grid`
+2) A grid named "density" (common Mantaflow convention)
+3) The first float grid found
 
 Requirements:
     pip install pyopenvdb  (or conda install -c conda-forge openvdb)
 
 Usage:
-    python convert_vdb_to_nvdb.py input.vdb output.nvdb
-    python convert_vdb_to_nvdb.py --batch VDBs/Clouds/  (converts all .vdb files)
-
-Note: pyopenvdb includes NanoVDB conversion functionality.
-      If pyopenvdb is not available, use Blender's VDB export with NanoVDB format.
+    python scripts/convert_vdb_to_nvdb.py input.vdb output.nvdb
+    python scripts/convert_vdb_to_nvdb.py input.vdb --grid density
+    python scripts/convert_vdb_to_nvdb.py --list input.vdb
+    python scripts/convert_vdb_to_nvdb.py --all-grids input.vdb out_dir/
+    python scripts/convert_vdb_to_nvdb.py --batch VDBs/Clouds/  (converts all .vdb files)
 """
 
 import sys
@@ -28,7 +35,73 @@ def check_dependencies():
     except ImportError:
         return False, None
 
-def convert_single_file(input_path: str, output_path: str, verbose: bool = True):
+
+def _grid_name(grid) -> str:
+    return getattr(grid, "name", "") or getattr(grid, "gridName", "") or ""
+
+
+def _grid_type_name(grid) -> str:
+    # pyopenvdb types vary; fall back to Python class name.
+    try:
+        if hasattr(grid, "valueTypeName"):
+            return str(grid.valueTypeName())
+    except Exception:
+        pass
+    return type(grid).__name__
+
+
+def _is_probably_float_grid(grid) -> bool:
+    t = _grid_type_name(grid).lower()
+    # Heuristic: FloatGrid / float / float32 / float16
+    return ("float" in t) and ("vec" not in t) and ("vector" not in t)
+
+
+def _select_grid(grids, requested_name: str | None):
+    if not grids:
+        return None
+
+    # Build lookup
+    by_name = {}
+    for g in grids:
+        n = _grid_name(g)
+        if n:
+            by_name[n] = g
+
+    if requested_name:
+        if requested_name in by_name:
+            return by_name[requested_name]
+        # Try case-insensitive match
+        for k, v in by_name.items():
+            if k.lower() == requested_name.lower():
+                return v
+        return None
+
+    # Prefer density
+    for key in ("density", "Density", "fog", "Fog", "smoke", "Smoke"):
+        if key in by_name and _is_probably_float_grid(by_name[key]):
+            return by_name[key]
+
+    # Otherwise first float-ish grid
+    for g in grids:
+        if _is_probably_float_grid(g):
+            return g
+
+    # Fallback: first grid (caller will likely fail in PlasmaDX)
+    return grids[0]
+
+
+def _print_grid_summary(grids) -> None:
+    print(f"  Found {len(grids)} grid(s):")
+    for grid in grids:
+        print(f"    - {_grid_name(grid) or '<unnamed>'}: {_grid_type_name(grid)}")
+
+def convert_single_file(
+    input_path: str,
+    output_path: str,
+    verbose: bool = True,
+    grid_name: str | None = None,
+    all_grids: bool = False,
+):
     """
     Convert a single OpenVDB file to NanoVDB format.
 
@@ -65,9 +138,7 @@ def convert_single_file(input_path: str, output_path: str, verbose: bool = True)
             return False
 
         if verbose:
-            print(f"  Found {len(grids)} grid(s):")
-            for grid in grids:
-                print(f"    - {grid.name}: {type(grid).__name__}")
+            _print_grid_summary(grids)
 
         # Check if pyopenvdb supports NanoVDB conversion
         # This depends on the pyopenvdb version and build
@@ -75,14 +146,45 @@ def convert_single_file(input_path: str, output_path: str, verbose: bool = True)
             if verbose:
                 print(f"Converting to NanoVDB format...")
 
-            # Convert to NanoVDB and save
-            for grid in grids:
-                nano_grid = vdb.nanovdb.createNanoGrid(grid)
-                # Save NanoVDB grid
-                vdb.nanovdb.write(output_path, nano_grid)
+            out_path = Path(output_path)
+
+            if all_grids:
+                # Write one .nvdb per grid (prevents accidental overwrites and preserves names)
+                out_dir = out_path if out_path.suffix == "" else out_path.parent
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                wrote = 0
+                for grid in grids:
+                    name = _grid_name(grid) or "grid"
+                    per_file = out_dir / f"{Path(input_path).stem}_{name}.nvdb"
+                    nano_grid = vdb.nanovdb.createNanoGrid(grid)
+                    vdb.nanovdb.write(str(per_file), nano_grid)
+                    wrote += 1
+                    if verbose:
+                        print(f"  Saved: {per_file}")
+
+                return wrote > 0
+
+            # Default: select ONE grid to avoid output overwrite ambiguity
+            chosen = _select_grid(grids, grid_name)
+            if chosen is None:
+                print("ERROR: Failed to select a grid to convert")
+                return False
+
+            chosen_name = _grid_name(chosen) or "<unnamed>"
+            chosen_type = _grid_type_name(chosen)
+            if verbose:
+                print(f"  Selected grid: {chosen_name} ({chosen_type})")
+                if not _is_probably_float_grid(chosen):
+                    print("  WARNING: Selected grid does not look like a float grid.")
+                    print("           PlasmaDX shader may render it as 'invisible'. Prefer --grid density.")
+
+            nano_grid = vdb.nanovdb.createNanoGrid(chosen)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            vdb.nanovdb.write(str(out_path), nano_grid)
 
             if verbose:
-                print(f"Saved: {output_path}")
+                print(f"Saved: {out_path}")
             return True
         else:
             print("ERROR: This version of pyopenvdb doesn't support NanoVDB conversion")
@@ -199,6 +301,9 @@ Examples:
     parser.add_argument('input', nargs='?', help='Input .vdb file or directory')
     parser.add_argument('output', nargs='?', help='Output .nvdb file or directory')
     parser.add_argument('--batch', action='store_true', help='Batch convert directory')
+    parser.add_argument('--grid', default=None, help='Grid name to convert (e.g. density)')
+    parser.add_argument('--all-grids', action='store_true', help='Write one .nvdb per grid to output directory')
+    parser.add_argument('--list', action='store_true', help='List grids in a .vdb (no conversion)')
     parser.add_argument('--info', action='store_true', help='Show conversion options')
     parser.add_argument('--quiet', action='store_true', help='Suppress progress messages')
 
@@ -223,6 +328,18 @@ Examples:
         print_alternative_methods()
         return
 
+    if args.list:
+        success, vdb = check_dependencies()
+        if not success:
+            print("ERROR: pyopenvdb not installed!")
+            return
+        grids = vdb.readAll(args.input)
+        if not grids:
+            print("No grids found.")
+            return
+        _print_grid_summary(grids)
+        return
+
     if args.batch or os.path.isdir(args.input):
         batch_convert(args.input, args.output, verbose)
     else:
@@ -230,7 +347,13 @@ Examples:
             # Default output: same name with .nvdb extension
             args.output = Path(args.input).with_suffix('.nvdb')
 
-        convert_single_file(args.input, str(args.output), verbose)
+        convert_single_file(
+            args.input,
+            str(args.output),
+            verbose,
+            grid_name=args.grid,
+            all_grids=args.all_grids,
+        )
 
 if __name__ == "__main__":
     main()

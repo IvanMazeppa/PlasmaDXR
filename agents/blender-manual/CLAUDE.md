@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an enhanced Model Context Protocol (MCP) server that provides comprehensive search and read access to the Blender Manual documentation. The server is optimized for NanoVDB/volumetrics workflows with 8 specialized search tools, persistent caching, and rich metadata extraction.
+This is an enhanced Model Context Protocol (MCP) server that provides comprehensive search and read access to the **Blender 5.0 Manual** and **Blender Python API Reference**. The server is optimized for NanoVDB/volumetrics workflows with 12 specialized search tools, persistent caching, and rich metadata extraction.
 
-**Version**: Blender 5.0 Manual
-**Total Pages**: ~2,196 HTML files (1.2GB)
+**Version**: 4.0 (December 2024)
+**Documentation Sources**:
+- Blender 5.0 Manual: ~2,196 HTML files
+- Blender Python API Reference: ~300+ HTML files
 **Optimization**: Fast startup with cached indexing (<2 seconds after first run)
 
 ## Prerequisites
@@ -53,18 +55,20 @@ Replace `/absolute/path/to/...` with the actual absolute path to this directory.
 
 ## Available Tools
 
-The server exposes 8 MCP tools, each optimized for different use cases:
+The server exposes 12 MCP tools, each optimized for different use cases:
 
-### 1. `search_manual(query, limit=10)`
-**General keyword search** across the entire Blender Manual.
-- Enhanced scoring: title (20pts), headers (10pts), keywords (15pts), content (1pt each)
+### Manual Search Tools (7)
+
+#### 1. `search_manual(query, limit=5, offset=0, compact=False)`
+**General keyword search** across the entire Blender Manual and Python API Reference.
+- Enhanced scoring: phrase matching, proximity detection, title/header/keyword weighting
 - Category metadata and snippet generation
 - Best for: General queries, exploratory searches
 
 **Examples**:
 ```python
 search_manual("volume rendering")
-search_manual("export openvdb", limit=20)
+search_manual("export openvdb", limit=10)
 ```
 
 ### 2. `search_tutorials(topic, technique=None)`

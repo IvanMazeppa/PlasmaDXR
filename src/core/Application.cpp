@@ -5243,6 +5243,23 @@ void Application::RenderImGui() {
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Load all .nvdb files from VDBs/NanoVDB/chimney_smoke/");
                 }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Load BipolarNebula")) {
+                    // BipolarNebula density-only grids from Blender worktree
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
+                        "D:/Users/dilli/AndroidStudioProjects/PlasmaDX-Blender/VDBs/NanoVDB/BipolarNebula_density");
+                    if (frames > 0) {
+                        LOG_INFO("Loaded {} BipolarNebula animation frames", frames);
+                        // Nebula needs scaling - native bounds are ~6 units (Blender scale)
+                        m_nanoVDBSystem->ScaleGridBounds(200.0f);
+                        m_nanoVDBSystem->SetDensityScale(10.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(5.0f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load BipolarNebula animation (120 frames, density only)\nFrom PlasmaDX-Blender worktree");
+                }
             }
 
             // Parameters

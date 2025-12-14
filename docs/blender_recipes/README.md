@@ -19,6 +19,7 @@
 ## Recipe Categories
 
 ### Emission Nebulae
+
 Glowing gas clouds that emit light (H-II regions, reflection nebulae).
 
 | Recipe | Difficulty | Method | Status |
@@ -28,6 +29,7 @@ Glowing gas clouds that emit light (H-II regions, reflection nebulae).
 | [Orion-Style Complex](emission_nebulae/orion_style.md) | Advanced | Hybrid | Planned |
 
 ### Explosions & Transients
+
 Energetic events: supernovae, stellar flares, coronal mass ejections.
 
 | Recipe | Difficulty | Method | Status |
@@ -37,15 +39,18 @@ Energetic events: supernovae, stellar flares, coronal mass ejections.
 | [Coronal Mass Ejection](explosions/coronal_ejection.md) | Advanced | Animated GeoNodes | Planned |
 
 ### Stellar Phenomena
+
 Structures around and between stars: disks, coronae, jets.
 
 | Recipe | Difficulty | Method | Status |
 |--------|------------|--------|--------|
 | [Protoplanetary Disk](stellar_phenomena/protoplanetary_disk.md) | Intermediate | Geometry Nodes | Planned |
 | [Accretion Corona](stellar_phenomena/accretion_corona.md) | Advanced | Mantaflow + GeoNodes | Planned |
-| [Planetary Nebula](stellar_phenomena/planetary_nebula.md) | Intermediate | Mantaflow | Planned |
+| [Planetary Nebula (Bipolar)](stellar_phenomena/planetary_nebula.md) | Intermediate | Mantaflow | ✅ Complete |
+| [Supergiant Star](stellar_phenomena/supergiant_star.md) | Intermediate | Mantaflow | ✅ Complete |
 
 ### Dark Structures
+
 Absorption-dominated volumes: dark nebulae, dust lanes.
 
 | Recipe | Difficulty | Method | Status |
@@ -71,10 +76,10 @@ Automation scripts that work across multiple recipe types.
 
 ### Required Settings for PlasmaDX Compatibility
 
-```
+```text
 Cache Type:        MODULAR or ALL
 Data Format:       OpenVDB
-Compression:       BLOSC (fastest) or ZIP (smallest)
+Compression:       ZIP or NONE (Blender 5.0 Python API exposes ZIP/NONE; avoid BLOSC in scripts)
 Precision:         HALF (16-bit) recommended
 ```
 
@@ -129,7 +134,9 @@ How Blender volume properties translate to PlasmaDX material types:
 - **PlasmaDX:** Y-up (DirectX convention), right-handed
 
 ### Conversion Required
+
 When loading Blender VDB in PlasmaDX:
+
 - Rotate -90° around X axis, OR
 - Swap Y and Z coordinates in loader
 
@@ -138,22 +145,26 @@ When loading Blender VDB in PlasmaDX:
 ## Troubleshooting
 
 ### VDB Not Appearing in PlasmaDX
+
 1. Check cache format is OpenVDB (not UniCache)
 2. Verify VDB file exists in cache directory
 3. Check grid names match expected (density, temperature)
 
 ### Simulation Takes Forever
+
 1. Reduce resolution (try 64 first)
 2. Enable Adaptive Domain
 3. Reduce frame count for testing
 
 ### VDB File Too Large
-1. Use BLOSC compression
+
+1. Use ZIP compression (⚠️ BLOSC removed in Blender 5.0)
 2. Use HALF precision
 3. Reduce resolution
 4. Export only needed grids (density only for absorption)
 
 ### Colors Look Wrong in PlasmaDX
+
 1. Check temperature grid is being read
 2. Verify material type mapping
 3. Adjust emission multiplier

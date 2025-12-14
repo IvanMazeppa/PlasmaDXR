@@ -1,6 +1,6 @@
-# Blender Manual MCP Server - Tool Usage Guide
+# Blender Manual MCP Server - Tool Usage Guide (v4.0)
 
-This guide provides detailed instructions on how to effectively use the 9 search tools provided by the Blender Manual MCP server, optimized for NanoVDB/volumetrics workflows.
+This guide provides detailed instructions on how to effectively use the **12 search tools** provided by the Blender Manual MCP server, optimized for NanoVDB/volumetrics workflows.
 
 ## Table of Contents
 
@@ -14,16 +14,28 @@ This guide provides detailed instructions on how to effectively use the 9 search
 
 ## Quick Reference
 
+### Manual Search Tools
 | Tool | Best For | Example Query |
 |------|----------|---------------|
 | `search_manual` | General questions, broad topics | `"volume rendering cycles"` |
 | `search_tutorials` | Learning, step-by-step guides | `topic="fluid simulation"` |
 | `browse_hierarchy` | Exploring structure, discovering content | `path="physics"` |
 | `search_vdb_workflow` | VDB export, caching, baking | `"bake mantaflow smoke"` |
-| `search_python_api` | Python scripts, bpy.ops | `"bpy.ops.fluid"` |
 | `search_nodes` | Shader/compositor nodes | `"Principled Volume"` |
 | `search_modifiers` | Modifier documentation | `"Fluid"` |
 | `read_page` | Full page content | `"physics/fluid/type/domain/cache.html"` |
+
+### Python API Tools
+| Tool | Best For | Example Query |
+|------|----------|---------------|
+| `search_python_api` | Python scripts, bpy.ops | `"bpy.ops.fluid"` |
+| `list_api_modules` | Browse API structure | `category="bpy"` |
+| `search_bpy_operators` | Find operators by category | `category="mesh"` |
+| `search_bpy_types` | Find type definitions | `"FluidModifier"` |
+
+### AI-Powered Tools
+| Tool | Best For | Example Query |
+|------|----------|---------------|
 | `search_semantic` | Natural language, conceptual queries | `"how to make realistic smoke"` |
 
 ---

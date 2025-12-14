@@ -387,9 +387,21 @@ def index_directory(base_dir: Path, source: str) -> int:
 
     if not base_dir.exists():
         logger.warning(f"Directory not found: {base_dir}")
+        logger.warning(f"  Expected location: {base_dir.absolute()}")
+        logger.warning(f"  Skipping {source} indexing - directory missing")
         return 0
 
-    logger.info(f"Indexing {source} from {base_dir}...")
+    if not base_dir.is_dir():
+        logger.warning(f"Path exists but is not a directory: {base_dir}")
+        return 0
+
+    # Check if directory contains HTML files
+    html_count = sum(1 for _ in base_dir.rglob("*.html"))
+    if html_count == 0:
+        logger.warning(f"No HTML files found in {base_dir}")
+        return 0
+
+    logger.info(f"Indexing {source} from {base_dir} ({html_count} HTML files)...")
 
     for root, _, files in os.walk(base_dir):
         for file in files:
@@ -485,16 +497,31 @@ def build_index():
 
 def compute_score(item: Dict[str, Any], query_terms: List[str],
                   boost_categories: Optional[List[str]] = None,
-                  boost_keywords: Optional[List[str]] = None) -> int:
-    """Compute relevance score for a search item."""
+                  boost_keywords: Optional[List[str]] = None,
+                  original_query: Optional[str] = None) -> int:
+    """Compute relevance score for a search item with improved matching."""
     score = 0
     content_lower = item["content"].lower()
     title_lower = item["title"].lower()
 
+    # Exact phrase match bonus (if query has multiple words)
+    if original_query and len(query_terms) > 1:
+        query_phrase = original_query.lower()
+        if query_phrase in title_lower:
+            score += 50  # Strong bonus for exact phrase in title
+        if query_phrase in content_lower:
+            score += 25  # Bonus for exact phrase in content
+
     # Title matches (highest weight)
+    title_match_count = 0
     for term in query_terms:
         if term in title_lower:
             score += 20
+            title_match_count += 1
+
+    # Bonus if ALL query terms match in title
+    if title_match_count == len(query_terms) and len(query_terms) > 1:
+        score += 30
 
     # Header matches
     for header in item.get("headers", []):
@@ -511,7 +538,19 @@ def compute_score(item: Dict[str, Any], query_terms: List[str],
 
     # Content matches (limit counting to prevent huge scores)
     for term in query_terms:
-        score += min(content_lower.count(term), 10)  # Cap at 10 per term
+        count = content_lower.count(term)
+        score += min(count, 10)  # Cap at 10 per term
+
+    # Proximity bonus: terms appearing near each other in content
+    if len(query_terms) > 1:
+        # Check if terms appear within 50 chars of each other
+        for i, term1 in enumerate(query_terms):
+            pos1 = content_lower.find(term1)
+            if pos1 != -1:
+                for term2 in query_terms[i+1:]:
+                    pos2 = content_lower.find(term2)
+                    if pos2 != -1 and abs(pos1 - pos2) < 50:
+                        score += 5  # Proximity bonus
 
     # Category boost
     if boost_categories:
@@ -524,36 +563,52 @@ def compute_score(item: Dict[str, Any], query_terms: List[str],
             if keyword in content_lower or keyword in item_keywords:
                 score += 10
 
-    # Path depth penalty
+    # Path depth penalty (reduced)
     depth = item["path"].count('/')
-    score -= depth * 2
+    score -= depth  # Reduced from 2 to 1
+
+    # Boost for index/overview pages (they're often the most useful starting point)
+    if "index.html" in item["path"] or "introduction" in title_lower:
+        score += 5
 
     return max(0, score)
 
 
 def format_results(results: List[Dict], query: str, limit: int = DEFAULT_LIMIT,
                    offset: int = 0, compact: bool = False) -> str:
-    """Format search results with token optimization options."""
+    """Format search results with token optimization options and source indicators."""
     if not results:
-        return f"No results found for '{query}'."
+        return f"No results found for '{query}'.\n\n**Suggestions:**\n- Try different keywords\n- Use `browse_hierarchy()` to explore available topics"
 
     total = len(results)
     paginated = results[offset:offset + limit]
 
+    # Count sources for summary
+    api_count = sum(1 for r in paginated if r.get('source') == 'python_api')
+    manual_count = len(paginated) - api_count
+
     if compact:
-        # Compact mode: minimal output
-        output = f"Found {total} results for '{query}' (showing {offset+1}-{offset+len(paginated)}):\n\n"
+        # Compact mode: minimal output with source indicators
+        output = f"Found {total} results for '{query}' (showing {offset+1}-{offset+len(paginated)}"
+        if api_count > 0 and manual_count > 0:
+            output += f" | {manual_count} manual, {api_count} API"
+        output += "):\n\n"
         for i, r in enumerate(paginated, offset + 1):
-            output += f"{i}. **{r['title']}** | `{r['path']}` | Score: {r['score']}\n"
+            source_tag = "[API]" if r.get('source') == 'python_api' else ""
+            output += f"{i}. {source_tag}**{r['title']}** | `{r['path']}` | {r['score']}pts\n"
         if offset + limit < total:
             output += f"\n[{total - offset - limit} more - use offset={offset + limit}]"
         return output
 
-    # Standard mode: with snippets
-    output = f"Found {total} results for '{query}' (showing {offset+1}-{offset+len(paginated)}):\n\n"
+    # Standard mode: with snippets and source indicators
+    output = f"Found {total} results for '{query}' (showing {offset+1}-{offset+len(paginated)}"
+    if api_count > 0 and manual_count > 0:
+        output += f" | {manual_count} manual, {api_count} API"
+    output += "):\n\n"
 
     for i, r in enumerate(paginated, offset + 1):
-        output += f"## {i}. {r['title']}\n"
+        source_tag = " [API]" if r.get('source') == 'python_api' else ""
+        output += f"## {i}. {r['title']}{source_tag}\n"
         output += f"**Path:** `{r['path']}` | **Score:** {r['score']}\n"
         if r.get('headers'):
             output += f"**Sections:** {', '.join(r['headers'][:3])}\n"
@@ -615,13 +670,14 @@ def search_manual(query: str, limit: int = DEFAULT_LIMIT, offset: int = 0, compa
     results = []
 
     for item in search_index:
-        score = compute_score(item, query_terms)
+        score = compute_score(item, query_terms, original_query=query)
         if score > 0:
             results.append({
                 "title": item["title"],
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
+                "source": item.get("source", "manual"),
                 "snippet": create_snippet(item["content"], query_terms) if not compact else ""
             })
 
@@ -668,7 +724,7 @@ def search_tutorials(topic: str, technique: Optional[str] = None, limit: int = D
         if not is_tutorial:
             continue
 
-        score = compute_score(item, query_terms, boost_categories=["getting_started", "introduction"])
+        score = compute_score(item, query_terms, boost_categories=["getting_started", "introduction"], original_query=query)
 
         if score > 0:
             results.append({
@@ -676,6 +732,7 @@ def search_tutorials(topic: str, technique: Optional[str] = None, limit: int = D
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
+                "source": item.get("source", "manual"),
                 "snippet": create_snippet(item["content"], query_terms) if not compact else ""
             })
 
@@ -705,10 +762,14 @@ def browse_hierarchy(path: Optional[str] = None) -> str:
         if not load_cache():
             build_index()
 
-    # Normalize path
+    # Normalize path - handle both forward and back slashes, strip quotes
     search_path = ""
     if path:
-        search_path = normalize_path(path.strip().rstrip('/')) + '/'
+        # Clean up path: strip whitespace, quotes, normalize separators
+        clean_path = path.strip().strip('"\'')
+        clean_path = normalize_path(clean_path).rstrip('/')
+        if clean_path:
+            search_path = clean_path + '/'
 
     # Collect subcategories and direct pages
     subdirs = set()
@@ -718,18 +779,24 @@ def browse_hierarchy(path: Optional[str] = None) -> str:
         item_path = normalize_path(item["path"])
 
         if search_path:
-            if not item_path.startswith(search_path):
+            # Case-insensitive prefix matching for better Windows compatibility
+            if not item_path.lower().startswith(search_path.lower()):
                 continue
             rel_path = item_path[len(search_path):]
         else:
             rel_path = item_path
 
+        # Skip empty paths
+        if not rel_path:
+            continue
+
         # Check if this is a direct child or in a subdirectory
         if '/' in rel_path:
             subdir = rel_path.split('/')[0]
-            subdirs.add(subdir)
+            if subdir:  # Don't add empty subdirs
+                subdirs.add(subdir)
         else:
-            pages.append({"title": item["title"], "path": item_path})
+            pages.append({"title": item["title"], "path": item_path, "source": item.get("source", "manual")})
 
     # Format output - COMPACT to save tokens
     if search_path:
@@ -751,12 +818,18 @@ def browse_hierarchy(path: Optional[str] = None) -> str:
     if pages:
         output += "**Pages:**\n"
         for p in sorted(pages, key=lambda x: x["title"])[:10]:
-            output += f"- {p['title']} (`{p['path']}`)\n"
+            source_tag = "[API]" if p.get("source") == "python_api" else ""
+            output += f"- {source_tag}{p['title']} (`{p['path']}`)\n"
         if len(pages) > 10:
             output += f"- ... and {len(pages) - 10} more pages\n"
 
     if not subdirs and not pages:
-        output += "No content found at this path."
+        # Provide helpful suggestions
+        output += "No content found at this path.\n\n"
+        output += "**Suggestions:**\n"
+        output += "- Try `browse_hierarchy()` to see top-level categories\n"
+        output += "- Use forward slashes: `physics/fluid` not `physics\\fluid`\n"
+        output += "- Check spelling: valid categories include `render`, `physics`, `modeling`, `animation`\n"
 
     return output
 
@@ -808,6 +881,7 @@ def search_vdb_workflow(query: str, limit: int = DEFAULT_LIMIT, offset: int = 0,
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
+                "source": item.get("source", "manual"),
                 "snippet": create_snippet(item["content"], all_terms) if not compact else ""
             })
 
@@ -946,6 +1020,7 @@ def search_nodes(node_type: str, category: Optional[str] = None, limit: int = DE
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
+                "source": item.get("source", "manual"),
                 "snippet": create_snippet(item["content"], query_terms) if not compact else ""
             })
 
@@ -999,6 +1074,7 @@ def search_modifiers(modifier_name: Optional[str] = None, limit: int = DEFAULT_L
                 "path": item["path"],
                 "headers": item.get("headers", []),
                 "score": score,
+                "source": item.get("source", "manual"),
                 "snippet": create_snippet(item["content"], query_terms) if not compact else ""
             })
 

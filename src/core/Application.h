@@ -185,7 +185,7 @@ private:
 
     // === Spatial RT Interpolation (Phase 3.9) ===
     bool m_useVolumetricRT = false;          // Enable spatial interpolation of RT lighting (DISABLED - interferes with probe grid)
-    uint32_t m_volumetricRTSamples = 8;      // Number of neighbor particles to sample (4-32)
+    uint32_t m_volumetricRTSamples = 16;      // Number of neighbor particles to sample (4-32)
     float m_volumetricRTDistance = 200.0f;   // Smoothness radius for interpolation (100-400)
     float m_volumetricRTAttenuation = 0.0001f; // Unused (kept for compatibility)
     float m_volumetricRTIntensity = 200.0f;  // Unused (kept for compatibility)
@@ -322,8 +322,8 @@ private:
     float m_redshiftStrength = 1.0f;       // 0.0-5.0 (multiplier)
 
     // Gaussian RT system toggles
-    bool m_useShadowRays = false;          // F5 to toggle (PCSS - disabled by default, replaced by screen-space)
-    bool m_useScreenSpaceShadows = true;   // Phase 2: Screen-space contact shadows (NEW!)
+    bool m_useShadowRays = true;           // F5 to toggle (Volumetric Self-Shadowing - ENABLED by default for quality)
+    bool m_useScreenSpaceShadows = false;  // Phase 2: Screen-space contact shadows (DISABLED by default to avoid ellipsoid artifacts)
     uint32_t m_ssSteps = 16;               // Screen-space shadow quality: 8=fast, 16=balanced, 32=quality
     bool m_debugScreenSpaceShadows = false; // Debug visualization: red=shadow, green=lit
     bool m_useInScattering = false;        // F6 to toggle (OFF by default - very expensive!)
@@ -343,8 +343,8 @@ private:
         Quality,      // 8-ray PCSS
         Custom        // User-defined settings
     };
-    ShadowPreset m_shadowPreset = ShadowPreset::Performance;
-    uint32_t m_shadowRaysPerLight = 1;           // Shadow rays per light (1-16)
+    ShadowPreset m_shadowPreset = ShadowPreset::Balanced; // Default to Balanced (4 rays) for better quality
+    uint32_t m_shadowRaysPerLight = 4;           // Shadow rays per light (1-16)
     bool m_enableTemporalFiltering = true;       // Temporal shadow accumulation
     float m_temporalBlend = 0.1f;                // Temporal blend factor (0.0-1.0)
 

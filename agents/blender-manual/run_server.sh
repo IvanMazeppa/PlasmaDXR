@@ -1,3 +1,4 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-exec python3 blender_server.py
+# Use virtual environment with sentence-transformers for semantic search
+exec ./venv/bin/python blender_server.py
