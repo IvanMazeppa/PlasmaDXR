@@ -53,6 +53,7 @@ set(SOURCES
     src/config/Config.cpp
     src/particles/ParticleRenderer_Billboard.cpp
     src/particles/ParticleRenderer_Gaussian.cpp
+    src/particles/LuminousParticleSystem.cpp
     src/ml/AdaptiveQualitySystem.cpp
     src/ml/PINNPhysicsSystem.cpp
     src/ml/SIRENVortexField.cpp
@@ -90,6 +91,7 @@ set(HEADERS
     src/particles/ParticleRenderer.h
     src/config/Config.h
     src/particles/ParticleRenderer_Gaussian.h
+    src/particles/LuminousParticleSystem.h
     src/ml/AdaptiveQualitySystem.h
     src/ml/PINNPhysicsSystem.h
     src/benchmark/BenchmarkRunner.h

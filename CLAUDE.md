@@ -46,7 +46,8 @@ The user is named Ben, he is a novice programmer but has some experience with C+
 - **Froxel Volumetric Fog System:** ⚠️ DEPRECATED (replaced by NanoVDB, shaders removed from build)
 - **Probe Grid System:** Spherical harmonics (L2) for indirect lighting ✅ COMPLETE
 - **Volumetric ReSTIR System:** Path generation and shading passes ✅ COMPLETE
-- **Multi-Light System:** 13 lights with dynamic control ✅ COMPLETE
+- **Multi-Light System:** 29 lights (16 star + 13 static) ✅ COMPLETE
+- **Luminous Star Particles:** Physics-driven point lights inside Gaussian particles ✅ COMPLETE
 - **NVIDIA DLSS 3.7:** Super Resolution operational ✅ COMPLETE
 - **PINN ML Physics:** Python training complete, C++ integration in progress 🔄
 - **Adaptive Particle Radius:** Camera-distance adaptive sizing ✅ COMPLETE
@@ -231,11 +232,38 @@ The froxel system was an experimental frustum-aligned voxel grid (160×90×128) 
 
 ## Multi-Light System (Phase 3.5 - COMPLETE ✅)
 
-13 lights distributed across accretion disk with realistic multi-directional shadowing, rim lighting, atmospheric scattering. Performance: 120+ FPS @ 10K particles (RTX 4060 Ti, 1080p).
+29 lights total (16 star + 13 static) distributed across accretion disk with realistic multi-directional shadowing, rim lighting, atmospheric scattering. Performance: 100-120 FPS @ 10K particles (RTX 4060 Ti, 1080p).
 
 **ImGui Controls:** Position, Color, Intensity (0.1-20.0), Radius (10.0-200.0), per-light enable/disable, bulk controls
 
 **Presets:** Stellar Ring (13 lights, default), Dual Binary (2 lights), Trinary Dance (3 lights), Single Beacon (1 light)
+
+---
+
+## Luminous Star Particles (Phase 3.9 - COMPLETE ✅)
+
+Physics-driven point lights embedded inside 3D Gaussian particles, creating supergiant stars that illuminate neighbors while orbiting the black hole.
+
+**Architecture:**
+- `LuminousParticleSystem` class manages 16 star particle-light bindings
+- First 16 particles use `SUPERGIANT_STAR` material (index 8): very low opacity (0.15), high emission (15×)
+- CPU Keplerian orbit prediction syncs light positions each frame (no GPU readback)
+- Star lights fill indices 0-15, static lights fill indices 16-28
+
+**Material Properties (SUPERGIANT_STAR):**
+- Opacity: 0.15 (very transparent - light shines through)
+- Emission: 15× (highest)
+- Temperature: 25000K (blue-white supergiant)
+- Albedo: Blue-white (0.85, 0.9, 1.0)
+
+**ImGui Controls:**
+- Enable/Disable luminous stars toggle
+- Global Luminosity slider (0.1-5.0)
+- Star Opacity slider (0.05-0.5)
+- Spawn presets: Spiral Arms (4), Disk Hotspots (12), Respawn All
+- Star Details tree node (per-star temperature, luminosity, position)
+
+**Performance:** ~100-120 FPS @ 10K particles with 29 lights (RTX 4060 Ti)
 
 ---
 
@@ -472,6 +500,7 @@ Always use context7 when I need code generation, setup or configuration steps, o
 
 **Roadmap (see MASTER_ROADMAP_V2.md):**
 - **Phase 3.5-3.6:** Multi-light + PCSS ✅ COMPLETE
+- **Phase 3.9:** Luminous Star Particles ✅ COMPLETE
 - **Phase 4 (Current):** RTXDI M5 + Shadow Quality 🔄 IN PROGRESS
 - **Phase 5 (Current):** PINN ML Integration (Python ✅, C++ 🔄)
 - **Phase 6 (Next):** Custom Temporal Denoising

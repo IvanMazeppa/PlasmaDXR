@@ -576,6 +576,17 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Press 'J' to create test fog sphere");
     }
 
+    // Initialize Luminous Star Particles (Phase 3.9)
+    m_luminousParticles = std::make_unique<LuminousParticleSystem>();
+    if (!m_luminousParticles->Initialize(16)) {
+        LOG_ERROR("Failed to initialize Luminous Star Particles");
+        m_luminousParticles.reset();
+    } else {
+        LOG_INFO("Luminous Star Particles initialized!");
+        LOG_INFO("  16 star particles with embedded point lights");
+        LOG_INFO("  CPU-predicted Keplerian orbits for position sync");
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -598,6 +609,7 @@ void Application::Shutdown() {
     m_dlssSystem.reset();
 #endif
 
+    m_luminousParticles.reset();  // Release Luminous Star Particles
     m_nanoVDBSystem.reset();  // Release NanoVDB volumetric system
     m_rtLighting.reset();
     m_particleRenderer.reset();
@@ -794,6 +806,23 @@ void Application::Render() {
             for (size_t i = 0; i < m_lights.size(); i++) {
                 float temperature = GetStellarTemperatureFromIntensity(m_lights[i].intensity);
                 m_lights[i].color = GetStellarColorFromTemperature(temperature);
+            }
+        }
+
+        // LUMINOUS STAR PARTICLES: Update and merge star lights
+        // Star lights are in indices 0-15, static lights in 16-28
+        if (m_enableLuminousStars && m_luminousParticles) {
+            // Update star positions using CPU Keplerian orbit prediction
+            m_luminousParticles->Update(m_deltaTime, m_physicsTimeMultiplier);
+
+            // Merge star lights into the light array (indices 0-15)
+            const auto& starLights = m_luminousParticles->GetStarLights();
+            for (size_t i = 0; i < starLights.size() && i < 16; i++) {
+                // Ensure we have space in the lights array
+                if (i >= m_lights.size()) {
+                    m_lights.resize(i + 1);
+                }
+                m_lights[i] = starLights[i];
             }
         }
     }
@@ -4824,6 +4853,83 @@ void Application::RenderImGui() {
         ImGui::Text("Physics Timestep: %.6f (120Hz)", m_physicsTimeStep);
     }
 
+    // === Luminous Star Particles (Phase 3.9) ===
+    if (ImGui::CollapsingHeader("Luminous Star Particles")) {
+        ImGui::Checkbox("Enable Luminous Stars", &m_enableLuminousStars);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Embed point lights inside 16 'supergiant star' particles.\n"
+                              "Creates physics-driven light sources that orbit the black hole.\n"
+                              "Star lights use indices 0-15, static lights use 16-28.");
+        }
+
+        if (m_luminousParticles) {
+            ImGui::Text("Active Stars: %u / %u",
+                m_luminousParticles->GetActiveStarCount(),
+                LuminousParticleSystem::MAX_STAR_PARTICLES);
+
+            ImGui::Separator();
+
+            // Global controls
+            float luminosity = m_luminousParticles->GetGlobalLuminosity();
+            if (ImGui::SliderFloat("Global Luminosity", &luminosity, 0.1f, 5.0f, "%.2f")) {
+                m_luminousParticles->SetGlobalLuminosity(luminosity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Multiplier for all star light intensities (0.1-5.0)");
+            }
+
+            float opacity = m_luminousParticles->GetGlobalOpacity();
+            if (ImGui::SliderFloat("Star Opacity", &opacity, 0.05f, 0.5f, "%.2f")) {
+                m_luminousParticles->SetGlobalOpacity(opacity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Particle transparency - lower values let more light shine through.\n"
+                                  "0.05 = very transparent, 0.5 = semi-opaque");
+            }
+
+            ImGui::Separator();
+
+            // Spawn presets
+            if (ImGui::Button("Spawn Spiral Arms (4)")) {
+                m_luminousParticles->SpawnSpiralArmStars(200.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Place 4 blue supergiant stars at spiral arm positions (0/90/180/270 degrees)");
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Spawn Disk Hotspots")) {
+                m_luminousParticles->SpawnDiskHotspots(100.0f, 400.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Scatter 12 varied stars across the disk at 100-400 unit radii\n"
+                                  "(red giants, white dwarfs, main sequence)");
+            }
+
+            if (ImGui::Button("Respawn All Stars")) {
+                m_luminousParticles->RespawnAllStars();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Reset all 16 stars to default Fibonacci sphere positions");
+            }
+
+            // Individual star info (collapsible)
+            if (ImGui::TreeNode("Star Details")) {
+                const auto& bindings = m_luminousParticles->GetStarBindings();
+                for (size_t i = 0; i < bindings.size(); i++) {
+                    if (bindings[i].active) {
+                        ImGui::Text("Star %zu: T=%.0fK L=%.1f Pos=(%.0f, %.0f, %.0f)",
+                            i, bindings[i].temperature, bindings[i].luminosity,
+                            bindings[i].position.x, bindings[i].position.y, bindings[i].position.z);
+                    }
+                }
+                ImGui::TreePop();
+            }
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "LuminousParticleSystem not initialized!");
+        }
+    }
+
     // Multi-Light System (Phase 3.5)
     if (ImGui::CollapsingHeader("Multi-Light System (L)")) {
         ImGui::Text("Active Lights: %d / 16", static_cast<int>(m_lights.size()));
@@ -5715,11 +5821,20 @@ void Application::RenderImGui() {
 }
 
 // Initialize 13-light configuration for accretion disk
+// When Luminous Stars are enabled, static lights go to indices 16-28 (star lights use 0-15)
 void Application::InitializeLights() {
     using DirectX::XMFLOAT3;
     const float PI = 3.14159265f;
 
     m_lights.clear();
+
+    // Reserve space for 32 lights (16 star + 16 static)
+    // Star lights (0-15) will be filled by LuminousParticleSystem during Update
+    // Static lights go to indices 16+ when luminous stars enabled
+    uint32_t startIndex = m_enableLuminousStars ? 16 : 0;
+    if (m_enableLuminousStars) {
+        m_lights.resize(16);  // Pre-allocate space for star lights (filled during Update)
+    }
 
     // Primary: Hot inner edge at origin (blue-white 20000K)
     ParticleRenderer_Gaussian::Light primaryLight;
