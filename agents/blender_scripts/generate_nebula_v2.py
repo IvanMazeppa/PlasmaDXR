@@ -31,7 +31,8 @@ def create_bipolar_nebula():
     domain_settings.resolution_max = 128  # decent quality
     domain_settings.use_adaptive_domain = True
     domain_settings.use_noise = True
-    domain_settings.noise_scale = 2.0
+    # Blender 5.0: `noise_scale` is an int RNA property (float assignment raises TypeError).
+    domain_settings.noise_scale = 2
     
     # Cache Settings
     domain_settings.cache_type = 'ALL'

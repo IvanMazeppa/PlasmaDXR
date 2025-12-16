@@ -52,10 +52,17 @@ def create_hydrogen_cloud(
     settings.use_dissolve_smoke = True
     settings.dissolve_speed = 80
 
-    # VDB Export settings (VERIFIED Blender 5.0)
+    # VDB Export settings (Blender 5.x)
+    #
+    # NOTE:
+    # - Some Blender 5 builds do NOT expose `cache_precision` on FluidDomainSettings
+    #   (we hit: AttributeError: 'FluidDomainSettings' object has no attribute 'cache_precision').
+    # - Keep this script cross-build by guarding optional properties.
     settings.cache_data_format = 'OPENVDB'
-    settings.openvdb_cache_compress_type = 'ZIP'  # Options: ZIP, NONE
-    settings.cache_precision = 'HALF'  # Options: FULL, HALF, MINI
+    if hasattr(settings, "openvdb_cache_compress_type"):
+        settings.openvdb_cache_compress_type = 'ZIP'  # Options typically: ZIP, NONE
+    if hasattr(settings, "cache_precision"):
+        settings.cache_precision = 'HALF'  # Options may include: FULL, HALF, MINI (when present)
     settings.cache_directory = cache_dir
     settings.cache_frame_start = 1
     settings.cache_frame_end = frame_end

@@ -1,0 +1,24 @@
+dillixrudpefy@B2:/mnt/d/users/dilli/androidstudioprojects/PlasmaDX-Clean$ pwd &&
+ git status
+/mnt/d/users/dilli/androidstudioprojects/PlasmaDX-Clean
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+dillixrudpefy@B2:/mnt/d/users/dilli/androidstudioprojects/PlasmaDX-Clean$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
