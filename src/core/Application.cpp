@@ -5246,19 +5246,19 @@ void Application::RenderImGui() {
 
                 ImGui::SameLine();
                 if (ImGui::Button("Load BipolarNebula")) {
-                    // BipolarNebula density-only grids from Blender worktree
+                    // BipolarNebula is in the Blender worktree - use absolute path
                     size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
-                        "D:/Users/dilli/AndroidStudioProjects/PlasmaDX-Blender/VDBs/NanoVDB/BipolarNebula_density");
+                        "D:/Users/dilli/AndroidStudioProjects/PlasmaDX-Blender/VDBs/NanoVDB/BipolarNebula");
                     if (frames > 0) {
                         LOG_INFO("Loaded {} BipolarNebula animation frames", frames);
-                        // Nebula needs scaling - native bounds are ~6 units (Blender scale)
-                        m_nanoVDBSystem->ScaleGridBounds(200.0f);
-                        m_nanoVDBSystem->SetDensityScale(10.0f);
-                        m_nanoVDBSystem->SetEmissionStrength(5.0f);
+                        // Nebula is larger, scale appropriately
+                        m_nanoVDBSystem->ScaleGridBounds(100.0f);
+                        m_nanoVDBSystem->SetDensityScale(5.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(3.0f);
                     }
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Load BipolarNebula animation (120 frames, density only)\nFrom PlasmaDX-Blender worktree");
+                    ImGui::SetTooltip("Load BipolarNebula animation (120 frames)\nFrom PlasmaDX-Blender worktree");
                 }
             }
 
