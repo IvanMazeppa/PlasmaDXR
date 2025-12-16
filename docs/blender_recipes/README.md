@@ -40,7 +40,7 @@ Energetic events: supernovae, stellar flares, coronal mass ejections.
 
 ### Stellar Phenomena
 
-Structures around and between stars: disks, coronae, jets.
+Structures around and between stars: disks, coronae, jets, bubbles.
 
 | Recipe | Difficulty | Method | Status |
 |--------|------------|--------|--------|
@@ -48,6 +48,7 @@ Structures around and between stars: disks, coronae, jets.
 | [Accretion Corona](stellar_phenomena/accretion_corona.md) | Advanced | Mantaflow + GeoNodes | Planned |
 | [Planetary Nebula (Bipolar)](stellar_phenomena/planetary_nebula.md) | Intermediate | Mantaflow | ✅ Complete |
 | [Supergiant Star](stellar_phenomena/supergiant_star.md) | Intermediate | Mantaflow | ✅ Complete |
+| [Wolf-Rayet Bubble](wolf_rayet_bubble/) | Intermediate | Mantaflow (3-wind) | ✅ Complete |
 
 ### Dark Structures
 
