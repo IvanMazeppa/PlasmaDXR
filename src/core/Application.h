@@ -34,6 +34,7 @@ namespace Benchmark {
 
 // Need full include for ParticleRenderer_Gaussian::Light nested type
 #include "../particles/ParticleRenderer_Gaussian.h"
+#include "../particles/LuminousParticleSystem.h"
 
 class Application {
 public:
@@ -97,6 +98,7 @@ private:
     std::unique_ptr<ProbeGridSystem> m_probeGridSystem;             // Probe Grid (Phase 0.13.1 - replaces ReSTIR)
     std::unique_ptr<AdaptiveQualitySystem> m_adaptiveQuality;       // ML-based adaptive quality
     std::unique_ptr<NanoVDBSystem> m_nanoVDBSystem;                  // NanoVDB volumetric fog/gas (Phase 5.x)
+    std::unique_ptr<LuminousParticleSystem> m_luminousParticles;    // Luminous star particles (Phase 3.9)
 #ifdef ENABLE_DLSS
     std::unique_ptr<DLSSSystem> m_dlssSystem;                       // DLSS 4.0 Ray Reconstruction (AI denoising)
 #endif
@@ -235,6 +237,9 @@ private:
     // Physics-driven lights system (celestial body lights)
     bool m_physicsDrivenLights = false;        // Toggle: lights move with physics like celestial bodies
     std::vector<uint32_t> m_lightParticleIndices;  // Particle index for each light (empty = random selection)
+
+    // === Luminous Star Particles (Phase 3.9) ===
+    bool m_enableLuminousStars = true;         // Toggle: embedded lights inside star particles
 
     // Stellar temperature color system (Phase 2)
     bool m_useStellarTemperatureColors = false;  // Toggle: auto-apply stellar temperature colors based on intensity

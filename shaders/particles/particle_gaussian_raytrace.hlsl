@@ -45,8 +45,8 @@ cbuffer GaussianConstants : register(b0)
     float anisotropyStrength;
 
 
-    // Multi-light system
-    uint lightCount;               // Number of active lights (0-16)
+    // Multi-light system (expanded for luminous star particles)
+    uint lightCount;               // Number of active lights (0-32: 16 stars + 16 static)
     float3 padding3;               // Padding for alignment
 
     // PCSS soft shadow system
@@ -116,10 +116,11 @@ struct MaterialTypeProperties {
     float padding[6];               // 24 bytes - Padding to 64 bytes
 };  // Total: 64 bytes per material
 
-// Material properties constant buffer (8 material types × 64 bytes = 512 bytes)
+// Material properties constant buffer (9 material types × 64 bytes = 576 bytes)
+// Luminous Stars: Added SUPERGIANT_STAR (index 8) for light-emitting particles
 cbuffer MaterialProperties : register(b1)
 {
-    MaterialTypeProperties g_materials[8];  // PLASMA, STAR, GAS_CLOUD, ROCKY, ICY, SUPERNOVA, STELLAR_FLARE, SHOCKWAVE
+    MaterialTypeProperties g_materials[9];  // PLASMA, STAR, GAS_CLOUD, ROCKY, ICY, SUPERNOVA, STELLAR_FLARE, SHOCKWAVE, SUPERGIANT_STAR
 };
 
 // Light structure for multi-light system (64 bytes with god ray parameters)
@@ -1577,7 +1578,7 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
                         // === SECONDARY: Blend nearest lights for soft spatial coherence ===
                         // Find top 3 nearest lights (excluding RTXDI selection) and blend by distance
-                        for (uint blendIdx = 0; blendIdx < lightCount && blendIdx < 16; blendIdx++) {
+                        for (uint blendIdx = 0; blendIdx < lightCount && blendIdx < 32; blendIdx++) {
                             if (blendIdx == selectedLightIndex) continue;  // Skip RTXDI selection
 
                             Light light = g_lights[blendIdx];
