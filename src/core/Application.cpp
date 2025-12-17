@@ -3090,18 +3090,19 @@ void Application::SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::st
     hr = readbackBuffer->Map(0, &readRange, &mappedData);
 
     if (SUCCEEDED(hr)) {
-        // Convert BGRA to RGB (no vertical flip needed - PNG is top-down like GPU data)
+        // Convert RGBA to RGB (swap chain uses DXGI_FORMAT_R8G8B8A8_UNORM)
+        // No channel swap needed - just strip alpha channel
         std::vector<uint8_t> rgbData(desc.Width * desc.Height * 3);
-        uint8_t* src = reinterpret_cast<uint8_t*>(mappedData);
+        uint8_t* srcPtr = reinterpret_cast<uint8_t*>(mappedData);
 
         for (UINT y = 0; y < desc.Height; ++y) {
             for (UINT x = 0; x < desc.Width; ++x) {
                 UINT srcIdx = (y * footprint.Footprint.RowPitch) + (x * 4);
                 UINT dstIdx = (y * desc.Width + x) * 3;
 
-                rgbData[dstIdx + 0] = src[srcIdx + 2]; // R (from B in BGRA)
-                rgbData[dstIdx + 1] = src[srcIdx + 1]; // G
-                rgbData[dstIdx + 2] = src[srcIdx + 0]; // B (from R in BGRA)
+                rgbData[dstIdx + 0] = srcPtr[srcIdx + 0]; // R
+                rgbData[dstIdx + 1] = srcPtr[srcIdx + 1]; // G
+                rgbData[dstIdx + 2] = srcPtr[srcIdx + 2]; // B
             }
         }
 
