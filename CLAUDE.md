@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The user is named Ben, he is a novice programmer but has some experience with C++, Java and Python. The user has high-functioning autism and so tends to develop a very strong interest in a technical field, and so this has blossomed into a passion project for Ben. He has a very strong interest in AI, ML and LLMs, and is leveraging these tools to create thi experimental raytracing engine.
+The user is named Ben, he is a novice programmer but has some experience with C++, Java and Python. The user has high-functioning autism and so tends to develop a very strong interest in a technical field, and so this has blossomed into a passion project for Ben. He has a very strong interest in AI, ML and LLMs, and is leveraging these tools to create this experimental raytracing engine.
 
 ### Collaboration Preferences
 
