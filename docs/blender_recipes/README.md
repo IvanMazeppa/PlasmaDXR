@@ -1,5 +1,11 @@
 # Celestial Body VDB Recipe Library
 
+> **Canonical location notice:** New Blender scripts/docs are being consolidated under `assets/`:
+> - Docs: `assets/blender_docs/`
+> - Scripts: `assets/blender_scripts/`
+>
+> This `docs/blender_recipes/` tree is kept for historical context, but prefer `assets/` going forward.
+
 **Purpose:** Production-ready recipes for creating volumetric celestial phenomena in Blender 5.0 for export to PlasmaDX-Clean.
 
 **Target User:** Programmers familiar with code but new to Blender's interface.
@@ -46,8 +52,8 @@ Structures around and between stars: disks, coronae, jets.
 |--------|------------|--------|--------|
 | [Protoplanetary Disk](stellar_phenomena/protoplanetary_disk.md) | Intermediate | Geometry Nodes | Planned |
 | [Accretion Corona](stellar_phenomena/accretion_corona.md) | Advanced | Mantaflow + GeoNodes | Planned |
-| [Planetary Nebula (Bipolar)](stellar_phenomena/planetary_nebula.md) | Intermediate | Mantaflow | ✅ Complete |
-| [Supergiant Star](stellar_phenomena/supergiant_star.md) | Intermediate | Mantaflow | ✅ Complete |
+| [Planetary Nebula (Bipolar)](../../assets/blender_docs/GPT-5.2/stellar_phenomena/planetary_nebula.md) | Intermediate | Mantaflow | ✅ Complete |
+| [Supergiant Star](../../assets/blender_docs/GPT-5.2/stellar_phenomena/supergiant_star.md) | Intermediate | Mantaflow | ✅ Complete |
 
 ### Dark Structures
 

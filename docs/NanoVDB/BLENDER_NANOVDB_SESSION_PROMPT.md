@@ -130,7 +130,7 @@ mcp__dxr-volumetric-pyro-specialist__estimate_pyro_performance(particle_count=10
 ### Blender Worktree (Asset Creation)
 - `docs/blender_recipes/README.md` - Recipe library index
 - `docs/blender_recipes/emission_nebulae/hydrogen_cloud.md` - First complete recipe
-- `docs/blender_recipes/scripts/hydrogen_cloud_v1.py` - Automation script
+- `assets/blender_scripts/shared/hydrogen_cloud_v1.py` - Automation script (canonical)
 - `agents/blender-scripting/AGENT_PROMPT.md` - Script generation expertise
 - `agents/celestial-body-curator/AGENT_PROMPT.md` - Recipe authoring expertise
 

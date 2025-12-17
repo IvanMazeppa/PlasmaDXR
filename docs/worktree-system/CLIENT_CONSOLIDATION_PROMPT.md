@@ -1,4 +1,4 @@
-# Client Script Consolidation Prompt
+kkkkkkkkkkkkkkkkkkkkkkkk# Client Script Consolidation Prompt
 
 Copy this into a Claude session on the client machine:
 

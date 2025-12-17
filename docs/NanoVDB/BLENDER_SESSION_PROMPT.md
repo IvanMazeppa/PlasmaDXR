@@ -120,7 +120,7 @@ mcp__gaussian-analyzer__simulate_material_properties(material_type="GAS_CLOUD")
 |------|---------|
 | `docs/blender_recipes/README.md` | Recipe library index |
 | `docs/blender_recipes/emission_nebulae/hydrogen_cloud.md` | Complete recipe with Python script |
-| `docs/blender_recipes/scripts/hydrogen_cloud_v1.py` | Working automation script |
+| `assets/blender_scripts/shared/hydrogen_cloud_v1.py` | Working automation script (canonical) |
 | `scripts/convert_vdb_to_nvdb.py` | VDB → NanoVDB conversion |
 | `scripts/inspect_vdb.py` | Inspect VDB file contents |
 
@@ -150,7 +150,7 @@ mcp__gaussian-analyzer__simulate_material_properties(material_type="GAS_CLOUD")
 ### To create a nebula:
 1. Open Blender 5.0
 2. Go to Scripting workspace (tab at top)
-3. Open `docs/blender_recipes/scripts/hydrogen_cloud_v1.py`
+3. Open `assets/blender_scripts/shared/hydrogen_cloud_v1.py`
 4. Run script (Alt+P)
 5. Save .blend file (Ctrl+S)
 6. Select domain → Physics → Fluid → Cache → Bake All
@@ -187,7 +187,7 @@ I'm creating volumetric celestial assets in Blender 5.0 for PlasmaDX-Clean.
 
 Key docs to read:
 - docs/blender_recipes/emission_nebulae/hydrogen_cloud.md (complete recipe)
-- docs/blender_recipes/scripts/hydrogen_cloud_v1.py (working script)
+- assets/blender_scripts/shared/hydrogen_cloud_v1.py (working script; canonical)
 
 Pipeline: Blender (Mantaflow) → VDB export → NanoVDB conversion → PlasmaDX rendering
 

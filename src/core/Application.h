@@ -394,10 +394,10 @@ private:
     bool m_captureScreenshotNextFrame = false;
     std::string m_screenshotOutputDir = "screenshots/";
 
-    // Screenshot metadata structure v4.0 (Complete System Audit)
+    // Screenshot metadata structure v5.0 (Deprecated Features Cleanup + Luminous Stars)
     struct ScreenshotMetadata {
         // Schema versioning
-        std::string schemaVersion = "4.0";
+        std::string schemaVersion = "5.0";
 
         // === RENDERING CONFIGURATION ===
 
@@ -469,26 +469,30 @@ private:
         // === FEATURE STATUS FLAGS ===
 
         struct FeatureStatus {
-            // Working features
+            // Working features (stable, production-ready)
             bool multiLightWorking = true;
             bool shadowRaysWorking = true;
             bool phaseFunctionWorking = true;
             bool physicalEmissionWorking = true;
             bool anisotropicGaussiansWorking = true;
-            bool froxelFogWorking = true;
             bool probeGridWorking = true;
             bool screenSpaceShadowsWorking = true;
+            bool adaptiveRadiusWorking = true;
+            bool dlssSuperResolutionWorking = true;
+            bool nanovdbWorking = true;            // Phase 5.x - now operational
 
             // WIP features (visible but not fully functional)
             bool dopplerShiftWorking = false;      // No visible effect currently
             bool redshiftWorking = false;          // No visible effect currently
             bool rtxdiM5Working = false;           // Temporal accumulation in progress
-            bool nanovdbWorking = false;           // Phase 5.x - experimental
+            bool luminousStarsWorking = false;     // Phase 3.9 - in development (PlasmaDX-LuminousStars)
+            bool pinnPhysicsWorking = false;       // Phase 5 - C++ integration pending
 
-            // Deprecated/non-functional
-            bool inScatteringDeprecated = true;
-            bool godRaysDeprecated = true;
-            bool customReSTIRDeprecated = true;    // Replaced by RTXDI
+            // Deprecated/removed features (kept for schema compatibility)
+            bool froxelFogDeprecated = true;       // DEPRECATED - replaced by NanoVDB
+            bool inScatteringDeprecated = true;    // DEPRECATED - too expensive
+            bool godRaysDeprecated = true;         // DEPRECATED - replaced by volumetric
+            bool customReSTIRDeprecated = true;    // DEPRECATED - replaced by RTXDI
         } featureStatus;
 
         // === PARTICLES ===
@@ -579,14 +583,12 @@ private:
             } pinn;
         } mlQuality;
 
-        // === FROXEL VOLUMETRIC FOG (Phase 8 - COMPLETE) ===
-
+        // === FROXEL VOLUMETRIC FOG - DEPRECATED ===
+        // NOTE: Froxel system removed in Dec 2025, replaced by NanoVDB.
+        // Struct kept for backward compatibility with existing JSON parsers.
         struct FroxelFog {
-            bool enabled = false;
-            float gridMinX = -1500.0f, gridMinY = -1500.0f, gridMinZ = -1500.0f;
-            float gridMaxX = 1500.0f, gridMaxY = 1500.0f, gridMaxZ = 1500.0f;
-            int gridDimX = 160, gridDimY = 90, gridDimZ = 128;
-            float densityMultiplier = 1.0f;
+            bool deprecated = true;  // ALWAYS TRUE - system removed
+            std::string deprecationNote = "Replaced by NanoVDB volumetric system";
         } froxelFog;
 
         // === PROBE GRID SYSTEM (Phase 0.13.1 - COMPLETE) ===
@@ -624,6 +626,35 @@ private:
                 int icyCount = 0;
             } distribution;
         } materialSystem;
+
+        // === LUMINOUS STAR PARTICLES (Phase 3.9 - WIP) ===
+        // Physics-driven light sources inside Gaussian particles
+        // Development branch: PlasmaDX-LuminousStars worktree
+        struct LuminousStars {
+            bool enabled = false;
+            bool featureInDevelopment = true;   // WIP flag - feature under active development
+            std::string developmentBranch = "feature/luminous-stars";
+
+            // Star configuration
+            int activeStarCount = 0;            // Number of active star particles (max 16)
+            int maxStars = 16;                  // Maximum supported stars
+
+            // Global controls
+            float globalLuminosity = 1.0f;      // Global luminosity multiplier (0.1-5.0)
+            float globalOpacity = 0.15f;        // Star particle opacity (very transparent for glow)
+
+            // Star preset distribution (if spawn presets used)
+            struct StarDistribution {
+                int blueSupergiants = 0;        // 25000K, intensity 15.0
+                int redGiants = 0;              // 4000K, intensity 8.0
+                int whiteDwarfs = 0;            // 10000K, intensity 3.0
+                int mainSequence = 0;           // 6000K, intensity 5.0
+            } distribution;
+
+            // Physics integration
+            bool physicsEnabled = true;         // Stars move with accretion disk physics
+            bool lightPositionSync = true;      // Light positions sync from particle positions
+        } luminousStars;
 
         // === ADAPTIVE PARTICLE RADIUS (Phase 1.5 - COMPLETE) ===
 

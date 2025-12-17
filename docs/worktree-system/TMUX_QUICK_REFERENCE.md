@@ -1,17 +1,19 @@
-# tmux Quick Reference - Blender + NanoVDB
+# tmux Quick Reference - Worktree Sessions
 
-**Two sessions for volumetric asset development.**
+**Four sessions for parallel development.**
 
 ---
 
 ## Session Switching
 
-| Key | Session | Worktree |
-|-----|---------|----------|
-| **F9** | claude-blender | PlasmaDX-Blender |
-| **F10** | claude-nanovdb | PlasmaDX-NanoVDB |
+| Key | Session | Worktree | Purpose |
+|-----|---------|----------|---------|
+| **F9** | claude-blender | PlasmaDX-Blender | Blender VDB export |
+| **F10** | claude-nanovdb | PlasmaDX-NanoVDB | NanoVDB integration |
+| **F11** | claude-luminous | PlasmaDX-LuminousStars | Luminous star particles |
+| **F12** | claude-agentforge | PlasmaDX-MultiAgent | Multi-agent optimization |
 
-Or use `Ctrl+b 1` (blender) and `Ctrl+b 2` (nanovdb).
+Or use `Ctrl+b 1-4` for each session.
 
 ---
 
@@ -32,6 +34,8 @@ Or use `Ctrl+b 1` (blender) and `Ctrl+b 2` (nanovdb).
 |------|--------|
 | **F9** | Switch to Blender |
 | **F10** | Switch to NanoVDB |
+| **F11** | Switch to LuminousStars |
+| **F12** | Switch to AgentForge |
 | **q** | Snap back to prompt (after scrolling) |
 | `Ctrl+b d` | Detach (session keeps running) |
 | `Ctrl+b s` | Session picker |
@@ -62,13 +66,22 @@ Copy these into new Claude sessions:
 ## Quick Start
 
 ```bash
-tstart    # Start sessions
+tstart    # Start sessions (blender + nanovdb)
 tb        # Attach to Blender
-# Press F10 to switch to NanoVDB
-# Press F9 to switch back to Blender
+# Press F9-F12 to switch between sessions
 # Press q if prompt scrolled away
+```
+
+## Starting Additional Sessions
+
+```bash
+# LuminousStars (F11)
+tmux new-session -d -s claude-luminous -c /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-LuminousStars
+
+# AgentForge (F12) - uses MultiAgent worktree
+tmux new-session -d -s claude-agentforge -c /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-MultiAgent
 ```
 
 ---
 
-*Last Updated: 2025-12-13*
+*Last Updated: 2025-12-16*

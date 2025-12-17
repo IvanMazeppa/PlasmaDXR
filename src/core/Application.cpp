@@ -2443,7 +2443,7 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     ScreenshotMetadata meta;
 
     // Schema version
-    meta.schemaVersion = "4.0";
+    meta.schemaVersion = "5.0";
 
     // === RENDERING CONFIGURATION ===
 
@@ -2519,23 +2519,34 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
 
     // === FEATURE STATUS FLAGS ===
 
+    // Working features (stable, production-ready)
     meta.featureStatus.multiLightWorking = true;
-    meta.featureStatus.shadowRaysWorking = true;
+    meta.featureStatus.shadowRaysWorking = m_useShadowRays;
     meta.featureStatus.phaseFunctionWorking = true;
     meta.featureStatus.physicalEmissionWorking = true;
     meta.featureStatus.anisotropicGaussiansWorking = true;
-    meta.featureStatus.froxelFogWorking = true;
-    meta.featureStatus.probeGridWorking = true;
+    meta.featureStatus.probeGridWorking = (m_useProbeGrid != 0);
     meta.featureStatus.screenSpaceShadowsWorking = true;
+    meta.featureStatus.adaptiveRadiusWorking = m_enableAdaptiveRadius;
+#ifdef ENABLE_DLSS
+    meta.featureStatus.dlssSuperResolutionWorking = m_enableDLSS;
+#else
+    meta.featureStatus.dlssSuperResolutionWorking = false;
+#endif
+    meta.featureStatus.nanovdbWorking = m_enableNanoVDB;  // Phase 5.x - now operational
 
+    // WIP features (visible but not fully functional)
     meta.featureStatus.dopplerShiftWorking = false;      // No visible effect (needs debugging)
     meta.featureStatus.redshiftWorking = false;          // No visible effect (needs debugging)
     meta.featureStatus.rtxdiM5Working = false;           // Temporal accumulation WIP
-    meta.featureStatus.nanovdbWorking = false;           // Phase 5.x - experimental
+    meta.featureStatus.luminousStarsWorking = false;     // Phase 3.9 - in development (PlasmaDX-LuminousStars)
+    meta.featureStatus.pinnPhysicsWorking = (!m_pinnModelPath.empty());  // PINN enabled if model loaded
 
-    meta.featureStatus.inScatteringDeprecated = true;
-    meta.featureStatus.godRaysDeprecated = true;
-    meta.featureStatus.customReSTIRDeprecated = true;    // Replaced by RTXDI
+    // Deprecated/removed features (kept for schema compatibility)
+    meta.featureStatus.froxelFogDeprecated = true;       // DEPRECATED - replaced by NanoVDB
+    meta.featureStatus.inScatteringDeprecated = true;    // DEPRECATED - too expensive
+    meta.featureStatus.godRaysDeprecated = true;         // DEPRECATED - replaced by volumetric
+    meta.featureStatus.customReSTIRDeprecated = true;    // DEPRECATED - replaced by RTXDI
 
     // === PARTICLES ===
 
@@ -2610,20 +2621,10 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.mlQuality.pinn.gaOptimization.individualId = 0;
     meta.mlQuality.pinn.gaOptimization.fitnessScore = 0.0f;
 
-    // === FROXEL VOLUMETRIC FOG ===
-    // NOTE: Froxel is embedded in Gaussian renderer, using known defaults
-    // TODO: Add getter methods to ParticleRenderer_Gaussian to retrieve runtime values
-    meta.froxelFog.enabled = (m_config.rendererType == RendererType::Gaussian);  // Always on for Gaussian renderer
-    meta.froxelFog.gridMinX = -1500.0f;
-    meta.froxelFog.gridMinY = -1500.0f;
-    meta.froxelFog.gridMinZ = -1500.0f;
-    meta.froxelFog.gridMaxX = 1500.0f;
-    meta.froxelFog.gridMaxY = 1500.0f;
-    meta.froxelFog.gridMaxZ = 1500.0f;
-    meta.froxelFog.gridDimX = 160;
-    meta.froxelFog.gridDimY = 90;
-    meta.froxelFog.gridDimZ = 128;
-    meta.froxelFog.densityMultiplier = 1.0f;  // Default value
+    // === FROXEL VOLUMETRIC FOG - DEPRECATED ===
+    // NOTE: Froxel system removed Dec 2025, replaced by NanoVDB
+    meta.froxelFog.deprecated = true;
+    meta.froxelFog.deprecationNote = "Replaced by NanoVDB volumetric system";
 
     // === PROBE GRID SYSTEM ===
     meta.probeGrid.enabled = (m_useProbeGrid != 0);
@@ -2668,6 +2669,23 @@ Application::ScreenshotMetadata Application::GatherScreenshotMetadata() {
     meta.dlss.enabled = false;
     meta.dlss.qualityMode = "Disabled (ENABLE_DLSS not defined)";
 #endif
+
+    // === LUMINOUS STAR PARTICLES (WIP - Phase 3.9) ===
+    // NOTE: Feature in development on PlasmaDX-LuminousStars worktree
+    // This section will be populated when the feature is merged to main
+    meta.luminousStars.enabled = false;                  // Not yet integrated
+    meta.luminousStars.featureInDevelopment = true;      // WIP flag
+    meta.luminousStars.developmentBranch = "feature/luminous-stars";
+    meta.luminousStars.activeStarCount = 0;
+    meta.luminousStars.maxStars = 16;
+    meta.luminousStars.globalLuminosity = 1.0f;
+    meta.luminousStars.globalOpacity = 0.15f;
+    meta.luminousStars.distribution.blueSupergiants = 0;
+    meta.luminousStars.distribution.redGiants = 0;
+    meta.luminousStars.distribution.whiteDwarfs = 0;
+    meta.luminousStars.distribution.mainSequence = 0;
+    meta.luminousStars.physicsEnabled = true;
+    meta.luminousStars.lightPositionSync = true;
 
     // === METADATA ===
 
@@ -2777,17 +2795,21 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "      \"phase_function\": %s,\n", meta.featureStatus.phaseFunctionWorking ? "true" : "false");
     fprintf(file, "      \"physical_emission\": %s,\n", meta.featureStatus.physicalEmissionWorking ? "true" : "false");
     fprintf(file, "      \"anisotropic_gaussians\": %s,\n", meta.featureStatus.anisotropicGaussiansWorking ? "true" : "false");
-    fprintf(file, "      \"froxel_fog\": %s,\n", meta.featureStatus.froxelFogWorking ? "true" : "false");
     fprintf(file, "      \"probe_grid\": %s,\n", meta.featureStatus.probeGridWorking ? "true" : "false");
-    fprintf(file, "      \"screen_space_shadows\": %s\n", meta.featureStatus.screenSpaceShadowsWorking ? "true" : "false");
+    fprintf(file, "      \"screen_space_shadows\": %s,\n", meta.featureStatus.screenSpaceShadowsWorking ? "true" : "false");
+    fprintf(file, "      \"adaptive_radius\": %s,\n", meta.featureStatus.adaptiveRadiusWorking ? "true" : "false");
+    fprintf(file, "      \"dlss_super_resolution\": %s,\n", meta.featureStatus.dlssSuperResolutionWorking ? "true" : "false");
+    fprintf(file, "      \"nanovdb\": %s\n", meta.featureStatus.nanovdbWorking ? "true" : "false");
     fprintf(file, "    },\n");
     fprintf(file, "    \"wip\": {\n");
     fprintf(file, "      \"doppler_shift\": %s,\n", !meta.featureStatus.dopplerShiftWorking ? "true" : "false");
     fprintf(file, "      \"gravitational_redshift\": %s,\n", !meta.featureStatus.redshiftWorking ? "true" : "false");
     fprintf(file, "      \"rtxdi_m5\": %s,\n", !meta.featureStatus.rtxdiM5Working ? "true" : "false");
-    fprintf(file, "      \"nanovdb\": %s\n", !meta.featureStatus.nanovdbWorking ? "true" : "false");
+    fprintf(file, "      \"luminous_stars\": %s,\n", !meta.featureStatus.luminousStarsWorking ? "true" : "false");
+    fprintf(file, "      \"pinn_physics\": %s\n", !meta.featureStatus.pinnPhysicsWorking ? "true" : "false");
     fprintf(file, "    },\n");
     fprintf(file, "    \"deprecated\": {\n");
+    fprintf(file, "      \"froxel_fog\": %s,\n", meta.featureStatus.froxelFogDeprecated ? "true" : "false");
     fprintf(file, "      \"in_scattering\": %s,\n", meta.featureStatus.inScatteringDeprecated ? "true" : "false");
     fprintf(file, "      \"god_rays\": %s,\n", meta.featureStatus.godRaysDeprecated ? "true" : "false");
     fprintf(file, "      \"custom_restir\": %s\n", meta.featureStatus.customReSTIRDeprecated ? "true" : "false");
@@ -2878,13 +2900,10 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "    }\n");
     fprintf(file, "  },\n");
 
-    // === FROXEL VOLUMETRIC FOG ===
+    // === FROXEL VOLUMETRIC FOG - DEPRECATED ===
     fprintf(file, "  \"froxel_fog\": {\n");
-    fprintf(file, "    \"enabled\": %s,\n", meta.froxelFog.enabled ? "true" : "false");
-    fprintf(file, "    \"grid_min\": [%.1f, %.1f, %.1f],\n", meta.froxelFog.gridMinX, meta.froxelFog.gridMinY, meta.froxelFog.gridMinZ);
-    fprintf(file, "    \"grid_max\": [%.1f, %.1f, %.1f],\n", meta.froxelFog.gridMaxX, meta.froxelFog.gridMaxY, meta.froxelFog.gridMaxZ);
-    fprintf(file, "    \"grid_dimensions\": [%d, %d, %d],\n", meta.froxelFog.gridDimX, meta.froxelFog.gridDimY, meta.froxelFog.gridDimZ);
-    fprintf(file, "    \"density_multiplier\": %.2f\n", meta.froxelFog.densityMultiplier);
+    fprintf(file, "    \"deprecated\": %s,\n", meta.froxelFog.deprecated ? "true" : "false");
+    fprintf(file, "    \"deprecation_note\": \"%s\"\n", meta.froxelFog.deprecationNote.c_str());
     fprintf(file, "  },\n");
 
     // === PROBE GRID SYSTEM ===
@@ -2937,11 +2956,30 @@ void Application::SaveScreenshotMetadata(const std::string& screenshotPath, cons
     fprintf(file, "      \"rocky\": %d,\n", meta.materialSystem.distribution.rockyCount);
     fprintf(file, "      \"icy\": %d\n", meta.materialSystem.distribution.icyCount);
     fprintf(file, "    }\n");
+    fprintf(file, "  },\n");
+
+    // === LUMINOUS STAR PARTICLES (WIP - Phase 3.9) ===
+    fprintf(file, "  \"luminous_stars\": {\n");
+    fprintf(file, "    \"enabled\": %s,\n", meta.luminousStars.enabled ? "true" : "false");
+    fprintf(file, "    \"feature_in_development\": %s,\n", meta.luminousStars.featureInDevelopment ? "true" : "false");
+    fprintf(file, "    \"development_branch\": \"%s\",\n", meta.luminousStars.developmentBranch.c_str());
+    fprintf(file, "    \"active_star_count\": %d,\n", meta.luminousStars.activeStarCount);
+    fprintf(file, "    \"max_stars\": %d,\n", meta.luminousStars.maxStars);
+    fprintf(file, "    \"global_luminosity\": %.2f,\n", meta.luminousStars.globalLuminosity);
+    fprintf(file, "    \"global_opacity\": %.2f,\n", meta.luminousStars.globalOpacity);
+    fprintf(file, "    \"distribution\": {\n");
+    fprintf(file, "      \"blue_supergiants\": %d,\n", meta.luminousStars.distribution.blueSupergiants);
+    fprintf(file, "      \"red_giants\": %d,\n", meta.luminousStars.distribution.redGiants);
+    fprintf(file, "      \"white_dwarfs\": %d,\n", meta.luminousStars.distribution.whiteDwarfs);
+    fprintf(file, "      \"main_sequence\": %d\n", meta.luminousStars.distribution.mainSequence);
+    fprintf(file, "    },\n");
+    fprintf(file, "    \"physics_enabled\": %s,\n", meta.luminousStars.physicsEnabled ? "true" : "false");
+    fprintf(file, "    \"light_position_sync\": %s\n", meta.luminousStars.lightPositionSync ? "true" : "false");
     fprintf(file, "  }\n");
     fprintf(file, "}\n");
 
     fclose(file);
-    LOG_INFO("Metadata v4.0 saved: {}", metaPath);
+    LOG_INFO("Metadata v5.0 saved: {}", metaPath);
 }
 
 void Application::CaptureScreenshot() {
