@@ -10,7 +10,7 @@ Creates a single, self-contained volumetric **supergiant star** using Mantaflow 
 Pipeline target: Blender 5.0 Mantaflow -> OpenVDB (.vdb) -> NanoVDB -> PlasmaDX-Clean.
 
 Run (headless):
-  blender -b -P docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_supergiant_star.py -- \
+  blender -b -P assets/blender_scripts/GPT-5.2/blender_supergiant_star.py -- \
     --output_dir "/abs/path/to/out/SupergiantStarAsset" \
     --name "GPT-5-2_SupergiantStar" \
     --resolution 128 \

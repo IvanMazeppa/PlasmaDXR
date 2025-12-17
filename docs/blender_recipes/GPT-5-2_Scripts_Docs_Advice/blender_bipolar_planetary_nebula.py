@@ -6,7 +6,7 @@ bakes to OpenVDB cache, saves a .blend, and renders a still (and optionally an a
 Pipeline target: Blender 5.0 Mantaflow -> OpenVDB (.vdb) -> NanoVDB -> PlasmaDX-Clean.
 
 Run (headless):
-  blender -b -P docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_bipolar_planetary_nebula.py -- \
+  blender -b -P assets/blender_scripts/GPT-5.2/blender_bipolar_planetary_nebula.py -- \
     --output_dir "/abs/path/to/out" \
     --name "GPT-5-2_BipolarNebula" \
     --resolution 96 \

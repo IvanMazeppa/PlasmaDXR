@@ -1,55 +1,12 @@
-# GPT-5.2 — Planetary Nebula (Bipolar) — Blender OpenVDB Recipe
+# Moved (canonical location)
 
-**Difficulty:** Intermediate  
-**Method:** Mantaflow (Gas / Smoke) + 3 emitters (ring + bipolar jets)  
-**Blender Version:** 5.0+  
-**Export Format:** OpenVDB (density + temperature)  
-**Primary Output:** `vdb_cache/` OpenVDB sequence + a `.blend` + optional renders  
-**Script:** `docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_bipolar_planetary_nebula.py`
+This recipe doc now lives at:
 
----
+- `assets/blender_docs/GPT-5.2/stellar_phenomena/planetary_nebula.md`
 
-## What this creates (visual + intent)
+The corresponding script lives at:
 
-This recipe generates a **bipolar planetary nebula**: a bright equatorial “ring” and two opposite “lobes/jets” expanding along a symmetry axis.
-
-- **Ring**: Dense equatorial flow (torus emitter) that reads as a waist / disk.
-- **Jets**: Two inflow emitters that push material along ±Z to form lobes.
-- **Motion**: Slow precession / rotation in the emitters so the nebula doesn’t look perfectly symmetric.
-- **“Space-like” behavior**: The domain gravity/buoyancy is set to zero so the shape is driven by emission velocity and turbulence rather than rising smoke.
-
----
-
-## Quick start (headless, one command)
-
-Run from repo root:
-
-```bash
-blender -b -P docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_bipolar_planetary_nebula.py -- \
-  --output_dir "/abs/path/to/out/BipolarNebulaAsset" \
-  --name "GPT-5-2_BipolarNebula" \
-  --resolution 128 \
-  --domain_size 6.0 \
-  --frame_end 160 \
-  --bake 1 \
-  --render_still 1 \
-  --still_frame 100 \
-  --render_anim 0 \
-  --render_res 1920 1080
-```
-
-**Outputs (inside `--output_dir`)**
-
-- **Blend file**: `BipolarNebula.blend` (saved automatically before baking)
-- **VDB cache directory**: `vdb_cache/` (Blender may place files inside subfolders depending on cache layout)
-- **Renders**: `renders/BipolarNebula_still.png` (and/or animation frames if enabled)
-
-Then convert a frame to NanoVDB:
-
-```bash
-python scripts/convert_vdb_to_nvdb.py "/abs/path/to/out/BipolarNebulaAsset/vdb_cache/<some_frame>.vdb"
-```
-
+- `assets/blender_scripts/GPT-5.2/blender_bipolar_planetary_nebula.py`
 ---
 
 ## The knobs you should change (before/when running)
@@ -282,9 +239,9 @@ If you want Opus/Gemini/this agent to push quality up quickly, these are the mos
 
 ---
 
-## File locations in this repo
+## File locations in this repo (canonical)
 
-- **Script**: `docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_bipolar_planetary_nebula.py`
-- **This recipe**: `docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/stellar_phenomena/planetary_nebula.md`
+- **Script**: `assets/blender_scripts/GPT-5.2/blender_bipolar_planetary_nebula.py`
+- **This recipe**: `assets/blender_docs/GPT-5.2/stellar_phenomena/planetary_nebula.md`
 - **VDB conversion**: `scripts/convert_vdb_to_nvdb.py`
 - **VDB inspection**: `scripts/inspect_vdb.py`

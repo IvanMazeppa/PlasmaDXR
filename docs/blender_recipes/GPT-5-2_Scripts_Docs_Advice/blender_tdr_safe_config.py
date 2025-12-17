@@ -21,7 +21,7 @@ What this script does (safe defaults):
 - Print the set values so you can confirm in the console.
 
 Run (headless):
-  blender -b -P docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_tdr_safe_config.py
+  blender -b -P assets/blender_scripts/GPT-5.2/blender_tdr_safe_config.py
 
 Run (interactive):
   Open Blender → Scripting workspace → open this file → Run Script (Alt+P)

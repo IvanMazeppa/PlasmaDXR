@@ -11,9 +11,9 @@
 # - advanced/command_line/arguments.html  (Python Options, Logging Options, Debug Options)
 #
 # Usage:
-#   chmod +x docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/run_blender_cli.sh
-#   docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/run_blender_cli.sh \
-#     docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_supergiant_star.py -- \
+#   chmod +x assets/blender_scripts/GPT-5.2/run_blender_cli.sh
+#   assets/blender_scripts/GPT-5.2/run_blender_cli.sh \
+#     assets/blender_scripts/GPT-5.2/blender_supergiant_star.py -- \
 #     --bake 0 --render_still 0 --render_anim 0
 #
 # Optional flags:
@@ -63,7 +63,7 @@ Options:
 
 Examples:
   # Quick validate (no bake / no render):
-  run_blender_cli.sh docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/blender_supergiant_star.py -- \
+  run_blender_cli.sh assets/blender_scripts/GPT-5.2/blender_supergiant_star.py -- \
     --bake 0 --render_still 0 --render_anim 0
 
   # With a .blend loaded first:
@@ -152,7 +152,7 @@ if [[ -n "$BLEND_FILE" && ! -f "$BLEND_FILE" ]]; then
   exit 2
 fi
 
-# Repo root: this script lives at docs/blender_recipes/GPT-5-2_Scripts_Docs_Advice/
+# Repo root: canonical runner lives under assets/, but keep this legacy copy working too.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LOG_DIR_REL="build/blender_cli_logs"
 LOG_DIR="${ROOT}/${LOG_DIR_REL}"
