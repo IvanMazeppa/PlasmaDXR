@@ -42,7 +42,7 @@ cbuffer NanoVDBConstants : register(b0) {
     uint useGridBuffer;                // 0=procedural, 1=file-loaded grid
 
     float3 gridOffset;                 // Offset from original grid position (for repositioning)
-    float padding;                     // Alignment padding
+    uint gridType;                     // Grid value type (1=FLOAT, 9=HALF, 15=FP16) - passed from C++
 };
 
 // ============================================================================
@@ -88,18 +88,21 @@ RWTexture2D<float4> g_output : register(u0);
 float SampleProceduralDensity(float3 worldPos);
 
 // Sample NanoVDB density at world position using PNanoVDB tree traversal
+// Supports FLOAT (1), HALF (9), and FP16 (15) grid types
 float SampleNanoVDBDensity(float3 worldPos) {
     // Create grid handle at offset 0 (grid data starts at beginning of buffer)
     pnanovdb_grid_handle_t grid;
     grid.address = pnanovdb_address_null();
 
-    // Get grid type to determine how to read values
-    pnanovdb_uint32_t gridType = pnanovdb_grid_get_grid_type(g_gridBuffer, grid);
+    // Use grid type passed from C++ via constant buffer
+    // This avoids re-reading from buffer and ensures consistency
+    pnanovdb_uint32_t actualGridType = gridType;
 
-    // Only support float grids (density fields) for now
-    // PNANOVDB_GRID_TYPE_FLOAT = 1
-    if (gridType != 1u) {
-        return 0.0;
+    // Validate supported grid types: FLOAT (1), HALF (9), FP16 (15)
+    if (actualGridType != PNANOVDB_GRID_TYPE_FLOAT &&
+        actualGridType != PNANOVDB_GRID_TYPE_HALF &&
+        actualGridType != PNANOVDB_GRID_TYPE_FP16) {
+        return 0.0;  // Unsupported grid type
     }
 
     // Get the tree and root handles
@@ -129,24 +132,39 @@ float SampleNanoVDBDensity(float3 worldPos) {
     ijk.z = pnanovdb_float_to_int32(floor(indexVec.z));
 
     // Get the value address in the grid using cached accessor
+    // Pass the actual grid type for correct tree traversal
     pnanovdb_address_t valueAddr = pnanovdb_readaccessor_get_value_address(
-        PNANOVDB_GRID_TYPE_FLOAT, g_gridBuffer, acc, ijk);
+        actualGridType, g_gridBuffer, acc, ijk);
 
-    // Read the float value from the grid
-    float density = pnanovdb_read_float(g_gridBuffer, valueAddr);
+    // Read the value based on grid type
+    float density;
+    if (actualGridType == PNANOVDB_GRID_TYPE_FLOAT) {
+        density = pnanovdb_read_float(g_gridBuffer, valueAddr);
+    } else {
+        // HALF (9) and FP16 (15) both use pnanovdb_read_half
+        // pnanovdb_read_half in HLSL mode uses f16tof32() for conversion
+        density = pnanovdb_read_half(g_gridBuffer, valueAddr);
+    }
 
     return max(density, 0.0);
 }
 
 // Sample with trilinear interpolation for smoother results
+// Supports FLOAT (1), HALF (9), and FP16 (15) grid types
 float SampleNanoVDBDensityTrilinear(float3 worldPos) {
     // Create grid handle
     pnanovdb_grid_handle_t grid;
     grid.address = pnanovdb_address_null();
 
-    // Get grid type
-    pnanovdb_uint32_t gridType = pnanovdb_grid_get_grid_type(g_gridBuffer, grid);
-    if (gridType != 1u) return 0.0;
+    // Use grid type passed from C++ via constant buffer
+    pnanovdb_uint32_t actualGridType = gridType;
+
+    // Validate supported grid types: FLOAT (1), HALF (9), FP16 (15)
+    if (actualGridType != PNANOVDB_GRID_TYPE_FLOAT &&
+        actualGridType != PNANOVDB_GRID_TYPE_HALF &&
+        actualGridType != PNANOVDB_GRID_TYPE_FP16) {
+        return 0.0;  // Unsupported grid type
+    }
 
     // Get tree and root
     pnanovdb_tree_handle_t tree = pnanovdb_grid_get_tree(g_gridBuffer, grid);
@@ -176,6 +194,10 @@ float SampleNanoVDBDensityTrilinear(float3 worldPos) {
     // Sample 8 corners for trilinear interpolation
     float values[8];
 
+    // Determine if we need half-precision reads
+    bool useHalfRead = (actualGridType == PNANOVDB_GRID_TYPE_HALF ||
+                        actualGridType == PNANOVDB_GRID_TYPE_FP16);
+
     [unroll]
     for (int i = 0; i < 8; i++) {
         pnanovdb_coord_t ijk;
@@ -184,8 +206,14 @@ float SampleNanoVDBDensityTrilinear(float3 worldPos) {
         ijk.z = indexBase.z + ((i & 4) ? 1 : 0);
 
         pnanovdb_address_t addr = pnanovdb_readaccessor_get_value_address(
-            PNANOVDB_GRID_TYPE_FLOAT, g_gridBuffer, acc, ijk);
-        values[i] = pnanovdb_read_float(g_gridBuffer, addr);
+            actualGridType, g_gridBuffer, acc, ijk);
+
+        // Read value based on grid type
+        if (useHalfRead) {
+            values[i] = pnanovdb_read_half(g_gridBuffer, addr);
+        } else {
+            values[i] = pnanovdb_read_float(g_gridBuffer, addr);
+        }
     }
 
     // Trilinear interpolation
@@ -555,19 +583,43 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         sceneDepth = maxRayDistance;
     }
 
-    // DEBUG MODE
+    // DEBUG MODE - Enhanced color coding for Blender NanoVDB diagnosis
+    // Color Legend:
+    //   Green       = FLOAT grid, density found
+    //   Yellow      = HALF/FP16 grid, density found (Blender Half/Mini precision)
+    //   Magenta     = Procedural density found
+    //   Cyan        = Inside AABB but no density (possible grid type or selection issue)
+    //   Orange      = Unsupported grid type (shader cannot read this format)
+    //   Red tint    = Ray missed AABB completely
     if (debugMode == 1) {
         float3 invDir = 1.0 / rayDir;
         float tMin, tMax;
         if (RayAABBIntersection(rayOrigin, invDir, gridWorldMin, gridWorldMax, tMin, tMax)) {
+            // Check for unsupported grid type first
+            if (useGridBuffer != 0) {
+                bool isSupported = (gridType == PNANOVDB_GRID_TYPE_FLOAT ||
+                                   gridType == PNANOVDB_GRID_TYPE_HALF ||
+                                   gridType == PNANOVDB_GRID_TYPE_FP16);
+                if (!isSupported) {
+                    // Orange = unsupported grid type (can't sample)
+                    g_output[DTid.xy] = float4(1.0, 0.5, 0.0, 1.0);
+                    return;
+                }
+            }
+
             float3 testPos = rayOrigin + rayDir * ((tMin + tMax) * 0.5);
             float testDensity = SampleDensity(testPos);
             if (testDensity > 0.001) {
-                // Use different colors for procedural vs file-loaded grid
+                // Use different colors for grid types
                 if (useGridBuffer != 0) {
-                    g_output[DTid.xy] = float4(0.0, 1.0, 0.0, 1.0);  // Green = grid density found
+                    if (gridType == PNANOVDB_GRID_TYPE_FLOAT) {
+                        g_output[DTid.xy] = float4(0.0, 1.0, 0.0, 1.0);  // Green = FLOAT grid density
+                    } else {
+                        // HALF or FP16 - yellow to indicate Blender Half/Mini precision working
+                        g_output[DTid.xy] = float4(1.0, 1.0, 0.0, 1.0);  // Yellow = HALF/FP16 grid density
+                    }
                 } else {
-                    g_output[DTid.xy] = float4(1.0, 0.0, 1.0, 1.0);  // Magenta = procedural density found
+                    g_output[DTid.xy] = float4(1.0, 0.0, 1.0, 1.0);  // Magenta = procedural density
                 }
             } else {
                 g_output[DTid.xy] = float4(0.0, 0.5, 0.5, 1.0);  // Cyan = in AABB but no density

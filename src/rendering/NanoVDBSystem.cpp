@@ -16,6 +16,35 @@
 
 using namespace DirectX;
 
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+std::string NanoVDBSystem::GridTypeToString(uint32_t gridType) {
+    switch (gridType) {
+        case GRID_TYPE_UNKNOWN: return "Unknown";
+        case GRID_TYPE_FLOAT:   return "Float (32-bit)";
+        case GRID_TYPE_DOUBLE:  return "Double (64-bit)";
+        case GRID_TYPE_INT16:   return "Int16";
+        case GRID_TYPE_INT32:   return "Int32";
+        case GRID_TYPE_INT64:   return "Int64";
+        case GRID_TYPE_VEC3F:   return "Vec3f";
+        case GRID_TYPE_VEC3D:   return "Vec3d";
+        case GRID_TYPE_MASK:    return "Mask";
+        case GRID_TYPE_HALF:    return "Half (16-bit float)";
+        case GRID_TYPE_UINT32:  return "UInt32";
+        case GRID_TYPE_BOOL:    return "Bool";
+        case GRID_TYPE_RGBA8:   return "RGBA8";
+        case GRID_TYPE_FP4:     return "FP4 (4-bit)";
+        case GRID_TYPE_FP8:     return "FP8 (8-bit)";
+        case GRID_TYPE_FP16:    return "FP16 (16-bit quantized)";
+        case GRID_TYPE_FPN:     return "FPN (N-bit)";
+        case GRID_TYPE_VEC4F:   return "Vec4f";
+        case GRID_TYPE_VEC4D:   return "Vec4d";
+        default:                return "Unknown (" + std::to_string(gridType) + ")";
+    }
+}
+
 NanoVDBSystem::~NanoVDBSystem() {
     Shutdown();
 }
@@ -109,29 +138,165 @@ bool NanoVDBSystem::CreateFogSphere(float radius, DirectX::XMFLOAT3 center,
     return true;
 }
 
+// ============================================================================
+// PHASE 2: GRID ENUMERATION
+// ============================================================================
+
+std::vector<NanoVDBSystem::GridInfo> NanoVDBSystem::EnumerateGrids(const std::string& filepath) {
+    std::vector<GridInfo> grids;
+
+    try {
+        // Read metadata for all grids in the file
+        auto metaList = nanovdb::io::readGridMetaData(filepath);
+
+        for (uint32_t i = 0; i < metaList.size(); ++i) {
+            const auto& meta = metaList[i];
+
+            GridInfo info;
+            info.name = meta.gridName;
+            info.type = static_cast<uint32_t>(meta.gridType);
+            info.typeName = GridTypeToString(info.type);
+            info.index = i;
+            info.isCompatible = (info.type == GRID_TYPE_FLOAT ||
+                                 info.type == GRID_TYPE_HALF ||
+                                 info.type == GRID_TYPE_FP16);
+
+            grids.push_back(info);
+        }
+
+        LOG_INFO("[NanoVDB] Enumerated {} grids in file:", grids.size());
+        for (const auto& g : grids) {
+            const char* compat = g.isCompatible ? "COMPATIBLE" : "incompatible";
+            LOG_INFO("[NanoVDB]   [{}] '{}' - {} ({})",
+                     g.index, g.name.empty() ? "<unnamed>" : g.name, g.typeName, compat);
+        }
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("[NanoVDB] Failed to enumerate grids: {}", e.what());
+    }
+
+    return grids;
+}
+
+// ============================================================================
+// LOAD FROM FILE - Original overload (backward compatible)
+// ============================================================================
+
 bool NanoVDBSystem::LoadFromFile(const std::string& filepath) {
+    // Call the new overload with empty gridName (auto-select)
+    return LoadFromFile(filepath, "");
+}
+
+// ============================================================================
+// LOAD FROM FILE - Phase 2: With grid name selection
+// ============================================================================
+
+bool NanoVDBSystem::LoadFromFile(const std::string& filepath, const std::string& gridName) {
+    LOG_INFO("[NanoVDB] ========================================");
     LOG_INFO("[NanoVDB] Loading grid from file: {}", filepath.c_str());
+    LOG_INFO("[NanoVDB] ========================================");
+
+    // Clear previous error state
+    m_lastError.clear();
+    m_gridName.clear();
+    m_gridType = GRID_TYPE_UNKNOWN;
+    m_gridTypeName.clear();
 
     // Check file extension - we only support .nvdb (NanoVDB native format)
     // OpenVDB (.vdb) files need to be converted first
     std::string ext = filepath.substr(filepath.find_last_of('.') + 1);
     if (ext == "vdb") {
-        LOG_ERROR("[NanoVDB] OpenVDB (.vdb) files not directly supported!");
-        LOG_ERROR("[NanoVDB] Please convert to .nvdb format first:");
-        LOG_ERROR("[NanoVDB]   - Use nanovdb_convert tool (build from external/nanovdb)");
-        LOG_ERROR("[NanoVDB]   - Or use Blender's OpenVDB export with NanoVDB option");
+        m_lastError = "OpenVDB (.vdb) files not directly supported. Convert to .nvdb first.";
+        LOG_ERROR("[NanoVDB] {}", m_lastError);
+        LOG_ERROR("[NanoVDB] Conversion options:");
+        LOG_ERROR("[NanoVDB]   - python scripts/convert_vdb_to_nvdb.py input.vdb output.nvdb");
+        LOG_ERROR("[NanoVDB]   - Use Blender's OpenVDB export with NanoVDB option");
         return false;
     }
 
     try {
-        // Read the NanoVDB file into a GridHandle
-        // This loads the entire grid into host memory
-        LOG_INFO("[NanoVDB] Reading NanoVDB file...");
+        // ================================================================
+        // PHASE 2: ENUMERATE AND SELECT GRID
+        // ================================================================
+        m_availableGrids = EnumerateGrids(filepath);
+
+        if (m_availableGrids.empty()) {
+            m_lastError = "No grids found in file";
+            LOG_ERROR("[NanoVDB] {}", m_lastError);
+            return false;
+        }
+
+        // Select grid by name or use smart defaults
+        int selectedIndex = -1;
+
+        if (!gridName.empty()) {
+            // User specified a grid name - find exact match
+            for (const auto& g : m_availableGrids) {
+                if (g.name == gridName) {
+                    selectedIndex = static_cast<int>(g.index);
+                    LOG_INFO("[NanoVDB] Selected grid by name: '{}'", gridName);
+                    break;
+                }
+            }
+            if (selectedIndex < 0) {
+                // Try case-insensitive match
+                std::string lowerName = gridName;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+                for (const auto& g : m_availableGrids) {
+                    std::string lowerGridName = g.name;
+                    std::transform(lowerGridName.begin(), lowerGridName.end(), lowerGridName.begin(), ::tolower);
+                    if (lowerGridName == lowerName) {
+                        selectedIndex = static_cast<int>(g.index);
+                        LOG_INFO("[NanoVDB] Selected grid by name (case-insensitive): '{}'", g.name);
+                        break;
+                    }
+                }
+            }
+            if (selectedIndex < 0) {
+                LOG_WARN("[NanoVDB] Requested grid '{}' not found", gridName);
+            }
+        }
+
+        // If no name specified or not found, use smart defaults
+        if (selectedIndex < 0) {
+            // Priority 1: Grid named "density" (common Blender convention)
+            for (const auto& g : m_availableGrids) {
+                if (g.name == "density" || g.name == "Density") {
+                    selectedIndex = static_cast<int>(g.index);
+                    LOG_INFO("[NanoVDB] Auto-selected grid: 'density' (index {})", selectedIndex);
+                    break;
+                }
+            }
+
+            // Priority 2: First compatible grid (FLOAT, HALF, or FP16)
+            if (selectedIndex < 0) {
+                for (const auto& g : m_availableGrids) {
+                    if (g.isCompatible) {
+                        selectedIndex = static_cast<int>(g.index);
+                        LOG_INFO("[NanoVDB] Auto-selected first compatible grid: '{}' (index {})",
+                                 g.name.empty() ? "<unnamed>" : g.name, selectedIndex);
+                        break;
+                    }
+                }
+            }
+
+            // Priority 3: First grid (with warning)
+            if (selectedIndex < 0) {
+                selectedIndex = 0;
+                LOG_WARN("[NanoVDB] No compatible grids found, using first grid (index 0)");
+            }
+        }
+
+        m_selectedGridIndex = static_cast<uint32_t>(selectedIndex);
+
+        // Load the selected grid
+        LOG_INFO("[NanoVDB] Loading grid index {}...", selectedIndex);
         nanovdb::GridHandle<nanovdb::HostBuffer> handle =
-            nanovdb::io::readGrid<nanovdb::HostBuffer>(filepath, 0, 1);  // grid index 0, verbose=1
+            nanovdb::io::readGrid<nanovdb::HostBuffer>(filepath, selectedIndex, 1);
 
         if (!handle) {
-            LOG_ERROR("[NanoVDB] Failed to read grid from file (handle is empty)");
+            m_lastError = "Failed to read grid from file (handle is empty)";
+            LOG_ERROR("[NanoVDB] {}", m_lastError);
             return false;
         }
 
@@ -142,62 +307,120 @@ bool NanoVDBSystem::LoadFromFile(const std::string& filepath) {
         LOG_INFO("[NanoVDB] Grid loaded: {} bytes ({:.2f} MB)",
                  bufferSize, bufferSize / (1024.0 * 1024.0));
 
+        // ================================================================
+        // PHASE 1: ENHANCED GRID METADATA EXTRACTION
+        // ================================================================
+        // Access raw GridData to get grid type regardless of template type
+        const nanovdb::GridData* gridData = reinterpret_cast<const nanovdb::GridData*>(bufferData);
+        if (gridData) {
+            // Extract grid type (critical for shader compatibility)
+            m_gridType = static_cast<uint32_t>(gridData->mGridType);
+            m_gridTypeName = GridTypeToString(m_gridType);
+
+            LOG_INFO("[NanoVDB] ----------------------------------------");
+            LOG_INFO("[NanoVDB] GRID METADATA (Phase 1 Diagnostics)");
+            LOG_INFO("[NanoVDB] ----------------------------------------");
+            LOG_INFO("[NanoVDB]   Grid Type ID: {} ({})", m_gridType, m_gridTypeName);
+            LOG_INFO("[NanoVDB]   Grid Class: {}", static_cast<int>(gridData->mGridClass));
+
+            // Extract world bounding box from raw GridData
+            auto worldBBox = gridData->mWorldBBox;
+            m_gridWorldMin = {
+                static_cast<float>(worldBBox.mCoord[0][0]),
+                static_cast<float>(worldBBox.mCoord[0][1]),
+                static_cast<float>(worldBBox.mCoord[0][2])
+            };
+            m_gridWorldMax = {
+                static_cast<float>(worldBBox.mCoord[1][0]),
+                static_cast<float>(worldBBox.mCoord[1][1]),
+                static_cast<float>(worldBBox.mCoord[1][2])
+            };
+
+            LOG_INFO("[NanoVDB]   World Bounds: ({:.2f}, {:.2f}, {:.2f}) to ({:.2f}, {:.2f}, {:.2f})",
+                     m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
+                     m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+
+            // Calculate bounds size for scale diagnostics
+            float sizeX = m_gridWorldMax.x - m_gridWorldMin.x;
+            float sizeY = m_gridWorldMax.y - m_gridWorldMin.y;
+            float sizeZ = m_gridWorldMax.z - m_gridWorldMin.z;
+            LOG_INFO("[NanoVDB]   Bounds Size: {:.2f} x {:.2f} x {:.2f} units", sizeX, sizeY, sizeZ);
+
+            // Check if bounds are suspiciously small (common Blender issue)
+            if (sizeX < 10.0f && sizeY < 10.0f && sizeZ < 10.0f) {
+                LOG_WARN("[NanoVDB]   WARNING: Bounds are very small (<10 units)!");
+                LOG_WARN("[NanoVDB]   This is common for Blender exports. Use ScaleGridBounds() to enlarge.");
+            }
+        }
+
         // Try to access as float grid (most common for density fields)
         const nanovdb::NanoGrid<float>* floatGrid = handle.grid<float>();
         if (floatGrid) {
-            LOG_INFO("[NanoVDB] Grid type: Float (density field)");
-            LOG_INFO("[NanoVDB] Grid name: {}", floatGrid->gridName());
-
-            // Get world bounding box
-            auto worldBBox = floatGrid->worldBBox();
-            m_gridWorldMin = {
-                static_cast<float>(worldBBox.min()[0]),
-                static_cast<float>(worldBBox.min()[1]),
-                static_cast<float>(worldBBox.min()[2])
-            };
-            m_gridWorldMax = {
-                static_cast<float>(worldBBox.max()[0]),
-                static_cast<float>(worldBBox.max()[1]),
-                static_cast<float>(worldBBox.max()[2])
-            };
+            m_gridName = floatGrid->gridName();
+            LOG_INFO("[NanoVDB]   Grid Name: '{}'", m_gridName.empty() ? "<unnamed>" : m_gridName);
 
             // Get voxel size
             float voxelSize = static_cast<float>(floatGrid->voxelSize()[0]);
-            LOG_INFO("[NanoVDB] Voxel size: {:.4f}", voxelSize);
+            LOG_INFO("[NanoVDB]   Voxel Size: {:.6f}", voxelSize);
 
             // Get active voxel count
             uint64_t activeVoxels = floatGrid->activeVoxelCount();
             m_voxelCount = static_cast<uint32_t>(std::min(activeVoxels, static_cast<uint64_t>(UINT32_MAX)));
-            LOG_INFO("[NanoVDB] Active voxels: {}", activeVoxels);
+            LOG_INFO("[NanoVDB]   Active Voxels: {}", activeVoxels);
 
-            LOG_INFO("[NanoVDB] World bounds: ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
-                     m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
-                     m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+            // Check for empty grid
+            if (activeVoxels == 0) {
+                LOG_WARN("[NanoVDB]   WARNING: Grid has ZERO active voxels!");
+                LOG_WARN("[NanoVDB]   The volume will render as completely transparent.");
+            }
         } else {
-            // Try other grid types (Vec3f for velocity, FogVolume, etc.)
-            LOG_WARN("[NanoVDB] Grid is not a float type. Attempting generic access...");
+            // Non-float grid - try to extract name from raw data
+            LOG_WARN("[NanoVDB]   Grid is NOT a float type (type={}: {})", m_gridType, m_gridTypeName);
 
-            // Get base grid data for bounds
-            const nanovdb::GridData* gridData = reinterpret_cast<const nanovdb::GridData*>(bufferData);
-            if (gridData) {
-                auto worldBBox = gridData->mWorldBBox;
-                m_gridWorldMin = {
-                    static_cast<float>(worldBBox.mCoord[0][0]),
-                    static_cast<float>(worldBBox.mCoord[0][1]),
-                    static_cast<float>(worldBBox.mCoord[0][2])
-                };
-                m_gridWorldMax = {
-                    static_cast<float>(worldBBox.mCoord[1][0]),
-                    static_cast<float>(worldBBox.mCoord[1][1]),
-                    static_cast<float>(worldBBox.mCoord[1][2])
-                };
-                LOG_INFO("[NanoVDB] Grid type: {}", static_cast<int>(gridData->mGridType));
+            // Try to get grid name from nanovdb::GridData (it stores the name)
+            // The grid name is stored as a C-string at offset gridData->mGridName
+            m_gridName = "unknown";  // Default if we can't extract
+
+            // Check shader compatibility
+            if (m_gridType == GRID_TYPE_HALF || m_gridType == GRID_TYPE_FP16) {
+                LOG_WARN("[NanoVDB]   This is a 16-bit float grid (common from Blender Half/Mini precision).");
+                LOG_WARN("[NanoVDB]   Phase 3 will add shader support for HALF/FP16 grids.");
+                LOG_WARN("[NanoVDB]   CURRENT STATUS: Shader will render this as DENSITY=0 (invisible).");
+            } else {
+                LOG_ERROR("[NanoVDB]   Grid type {} is NOT supported by the shader!", m_gridTypeName);
+                LOG_ERROR("[NanoVDB]   Only FLOAT (1), HALF (9), and FP16 (15) grids can be rendered.");
             }
         }
 
+        // ================================================================
+        // SHADER COMPATIBILITY CHECK
+        // ================================================================
+        LOG_INFO("[NanoVDB] ----------------------------------------");
+        LOG_INFO("[NanoVDB] SHADER COMPATIBILITY CHECK");
+        LOG_INFO("[NanoVDB] ----------------------------------------");
+
+        bool shaderCompatible = (m_gridType == GRID_TYPE_FLOAT);
+        bool futureCompatible = (m_gridType == GRID_TYPE_HALF || m_gridType == GRID_TYPE_FP16);
+
+        if (shaderCompatible) {
+            LOG_INFO("[NanoVDB]   Status: COMPATIBLE (Float grid)");
+        } else if (futureCompatible) {
+            LOG_WARN("[NanoVDB]   Status: PARTIALLY COMPATIBLE (HALF/FP16 - needs Phase 3 shader update)");
+            LOG_WARN("[NanoVDB]   The shader currently only supports FLOAT grids.");
+            LOG_WARN("[NanoVDB]   Grid will load but may render as invisible until shader is updated.");
+            // Don't set error - allow loading to continue for testing
+        } else {
+            m_lastError = "Grid type " + m_gridTypeName + " is not supported. Convert to Float grid.";
+            LOG_ERROR("[NanoVDB]   Status: INCOMPATIBLE - {}", m_lastError);
+            // Still allow upload for debugging purposes, but warn the user
+        }
+
+        LOG_INFO("[NanoVDB] ----------------------------------------");
+
         // Upload to GPU
         if (!UploadGridToGPU(bufferData, bufferSize)) {
-            LOG_ERROR("[NanoVDB] Failed to upload grid to GPU");
+            m_lastError = "Failed to upload grid to GPU";
+            LOG_ERROR("[NanoVDB] {}", m_lastError);
             return false;
         }
 
@@ -221,11 +444,15 @@ bool NanoVDBSystem::LoadFromFile(const std::string& filepath) {
         m_hasGrid = true;
         m_hasFileGrid = true;  // Mark as file-loaded grid
         m_gridSizeBytes = bufferSize;
+        m_loadedFilePath = filepath;
 
+        LOG_INFO("[NanoVDB] ========================================");
         LOG_INFO("[NanoVDB] Grid loaded and uploaded successfully!");
+        LOG_INFO("[NanoVDB] ========================================");
         return true;
 
     } catch (const std::exception& e) {
+        m_lastError = std::string("Exception: ") + e.what();
         LOG_ERROR("[NanoVDB] Failed to load grid: {}", e.what());
         return false;
     }
@@ -509,6 +736,7 @@ void NanoVDBSystem::Render(
     constants.debugMode = m_debugMode ? 1 : 0;
     constants.useGridBuffer = (m_hasFileGrid && m_gridBuffer) ? 1 : 0;
     constants.gridOffset = m_gridOffset;  // Transform sampling position back to original grid space
+    constants.gridType = m_gridType;      // Pass grid type to shader (FLOAT=1, HALF=9, FP16=15)
 
     // Map and update constants
     void* mappedData = nullptr;

@@ -5275,6 +5275,96 @@ void Application::RenderImGui() {
                            m_nanoVDBSystem->GetGridSizeBytes() / (1024.0f * 1024.0f),
                            m_nanoVDBSystem->GetVoxelCount());
 
+                // ============================================================
+                // PHASE 1: GRID METADATA DISPLAY (Blender NanoVDB visibility fix)
+                // ============================================================
+                if (m_nanoVDBSystem->HasFileGrid()) {
+                    // Grid name
+                    const std::string& gridName = m_nanoVDBSystem->GetGridName();
+                    ImGui::Text("  Name: %s", gridName.empty() ? "<unnamed>" : gridName.c_str());
+
+                    // Grid type with color coding for shader compatibility
+                    uint32_t gridType = m_nanoVDBSystem->GetGridType();
+                    const std::string& gridTypeName = m_nanoVDBSystem->GetGridTypeName();
+
+                    if (gridType == NanoVDBSystem::GRID_TYPE_FLOAT) {
+                        // Fully compatible - green
+                        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f),
+                            "  Type: %s [COMPATIBLE]", gridTypeName.c_str());
+                    } else if (gridType == NanoVDBSystem::GRID_TYPE_HALF ||
+                               gridType == NanoVDBSystem::GRID_TYPE_FP16) {
+                        // Partially compatible (needs shader update) - yellow
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
+                            "  Type: %s [NEEDS SHADER UPDATE]", gridTypeName.c_str());
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Half/FP16 grids from Blender need shader support.\nPhase 3 will add this. Grid may render invisible.");
+                        }
+                    } else {
+                        // Incompatible - red
+                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                            "  Type: %s [INCOMPATIBLE]", gridTypeName.c_str());
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("This grid type is not supported.\nConvert to Float grid for rendering.");
+                        }
+                    }
+
+                    // Show error message if present
+                    if (m_nanoVDBSystem->HasError()) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                            "  ERROR: %s", m_nanoVDBSystem->GetLastError().c_str());
+                    }
+
+                    // ============================================================
+                    // PHASE 2: GRID SELECTOR DROPDOWN
+                    // ============================================================
+                    const auto& availableGrids = m_nanoVDBSystem->GetAvailableGrids();
+                    if (availableGrids.size() > 1) {
+                        ImGui::Separator();
+                        ImGui::Text("Available Grids (%zu):", availableGrids.size());
+
+                        // Build combo items
+                        static int currentGridSelection = 0;
+                        currentGridSelection = static_cast<int>(m_nanoVDBSystem->GetSelectedGridIndex());
+
+                        std::vector<std::string> gridLabels;
+                        for (const auto& g : availableGrids) {
+                            std::string label = "[" + std::to_string(g.index) + "] ";
+                            label += g.name.empty() ? "<unnamed>" : g.name;
+                            label += " (" + g.typeName + ")";
+                            if (!g.isCompatible) label += " [incompatible]";
+                            gridLabels.push_back(label);
+                        }
+
+                        // Create combo with preview
+                        const char* preview = gridLabels[currentGridSelection].c_str();
+                        if (ImGui::BeginCombo("Select Grid", preview)) {
+                            for (size_t i = 0; i < gridLabels.size(); ++i) {
+                                bool isSelected = (currentGridSelection == static_cast<int>(i));
+                                ImVec4 color = availableGrids[i].isCompatible ?
+                                    ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.5f, 0.5f, 1.0f);
+                                ImGui::PushStyleColor(ImGuiCol_Text, color);
+                                if (ImGui::Selectable(gridLabels[i].c_str(), isSelected)) {
+                                    if (static_cast<int>(i) != currentGridSelection) {
+                                        // Reload file with different grid
+                                        std::string filepath = m_nanoVDBSystem->GetGridName(); // Need to store filepath
+                                        // For now, just log that user wants to change
+                                        LOG_INFO("[NanoVDB] User selected grid: {}", gridLabels[i]);
+                                        // TODO: Implement grid switching without full reload
+                                    }
+                                }
+                                ImGui::PopStyleColor();
+                                if (isSelected) {
+                                    ImGui::SetItemDefaultFocus();
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Select which grid to render.\nGreen = compatible, Red = incompatible with shader.");
+                        }
+                    }
+                }
+
                 // Show actual grid bounds (CRITICAL for debugging visibility)
                 auto gridMin = m_nanoVDBSystem->GetGridWorldMin();
                 auto gridMax = m_nanoVDBSystem->GetGridWorldMax();
