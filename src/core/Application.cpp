@@ -21,6 +21,7 @@
 #include "../debug/PIXCaptureHelper.h"
 #endif
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 
 // STB Image Write for PNG screenshots
@@ -5467,8 +5468,9 @@ void Application::RenderImGui() {
             if (m_nanoVDBSystem) {
                 ImGui::Separator();
                 ImGui::Text("Load Animation:");
-                if (ImGui::Button("Load Chimney Smoke")) {
-                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("VDBs/NanoVDB/chimney_smoke");
+                if (ImGui::Button("Load Chimney Smoke (Anim)")) {
+                    // Path is relative to build/bin/Debug/ (where exe runs from)
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("../../../VDBs/NanoVDB/chimney_smoke");
                     if (frames > 0) {
                         LOG_INFO("Loaded {} animation frames", frames);
                         // Auto-scale to reasonable size
@@ -5476,24 +5478,49 @@ void Application::RenderImGui() {
                     }
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Load all .nvdb files from VDBs/NanoVDB/chimney_smoke/");
+                    ImGui::SetTooltip("Load all .nvdb files from ../../../VDBs/NanoVDB/chimney_smoke/");
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Button("Load BipolarNebula")) {
-                    // BipolarNebula density-only grids from Blender worktree
-                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
-                        "D:/Users/dilli/AndroidStudioProjects/PlasmaDX-Blender/VDBs/NanoVDB/BipolarNebula_density");
-                    if (frames > 0) {
-                        LOG_INFO("Loaded {} BipolarNebula animation frames", frames);
+                if (ImGui::Button("Load Example: CloudPack (nozip)")) {
+                    const std::string filepath =
+                        "../../../assets/volumes/nanovdb_examples/GPT-5.2/cloud_pack/cloud_01_variant_0000_density_nozip.nvdb";
+                    if (m_nanoVDBSystem->LoadFromFile(filepath)) {
+                        m_nanoVDBSystem->SetEnabled(true);
+                        m_enableNanoVDB = true;
+                        // Cloud packs tend to be large; scale to a readable size.
+                        m_nanoVDBSystem->ScaleGridBounds(200.0f);
+                        m_nanoVDBSystem->SetDensityScale(5.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(0.0f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load a curated single-frame NanoVDB example from assets/volumes (repo-tracked)");
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Load Example: BipolarNebula (nozip)")) {
+                    const std::string filepath =
+                        "../../../assets/volumes/nanovdb_examples/GPT-5.2/bipolar_nebula/fluid_data_0024_density_nozip.nvdb";
+                    if (m_nanoVDBSystem->LoadFromFile(filepath)) {
+                        m_nanoVDBSystem->SetEnabled(true);
+                        m_enableNanoVDB = true;
                         // Nebula needs scaling - native bounds are ~6 units (Blender scale)
                         m_nanoVDBSystem->ScaleGridBounds(200.0f);
                         m_nanoVDBSystem->SetDensityScale(10.0f);
                         m_nanoVDBSystem->SetEmissionStrength(5.0f);
                     }
                 }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Load BipolarNebula animation (120 frames, density only)\nFrom PlasmaDX-Blender worktree");
+
+                ImGui::SameLine();
+                if (ImGui::Button("Load Example: Chimney (Frame, nozip)")) {
+                    const std::string filepath =
+                        "../../../assets/volumes/nanovdb_examples/GPT-5.2/chimney_smoke/industrial_chimney_smoke_0050_density_nozip.nvdb";
+                    if (m_nanoVDBSystem->LoadFromFile(filepath)) {
+                        m_nanoVDBSystem->SetEnabled(true);
+                        m_enableNanoVDB = true;
+                        m_nanoVDBSystem->ScaleGridBounds(50.0f);
+                    }
                 }
             }
 
@@ -5558,7 +5585,79 @@ void Application::RenderImGui() {
 
             // Static buffer for file path input
             // Path is relative to build/bin/Debug/ (where exe runs from)
-            static char nvdbFilePath[512] = "../../../VDBs/NanoVDB/cloud_01.nvdb";
+            static char nvdbFilePath[512] =
+                "../../../assets/volumes/nanovdb_examples/GPT-5.2/cloud_pack/cloud_01_variant_0000_density_nozip.nvdb";
+
+            // Quick-pick list (fast iteration)
+            // Note: keep this lightweight and dependency-free (no file dialog libs).
+            static const char* kQuickNvdbPaths[] = {
+                "../../../VDBs/NanoVDB/cloud_01.nvdb",
+                "../../../assets/volumes/nanovdb_examples/GPT-5.2/cloud_pack/cloud_01_variant_0000_density_nozip.nvdb",
+                "../../../assets/volumes/nanovdb_examples/GPT-5.2/bipolar_nebula/fluid_data_0024_density_nozip.nvdb",
+                "../../../assets/volumes/nanovdb_examples/GPT-5.2/chimney_smoke/industrial_chimney_smoke_0050_density_nozip.nvdb",
+            };
+
+            // Copy a quick path into the textbox
+            if (ImGui::BeginCombo("Quick Pick", "Select...")) {
+                for (const char* p : kQuickNvdbPaths) {
+                    if (ImGui::Selectable(p)) {
+                        // Safe copy into static buffer
+                        std::snprintf(nvdbFilePath, sizeof(nvdbFilePath), "%s", p);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            // Directory scan (fast browsing without typing paths)
+            static char nvdbDirPath[512] = "../../../assets/volumes/nanovdb_examples/GPT-5.2";
+            static std::vector<std::string> nvdbDirFiles;
+            static bool nvdbDirScanRecursive = true;
+
+            ImGui::InputText("Directory", nvdbDirPath, sizeof(nvdbDirPath));
+            ImGui::SameLine();
+            ImGui::Checkbox("Recursive", &nvdbDirScanRecursive);
+            ImGui::SameLine();
+            if (ImGui::Button("Scan")) {
+                nvdbDirFiles.clear();
+                try {
+                    const std::filesystem::path dir(nvdbDirPath);
+                    if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
+                        if (nvdbDirScanRecursive) {
+                            for (const auto& it : std::filesystem::recursive_directory_iterator(dir)) {
+                                if (!it.is_regular_file()) continue;
+                                const auto p = it.path();
+                                if (p.extension() == ".nvdb") {
+                                    nvdbDirFiles.push_back(p.generic_string());
+                                }
+                            }
+                        } else {
+                            for (const auto& it : std::filesystem::directory_iterator(dir)) {
+                                if (!it.is_regular_file()) continue;
+                                const auto p = it.path();
+                                if (p.extension() == ".nvdb") {
+                                    nvdbDirFiles.push_back(p.generic_string());
+                                }
+                            }
+                        }
+                        std::sort(nvdbDirFiles.begin(), nvdbDirFiles.end());
+                    }
+                } catch (...) {
+                    // keep UI responsive; errors are non-fatal
+                }
+            }
+
+            if (!nvdbDirFiles.empty()) {
+                ImGui::Text("Found %d .nvdb file(s)", static_cast<int>(nvdbDirFiles.size()));
+                ImGui::BeginChild("nvdb_file_list", ImVec2(0.0f, 140.0f), true);
+                for (const std::string& p : nvdbDirFiles) {
+                    if (ImGui::Selectable(p.c_str())) {
+                        // Prefer relative paths from exe; if user scanned a relative dir, keep it as-is.
+                        std::snprintf(nvdbFilePath, sizeof(nvdbFilePath), "%s", p.c_str());
+                    }
+                }
+                ImGui::EndChild();
+            }
+
             ImGui::InputText("File Path", nvdbFilePath, sizeof(nvdbFilePath));
 
             if (ImGui::Button("Load .nvdb File")) {
@@ -5580,7 +5679,19 @@ void Application::RenderImGui() {
             }
             ImGui::SameLine();
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Load a .nvdb file (NanoVDB format)\nConvert .vdb files using Blender first");
+                ImGui::SetTooltip(
+                    "Load a .nvdb file (NanoVDB format)\n"
+                    "If you see 'ZIP compression codec was disabled during build', regenerate with codec NONE:\n"
+                    "  nanovdb_convert -f -g density input.vdb output.nvdb");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Paste from Clipboard")) {
+                if (const char* clip = ImGui::GetClipboardText()) {
+                    std::snprintf(nvdbFilePath, sizeof(nvdbFilePath), "%s", clip);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Replace File Path with clipboard text (fast testing).");
             }
 
             ImGui::TreePop();

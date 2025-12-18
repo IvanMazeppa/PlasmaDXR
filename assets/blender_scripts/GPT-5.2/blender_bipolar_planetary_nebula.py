@@ -34,6 +34,9 @@ from pathlib import Path
 
 import bpy
 
+ASSET_TAG = "GPT-5.2"
+DEFAULT_OUTPUT_SUBDIR = "build/blender_generated/GPT-5.2/bipolar_planetary_nebula"
+
 
 def _safe_enum_set(obj, prop_name: str, desired: str) -> bool:
     """
@@ -54,6 +57,103 @@ def _safe_enum_set(obj, prop_name: str, desired: str) -> bool:
 def _ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _resolve_output_dir(output_dir: str, default_subdir: str) -> Path:
+    """
+    Robust output directory resolution for both:
+    - headless: `blender -b -P script.py -- --output_dir ...`
+    - interactive: run from Blender Text Editor with an unsaved/saved .blend
+    """
+    if output_dir:
+        return Path(output_dir).expanduser().resolve()
+
+    # Prefer .blend-relative paths when possible
+    try:
+        base = Path(bpy.path.abspath("//")).resolve()
+        if str(base) and base.exists():
+            return base / default_subdir
+    except Exception:
+        pass
+
+    # Next best: the script file's directory (available when run via -P)
+    try:
+        if "__file__" in globals():
+            return Path(__file__).resolve().parent / default_subdir  # type: ignore[name-defined]
+    except Exception:
+        pass
+
+    # Fallback: current working directory
+    return Path.cwd().resolve() / default_subdir
+
+
+def _hide_emitter(obj: bpy.types.Object, *, show_in_viewport: bool) -> None:
+    """Hide emitter meshes from renders to avoid opaque 'white ball' artifacts."""
+    try:
+        obj.hide_render = True
+    except Exception:
+        pass
+
+    if not show_in_viewport:
+        try:
+            obj.hide_viewport = True
+        except Exception:
+            pass
+    else:
+        try:
+            obj.display_type = "WIRE"
+        except Exception:
+            pass
+
+
+def _safe_rna_set(obj, prop_name: str, value) -> bool:
+    try:
+        if not hasattr(obj, "bl_rna"):
+            return False
+        if prop_name not in obj.bl_rna.properties:
+            return False
+        setattr(obj, prop_name, value)
+        return True
+    except Exception:
+        return False
+
+
+def apply_tdr_safe_render_preset(*, enable: bool) -> None:
+    """
+    Conservative render preset designed to reduce Windows GPU TDR risk.
+    Keeps render defaults light and prefers CPU device in Cycles.
+    """
+    if not enable:
+        return
+
+    scene = bpy.context.scene
+
+    # Prefer EEVEE for interaction.
+    try:
+        engines = {it.identifier for it in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items}
+    except Exception:
+        engines = set()
+
+    if "BLENDER_EEVEE_NEXT" in engines:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    elif "BLENDER_EEVEE" in engines:
+        scene.render.engine = "BLENDER_EEVEE"
+
+    try:
+        cyc = scene.cycles
+        _safe_rna_set(cyc, "samples", 16)
+        _safe_enum_set(cyc, "device", "CPU")
+        for step_rate_name in ("volume_step_rate", "volume_step_rate_render"):
+            _safe_rna_set(cyc, step_rate_name, 2.0)
+        for step_rate_vp_name in ("volume_step_rate_viewport",):
+            _safe_rna_set(cyc, step_rate_vp_name, 4.0)
+        for max_steps_name in ("volume_max_steps",):
+            _safe_rna_set(cyc, max_steps_name, 128)
+        _safe_rna_set(cyc, "volume_bounces", 0)
+        _safe_rna_set(cyc, "max_bounces", 2)
+        _safe_rna_set(cyc, "transparent_max_bounces", 2)
+    except Exception:
+        pass
 
 
 def clear_scene() -> None:
@@ -169,7 +269,8 @@ def create_bipolar_nebula_scene(
     # Cache settings (OpenVDB)
     dset.cache_type = "ALL"
     dset.cache_data_format = "OPENVDB"
-    dset.cache_directory = str(cache_dir)
+    # IMPORTANT: use forward slashes in cache paths to avoid Mantaflow path-escape issues on Windows.
+    dset.cache_directory = str(cache_dir).replace("\\", "/")
     dset.cache_frame_start = int(frame_start)
     dset.cache_frame_end = int(frame_end)
 
@@ -178,9 +279,9 @@ def create_bipolar_nebula_scene(
     if not _safe_enum_set(dset, "openvdb_cache_compress_type", "BLOSC"):
         _safe_enum_set(dset, "openvdb_cache_compress_type", "ZIP")
 
-    # Some Blender builds may expose precision control; keep best-effort and non-fatal.
+    # Prefer FULL to keep FLOAT grids for PlasmaDX file-loaded path.
     if hasattr(dset, "cache_precision"):
-        _safe_enum_set(dset, "cache_precision", "HALF")
+        _safe_enum_set(dset, "cache_precision", "FULL")
 
     # Material for preview/render
     mat = create_principled_volume_material(f"{name}_Material")
@@ -238,6 +339,11 @@ def create_bipolar_nebula_scene(
 
     jet_pos = _make_jet("POS", +1.0)
     jet_neg = _make_jet("NEG", -1.0)
+
+    # Hide emitters from render (keeps volume-only output).
+    _hide_emitter(ring, show_in_viewport=True)
+    _hide_emitter(jet_pos, show_in_viewport=True)
+    _hide_emitter(jet_neg, show_in_viewport=True)
 
     # Animate emitters (gentle precession / rotation)
     def _key(obj: bpy.types.Object, frame: int, rot: tuple[float, float, float]) -> None:
@@ -366,27 +472,26 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--resolution", type=int, default=96)
     p.add_argument("--frame_start", type=int, default=1)
     p.add_argument("--frame_end", type=int, default=120)
-    p.add_argument("--bake", type=int, default=1)
-    p.add_argument("--render_still", type=int, default=1)
+    p.add_argument("--bake", type=int, default=0)
+    p.add_argument(
+        "--allow_headless_bake",
+        type=int,
+        default=0,
+        help="1=attempt Mantaflow bake in --background (Blender 5.0 Windows build may crash in Manta); default 0 skips headless bake",
+    )
+    p.add_argument("--render_still", type=int, default=0)
     p.add_argument("--still_frame", type=int, default=80)
     p.add_argument("--render_anim", type=int, default=0)
     p.add_argument("--render_res", type=int, nargs=2, default=(1920, 1080))
+    p.add_argument("--tdr_safe", type=int, default=1, help="1=apply conservative render settings to avoid Windows GPU TDR")
+    p.add_argument("--cache_precision", type=str, default="FULL", help="FULL|HALF|MINI (when supported by Blender build)")
     return p.parse_args(argv)
 
 
 def main() -> None:
     args = parse_args()
 
-    # Determine output directory (prefer explicit absolute path)
-    if args.output_dir:
-        out_dir = Path(args.output_dir).expanduser().resolve()
-    else:
-        # If the blend is saved, // resolves; otherwise use CWD.
-        try:
-            base = Path(bpy.path.abspath("//")).resolve()
-        except Exception:
-            base = Path(os.getcwd()).resolve()
-        out_dir = base / "bipolar_nebula_out"
+    out_dir = _ensure_dir(_resolve_output_dir(str(args.output_dir), default_subdir=DEFAULT_OUTPUT_SUBDIR))
 
     cache_dir = _ensure_dir(out_dir / "vdb_cache")
 
@@ -394,6 +499,9 @@ def main() -> None:
     print(f"[BipolarNebula] Cache dir:  {cache_dir}")
 
     clear_scene()
+
+    # Apply conservative defaults first.
+    apply_tdr_safe_render_preset(enable=int(args.tdr_safe) != 0)
     objs = create_bipolar_nebula_scene(
         name=args.name,
         domain_size=float(args.domain_size),
@@ -403,14 +511,28 @@ def main() -> None:
         cache_dir=cache_dir,
     )
 
+    # Cache precision override (best-effort).
+    try:
+        dset = objs["domain"].modifiers["Fluid"].domain_settings
+        desired_prec = str(args.cache_precision).upper()
+        if hasattr(dset, "cache_precision") and desired_prec:
+            _safe_enum_set(dset, "cache_precision", desired_prec)
+    except Exception:
+        pass
+
     blend_path = save_blend(out_dir, args.name)
     print(f"[BipolarNebula] Saved .blend: {blend_path}")
 
     if int(args.bake) != 0:
-        print("[BipolarNebula] Baking fluid simulation (this can take a while)...")
-        bake_fluid(objs["domain"])
-        print("[BipolarNebula] Bake complete.")
-        print("[BipolarNebula] Expect OpenVDB frames in cache directory (subfolders may exist).")
+        if getattr(bpy.app, "background", False) and int(args.allow_headless_bake) == 0:
+            print(f"[{ASSET_TAG} BipolarNebula] WARNING: Mantaflow bake requested in headless mode.")
+            print(f"[{ASSET_TAG} BipolarNebula] Blender 5.0 Windows build is currently crashing in Manta when baking via CLI.")
+            print(f"[{ASSET_TAG} BipolarNebula] Skipping bake. If you want to *try anyway*, pass --allow_headless_bake 1 (may crash).")
+        else:
+            print("[BipolarNebula] Baking fluid simulation (this can take a while)...")
+            bake_fluid(objs["domain"])
+            print("[BipolarNebula] Bake complete.")
+            print("[BipolarNebula] Expect OpenVDB frames in cache directory (subfolders may exist).")
 
     if int(args.render_still) != 0 or int(args.render_anim) != 0:
         print("[BipolarNebula] Rendering...")

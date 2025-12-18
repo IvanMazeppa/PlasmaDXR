@@ -438,8 +438,9 @@ bool NanoVDBSystem::LoadFromFile(const std::string& filepath, const std::string&
         float dz = m_gridWorldMax.z - m_gridWorldMin.z;
         m_sphereRadius = 0.5f * std::sqrt(dx*dx + dy*dy + dz*dz);
 
-        // Reset grid offset since this is a fresh load
+        // Reset grid offset and scale since this is a fresh load
         m_gridOffset = { 0.0f, 0.0f, 0.0f };
+        m_gridScale = 1.0f;  // Reset cumulative scale factor
 
         m_hasGrid = true;
         m_hasFileGrid = true;  // Mark as file-loaded grid
@@ -737,6 +738,10 @@ void NanoVDBSystem::Render(
     constants.useGridBuffer = (m_hasFileGrid && m_gridBuffer) ? 1 : 0;
     constants.gridOffset = m_gridOffset;  // Transform sampling position back to original grid space
     constants.gridType = m_gridType;      // Pass grid type to shader (FLOAT=1, HALF=9, FP16=15)
+    constants.materialType = static_cast<uint32_t>(m_materialType);  // Material behavior (SMOKE=0, FIRE=1, etc.)
+    constants.albedo = m_albedo;          // Base color for scattering/emission tint
+    constants.gridScale = m_gridScale;    // Cumulative scale factor for coordinate transform
+    constants.originalGridCenter = m_originalGridCenter;  // Original grid center before scaling
 
     // Map and update constants
     void* mappedData = nullptr;
@@ -959,13 +964,17 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
             m_hasFileGrid = true;
 
             // Extract grid bounds from the first frame using NanoVDB
+            // NOTE: Use gridData() to get type-agnostic GridData* - works for ALL grid types
+            // (FLOAT, HALF, FP16, etc.) without needing to know the specific type
             try {
                 nanovdb::GridHandle<nanovdb::HostBuffer> handle =
                     nanovdb::io::readGrid<nanovdb::HostBuffer>(filepaths[0], 0, 0);
                 if (handle) {
-                    const nanovdb::NanoGrid<float>* floatGrid = handle.grid<float>();
-                    if (floatGrid) {
-                        auto worldBBox = floatGrid->worldBBox();
+                    // Use gridData() instead of grid<float>() - this works for ALL grid types
+                    const nanovdb::GridData* gridData = handle.gridData();
+                    if (gridData) {
+                        // Access mWorldBBox directly from GridData struct (type-agnostic)
+                        const auto& worldBBox = gridData->worldBBox();
                         m_gridWorldMin = {
                             static_cast<float>(worldBBox.min()[0]),
                             static_cast<float>(worldBBox.min()[1]),
@@ -983,15 +992,31 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
                             (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
                         };
                         m_gridOffset = { 0.0f, 0.0f, 0.0f };
+                        m_gridScale = 1.0f;  // Reset cumulative scale factor
+
+                        // Log grid type for debugging
+                        uint32_t gridType = static_cast<uint32_t>(gridData->mGridType);
+                        LOG_INFO("[NanoVDB] Animation grid type: {} ({})", gridType, GridTypeToString(gridType));
                         LOG_INFO("[NanoVDB] Animation bounds: ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
                                  m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
                                  m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+                    } else {
+                        LOG_WARN("[NanoVDB] Could not get GridData from animation frame");
                     }
                 }
             } catch (const std::exception& e) {
                 LOG_WARN("[NanoVDB] Could not extract animation bounds: {}", e.what());
             }
         }
+
+        // AUTO-START animation playback on load
+        // This provides better UX - users expect animation to play immediately
+        m_animPlaying = true;
+        m_animCurrentFrame = 0;
+        m_animAccumulator = 0.0f;
+        LOG_INFO("[NanoVDB] Animation auto-started (FPS: {:.1f}, Loop: {})",
+                 m_animFPS, m_animLoop ? "ON" : "OFF");
+
         return true;
     }
 

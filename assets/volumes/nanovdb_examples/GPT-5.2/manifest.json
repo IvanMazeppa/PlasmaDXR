@@ -1,0 +1,26 @@
+{
+  "generator": "GPT-5.2",
+  "purpose": "Curated NanoVDB example assets for PlasmaDX-Clean NanoVDB refactor/plugin testing.",
+  "assets": [
+    {
+      "id": "cloud_pack_cloud01",
+      "nvdb": "assets/volumes/nanovdb_examples/GPT-5.2/cloud_pack/cloud_01_variant_0000_density_nozip.nvdb",
+      "source_vdb": "VDBs/Clouds/CloudPackVDB/cloud_01_variant_0000.vdb",
+      "conversion": "nanovdb_convert -f -g density <source_vdb> <nvdb>  # codec NONE"
+    },
+    {
+      "id": "bipolar_nebula_frame0024",
+      "nvdb": "assets/volumes/nanovdb_examples/GPT-5.2/bipolar_nebula/fluid_data_0024_density_nozip.nvdb",
+      "source_vdb": "VDBs/BipolarNebula/data/fluid_data_0024.vdb",
+      "conversion": "nanovdb_convert -f -g density <source_vdb> <nvdb>  # codec NONE"
+    },
+    {
+      "id": "chimney_smoke_frame0050",
+      "nvdb": "assets/volumes/nanovdb_examples/GPT-5.2/chimney_smoke/industrial_chimney_smoke_0050_density_nozip.nvdb",
+      "source_vdb": "VDBs/Smoke/industrial_chimney_smoke/industrial_chimney_smoke_VDB/industrial_chimney_smoke_0050.vdb",
+      "conversion": "nanovdb_convert -f -g density <source_vdb> <nvdb>  # codec NONE"
+    }
+  ]
+}
+
+

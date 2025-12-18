@@ -40,6 +40,7 @@ from pathlib import Path
 import bpy
 
 ASSET_TAG = "GPT-5.2"
+DEFAULT_OUTPUT_SUBDIR = "build/blender_generated/GPT-5.2/supergiant_star"
 
 
 def _safe_enum_set(obj, prop_name: str, desired: str) -> bool:
@@ -289,7 +290,11 @@ def create_domain(domain_size: float) -> bpy.types.Object:
 
 def configure_domain_cache(settings, cache_dir: Path, frame_start: int, frame_end: int, resolution: int) -> None:
     settings.cache_type = "ALL"
-    settings.cache_directory = str(cache_dir)
+    # IMPORTANT (Windows Blender + Mantaflow):
+    # Mantaflow generates/executes Python scripts internally; backslashes in Windows paths can
+    # behave like escape sequences and have been observed to crash Blender 5.0 (EXCEPTION_ACCESS_VIOLATION).
+    # Use forward slashes in cache paths.
+    settings.cache_directory = str(cache_dir).replace("\\", "/")
     settings.cache_frame_start = frame_start
     settings.cache_frame_end = frame_end
 
@@ -298,8 +303,10 @@ def configure_domain_cache(settings, cache_dir: Path, frame_start: int, frame_en
     if not _safe_enum_set(settings, "openvdb_cache_compress_type", "ZIP"):
         _safe_enum_set(settings, "openvdb_cache_compress_type", "NONE")
 
-    # cache_precision exists in Blender 5 UI; guard in case API differs in a point release.
-    _safe_enum_set(settings, "cache_precision", "HALF")
+    # cache_precision exists in some Blender 5 builds; prefer FULL for PlasmaDX file-loaded FLOAT grid compatibility.
+    # (We still guard because some builds don't expose the property.)
+    if hasattr(settings, "cache_precision"):
+        _safe_enum_set(settings, "cache_precision", "FULL")
 
     settings.resolution_max = int(resolution)
     settings.use_adaptive_domain = True
@@ -495,13 +502,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--star_radius", type=float, default=3.0)
     parser.add_argument("--frame_start", type=int, default=1)
     parser.add_argument("--frame_end", type=int, default=96)
-    parser.add_argument("--bake", type=int, default=1)
+    parser.add_argument("--bake", type=int, default=0)
+    parser.add_argument(
+        "--allow_headless_bake",
+        type=int,
+        default=0,
+        help="1=attempt Mantaflow bake in --background (Blender 5.0 Windows build may crash in Manta); default 0 skips headless bake",
+    )
     parser.add_argument("--render_still", type=int, default=0)
     parser.add_argument("--still_frame", type=int, default=60)
     parser.add_argument("--render_anim", type=int, default=0)
     parser.add_argument("--render_res", type=int, nargs=2, default=(1280, 720))
     parser.add_argument("--show_emitters", type=int, default=1, help="1=keep emitter meshes visible in viewport (still hidden in renders)")
     parser.add_argument("--tdr_safe", type=int, default=1, help="1=apply conservative render settings to avoid Windows GPU TDR")
+    parser.add_argument("--cache_precision", type=str, default="FULL", help="FULL|HALF|MINI (when supported by Blender build)")
     parser.add_argument(
         "--render_engine",
         type=str,
@@ -530,7 +544,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    out_dir = _ensure_dir(_resolve_output_dir(str(args.output_dir), default_subdir="gpt52_supergiant_star_out"))
+    out_dir = _ensure_dir(_resolve_output_dir(str(args.output_dir), default_subdir=DEFAULT_OUTPUT_SUBDIR))
     cache_dir = _ensure_dir(out_dir / "vdb_cache")
     renders_dir = _ensure_dir(out_dir / "renders")
     blend_path = out_dir / f"{args.name}.blend"
@@ -605,6 +619,14 @@ def main() -> None:
         resolution=int(args.resolution),
     )
 
+    # Cache precision override (best-effort).
+    try:
+        desired_prec = str(args.cache_precision).upper()
+        if hasattr(settings, "cache_precision") and desired_prec:
+            _safe_enum_set(settings, "cache_precision", desired_prec)
+    except Exception:
+        pass
+
     core = create_star_emitter(args.star_radius)
     hotspot = create_hotspot_emitter(args.star_radius)
     animate_emitters(core, hotspot, int(args.frame_start), int(args.frame_end))
@@ -618,6 +640,12 @@ def main() -> None:
     save_blend(blend_path)
 
     if int(args.bake) == 1:
+        if getattr(bpy.app, "background", False) and int(args.allow_headless_bake) == 0:
+            print(f"[{ASSET_TAG} SupergiantStar] WARNING: Mantaflow bake requested in headless mode.")
+            print(f"[{ASSET_TAG} SupergiantStar] Blender 5.0 Windows build is currently crashing in Manta when baking via CLI.")
+            print(f"[{ASSET_TAG} SupergiantStar] Skipping bake. If you want to *try anyway*, pass --allow_headless_bake 1 (may crash).")
+            baked_ok = False
+        else:
         print(f"[{ASSET_TAG} SupergiantStar] Baking (this can take minutes)...")
         baked_ok = bake(domain)
         print(f"[{ASSET_TAG} SupergiantStar] Bake done: {baked_ok}")

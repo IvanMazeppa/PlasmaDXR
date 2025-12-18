@@ -33,6 +33,17 @@ using Microsoft::WRL::ComPtr;
  */
 class NanoVDBSystem {
 public:
+    // Material type enum for volumetric rendering behavior
+    // Controls emission, scattering, and color behavior
+    // Must be declared before methods that use it
+    enum class NanoVDBMaterialType : uint32_t {
+        SMOKE = 0,      // Neutral grey scattering, NO emission (cold particulate)
+        FIRE = 1,       // Temperature-based orange/red emission
+        PLASMA = 2,     // Hot blue-white emission (high temperature)
+        NEBULA = 3,     // Custom albedo color for emission tint
+        GAS_CLOUD = 4   // Similar to smoke but with slight emission
+    };
+
     NanoVDBSystem() = default;
     ~NanoVDBSystem();
 
@@ -135,6 +146,14 @@ public:
     void SetDebugMode(bool debug) { m_debugMode = debug; }
     bool GetDebugMode() const { return m_debugMode; }
 
+    // Material type - controls emission/scattering behavior
+    void SetMaterialType(NanoVDBMaterialType type) { m_materialType = type; }
+    NanoVDBMaterialType GetMaterialType() const { return m_materialType; }
+
+    // Albedo - base color for scattering and emission tint
+    void SetAlbedo(const DirectX::XMFLOAT3& albedo) { m_albedo = albedo; }
+    DirectX::XMFLOAT3 GetAlbedo() const { return m_albedo; }
+
     // Sphere parameters (from CreateFogSphere)
     DirectX::XMFLOAT3 GetSphereCenter() const { return m_sphereCenter; }
     float GetSphereRadius() const { return m_sphereRadius; }
@@ -224,6 +243,8 @@ public:
     void SetGridWorldMax(const DirectX::XMFLOAT3& max) { m_gridWorldMax = max; }
 
     // Scale grid bounds uniformly around center
+    // NOTE: This also tracks cumulative scale factor needed for shader coordinate transform
+    // The shader needs to scale sample positions back to original grid space
     void ScaleGridBounds(float scale) {
         DirectX::XMFLOAT3 center = {
             (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
@@ -237,6 +258,20 @@ public:
         };
         m_gridWorldMin = { center.x - halfExtent.x, center.y - halfExtent.y, center.z - halfExtent.z };
         m_gridWorldMax = { center.x + halfExtent.x, center.y + halfExtent.y, center.z + halfExtent.z };
+        // Track cumulative scale for shader coordinate transform
+        m_gridScale *= scale;
+    }
+
+    // Get current cumulative scale factor
+    float GetGridScale() const { return m_gridScale; }
+
+    // Reset scale to 1.0 (restores original grid bounds)
+    void ResetGridScale() {
+        if (m_gridScale != 1.0f) {
+            float resetScale = 1.0f / m_gridScale;
+            ScaleGridBounds(resetScale);
+        }
+        m_gridScale = 1.0f;
     }
 
     // Move grid center - updates AABB and calculates offset for shader
@@ -325,7 +360,11 @@ private:
         uint32_t useGridBuffer;              // 4 bytes (0=procedural, 1=file-loaded grid)
         DirectX::XMFLOAT3 gridOffset;        // 12 bytes (offset from original grid position)
         uint32_t gridType;                   // 4 bytes - grid value type (1=FLOAT, 9=HALF, 15=FP16)
-    };  // Total: 192 bytes (padded to 256 for cbuffer)
+        uint32_t materialType;               // 4 bytes - material behavior (0=SMOKE, 1=FIRE, 2=PLASMA, etc.)
+        DirectX::XMFLOAT3 albedo;            // 12 bytes - base color for scattering/emission tint
+        float gridScale;                     // 4 bytes - cumulative scale factor applied to grid bounds
+        DirectX::XMFLOAT3 originalGridCenter; // 12 bytes - original grid center before scaling/repositioning
+    };  // Total: 224 bytes (padded to 256 for cbuffer)
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -369,13 +408,23 @@ private:
     float m_stepSize = 5.0f;
     bool m_debugMode = false;
 
+    // Material type - controls emission/scattering behavior
+    // SMOKE (0): Neutral grey scattering, NO emission - for cold particulate matter
+    // FIRE (1): Temperature-based orange/red blackbody emission
+    // PLASMA (2): Hot blue-white emission
+    // NEBULA (3): Custom albedo-tinted emission
+    // GAS_CLOUD (4): Slight emission with scattering
+    NanoVDBMaterialType m_materialType = NanoVDBMaterialType::SMOKE;
+    DirectX::XMFLOAT3 m_albedo = { 0.9f, 0.9f, 0.9f };  // Base color (grey-white for smoke)
+
     // Sphere parameters (set by CreateFogSphere)
     DirectX::XMFLOAT3 m_sphereCenter = { 0.0f, 0.0f, 0.0f };
     float m_sphereRadius = 200.0f;
 
-    // Grid repositioning (for file-loaded grids)
+    // Grid repositioning and scaling (for file-loaded grids)
     DirectX::XMFLOAT3 m_originalGridCenter = { 0.0f, 0.0f, 0.0f };  // Center when file was loaded
     DirectX::XMFLOAT3 m_gridOffset = { 0.0f, 0.0f, 0.0f };          // Current offset from original
+    float m_gridScale = 1.0f;                                        // Cumulative scale factor (for shader coordinate transform)
 
     uint32_t m_screenWidth = 1920;
     uint32_t m_screenHeight = 1080;

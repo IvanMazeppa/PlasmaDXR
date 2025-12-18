@@ -16,6 +16,13 @@
 // CONSTANT BUFFER
 // ============================================================================
 
+// Material type constants - must match NanoVDBMaterialType enum in C++
+#define MATERIAL_SMOKE     0  // Neutral grey scattering, NO emission (cold particulate)
+#define MATERIAL_FIRE      1  // Temperature-based orange/red emission
+#define MATERIAL_PLASMA    2  // Hot blue-white emission (high temperature)
+#define MATERIAL_NEBULA    3  // Custom albedo color for emission tint
+#define MATERIAL_GAS_CLOUD 4  // Slight emission with scattering
+
 cbuffer NanoVDBConstants : register(b0) {
     row_major float4x4 invViewProj;   // Inverse view-projection for ray generation
     float3 cameraPos;                  // Camera world position
@@ -43,6 +50,11 @@ cbuffer NanoVDBConstants : register(b0) {
 
     float3 gridOffset;                 // Offset from original grid position (for repositioning)
     uint gridType;                     // Grid value type (1=FLOAT, 9=HALF, 15=FP16) - passed from C++
+
+    uint materialType;                 // Material behavior (SMOKE=0, FIRE=1, PLASMA=2, etc.)
+    float3 albedo;                     // Base color for scattering/emission tint
+    float gridScale;                   // Cumulative scale factor applied to grid bounds
+    float3 originalGridCenter;         // Original grid center before scaling/repositioning
 };
 
 // ============================================================================
@@ -113,9 +125,18 @@ float SampleNanoVDBDensity(float3 worldPos) {
     pnanovdb_readaccessor_t acc;
     pnanovdb_readaccessor_init(acc, root);
 
-    // Transform world position back to original grid space by subtracting the offset
-    // This allows repositioning the grid without modifying the NanoVDB data
-    float3 originalPos = worldPos - gridOffset;
+    // Transform world position back to original grid space
+    // Step 1: Subtract offset (for repositioning)
+    // Step 2: Unscale around original grid center (for scaling)
+    //
+    // The NanoVDB grid's internal transform (pnanovdb_grid_world_to_indexf) is fixed.
+    // When we scale the AABB, we need to transform sample coordinates back to
+    // original grid space before calling the grid's world-to-index transform.
+    //
+    // Formula: originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale
+    // Where currentCenter = originalGridCenter + gridOffset
+    float3 currentCenter = originalGridCenter + gridOffset;
+    float3 originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale;
 
     // Convert world position to index space using the grid's transform
     pnanovdb_vec3_t worldVec;
@@ -174,9 +195,18 @@ float SampleNanoVDBDensityTrilinear(float3 worldPos) {
     pnanovdb_readaccessor_t acc;
     pnanovdb_readaccessor_init(acc, root);
 
-    // Transform world position back to original grid space by subtracting the offset
-    // This allows repositioning the grid without modifying the NanoVDB data
-    float3 originalPos = worldPos - gridOffset;
+    // Transform world position back to original grid space
+    // Step 1: Subtract offset (for repositioning)
+    // Step 2: Unscale around original grid center (for scaling)
+    //
+    // The NanoVDB grid's internal transform (pnanovdb_grid_world_to_indexf) is fixed.
+    // When we scale the AABB, we need to transform sample coordinates back to
+    // original grid space before calling the grid's world-to-index transform.
+    //
+    // Formula: originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale
+    // Where currentCenter = originalGridCenter + gridOffset
+    float3 currentCenter = originalGridCenter + gridOffset;
+    float3 originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale;
 
     // Convert world to index space
     pnanovdb_vec3_t worldVec;
@@ -498,6 +528,13 @@ float3 CalculateLighting(float3 samplePos, float3 viewDir, float density) {
     float3 totalLight = float3(0, 0, 0);
     float phaseG = 0.3;
 
+    // Determine scattering albedo based on material type
+    // SMOKE: Use albedo for neutral grey-white scattering
+    // Other materials: Blend with albedo for subtle tinting
+    float3 scatterAlbedo = (materialType == MATERIAL_SMOKE)
+        ? albedo  // Smoke uses albedo directly (neutral grey/white)
+        : lerp(float3(1, 1, 1), albedo, 0.3);  // Other materials: slight tint
+
     for (uint i = 0; i < lightCount && i < 16; i++) {
         Light light = g_lights[i];
         float3 lightDir = normalize(light.position - samplePos);
@@ -505,7 +542,8 @@ float3 CalculateLighting(float3 samplePos, float3 viewDir, float density) {
         float attenuation = light.intensity / (1.0 + lightDist * lightDist * 0.0001);
         float cosTheta = dot(-viewDir, lightDir);
         float phase = HenyeyGreenstein(cosTheta, phaseG);
-        float3 scattering = light.color * attenuation * phase * scatteringCoeff;
+        // Apply scattering albedo to light color
+        float3 scattering = light.color * scatterAlbedo * attenuation * phase * scatteringCoeff;
         totalLight += scattering;
     }
 
@@ -548,7 +586,32 @@ float4 RayMarchVolume(float3 rayOrigin, float3 rayDir, float sceneDepth) {
             float absorption = absorptionCoeff * density * stepSize;
             float sampleTransmittance = exp(-absorption);
             float3 lighting = CalculateLighting(samplePos, rayDir, density);
-            float3 emission = TemperatureToColor(density * 10000.0) * emissionStrength * density;
+
+            // Material-dependent emission calculation
+            // SMOKE: No emission (cold particulate matter scatters light only)
+            // FIRE: Temperature-based orange/red blackbody emission
+            // PLASMA: Hot blue-white emission (higher temperature scale)
+            // NEBULA: Custom albedo-tinted emission
+            // GAS_CLOUD: Slight emission with neutral scattering
+            float3 emission = float3(0, 0, 0);
+            if (materialType == MATERIAL_SMOKE) {
+                // SMOKE: Pure scattering, no emission
+                // Smoke is cold particulate matter that only scatters existing light
+                emission = float3(0, 0, 0);
+            } else if (materialType == MATERIAL_FIRE) {
+                // FIRE: Temperature-based orange/red blackbody emission
+                emission = TemperatureToColor(density * 8000.0) * emissionStrength * density;
+            } else if (materialType == MATERIAL_PLASMA) {
+                // PLASMA: Hot blue-white emission (higher temperature)
+                emission = TemperatureToColor(density * 20000.0) * emissionStrength * density;
+            } else if (materialType == MATERIAL_NEBULA) {
+                // NEBULA: Custom albedo color as emission tint
+                emission = albedo * emissionStrength * density;
+            } else if (materialType == MATERIAL_GAS_CLOUD) {
+                // GAS_CLOUD: Very subtle emission (dim warm glow)
+                emission = TemperatureToColor(density * 3000.0) * emissionStrength * density * 0.3;
+            }
+
             float3 sampleColor = (lighting + emission) * (1.0 - sampleTransmittance);
             accumulatedColor += transmittance * sampleColor;
             transmittance *= sampleTransmittance;
