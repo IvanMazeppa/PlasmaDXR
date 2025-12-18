@@ -145,6 +145,78 @@ public:
     uint64_t GetGridSizeBytes() const { return m_gridSizeBytes; }
     uint32_t GetVoxelCount() const { return m_voxelCount; }
 
+    // Grid metadata (Phase 1: Blender NanoVDB visibility fix)
+    const std::string& GetGridName() const { return m_gridName; }
+    uint32_t GetGridType() const { return m_gridType; }
+    const std::string& GetGridTypeName() const { return m_gridTypeName; }
+    const std::string& GetLastError() const { return m_lastError; }
+    bool HasError() const { return !m_lastError.empty(); }
+    void ClearError() { m_lastError.clear(); }
+
+    // Grid type constants (from PNanoVDB.h)
+    static constexpr uint32_t GRID_TYPE_UNKNOWN = 0;
+    static constexpr uint32_t GRID_TYPE_FLOAT = 1;
+    static constexpr uint32_t GRID_TYPE_DOUBLE = 2;
+    static constexpr uint32_t GRID_TYPE_INT16 = 3;
+    static constexpr uint32_t GRID_TYPE_INT32 = 4;
+    static constexpr uint32_t GRID_TYPE_INT64 = 5;
+    static constexpr uint32_t GRID_TYPE_VEC3F = 6;
+    static constexpr uint32_t GRID_TYPE_VEC3D = 7;
+    static constexpr uint32_t GRID_TYPE_MASK = 8;
+    static constexpr uint32_t GRID_TYPE_HALF = 9;       // 16-bit float - common from Blender Half precision
+    static constexpr uint32_t GRID_TYPE_UINT32 = 10;
+    static constexpr uint32_t GRID_TYPE_BOOL = 11;
+    static constexpr uint32_t GRID_TYPE_RGBA8 = 12;
+    static constexpr uint32_t GRID_TYPE_FP4 = 13;
+    static constexpr uint32_t GRID_TYPE_FP8 = 14;
+    static constexpr uint32_t GRID_TYPE_FP16 = 15;      // Another 16-bit format - from Blender Mini precision
+    static constexpr uint32_t GRID_TYPE_FPN = 16;
+    static constexpr uint32_t GRID_TYPE_VEC4F = 17;
+    static constexpr uint32_t GRID_TYPE_VEC4D = 18;
+
+    // Helper to check if grid type is shader-compatible
+    bool IsGridTypeSupported() const { return m_gridType == GRID_TYPE_FLOAT || m_gridType == GRID_TYPE_HALF || m_gridType == GRID_TYPE_FP16; }
+
+    // ========================================================================
+    // PHASE 2: GRID ENUMERATION AND SELECTION
+    // ========================================================================
+
+    /**
+     * Information about a single grid within a NanoVDB file
+     */
+    struct GridInfo {
+        std::string name;           // Grid name (e.g., "density", "temperature")
+        uint32_t type;              // Grid type ID (GRID_TYPE_FLOAT, etc.)
+        std::string typeName;       // Human-readable type name
+        uint32_t index;             // Index in the file (0-based)
+        bool isCompatible;          // True if shader can render this grid type
+    };
+
+    /**
+     * Enumerate all grids in a NanoVDB file
+     * @param filepath Path to .nvdb file
+     * @return Vector of GridInfo for each grid in the file
+     */
+    static std::vector<GridInfo> EnumerateGrids(const std::string& filepath);
+
+    /**
+     * Load a specific grid by name from a NanoVDB file
+     * @param filepath Path to .nvdb file
+     * @param gridName Name of grid to load (empty = prefer "density", then first float grid)
+     * @return true if load succeeded
+     */
+    bool LoadFromFile(const std::string& filepath, const std::string& gridName);
+
+    /**
+     * Get list of grids in the currently loaded file
+     */
+    const std::vector<GridInfo>& GetAvailableGrids() const { return m_availableGrids; }
+
+    /**
+     * Get index of currently selected grid
+     */
+    uint32_t GetSelectedGridIndex() const { return m_selectedGridIndex; }
+
     // Grid bounds (for positioning/scaling loaded grids)
     DirectX::XMFLOAT3 GetGridWorldMin() const { return m_gridWorldMin; }
     DirectX::XMFLOAT3 GetGridWorldMax() const { return m_gridWorldMax; }
@@ -229,6 +301,7 @@ public:
 private:
     bool CreateComputePipeline();
     bool UploadGridToGPU(const void* gridData, uint64_t sizeBytes);
+    static std::string GridTypeToString(uint32_t gridType);
 
     // Shader constant buffer structure
     struct NanoVDBConstants {
@@ -251,7 +324,7 @@ private:
         uint32_t debugMode;                  // 4 bytes (0=normal, 1=debug solid color)
         uint32_t useGridBuffer;              // 4 bytes (0=procedural, 1=file-loaded grid)
         DirectX::XMFLOAT3 gridOffset;        // 12 bytes (offset from original grid position)
-        float padding;                       // 4 bytes to align to 256
+        uint32_t gridType;                   // 4 bytes - grid value type (1=FLOAT, 9=HALF, 15=FP16)
     };  // Total: 192 bytes (padded to 256 for cbuffer)
 
     Device* m_device = nullptr;
@@ -264,6 +337,17 @@ private:
     uint32_t m_voxelCount = 0;
     DirectX::XMFLOAT3 m_gridWorldMin = { -500, -500, -500 };
     DirectX::XMFLOAT3 m_gridWorldMax = { 500, 500, 500 };
+
+    // Grid metadata (Phase 1: Blender NanoVDB visibility fix)
+    std::string m_gridName;           // Name of loaded grid (e.g., "density", "temperature")
+    uint32_t m_gridType = 0;          // Grid value type (GRID_TYPE_FLOAT, GRID_TYPE_HALF, etc.)
+    std::string m_gridTypeName;       // Human-readable type name
+    std::string m_lastError;          // Last error message for UI display
+    std::string m_loadedFilePath;     // Path of currently loaded file
+
+    // Phase 2: Grid enumeration and selection
+    std::vector<GridInfo> m_availableGrids;  // All grids in current file
+    uint32_t m_selectedGridIndex = 0;        // Index of currently loaded grid
 
     // GPU resources
     ComPtr<ID3D12Resource> m_gridBuffer;              // NanoVDB grid data

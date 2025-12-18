@@ -85,7 +85,7 @@ bool ParticleSystem::Initialize(Device* device, ResourceManager* resources, uint
         LOG_ERROR("Failed to create material properties buffer");
         return false;
     }
-    LOG_INFO("Material system initialized: 5 material types with distinct properties");
+    LOG_INFO("Material system initialized: 9 material types with distinct properties");
 
     // Phase 2C: Create persistent upload buffer for explosions
     if (m_explosionPoolStart > 0) {
@@ -1136,6 +1136,22 @@ void ParticleSystem::InitializeMaterialProperties() {
     m_materialProperties.materials[7].coolingRate = 1000.0f;          // Quick fade
     m_materialProperties.materials[7].fadeStartRatio = 0.4f;          // Early fade (shockwaves are brief)
 
+    // ============================================================================
+    // LUMINOUS STARS: SUPERGIANT_STAR MATERIAL
+    // ============================================================================
+
+    // Material 8: SUPERGIANT_STAR (Luminous star particles with embedded lights)
+    // Blue-white supergiant, VERY low opacity so light shines through!
+    // These particles contain embedded point lights that illuminate neighbors
+    m_materialProperties.materials[8].albedo = DirectX::XMFLOAT3(0.85f, 0.9f, 1.0f);  // Blue-white (25000K+)
+    m_materialProperties.materials[8].opacity = 0.15f;                // VERY transparent - light shines through!
+    m_materialProperties.materials[8].emissionMultiplier = 15.0f;     // Highest emission (matches SUPERNOVA)
+    m_materialProperties.materials[8].scatteringCoefficient = 0.3f;   // Low scattering (self-luminous core)
+    m_materialProperties.materials[8].phaseG = 0.0f;                  // Isotropic (glow visible from all angles)
+    m_materialProperties.materials[8].expansionRate = 0.0f;           // No expansion (static star)
+    m_materialProperties.materials[8].coolingRate = 0.0f;             // No cooling (permanent)
+    m_materialProperties.materials[8].fadeStartRatio = 1.0f;          // Never fade
+
     // Set default expansion/cooling for non-explosive materials (0 = no effect)
     for (int i = 0; i < 5; i++) {
         m_materialProperties.materials[i].expansionRate = 0.0f;
@@ -1144,13 +1160,13 @@ void ParticleSystem::InitializeMaterialProperties() {
     }
 
     // Zero out padding to avoid undefined behavior
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 9; i++) {  // Updated to 9 materials
         for (int j = 0; j < 6; j++) {
             m_materialProperties.materials[i].padding[j] = 0.0f;
         }
     }
 
-    LOG_INFO("[Material System] Initialized 8 material presets:");
+    LOG_INFO("[Material System] Initialized 9 material presets:");
     LOG_INFO("  0: PLASMA          - Hot orange/red, emission 2.5×");
     LOG_INFO("  1: STAR            - Brilliant white-yellow, emission 8.0×");
     LOG_INFO("  2: GAS_CLOUD       - Wispy blue/purple, backward scatter");
@@ -1159,10 +1175,11 @@ void ParticleSystem::InitializeMaterialProperties() {
     LOG_INFO("  5: SUPERNOVA       - Extreme emission 15×, expansion 50u/s");
     LOG_INFO("  6: STELLAR_FLARE   - Hot plasma burst, emission 6×");
     LOG_INFO("  7: SHOCKWAVE       - Fast expanding ring, emission 10×");
+    LOG_INFO("  8: SUPERGIANT_STAR - Blue-white 25000K+, emission 15×, opacity 0.15 (luminous)");
 }
 
 bool ParticleSystem::CreateMaterialPropertiesBuffer() {
-    // Create upload buffer for material properties (320 bytes)
+    // Create upload buffer for material properties (576 bytes: 9 materials × 64 bytes)
     size_t bufferSize = sizeof(MaterialPropertiesConstants);
 
     CD3DX12_HEAP_PROPERTIES uploadProps(D3D12_HEAP_TYPE_UPLOAD);

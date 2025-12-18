@@ -576,6 +576,17 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
         LOG_INFO("  Press 'J' to create test fog sphere");
     }
 
+    // Initialize Luminous Star Particles (Phase 3.9)
+    m_luminousParticles = std::make_unique<LuminousParticleSystem>();
+    if (!m_luminousParticles->Initialize(16)) {
+        LOG_ERROR("Failed to initialize Luminous Star Particles");
+        m_luminousParticles.reset();
+    } else {
+        LOG_INFO("Luminous Star Particles initialized!");
+        LOG_INFO("  16 star particles with embedded point lights");
+        LOG_INFO("  CPU-predicted Keplerian orbits for position sync");
+    }
+
     // Initialize ImGui
     InitializeImGui();
 
@@ -598,6 +609,7 @@ void Application::Shutdown() {
     m_dlssSystem.reset();
 #endif
 
+    m_luminousParticles.reset();  // Release Luminous Star Particles
     m_nanoVDBSystem.reset();  // Release NanoVDB volumetric system
     m_rtLighting.reset();
     m_particleRenderer.reset();
@@ -794,6 +806,23 @@ void Application::Render() {
             for (size_t i = 0; i < m_lights.size(); i++) {
                 float temperature = GetStellarTemperatureFromIntensity(m_lights[i].intensity);
                 m_lights[i].color = GetStellarColorFromTemperature(temperature);
+            }
+        }
+
+        // LUMINOUS STAR PARTICLES: Update and merge star lights
+        // Star lights are in indices 0-15, static lights in 16-28
+        if (m_enableLuminousStars && m_luminousParticles) {
+            // Update star positions using CPU Keplerian orbit prediction
+            m_luminousParticles->Update(m_deltaTime, m_physicsTimeMultiplier);
+
+            // Merge star lights into the light array (indices 0-15)
+            const auto& starLights = m_luminousParticles->GetStarLights();
+            for (size_t i = 0; i < starLights.size() && i < 16; i++) {
+                // Ensure we have space in the lights array
+                if (i >= m_lights.size()) {
+                    m_lights.resize(i + 1);
+                }
+                m_lights[i] = starLights[i];
             }
         }
     }
@@ -3090,18 +3119,19 @@ void Application::SaveBackBufferToFile(ID3D12Resource* backBuffer, const std::st
     hr = readbackBuffer->Map(0, &readRange, &mappedData);
 
     if (SUCCEEDED(hr)) {
-        // Convert BGRA to RGB (no vertical flip needed - PNG is top-down like GPU data)
+        // Convert RGBA to RGB (swap chain uses DXGI_FORMAT_R8G8B8A8_UNORM)
+        // No channel swap needed - just strip alpha channel
         std::vector<uint8_t> rgbData(desc.Width * desc.Height * 3);
-        uint8_t* src = reinterpret_cast<uint8_t*>(mappedData);
+        uint8_t* srcPtr = reinterpret_cast<uint8_t*>(mappedData);
 
         for (UINT y = 0; y < desc.Height; ++y) {
             for (UINT x = 0; x < desc.Width; ++x) {
                 UINT srcIdx = (y * footprint.Footprint.RowPitch) + (x * 4);
                 UINT dstIdx = (y * desc.Width + x) * 3;
 
-                rgbData[dstIdx + 0] = src[srcIdx + 2]; // R (from B in BGRA)
-                rgbData[dstIdx + 1] = src[srcIdx + 1]; // G
-                rgbData[dstIdx + 2] = src[srcIdx + 0]; // B (from R in BGRA)
+                rgbData[dstIdx + 0] = srcPtr[srcIdx + 0]; // R
+                rgbData[dstIdx + 1] = srcPtr[srcIdx + 1]; // G
+                rgbData[dstIdx + 2] = srcPtr[srcIdx + 2]; // B
             }
         }
 
@@ -4862,6 +4892,83 @@ void Application::RenderImGui() {
         ImGui::Text("Physics Timestep: %.6f (120Hz)", m_physicsTimeStep);
     }
 
+    // === Luminous Star Particles (Phase 3.9) ===
+    if (ImGui::CollapsingHeader("Luminous Star Particles")) {
+        ImGui::Checkbox("Enable Luminous Stars", &m_enableLuminousStars);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Embed point lights inside 16 'supergiant star' particles.\n"
+                              "Creates physics-driven light sources that orbit the black hole.\n"
+                              "Star lights use indices 0-15, static lights use 16-28.");
+        }
+
+        if (m_luminousParticles) {
+            ImGui::Text("Active Stars: %u / %u",
+                m_luminousParticles->GetActiveStarCount(),
+                LuminousParticleSystem::MAX_STAR_PARTICLES);
+
+            ImGui::Separator();
+
+            // Global controls
+            float luminosity = m_luminousParticles->GetGlobalLuminosity();
+            if (ImGui::SliderFloat("Global Luminosity", &luminosity, 0.1f, 5.0f, "%.2f")) {
+                m_luminousParticles->SetGlobalLuminosity(luminosity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Multiplier for all star light intensities (0.1-5.0)");
+            }
+
+            float opacity = m_luminousParticles->GetGlobalOpacity();
+            if (ImGui::SliderFloat("Star Opacity", &opacity, 0.05f, 0.5f, "%.2f")) {
+                m_luminousParticles->SetGlobalOpacity(opacity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Particle transparency - lower values let more light shine through.\n"
+                                  "0.05 = very transparent, 0.5 = semi-opaque");
+            }
+
+            ImGui::Separator();
+
+            // Spawn presets
+            if (ImGui::Button("Spawn Spiral Arms (4)")) {
+                m_luminousParticles->SpawnSpiralArmStars(200.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Place 4 blue supergiant stars at spiral arm positions (0/90/180/270 degrees)");
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Spawn Disk Hotspots")) {
+                m_luminousParticles->SpawnDiskHotspots(100.0f, 400.0f);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Scatter 12 varied stars across the disk at 100-400 unit radii\n"
+                                  "(red giants, white dwarfs, main sequence)");
+            }
+
+            if (ImGui::Button("Respawn All Stars")) {
+                m_luminousParticles->RespawnAllStars();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Reset all 16 stars to default Fibonacci sphere positions");
+            }
+
+            // Individual star info (collapsible)
+            if (ImGui::TreeNode("Star Details")) {
+                const auto& bindings = m_luminousParticles->GetStarBindings();
+                for (size_t i = 0; i < bindings.size(); i++) {
+                    if (bindings[i].active) {
+                        ImGui::Text("Star %zu: T=%.0fK L=%.1f Pos=(%.0f, %.0f, %.0f)",
+                            i, bindings[i].temperature, bindings[i].luminosity,
+                            bindings[i].position.x, bindings[i].position.y, bindings[i].position.z);
+                    }
+                }
+                ImGui::TreePop();
+            }
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "LuminousParticleSystem not initialized!");
+        }
+    }
+
     // Multi-Light System (Phase 3.5)
     if (ImGui::CollapsingHeader("Multi-Light System (L)")) {
         ImGui::Text("Active Lights: %d / 16", static_cast<int>(m_lights.size()));
@@ -5167,6 +5274,96 @@ void Application::RenderImGui() {
                 ImGui::Text("  Size: %.2f MB (%u voxels)",
                            m_nanoVDBSystem->GetGridSizeBytes() / (1024.0f * 1024.0f),
                            m_nanoVDBSystem->GetVoxelCount());
+
+                // ============================================================
+                // PHASE 1: GRID METADATA DISPLAY (Blender NanoVDB visibility fix)
+                // ============================================================
+                if (m_nanoVDBSystem->HasFileGrid()) {
+                    // Grid name
+                    const std::string& gridName = m_nanoVDBSystem->GetGridName();
+                    ImGui::Text("  Name: %s", gridName.empty() ? "<unnamed>" : gridName.c_str());
+
+                    // Grid type with color coding for shader compatibility
+                    uint32_t gridType = m_nanoVDBSystem->GetGridType();
+                    const std::string& gridTypeName = m_nanoVDBSystem->GetGridTypeName();
+
+                    if (gridType == NanoVDBSystem::GRID_TYPE_FLOAT) {
+                        // Fully compatible - green
+                        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f),
+                            "  Type: %s [COMPATIBLE]", gridTypeName.c_str());
+                    } else if (gridType == NanoVDBSystem::GRID_TYPE_HALF ||
+                               gridType == NanoVDBSystem::GRID_TYPE_FP16) {
+                        // Partially compatible (needs shader update) - yellow
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f),
+                            "  Type: %s [NEEDS SHADER UPDATE]", gridTypeName.c_str());
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Half/FP16 grids from Blender need shader support.\nPhase 3 will add this. Grid may render invisible.");
+                        }
+                    } else {
+                        // Incompatible - red
+                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                            "  Type: %s [INCOMPATIBLE]", gridTypeName.c_str());
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("This grid type is not supported.\nConvert to Float grid for rendering.");
+                        }
+                    }
+
+                    // Show error message if present
+                    if (m_nanoVDBSystem->HasError()) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                            "  ERROR: %s", m_nanoVDBSystem->GetLastError().c_str());
+                    }
+
+                    // ============================================================
+                    // PHASE 2: GRID SELECTOR DROPDOWN
+                    // ============================================================
+                    const auto& availableGrids = m_nanoVDBSystem->GetAvailableGrids();
+                    if (availableGrids.size() > 1) {
+                        ImGui::Separator();
+                        ImGui::Text("Available Grids (%zu):", availableGrids.size());
+
+                        // Build combo items
+                        static int currentGridSelection = 0;
+                        currentGridSelection = static_cast<int>(m_nanoVDBSystem->GetSelectedGridIndex());
+
+                        std::vector<std::string> gridLabels;
+                        for (const auto& g : availableGrids) {
+                            std::string label = "[" + std::to_string(g.index) + "] ";
+                            label += g.name.empty() ? "<unnamed>" : g.name;
+                            label += " (" + g.typeName + ")";
+                            if (!g.isCompatible) label += " [incompatible]";
+                            gridLabels.push_back(label);
+                        }
+
+                        // Create combo with preview
+                        const char* preview = gridLabels[currentGridSelection].c_str();
+                        if (ImGui::BeginCombo("Select Grid", preview)) {
+                            for (size_t i = 0; i < gridLabels.size(); ++i) {
+                                bool isSelected = (currentGridSelection == static_cast<int>(i));
+                                ImVec4 color = availableGrids[i].isCompatible ?
+                                    ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.5f, 0.5f, 1.0f);
+                                ImGui::PushStyleColor(ImGuiCol_Text, color);
+                                if (ImGui::Selectable(gridLabels[i].c_str(), isSelected)) {
+                                    if (static_cast<int>(i) != currentGridSelection) {
+                                        // Reload file with different grid
+                                        std::string filepath = m_nanoVDBSystem->GetGridName(); // Need to store filepath
+                                        // For now, just log that user wants to change
+                                        LOG_INFO("[NanoVDB] User selected grid: {}", gridLabels[i]);
+                                        // TODO: Implement grid switching without full reload
+                                    }
+                                }
+                                ImGui::PopStyleColor();
+                                if (isSelected) {
+                                    ImGui::SetItemDefaultFocus();
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("Select which grid to render.\nGreen = compatible, Red = incompatible with shader.");
+                        }
+                    }
+                }
 
                 // Show actual grid bounds (CRITICAL for debugging visibility)
                 auto gridMin = m_nanoVDBSystem->GetGridWorldMin();
@@ -5753,11 +5950,20 @@ void Application::RenderImGui() {
 }
 
 // Initialize 13-light configuration for accretion disk
+// When Luminous Stars are enabled, static lights go to indices 16-28 (star lights use 0-15)
 void Application::InitializeLights() {
     using DirectX::XMFLOAT3;
     const float PI = 3.14159265f;
 
     m_lights.clear();
+
+    // Reserve space for 32 lights (16 star + 16 static)
+    // Star lights (0-15) will be filled by LuminousParticleSystem during Update
+    // Static lights go to indices 16+ when luminous stars enabled
+    uint32_t startIndex = m_enableLuminousStars ? 16 : 0;
+    if (m_enableLuminousStars) {
+        m_lights.resize(16);  // Pre-allocate space for star lights (filled during Update)
+    }
 
     // Primary: Hot inner edge at origin (blue-white 20000K)
     ParticleRenderer_Gaussian::Light primaryLight;

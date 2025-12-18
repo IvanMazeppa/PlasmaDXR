@@ -91,8 +91,8 @@ bool ParticleRenderer_Gaussian::Initialize(Device* device,
     }
 
     // Create light buffer (structured buffer for multi-light system)
-    // MAX_LIGHTS = 16, Light struct = 64 bytes (32 base + 32 god ray parameters)
-    const uint32_t MAX_LIGHTS = 16;
+    // MAX_LIGHTS = 32 (16 star particles + 16 static), Light struct = 64 bytes
+    const uint32_t MAX_LIGHTS = 32;  // Doubled for luminous star particles
     const uint32_t lightStructSize = 64;  // Must match HLSL Light struct (extended for god rays)
     const uint32_t lightBufferSize = MAX_LIGHTS * lightStructSize;
 
@@ -1230,7 +1230,7 @@ void ParticleRenderer_Gaussian::UpdateLights(const std::vector<Light>& lights) {
         return;
     }
 
-    const uint32_t MAX_LIGHTS = 16;
+    const uint32_t MAX_LIGHTS = 32;  // Doubled for luminous star particles
     uint32_t lightCount = static_cast<uint32_t>(lights.size());
     if (lightCount > MAX_LIGHTS) {
         LOG_WARN("Too many lights ({} provided, max is {}), truncating", lightCount, MAX_LIGHTS);

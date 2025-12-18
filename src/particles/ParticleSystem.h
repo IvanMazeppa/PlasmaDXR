@@ -42,7 +42,8 @@ public:
         SUPERNOVA = 5,           // Phase 2: Explosive stellar death - extreme emission, expanding
         STELLAR_FLARE = 6,       // Phase 2: Solar flare ejection - hot plasma burst
         SHOCKWAVE = 7,           // Phase 2: Expanding shockwave ring - fast, fading
-        COUNT = 8                // Total material types
+        SUPERGIANT_STAR = 8,     // Luminous star particles - embedded light sources, very low opacity
+        COUNT = 9                // Total material types
     };
 
     // Particle flags for special behaviors
@@ -76,7 +77,8 @@ public:
 
     // Material properties for each material type
     // Phase 2: Extended to 8 material types for pyro/explosion effects
-    // GPU constant buffer: 512 bytes (8 materials × 64 bytes)
+    // Luminous Stars: Extended to 9 material types (+ SUPERGIANT_STAR)
+    // GPU constant buffer: 576 bytes (9 materials × 64 bytes)
     struct MaterialTypeProperties {
         DirectX::XMFLOAT3 albedo;             // 12 bytes - Base surface/volume color (RGB)
         float opacity;                        // 4 bytes  - Opacity multiplier (0-1)
@@ -90,8 +92,8 @@ public:
     };  // Total: 64 bytes per material
 
     struct MaterialPropertiesConstants {
-        MaterialTypeProperties materials[8];  // 8 types × 64 bytes = 512 bytes
-    };  // Total: 512 bytes
+        MaterialTypeProperties materials[9];  // 9 types × 64 bytes = 576 bytes
+    };  // Total: 576 bytes
 
 public:
     ParticleSystem() = default;

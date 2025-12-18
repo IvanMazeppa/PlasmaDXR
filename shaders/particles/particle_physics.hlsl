@@ -286,6 +286,58 @@ void main(uint3 id : SV_DispatchThreadID) {
         p.maxLifetime = 0.0;  // 0 = infinite lifetime (immortal)
         p.spawnTime = constants.totalTime;
         p.flags = FLAG_IMMORTAL;  // Accretion disk particles never die
+
+        // ====================================================================
+        // LUMINOUS STAR PARTICLES (Phase 3.9)
+        // First 16 particles are supergiant stars with embedded light sources
+        // These will be synced with LuminousParticleSystem on CPU for lighting
+        // ====================================================================
+        if (particleIndex < 16) {
+            // Set material type to SUPERGIANT_STAR (index 8)
+            // Very low opacity (0.15) allows embedded light to shine through
+            // High emission multiplier (15x) for intense glow
+            p.materialType = 8;  // SUPERGIANT_STAR
+
+            // Hot blue supergiant temperature for blue-white color
+            p.temperature = 25000.0;
+
+            // Higher density for better volumetric visibility
+            p.density = 1.5;
+
+            // Blue-white albedo for 25000K+ supergiant
+            p.albedo = float3(0.85, 0.9, 1.0);
+
+            // Make immortal - stars never die
+            p.flags = FLAG_IMMORTAL;
+
+            // Position stars using Fibonacci sphere distribution for even spacing
+            // This creates a visually pleasing arrangement around the accretion disk
+            float phi = 1.6180339887;  // Golden ratio
+            float theta = 2.0 * 3.14159265 * float(particleIndex) / phi;
+            float y = 1.0 - (2.0 * float(particleIndex) + 1.0) / 32.0;  // -1 to 1
+            float radiusAtY = sqrt(max(0.0, 1.0 - y * y));
+
+            // Orbital radius varies by index (150-300 units)
+            float orbitalRadius = 150.0 + float(particleIndex % 4) * 50.0;
+
+            p.position = float3(
+                cos(theta) * radiusAtY * orbitalRadius,
+                y * 20.0,  // Disk thickness variation
+                sin(theta) * radiusAtY * orbitalRadius
+            );
+
+            // Initialize Keplerian orbital velocity (perpendicular to radial direction)
+            float r = length(p.position);
+            if (r > 1.0) {
+                float orbitalSpeed = sqrt(100.0 / r);  // GM = 100 (must match LuminousParticleSystem)
+                // Counter-clockwise in XZ plane
+                p.velocity = float3(
+                    -p.position.z / r * orbitalSpeed,
+                    0.0,
+                    p.position.x / r * orbitalSpeed
+                );
+            }
+        }
     } else {
         // ====================================================================
         // PHYSICS INTEGRATION (Selectable: Euler or Velocity Verlet)
