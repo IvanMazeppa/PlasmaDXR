@@ -1458,6 +1458,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture2D.MipLevels = 1;
 
+    // Free old descriptor before reallocating (prevents heap exhaustion during resize cycles)
+    if (m_upscaledOutputSRV.ptr != 0) {
+        m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_upscaledOutputSRV);
+    }
     m_upscaledOutputSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->GetDevice()->CreateShaderResourceView(
         m_upscaledOutputTexture.Get(),
@@ -1472,6 +1476,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     uavDesc.Texture2D.MipSlice = 0;
 
+    // Free old descriptor before reallocating
+    if (m_upscaledOutputUAV.ptr != 0) {
+        m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_upscaledOutputUAV);
+    }
     m_upscaledOutputUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->GetDevice()->CreateUnorderedAccessView(
         m_upscaledOutputTexture.Get(),
@@ -1581,6 +1589,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         shadowSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         shadowSrvDesc.Texture2D.MipLevels = 1;
 
+        // Free old descriptor before reallocating
+        if (m_shadowSRV[i].ptr != 0) {
+            m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_shadowSRV[i]);
+        }
         m_shadowSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         m_device->GetDevice()->CreateShaderResourceView(
             m_shadowBuffer[i].Get(),
@@ -1595,6 +1607,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         shadowUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
         shadowUavDesc.Texture2D.MipSlice = 0;
 
+        // Free old descriptor before reallocating
+        if (m_shadowUAV[i].ptr != 0) {
+            m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_shadowUAV[i]);
+        }
         m_shadowUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         m_device->GetDevice()->CreateUnorderedAccessView(
             m_shadowBuffer[i].Get(),
@@ -1642,6 +1658,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         colorSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         colorSrvDesc.Texture2D.MipLevels = 1;
 
+        // Free old descriptor before reallocating
+        if (m_colorSRV[i].ptr != 0) {
+            m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_colorSRV[i]);
+        }
         m_colorSRV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         m_device->GetDevice()->CreateShaderResourceView(
             m_colorBuffer[i].Get(),
@@ -1656,6 +1676,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
         colorUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
         colorUavDesc.Texture2D.MipSlice = 0;
 
+        // Free old descriptor before reallocating
+        if (m_colorUAV[i].ptr != 0) {
+            m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_colorUAV[i]);
+        }
         m_colorUAV[i] = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         m_device->GetDevice()->CreateUnorderedAccessView(
             m_colorBuffer[i].Get(),
@@ -1704,6 +1728,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     depthUavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
     depthUavDesc.Texture2D.MipSlice = 0;
 
+    // Free old descriptor before reallocating
+    if (m_shadowDepthUAV.ptr != 0) {
+        m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_shadowDepthUAV);
+    }
     m_shadowDepthUAV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->GetDevice()->CreateUnorderedAccessView(
         m_shadowDepthBuffer.Get(),
@@ -1721,6 +1749,10 @@ void ParticleRenderer_Gaussian::SetDLSSSystem(DLSSSystem* dlss, uint32_t width, 
     depthSrvDesc.Texture2D.MipLevels = 1;
     depthSrvDesc.Texture2D.MostDetailedMip = 0;
 
+    // Free old descriptor before reallocating
+    if (m_shadowDepthSRV.ptr != 0) {
+        m_resources->FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_shadowDepthSRV);
+    }
     m_shadowDepthSRV = m_resources->AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->GetDevice()->CreateShaderResourceView(
         m_shadowDepthBuffer.Get(),

@@ -5,9 +5,15 @@
 #include <unordered_map>
 #include <string>
 #include <memory>
+#include <vector>
 
 // ResourceManager - Centralized resource management
 // No more scattered descriptors across a 4,842-line file!
+//
+// Descriptor Heap Pool (2025-12-19):
+// - Free-list allocator for descriptor reclamation
+// - Prevents heap exhaustion during DLSS resize cycles
+// - O(1) allocate/free via index-based free list
 
 class Device;
 
@@ -50,6 +56,23 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t index);
     D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle(D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
 
+    // Descriptor reclamation (free-list pool)
+    void FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
+    void FreeDescriptorByIndex(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t index);
+    uint32_t GetDescriptorIndex(D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
+
+    // Descriptor heap statistics
+    struct DescriptorHeapStats {
+        uint32_t totalDescriptors = 0;    // Heap capacity
+        uint32_t allocatedCount = 0;      // Currently allocated (active)
+        uint32_t freeListSize = 0;        // Available in free list
+        uint32_t highWaterMark = 0;       // Maximum ever allocated (currentIndex)
+        uint32_t totalAllocations = 0;    // Lifetime allocation count
+        uint32_t totalFrees = 0;          // Lifetime free count
+        uint32_t reuseCount = 0;          // Times free list was used
+    };
+    DescriptorHeapStats GetDescriptorStats(D3D12_DESCRIPTOR_HEAP_TYPE type) const;
+
     // Upload allocation result
     struct UploadAllocation {
         ID3D12Resource* resource = nullptr;
@@ -76,12 +99,21 @@ private:
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12Resource>> m_buffers;
     std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12Resource>> m_textures;
 
-    // Descriptor heaps
+    // Descriptor heaps with free-list pool
     struct DescriptorHeapInfo {
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> heap;
         uint32_t descriptorSize = 0;
         uint32_t numDescriptors = 0;
-        uint32_t currentIndex = 0;
+        uint32_t currentIndex = 0;          // Next fresh slot (high water mark)
+
+        // Free-list pool for descriptor reclamation
+        std::vector<uint32_t> freeList;     // Stack of freed descriptor indices
+
+        // Statistics for monitoring
+        uint32_t allocatedCount = 0;        // Currently allocated (active) descriptors
+        uint32_t totalAllocations = 0;      // Lifetime allocation count
+        uint32_t totalFrees = 0;            // Lifetime free count
+        uint32_t reuseCount = 0;            // Times free list provided a descriptor
     };
 
     std::unordered_map<D3D12_DESCRIPTOR_HEAP_TYPE, DescriptorHeapInfo> m_descriptorHeaps;

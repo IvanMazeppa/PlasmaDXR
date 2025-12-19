@@ -2,6 +2,7 @@
 #include "../core/Device.h"
 #include "Logger.h"
 #include "d3dx12/d3dx12.h"
+#include <cstdint>  // UINT32_MAX for descriptor pool
 
 ResourceManager::~ResourceManager() {
     Shutdown();
@@ -160,7 +161,7 @@ bool ResourceManager::CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE type,
                           (type == D3D12_DESCRIPTOR_HEAP_TYPE_RTV) ? "RTV" :
                           (type == D3D12_DESCRIPTOR_HEAP_TYPE_DSV) ? "DSV" : "SAMPLER";
 
-    LOG_INFO("Created descriptor heap {} ({} descriptors, shader visible: {})",
+    LOG_INFO("Created descriptor heap {} ({} descriptors, shader visible: {}, free-list pool enabled)",
              typeName, numDescriptors, shaderVisible);
 
     return true;
@@ -183,16 +184,30 @@ D3D12_CPU_DESCRIPTOR_HANDLE ResourceManager::AllocateDescriptor(D3D12_DESCRIPTOR
     }
 
     auto& heapInfo = it->second;
+    uint32_t allocatedIndex;
 
-    if (heapInfo.currentIndex >= heapInfo.numDescriptors) {
-        LOG_ERROR("Descriptor heap type {} is full! ({}/{})",
-                  static_cast<int>(type), heapInfo.currentIndex, heapInfo.numDescriptors);
-        return { 0 };
+    // Check free list first (reuse freed descriptors)
+    if (!heapInfo.freeList.empty()) {
+        allocatedIndex = heapInfo.freeList.back();
+        heapInfo.freeList.pop_back();
+        heapInfo.reuseCount++;
+    }
+    else {
+        // No freed descriptors available - allocate fresh from high water mark
+        if (heapInfo.currentIndex >= heapInfo.numDescriptors) {
+            LOG_ERROR("Descriptor heap type {} is full! ({}/{}, free list empty)",
+                      static_cast<int>(type), heapInfo.currentIndex, heapInfo.numDescriptors);
+            return { 0 };
+        }
+        allocatedIndex = heapInfo.currentIndex++;
     }
 
+    // Update statistics
+    heapInfo.allocatedCount++;
+    heapInfo.totalAllocations++;
+
     D3D12_CPU_DESCRIPTOR_HANDLE handle = heapInfo.heap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += heapInfo.currentIndex * heapInfo.descriptorSize;
-    heapInfo.currentIndex++;
+    handle.ptr += allocatedIndex * heapInfo.descriptorSize;
 
     return handle;
 }
@@ -235,6 +250,96 @@ D3D12_GPU_DESCRIPTOR_HANDLE ResourceManager::GetGPUHandle(D3D12_CPU_DESCRIPTOR_H
 
     LOG_ERROR("CPU handle does not belong to any known descriptor heap");
     return { 0 };
+}
+
+// ============================================================================
+// Descriptor Reclamation (Free-List Pool)
+// ============================================================================
+
+void ResourceManager::FreeDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle) {
+    if (cpuHandle.ptr == 0) {
+        return;  // Null handle, nothing to free
+    }
+
+    uint32_t index = GetDescriptorIndex(type, cpuHandle);
+    if (index != UINT32_MAX) {
+        FreeDescriptorByIndex(type, index);
+    }
+}
+
+void ResourceManager::FreeDescriptorByIndex(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t index) {
+    auto it = m_descriptorHeaps.find(type);
+    if (it == m_descriptorHeaps.end()) {
+        LOG_ERROR("FreeDescriptor: Descriptor heap type {} not found", static_cast<int>(type));
+        return;
+    }
+
+    auto& heapInfo = it->second;
+
+    // Validate index is within bounds
+    if (index >= heapInfo.currentIndex) {
+        LOG_WARN("FreeDescriptor: Index {} is beyond high water mark {}", index, heapInfo.currentIndex);
+        return;
+    }
+
+    // Check for double-free (already in free list)
+    for (uint32_t freeIdx : heapInfo.freeList) {
+        if (freeIdx == index) {
+            LOG_WARN("FreeDescriptor: Descriptor index {} already freed (double-free detected)", index);
+            return;
+        }
+    }
+
+    // Add to free list for reuse
+    heapInfo.freeList.push_back(index);
+    heapInfo.allocatedCount--;
+    heapInfo.totalFrees++;
+}
+
+uint32_t ResourceManager::GetDescriptorIndex(D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle) {
+    auto it = m_descriptorHeaps.find(type);
+    if (it == m_descriptorHeaps.end()) {
+        LOG_ERROR("GetDescriptorIndex: Descriptor heap type {} not found", static_cast<int>(type));
+        return UINT32_MAX;
+    }
+
+    auto& heapInfo = it->second;
+    D3D12_CPU_DESCRIPTOR_HANDLE heapStart = heapInfo.heap->GetCPUDescriptorHandleForHeapStart();
+
+    // Calculate index from pointer offset
+    if (cpuHandle.ptr < heapStart.ptr) {
+        LOG_ERROR("GetDescriptorIndex: Handle pointer before heap start");
+        return UINT32_MAX;
+    }
+
+    SIZE_T offset = cpuHandle.ptr - heapStart.ptr;
+    if (offset >= heapInfo.numDescriptors * heapInfo.descriptorSize) {
+        LOG_ERROR("GetDescriptorIndex: Handle pointer beyond heap end");
+        return UINT32_MAX;
+    }
+
+    uint32_t index = static_cast<uint32_t>(offset / heapInfo.descriptorSize);
+    return index;
+}
+
+ResourceManager::DescriptorHeapStats ResourceManager::GetDescriptorStats(D3D12_DESCRIPTOR_HEAP_TYPE type) const {
+    DescriptorHeapStats stats;
+
+    auto it = m_descriptorHeaps.find(type);
+    if (it == m_descriptorHeaps.end()) {
+        return stats;  // Return zeroed stats if heap not found
+    }
+
+    const auto& heapInfo = it->second;
+    stats.totalDescriptors = heapInfo.numDescriptors;
+    stats.allocatedCount = heapInfo.allocatedCount;
+    stats.freeListSize = static_cast<uint32_t>(heapInfo.freeList.size());
+    stats.highWaterMark = heapInfo.currentIndex;
+    stats.totalAllocations = heapInfo.totalAllocations;
+    stats.totalFrees = heapInfo.totalFrees;
+    stats.reuseCount = heapInfo.reuseCount;
+
+    return stats;
 }
 
 void ResourceManager::UploadBufferData(ID3D12Resource* buffer, const void* data, size_t size) {
