@@ -611,15 +611,14 @@ bool ParticleRenderer_Gaussian::CreateOutputTexture(uint32_t width, uint32_t hei
 }
 
 bool ParticleRenderer_Gaussian::CreatePipeline() {
-    // Load Gaussian raytrace compute shader
-    std::ifstream shaderFile("shaders/particles/particle_gaussian_raytrace.dxil", std::ios::binary);
-    if (!shaderFile.is_open()) {
+    // Load Gaussian raytrace compute shader (via ResourceManager cache)
+    const auto& shaderData = m_resources->LoadShader("particles/particle_gaussian_raytrace.dxil");
+    if (shaderData.empty()) {
         LOG_ERROR("Failed to load particle_gaussian_raytrace.dxil");
         LOG_ERROR("  Make sure shader is compiled!");
         return false;
     }
 
-    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
     Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
     HRESULT hr = D3DCreateBlob(shaderData.size(), &computeShader);
     if (FAILED(hr)) {
@@ -739,15 +738,14 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
 
 #ifdef ENABLE_DLSS
 bool ParticleRenderer_Gaussian::CreateMotionVectorPipeline() {
-    // Load motion vector compute shader
-    std::ifstream shaderFile("shaders/particles/compute_motion_vectors.dxil", std::ios::binary);
-    if (!shaderFile.is_open()) {
+    // Load motion vector compute shader (via ResourceManager cache)
+    const auto& shaderData = m_resources->LoadShader("particles/compute_motion_vectors.dxil");
+    if (shaderData.empty()) {
         LOG_ERROR("Failed to load compute_motion_vectors.dxil");
         LOG_ERROR("  Make sure shader is compiled!");
         return false;
     }
 
-    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
     Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
     HRESULT hr = D3DCreateBlob(shaderData.size(), &computeShader);
     if (FAILED(hr)) {
@@ -1855,15 +1853,14 @@ bool ParticleRenderer_Gaussian::CreateShadowDepthBuffer(uint32_t width, uint32_t
 bool ParticleRenderer_Gaussian::CreateDepthPrePassPipeline() {
     LOG_INFO("Creating depth pre-pass pipeline...");
 
-    // Load depth pre-pass compute shader
-    std::ifstream shaderFile("shaders/shadows/depth_prepass.dxil", std::ios::binary);
-    if (!shaderFile.is_open()) {
+    // Load depth pre-pass compute shader (via ResourceManager cache)
+    const auto& shaderData = m_resources->LoadShader("shadows/depth_prepass.dxil");
+    if (shaderData.empty()) {
         LOG_ERROR("Failed to load depth_prepass.dxil");
         LOG_ERROR("  Make sure shader is compiled: dxc -T cs_6_5 -E main shaders/shadows/depth_prepass.hlsl -Fo shaders/shadows/depth_prepass.dxil");
         return false;
     }
 
-    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
     Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
     HRESULT hr = D3DCreateBlob(shaderData.size(), &computeShader);
     if (FAILED(hr)) {
@@ -1922,14 +1919,13 @@ bool ParticleRenderer_Gaussian::CreateDepthPrePassPipeline() {
     // === Create depth buffer clear pipeline ===
     LOG_INFO("Creating depth buffer clear pipeline...");
 
-    // Load clear shader
-    std::ifstream clearShaderFile("shaders/shadows/depth_buffer_clear.dxil", std::ios::binary);
-    if (!clearShaderFile.is_open()) {
+    // Load clear shader (via ResourceManager cache)
+    const auto& clearShaderData = m_resources->LoadShader("shadows/depth_buffer_clear.dxil");
+    if (clearShaderData.empty()) {
         LOG_ERROR("Failed to load depth_buffer_clear.dxil");
         return false;
     }
 
-    std::vector<char> clearShaderData((std::istreambuf_iterator<char>(clearShaderFile)), std::istreambuf_iterator<char>());
     Microsoft::WRL::ComPtr<ID3DBlob> clearShader;
     hr = D3DCreateBlob(clearShaderData.size(), &clearShader);
     if (FAILED(hr)) {

@@ -151,14 +151,13 @@ void RTLightingSystem_RayQuery::Shutdown() {
 }
 
 bool RTLightingSystem_RayQuery::LoadShaders() {
-    // Load AABB generation shader
-    std::ifstream aabbFile("shaders/dxr/generate_particle_aabbs.dxil", std::ios::binary);
-    if (!aabbFile) {
-        LOG_ERROR("Failed to open generate_particle_aabbs.dxil");
+    // Load AABB generation shader (via ResourceManager cache)
+    const auto& aabbData = m_resources->LoadShader("dxr/generate_particle_aabbs.dxil");
+    if (aabbData.empty()) {
+        LOG_ERROR("Failed to load generate_particle_aabbs.dxil");
         return false;
     }
 
-    std::vector<char> aabbData((std::istreambuf_iterator<char>(aabbFile)), std::istreambuf_iterator<char>());
     HRESULT hr = D3DCreateBlob(aabbData.size(), &m_aabbGenShader);
     if (FAILED(hr)) {
         LOG_ERROR("Failed to create blob for AABB shader");
@@ -166,14 +165,13 @@ bool RTLightingSystem_RayQuery::LoadShaders() {
     }
     memcpy(m_aabbGenShader->GetBufferPointer(), aabbData.data(), aabbData.size());
 
-    // Load RayQuery lighting shader
-    std::ifstream lightingFile("shaders/dxr/particle_raytraced_lighting_cs.dxil", std::ios::binary);
-    if (!lightingFile) {
-        LOG_ERROR("Failed to open particle_raytraced_lighting_cs.dxil");
+    // Load RayQuery lighting shader (via ResourceManager cache)
+    const auto& lightingData = m_resources->LoadShader("dxr/particle_raytraced_lighting_cs.dxil");
+    if (lightingData.empty()) {
+        LOG_ERROR("Failed to load particle_raytraced_lighting_cs.dxil");
         return false;
     }
 
-    std::vector<char> lightingData((std::istreambuf_iterator<char>(lightingFile)), std::istreambuf_iterator<char>());
     hr = D3DCreateBlob(lightingData.size(), &m_rayQueryLightingShader);
     if (FAILED(hr)) {
         LOG_ERROR("Failed to create blob for lighting shader");

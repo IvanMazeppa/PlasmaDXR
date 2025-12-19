@@ -143,14 +143,13 @@ bool RTXDILightingSystem::Initialize(Device* device, ResourceManager* resources,
     // === Milestone 2.2: Light Grid Build Shader ===
     LOG_INFO("Loading light grid build compute shader...");
 
-    // Load light grid build shader
-    std::ifstream shaderFile("shaders/rtxdi/light_grid_build_cs.dxil", std::ios::binary);
-    if (!shaderFile) {
-        LOG_ERROR("Failed to open light_grid_build_cs.dxil");
+    // Load light grid build shader (via ResourceManager cache)
+    const auto& shaderData = m_resources->LoadShader("rtxdi/light_grid_build_cs.dxil");
+    if (shaderData.empty()) {
+        LOG_ERROR("Failed to load light_grid_build_cs.dxil");
         return false;
     }
 
-    std::vector<char> shaderData((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
     ComPtr<ID3DBlob> shaderBlob;
     hr = D3DCreateBlob(shaderData.size(), &shaderBlob);
     if (FAILED(hr)) {
@@ -559,21 +558,18 @@ bool RTXDILightingSystem::CreateDXRPipeline() {
         return false;
     }
 
-    // Load shader libraries
-    std::ifstream raygenFile("shaders/rtxdi/rtxdi_raygen.dxil", std::ios::binary);
-    if (!raygenFile) {
-        LOG_ERROR("Failed to open rtxdi_raygen.dxil");
+    // Load shader libraries (via ResourceManager cache)
+    const auto& raygenData = m_resources->LoadShader("rtxdi/rtxdi_raygen.dxil");
+    if (raygenData.empty()) {
+        LOG_ERROR("Failed to load rtxdi_raygen.dxil");
         return false;
     }
 
-    std::ifstream missFile("shaders/rtxdi/rtxdi_miss.dxil", std::ios::binary);
-    if (!missFile) {
-        LOG_ERROR("Failed to open rtxdi_miss.dxil");
+    const auto& missData = m_resources->LoadShader("rtxdi/rtxdi_miss.dxil");
+    if (missData.empty()) {
+        LOG_ERROR("Failed to load rtxdi_miss.dxil");
         return false;
     }
-
-    std::vector<char> raygenData((std::istreambuf_iterator<char>(raygenFile)), std::istreambuf_iterator<char>());
-    std::vector<char> missData((std::istreambuf_iterator<char>(missFile)), std::istreambuf_iterator<char>());
 
     ComPtr<ID3DBlob> raygenBlob, missBlob;
     hr = D3DCreateBlob(raygenData.size(), &raygenBlob);
@@ -858,16 +854,14 @@ bool RTXDILightingSystem::CreateTemporalAccumulationPipeline() {
 
     m_temporalAccumulateRS->SetName(L"RTXDI Temporal Accumulation RS");
 
-    // Load shader bytecode
-    std::ifstream shaderFile("shaders/rtxdi/rtxdi_temporal_accumulate.dxil", std::ios::binary);
-    if (!shaderFile.is_open()) {
+    // Load shader bytecode (via ResourceManager cache)
+    const auto& shaderBytecode = m_resources->LoadShader("rtxdi/rtxdi_temporal_accumulate.dxil");
+    if (shaderBytecode.empty()) {
         LOG_ERROR("Failed to load rtxdi_temporal_accumulate.dxil");
         LOG_ERROR("  Make sure shader is compiled!");
         return false;
     }
 
-    std::vector<uint8_t> shaderBytecode((std::istreambuf_iterator<char>(shaderFile)), std::istreambuf_iterator<char>());
-    shaderFile.close();
     LOG_INFO("Loaded temporal accumulation shader: {} bytes", shaderBytecode.size());
 
     // Create PSO

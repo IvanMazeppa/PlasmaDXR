@@ -218,16 +218,12 @@ bool ProbeGridSystem::CreatePipelines() {
 
     // Load and create PSO
     {
-        // Load compiled shader
-        std::ifstream shaderFile("shaders/probe_grid/update_probes.dxil", std::ios::binary);
-        if (!shaderFile) {
-            LOG_ERROR("Failed to open update_probes.dxil shader file!");
+        // Load compiled shader (via ResourceManager cache)
+        const auto& shaderData = m_resources->LoadShader("probe_grid/update_probes.dxil");
+        if (shaderData.empty()) {
+            LOG_ERROR("Failed to load update_probes.dxil shader file!");
             return false;
         }
-
-        std::vector<uint8_t> shaderData((std::istreambuf_iterator<char>(shaderFile)),
-                                        std::istreambuf_iterator<char>());
-        shaderFile.close();
 
         LOG_INFO("Loaded probe update shader: {} bytes", shaderData.size());
 

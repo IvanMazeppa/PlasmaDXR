@@ -3,6 +3,10 @@
 #include "Logger.h"
 #include "d3dx12/d3dx12.h"
 #include <cstdint>  // UINT32_MAX for descriptor pool
+#include <fstream>  // Shader cache file I/O
+
+// Static empty shader data for failed loads
+const std::vector<uint8_t> ResourceManager::s_emptyShaderData;
 
 ResourceManager::~ResourceManager() {
     Shutdown();
@@ -33,6 +37,15 @@ bool ResourceManager::Initialize(Device* device) {
 }
 
 void ResourceManager::Shutdown() {
+    // Clear shader cache first (log stats before clearing)
+    if (!m_shaderCache.empty()) {
+        auto stats = GetShaderCacheStats();
+        LOG_INFO("Shader cache stats: {} shaders, {:.2f} KB, {} hits / {} misses",
+                 stats.totalShaders, stats.totalBytes / 1024.0f,
+                 stats.cacheHits, stats.cacheMisses);
+    }
+    ClearShaderCache();
+
     m_buffers.clear();
     m_textures.clear();
     m_descriptorHeaps.clear();
@@ -419,4 +432,115 @@ void ResourceManager::TransitionResource(ID3D12GraphicsCommandList* cmdList,
 
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(resource, from, to);
     cmdList->ResourceBarrier(1, &barrier);
+}
+
+// ============================================================================
+// Shader Binary Cache (2025-12-19)
+// ============================================================================
+
+bool ResourceManager::TryLoadShaderFromPath(const std::string& path, std::vector<uint8_t>& outData) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    // Get file size
+    std::streamsize size = file.tellg();
+    if (size <= 0) {
+        return false;
+    }
+
+    file.seekg(0, std::ios::beg);
+
+    // Read file contents
+    outData.resize(static_cast<size_t>(size));
+    if (!file.read(reinterpret_cast<char*>(outData.data()), size)) {
+        outData.clear();
+        return false;
+    }
+
+    return true;
+}
+
+const std::vector<uint8_t>& ResourceManager::LoadShader(const std::string& shaderPath) {
+    // Check cache first
+    auto it = m_shaderCache.find(shaderPath);
+    if (it != m_shaderCache.end()) {
+        m_shaderCacheHits++;
+        return it->second.data;
+    }
+
+    // Cache miss - try to load from disk
+    m_shaderCacheMisses++;
+
+    // Multi-path search strategy
+    std::vector<std::string> searchPaths = {
+        shaderPath,                                    // Exact path
+        "shaders/" + shaderPath,                       // shaders/ prefix
+        "../shaders/" + shaderPath,                    // Parent dir shaders/
+        "../../shaders/" + shaderPath,                 // Grandparent dir shaders/
+        "build/bin/Debug/shaders/" + shaderPath,      // Debug build output
+        "build/bin/Release/shaders/" + shaderPath     // Release build output
+    };
+
+    ShaderCacheEntry entry;
+    for (const auto& path : searchPaths) {
+        if (TryLoadShaderFromPath(path, entry.data)) {
+            entry.resolvedPath = path;
+            m_shaderCache[shaderPath] = std::move(entry);
+            LOG_INFO("Shader cached: '{}' ({} bytes, found at '{}')",
+                     shaderPath, m_shaderCache[shaderPath].data.size(),
+                     m_shaderCache[shaderPath].resolvedPath);
+            return m_shaderCache[shaderPath].data;
+        }
+    }
+
+    // All paths failed
+    LOG_ERROR("Failed to load shader '{}' (searched {} paths)", shaderPath, searchPaths.size());
+    return s_emptyShaderData;
+}
+
+bool ResourceManager::IsShaderCached(const std::string& shaderPath) const {
+    return m_shaderCache.find(shaderPath) != m_shaderCache.end();
+}
+
+void ResourceManager::PreloadShaders(const std::vector<std::string>& shaderPaths) {
+    LOG_INFO("Preloading {} shaders...", shaderPaths.size());
+
+    size_t loaded = 0;
+    size_t totalBytes = 0;
+
+    for (const auto& path : shaderPaths) {
+        const auto& data = LoadShader(path);
+        if (!data.empty()) {
+            loaded++;
+            totalBytes += data.size();
+        }
+    }
+
+    LOG_INFO("Shader preload complete: {}/{} shaders loaded ({:.2f} KB)",
+             loaded, shaderPaths.size(), totalBytes / 1024.0f);
+}
+
+void ResourceManager::ClearShaderCache() {
+    m_shaderCache.clear();
+    m_shaderCacheHits = 0;
+    m_shaderCacheMisses = 0;
+}
+
+ResourceManager::ShaderCacheStats ResourceManager::GetShaderCacheStats() const {
+    ShaderCacheStats stats;
+    stats.cacheHits = m_shaderCacheHits;
+    stats.cacheMisses = m_shaderCacheMisses;
+    stats.totalShaders = static_cast<uint32_t>(m_shaderCache.size());
+
+    for (const auto& pair : m_shaderCache) {
+        size_t shaderSize = pair.second.data.size();
+        stats.totalBytes += shaderSize;
+        if (shaderSize > stats.largestShader) {
+            stats.largestShader = shaderSize;
+        }
+    }
+
+    return stats;
 }
