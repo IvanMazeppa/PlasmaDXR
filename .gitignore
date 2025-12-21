@@ -1,15 +1,28 @@
-# Build outputs
+# ============================================================
+# PlasmaDX-Clean .gitignore
+# Clean, pattern-based ignores - NO individual file listings
+# ============================================================
+
+# ============================================================
+# Build Outputs
+# ============================================================
 build/
-build-vs2022/
+build-*/
+cmake-build-*/
 bin/
 obj/
+out/
 *.exe
 *.dll
 *.pdb
 *.ilk
 *.obj
+*.lib
+*.exp
 
+# ============================================================
 # Visual Studio
+# ============================================================
 .vs/
 *.user
 *.suo
@@ -17,495 +30,141 @@ obj/
 *.opensdf
 *.VC.db
 *.VC.opendb
+*.vcxproj.filters
 
+# ============================================================
 # CMake
+# ============================================================
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-*.cmake
 CMakeLists.txt.user
-CMakeScripts
-external
-Testing
+CMakeScripts/
+CMakeUserPresets.json
+Testing/
 Makefile
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
-_deps
-CMakeUserPresets.json
+_deps/
 
-# CLion
-cmake-build-*
-
-# Compiled shaders (keep .hlsl source)
-*.cso
-*.dxil
-
-# Logs
-logs/
-*.log
-
-# Temporary files
-*.tmp
-*.temp
+# ============================================================
+# IDE / Editors
+# ============================================================
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
 *~
 
-# OS files
+# ============================================================
+# OS Files
+# ============================================================
 .DS_Store
 Thumbs.db
-
-# Keep certain files
-!external/D3D12/*.dll
-!shaders/**/*.dxil
-
-# VDB/NanoVDB asset files (large binary data)
-VDBs/
-
-# PIX captures and screenshots
-PIX/
-PIX/GPU 8_GpuId9_API Parameters.bmp
-PIX/image.png
-screenshots/
-
-# Vendor SDKs (ignored)
-# Ensure RTXDI SDK is not accidentally committed when vendored under external/
-external/RTXDI/
-external/RTXDI/**
+desktop.ini
 
 # ============================================================
-# Machine Learning / Python
+# Compiled Shaders
 # ============================================================
+# Keep .hlsl source, ignore compiled binaries
+# (Note: build system regenerates these)
+*.cso
+# *.dxil  # Keep dxil for now - build may need them
 
-# Python virtual environment (DO NOT COMMIT - 3.5 GB)
-ml/venv/
+# ============================================================
+# Python / ML
+# ============================================================
+# Virtual environments
 venv/
+.venv/
 env/
 ENV/
+.env
 
-# Python cache files
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 
-# Generated training data (can be regenerated)
-ml/training_data/
-ml/data/
-ml/datasets/
-
-# Generated analysis plots (can be regenerated)
-ml/analysis/
-ml/plots/
-ml/figures/
-
-# Large model weight files (keep .onnx, ignore .data)
-*.onnx.data
-ml/models/*.onnx.data
-
-# Jupyter Notebook checkpoints
+# Jupyter
 .ipynb_checkpoints/
 
-# PyTorch model checkpoints (optional - keep if small)
-# ml/models/*.pt
-# ml/models/*.pth
-
-# TensorFlow/Keras models
+# ML artifacts
+*.onnx.data
 *.h5
 *.keras
-
-# MLflow tracking
 mlruns/
-
-# Weights & Biases
 wandb/
 
-# PyCharm
-.idea/
-
-# VS Code (Python-specific)
-.vscode/
-*.code-workspace
+# PyTorch checkpoints (optional - uncomment to ignore)
+# *.pt
+# *.pth
 
 # ============================================================
-# Keep these ML files (small, important)
+# Generated / Cache Data
 # ============================================================
+logs/
+*.log
+*.tmp
+*.temp
+*.cache
+
+# ============================================================
+# Large Binary Assets (use Git LFS or external storage)
+# ============================================================
+# VDB/NanoVDB files - too large for git
+VDBs/
+*.vdb
+*.nvdb
+
+# Blender output directories
+*_out/
+vdb_cache/
+
+# Image sequences (use external storage)
+images/NanoVDB/
+
+# ============================================================
+# PIX / GPU Debugging
+# ============================================================
+PIX/
+screenshots/
+
+# ============================================================
+# External SDKs (vendored separately)
+# ============================================================
+# Note: external/ is NOT ignored - contains required deps
+# But specific large SDKs may be excluded:
+external/RTXDI/
+
+# ============================================================
+# Credentials / Secrets
+# ============================================================
+gha-creds-*.json
+*.pem
+*.key
+secrets/
+.gemini/
+
+# ============================================================
+# Keep Rules (override ignores above)
+# ============================================================
+# Keep Agility SDK DLLs in external
+!external/D3D12/*.dll
+
+# Keep ONNX model files (small, important)
 !ml/models/*.onnx
 !ml/models/*.json
+
+# Keep ML source and docs
 !ml/*.py
 !ml/*.md
 !ml/requirements*.txt
 
-.gemini/
-gha-creds-*.json
-images/NanoVDB/colliding-antennae-galaxies.jpeg
-images/NanoVDB/extract_frames.py
-images/NanoVDB/frame_0001.png
-images/NanoVDB/frame_0011.png
-images/NanoVDB/frame_0021.png
-images/NanoVDB/frame_0031.png
-images/NanoVDB/frame_0041.png
-images/NanoVDB/frame_0051.png
-images/NanoVDB/frame_0061.png
-images/NanoVDB/frame_0071.png
-images/NanoVDB/frame_0081.png
-images/NanoVDB/frame_0092.png
-images/NanoVDB/frame_0103.png
-images/NanoVDB/frame_0114.png
-images/NanoVDB/frame_0125.png
-images/NanoVDB/frame_0136.png
-images/NanoVDB/frame_0147.png
-images/NanoVDB/frame_0158.png
-images/NanoVDB/frame_0169.png
-images/NanoVDB/frame_0180.png
-images/NanoVDB/frame_0191.png
-images/NanoVDB/stellar-outburst.mp4
-images/NanoVDB/frames/frame_0001.png
-images/NanoVDB/frames/frame_0002.png
-images/NanoVDB/frames/frame_0003.png
-images/NanoVDB/frames/frame_0004.png
-images/NanoVDB/frames/frame_0005.png
-images/NanoVDB/frames/frame_0006.png
-images/NanoVDB/frames/frame_0007.png
-images/NanoVDB/frames/frame_0008.png
-images/NanoVDB/frames/frame_0009.png
-images/NanoVDB/frames/frame_0010.png
-images/NanoVDB/frames/frame_0011.png
-images/NanoVDB/frames/frame_0012.png
-images/NanoVDB/frames/frame_0013.png
-images/NanoVDB/frames/frame_0014.png
-images/NanoVDB/frames/frame_0015.png
-images/NanoVDB/frames/frame_0016.png
-images/NanoVDB/frames/frame_0017.png
-images/NanoVDB/frames/frame_0018.png
-images/NanoVDB/frames/frame_0019.png
-images/NanoVDB/frames/frame_0020.png
-images/NanoVDB/frames/frame_0021.png
-images/NanoVDB/frames/frame_0022.png
-images/NanoVDB/frames/frame_0023.png
-images/NanoVDB/frames/frame_0024.png
-images/NanoVDB/frames/frame_0025.png
-images/NanoVDB/frames/frame_0026.png
-images/NanoVDB/frames/frame_0027.png
-images/NanoVDB/frames/frame_0028.png
-images/NanoVDB/frames/frame_0029.png
-images/NanoVDB/frames/frame_0030.png
-images/NanoVDB/frames/frame_0031.png
-images/NanoVDB/frames/frame_0032.png
-images/NanoVDB/frames/frame_0033.png
-images/NanoVDB/frames/frame_0034.png
-images/NanoVDB/frames/frame_0035.png
-images/NanoVDB/frames/frame_0036.png
-images/NanoVDB/frames/frame_0037.png
-images/NanoVDB/frames/frame_0038.png
-images/NanoVDB/frames/frame_0039.png
-images/NanoVDB/frames/frame_0040.png
-images/NanoVDB/frames/frame_0041.png
-images/NanoVDB/frames/frame_0042.png
-images/NanoVDB/frames/frame_0043.png
-images/NanoVDB/frames/frame_0044.png
-images/NanoVDB/frames/frame_0045.png
-images/NanoVDB/frames/frame_0046.png
-images/NanoVDB/frames/frame_0047.png
-images/NanoVDB/frames/frame_0048.png
-images/NanoVDB/frames/frame_0049.png
-images/NanoVDB/frames/frame_0050.png
-images/NanoVDB/frames/frame_0051.png
-images/NanoVDB/frames/frame_0052.png
-images/NanoVDB/frames/frame_0053.png
-images/NanoVDB/frames/frame_0054.png
-images/NanoVDB/frames/frame_0055.png
-images/NanoVDB/frames/frame_0056.png
-images/NanoVDB/frames/frame_0057.png
-images/NanoVDB/frames/frame_0058.png
-images/NanoVDB/frames/frame_0059.png
-images/NanoVDB/frames/frame_0060.png
-images/NanoVDB/frames/frame_0061.png
-images/NanoVDB/frames/frame_0062.png
-images/NanoVDB/frames/frame_0063.png
-images/NanoVDB/frames/frame_0064.png
-images/NanoVDB/frames/frame_0065.png
-images/NanoVDB/frames/frame_0066.png
-images/NanoVDB/frames/frame_0067.png
-images/NanoVDB/frames/frame_0068.png
-images/NanoVDB/frames/frame_0069.png
-images/NanoVDB/frames/frame_0070.png
-images/NanoVDB/frames/frame_0071.png
-images/NanoVDB/frames/frame_0072.png
-images/NanoVDB/frames/frame_0073.png
-images/NanoVDB/frames/frame_0074.png
-images/NanoVDB/frames/frame_0075.png
-images/NanoVDB/frames/frame_0076.png
-images/NanoVDB/frames/frame_0077.png
-images/NanoVDB/frames/frame_0078.png
-images/NanoVDB/frames/frame_0079.png
-images/NanoVDB/frames/frame_0080.png
-images/NanoVDB/frames/frame_0081.png
-images/NanoVDB/frames/frame_0082.png
-images/NanoVDB/frames/frame_0083.png
-images/NanoVDB/frames/frame_0084.png
-images/NanoVDB/frames/frame_0085.png
-images/NanoVDB/frames/frame_0086.png
-images/NanoVDB/frames/frame_0087.png
-images/NanoVDB/frames/frame_0088.png
-images/NanoVDB/frames/frame_0089.png
-images/NanoVDB/frames/frame_0090.png
-images/NanoVDB/frames/frame_0091.png
-images/NanoVDB/frames/frame_0092.png
-images/NanoVDB/frames/frame_0093.png
-images/NanoVDB/frames/frame_0094.png
-images/NanoVDB/frames/frame_0095.png
-images/NanoVDB/frames/frame_0096.png
-images/NanoVDB/frames/frame_0097.png
-images/NanoVDB/frames/frame_0098.png
-images/NanoVDB/frames/frame_0099.png
-images/NanoVDB/frames/frame_0100.png
-images/NanoVDB/frames/frame_0101.png
-images/NanoVDB/frames/frame_0102.png
-images/NanoVDB/frames/frame_0103.png
-images/NanoVDB/frames/frame_0104.png
-images/NanoVDB/frames/frame_0105.png
-images/NanoVDB/frames/frame_0106.png
-images/NanoVDB/frames/frame_0107.png
-images/NanoVDB/frames/frame_0108.png
-images/NanoVDB/frames/frame_0109.png
-images/NanoVDB/frames/frame_0110.png
-images/NanoVDB/frames/frame_0111.png
-images/NanoVDB/frames/frame_0112.png
-images/NanoVDB/frames/frame_0113.png
-images/NanoVDB/frames/frame_0114.png
-images/NanoVDB/frames/frame_0115.png
-images/NanoVDB/frames/frame_0116.png
-images/NanoVDB/frames/frame_0117.png
-images/NanoVDB/frames/frame_0118.png
-images/NanoVDB/frames/frame_0119.png
-images/NanoVDB/frames/frame_0120.png
-images/NanoVDB/frames/frame_0121.png
-images/NanoVDB/frames/frame_0122.png
-images/NanoVDB/frames/frame_0123.png
-images/NanoVDB/frames/frame_0124.png
-images/NanoVDB/frames/frame_0125.png
-images/NanoVDB/frames/frame_0126.png
-images/NanoVDB/frames/frame_0127.png
-images/NanoVDB/frames/frame_0128.png
-images/NanoVDB/frames/frame_0129.png
-images/NanoVDB/frames/frame_0130.png
-images/NanoVDB/frames/frame_0131.png
-images/NanoVDB/frames/frame_0132.png
-images/NanoVDB/frames/frame_0133.png
-images/NanoVDB/frames/frame_0134.png
-images/NanoVDB/frames/frame_0135.png
-images/NanoVDB/frames/frame_0136.png
-images/NanoVDB/frames/frame_0137.png
-images/NanoVDB/frames/frame_0138.png
-images/NanoVDB/frames/frame_0139.png
-images/NanoVDB/frames/frame_0140.png
-images/NanoVDB/frames/frame_0141.png
-images/NanoVDB/frames/frame_0142.png
-images/NanoVDB/frames/frame_0143.png
-images/NanoVDB/frames/frame_0144.png
-images/NanoVDB/frames/frame_0145.png
-images/NanoVDB/frames/frame_0146.png
-images/NanoVDB/frames/frame_0147.png
-images/NanoVDB/frames/frame_0148.png
-images/NanoVDB/frames/frame_0149.png
-images/NanoVDB/frames/frame_0150.png
-images/NanoVDB/frames/frame_0151.png
-images/NanoVDB/frames/frame_0152.png
-images/NanoVDB/frames/frame_0153.png
-images/NanoVDB/frames/frame_0154.png
-images/NanoVDB/frames/frame_0155.png
-images/NanoVDB/frames/frame_0156.png
-images/NanoVDB/frames/frame_0157.png
-images/NanoVDB/frames/frame_0158.png
-images/NanoVDB/frames/frame_0159.png
-images/NanoVDB/frames/frame_0160.png
-images/NanoVDB/frames/frame_0161.png
-images/NanoVDB/frames/frame_0162.png
-images/NanoVDB/frames/frame_0163.png
-images/NanoVDB/frames/frame_0164.png
-images/NanoVDB/frames/frame_0165.png
-images/NanoVDB/frames/frame_0166.png
-images/NanoVDB/frames/frame_0167.png
-images/NanoVDB/frames/frame_0168.png
-images/NanoVDB/frames/frame_0169.png
-images/NanoVDB/frames/frame_0170.png
-images/NanoVDB/frames/frame_0171.png
-images/NanoVDB/frames/frame_0172.png
-images/NanoVDB/frames/frame_0173.png
-images/NanoVDB/frames/frame_0174.png
-images/NanoVDB/frames/frame_0175.png
-images/NanoVDB/frames/frame_0176.png
-images/NanoVDB/frames/frame_0177.png
-images/NanoVDB/frames/frame_0178.png
-images/NanoVDB/frames/frame_0179.png
-images/NanoVDB/frames/frame_0180.png
-images/NanoVDB/frames/frame_0181.png
-images/NanoVDB/frames/frame_0182.png
-images/NanoVDB/frames/frame_0183.png
-images/NanoVDB/frames/frame_0184.png
-images/NanoVDB/frames/frame_0185.png
-images/NanoVDB/frames/frame_0186.png
-images/NanoVDB/frames/frame_0187.png
-images/NanoVDB/frames/frame_0188.png
-images/NanoVDB/frames/frame_0189.png
-images/NanoVDB/frames/frame_0190.png
-images/NanoVDB/frames/frame_0191.png
-images/NanoVDB/frames/frame_0192.png
-images/NanoVDB/frames/frame_0193.png
-images/NanoVDB/frames/frame_0194.png
-images/NanoVDB/frames/frame_0195.png
-images/NanoVDB/frames/frame_0196.png
-images/NanoVDB/frames/frame_0197.png
-images/NanoVDB/frames/frame_0198.png
-images/NanoVDB/frames/frame_0199.png
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0000.nvdb
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0010.nvdb
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0020.nvdb
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0050.nvdb
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0100.nvdb
-VDBs/NanoVDB/chimney_smoke/chimney_smoke_0150.nvdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0001.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0002.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0003.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0004.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0005.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0006.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0007.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0008.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0009.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0010.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0011.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0012.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0013.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0014.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0015.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0016.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0017.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0018.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0019.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0020.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0021.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0022.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0023.vdb
-gpt52_supergiant_star_out/vdb_cache/data/fluid_data_0024.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0001.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0002.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0003.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0004.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0005.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0006.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0007.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0008.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0009.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0010.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0011.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0012.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0013.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0014.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0015.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0016.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0017.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0018.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0019.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0020.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0021.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0022.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0023.vdb
-gpt52_supergiant_star_out/vdb_cache/noise/fluid_noise_0024.vdb
-gpt52_supergiant_star_out/vdb_cache/config/config_0001.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0002.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0003.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0004.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0005.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0006.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0007.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0008.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0009.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0010.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0011.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0012.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0013.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0014.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0015.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0016.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0017.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0018.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0019.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0020.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0021.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0022.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0023.uni
-gpt52_supergiant_star_out/vdb_cache/config/config_0024.uni
-bipolar_nebula_out/vdb_cache/config/config_0001.uni
-bipolar_nebula_out/vdb_cache/config/config_0002.uni
-bipolar_nebula_out/vdb_cache/config/config_0003.uni
-bipolar_nebula_out/vdb_cache/config/config_0004.uni
-bipolar_nebula_out/vdb_cache/config/config_0005.uni
-bipolar_nebula_out/vdb_cache/config/config_0006.uni
-bipolar_nebula_out/vdb_cache/config/config_0007.uni
-bipolar_nebula_out/vdb_cache/config/config_0008.uni
-bipolar_nebula_out/vdb_cache/config/config_0009.uni
-bipolar_nebula_out/vdb_cache/config/config_0010.uni
-bipolar_nebula_out/vdb_cache/config/config_0011.uni
-bipolar_nebula_out/vdb_cache/config/config_0012.uni
-bipolar_nebula_out/vdb_cache/config/config_0013.uni
-bipolar_nebula_out/vdb_cache/config/config_0014.uni
-bipolar_nebula_out/vdb_cache/config/config_0015.uni
-bipolar_nebula_out/vdb_cache/config/config_0016.uni
-bipolar_nebula_out/vdb_cache/config/config_0017.uni
-bipolar_nebula_out/vdb_cache/config/config_0018.uni
-bipolar_nebula_out/vdb_cache/config/config_0019.uni
-bipolar_nebula_out/vdb_cache/config/config_0020.uni
-bipolar_nebula_out/vdb_cache/config/config_0021.uni
-bipolar_nebula_out/vdb_cache/config/config_0022.uni
-bipolar_nebula_out/vdb_cache/config/config_0023.uni
-bipolar_nebula_out/vdb_cache/config/config_0024.uni
-bipolar_nebula_out/vdb_cache/data/fluid_data_0001.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0002.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0003.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0004.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0005.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0006.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0007.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0008.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0009.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0010.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0011.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0012.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0013.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0014.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0015.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0016.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0017.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0018.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0019.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0020.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0021.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0022.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0023.vdb
-bipolar_nebula_out/vdb_cache/data/fluid_data_0024.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0001.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0002.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0003.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0004.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0005.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0006.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0007.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0008.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0009.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0010.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0011.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0012.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0013.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0014.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0015.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0016.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0017.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0018.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0019.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0020.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0021.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0022.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0023.vdb
-bipolar_nebula_out/vdb_cache/noise/fluid_noise_0024.vdb
+# Keep asset metadata (but not binaries)
+!assets/**/*.json
+!assets/**/*.md
