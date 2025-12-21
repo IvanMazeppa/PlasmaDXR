@@ -1,3 +1,6 @@
+#include <windows.h>
+#include <cstdint>
+#include <d3d12.h>
 #include "ParticleRenderer_Gaussian.h"
 #include "../core/Device.h"
 #include "../utils/ResourceManager.h"
@@ -647,7 +650,7 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);  // t6: Texture2D (RTXDI output)
     srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 8);  // t8: Texture2D (depth buffer)
     srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 9);  // t9: Texture2D (prev color - PRIORITY 1 FIX)
-    srvRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // t10: Texture3D (froxel lighting grid - Phase 5)
+    srvRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 10); // t10: DEPRECATED (froxel removed Dec 2025, slot kept for layout stability)
 
     CD3DX12_DESCRIPTOR_RANGE1 uavRanges[4];
     uavRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // u0: RWTexture2D (output)
@@ -671,10 +674,11 @@ bool ParticleRenderer_Gaussian::CreatePipeline() {
     rootParams[12].InitAsConstantBufferView(1);             // b1 - MaterialProperties CBV (Phase 3: Material System)
     rootParams[13].InitAsDescriptorTable(1, &srvRanges[3]); // t9 - Previous color (SRV - PRIORITY 1 FIX)
     rootParams[14].InitAsDescriptorTable(1, &uavRanges[2]); // u3 - Current color (UAV - PRIORITY 1 FIX)
-    rootParams[15].InitAsDescriptorTable(1, &srvRanges[4]); // t10 - Froxel lighting grid (SRV - Phase 5)
+    rootParams[15].InitAsDescriptorTable(1, &srvRanges[4]); // t10 - DEPRECATED (froxel removed, slot preserved)
     rootParams[16].InitAsDescriptorTable(1, &uavRanges[3]); // u4 - RT Depth (UAV - Phase 4 M5 fix)
 
-    // Static sampler for froxel grid (s0) - Phase 5
+    // Static sampler (s0) - originally for froxel grid, now general-purpose trilinear sampler
+    // DEPRECATED: Froxel system removed Dec 2025, sampler kept for potential future use
     CD3DX12_STATIC_SAMPLER_DESC froxelSampler(
         0,                                      // shaderRegister (s0)
         D3D12_FILTER_MIN_MAG_MIP_LINEAR,       // filter (trilinear)

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <windows.h>
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <DirectXMath.h>
 #include <vector>
+#include <cstdint>
 
 // Forward declarations
 class Device;
@@ -129,14 +131,17 @@ public:
         uint32_t enableGroundPlane;        // Toggle ground plane rendering
         DirectX::XMFLOAT3 groundPlaneAlbedo;  // Surface reflectance (RGB)
 
-        // === Phase 5: Froxel Volumetric Fog ===
-        uint32_t useFroxelFog;             // Toggle froxel volumetric fog
-        DirectX::XMFLOAT3 froxelGridMin;   // World-space minimum [-1500, -1500, -1500]
-        DirectX::XMFLOAT3 froxelGridMax;   // World-space maximum [1500, 1500, 1500]
+        // === DEPRECATED: Froxel Volumetric Fog (removed Dec 2025) ===
+        // NOTE: These fields are kept for constant buffer layout compatibility with existing shaders.
+        // The froxel system was replaced by NanoVDB volumetric rendering.
+        // Set useFroxelFog=0 to disable (should always be 0).
+        uint32_t useFroxelFog;             // DEPRECATED: Always 0 (froxel system removed)
+        DirectX::XMFLOAT3 froxelGridMin;   // DEPRECATED: Unused padding
+        DirectX::XMFLOAT3 froxelGridMax;   // DEPRECATED: Unused padding
         float froxelPadding0;              // Padding for alignment
-        DirectX::XMUINT3 froxelGridDimensions;  // Voxel count [160, 90, 64]
-        float froxelDensityMultiplier;     // Fog density multiplier (0.1-5.0)
-        DirectX::XMFLOAT3 froxelVoxelSize; // Computed voxel size
+        DirectX::XMUINT3 froxelGridDimensions;  // DEPRECATED: Unused padding
+        float froxelDensityMultiplier;     // DEPRECATED: Unused padding
+        DirectX::XMFLOAT3 froxelVoxelSize; // DEPRECATED: Unused padding
         float froxelPadding1;              // Padding for alignment
     };
 

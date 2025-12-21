@@ -3,7 +3,7 @@
 // Updates every frame as particles move
 // Now includes GPU-side frustum culling (2025-12-11)
 
-#include "../particles/gaussian_common.hlsl"
+#include "particles/gaussian_common.hlsl"
 
 cbuffer AABBConstants : register(b0)
 {

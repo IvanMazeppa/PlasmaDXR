@@ -201,7 +201,7 @@ foreach(HLSL ${HLSL_FILES})
     add_custom_command(
         OUTPUT ${OUTPUT_FILE}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/${DIR_NAME}"
-        COMMAND dxc.exe -T ${SHADER_TYPE} -E main ${HLSL} -Fo ${OUTPUT_FILE}
+        COMMAND dxc.exe -T ${SHADER_TYPE} -E main ${HLSL} -Fo ${OUTPUT_FILE} -I "${FILE_DIR}" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
         DEPENDS ${HLSL}
         COMMENT "Compiling ${FILE_NAME}.hlsl -> ${FILE_NAME}.dxil"
     )
@@ -225,7 +225,7 @@ foreach(DXR_SHADER ${DXR_SHADERS})
     add_custom_command(
         OUTPUT ${OUTPUT_FILE}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/${DIR_NAME}"
-        COMMAND dxc.exe -T lib_6_3 ${DXR_SHADER} -Fo ${OUTPUT_FILE}
+        COMMAND dxc.exe -T lib_6_3 ${DXR_SHADER} -Fo ${OUTPUT_FILE} -I "${FILE_DIR}" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
         DEPENDS ${DXR_SHADER}
         COMMENT "Compiling DXR shader ${FILE_NAME}.hlsl -> ${FILE_NAME}.dxil"
     )
@@ -238,7 +238,7 @@ endforeach()
 add_custom_command(
     OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/dxr/generate_particle_aabbs.dxil"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/dxr"
-    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/dxr/generate_particle_aabbs.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/dxr/generate_particle_aabbs.dxil"
+    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/dxr/generate_particle_aabbs.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/dxr/generate_particle_aabbs.dxil" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/dxr/generate_particle_aabbs.hlsl"
     COMMENT "Compiling generate_particle_aabbs.hlsl"
 )
@@ -248,7 +248,7 @@ list(APPEND SHADER_OUTPUTS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/
 add_custom_command(
     OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_physics.dxil"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles"
-    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_physics.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_physics.dxil"
+    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_physics.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_physics.dxil" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_physics.hlsl"
     COMMENT "Compiling particle_physics.hlsl"
 )
@@ -258,7 +258,7 @@ list(APPEND SHADER_OUTPUTS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/
 add_custom_command(
     OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_gaussian_raytrace.dxil"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles"
-    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_gaussian_raytrace.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_gaussian_raytrace.dxil"
+    COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_gaussian_raytrace.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/particle_gaussian_raytrace.dxil" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/particle_gaussian_raytrace.hlsl"
     COMMENT "Compiling particle_gaussian_raytrace.hlsl"
 )
@@ -269,7 +269,7 @@ if(ENABLE_DLSS)
     add_custom_command(
         OUTPUT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/compute_motion_vectors.dxil"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles"
-        COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/compute_motion_vectors.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/compute_motion_vectors.dxil"
+        COMMAND dxc.exe -T cs_6_5 -E main "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/compute_motion_vectors.hlsl" -Fo "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>/shaders/particles/compute_motion_vectors.dxil" -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles"
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/particles/compute_motion_vectors.hlsl"
         COMMENT "Compiling compute_motion_vectors.hlsl"
     )

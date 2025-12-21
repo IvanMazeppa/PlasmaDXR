@@ -7,6 +7,7 @@
 #include <sstream>
 #include <iomanip>
 #include <type_traits>
+#include <cstdint>
 
 // Simple logging system
 class Logger {

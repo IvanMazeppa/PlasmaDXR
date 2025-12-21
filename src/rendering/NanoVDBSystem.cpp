@@ -739,6 +739,8 @@ void NanoVDBSystem::Render(
     constants.gridOffset = m_gridOffset;  // Transform sampling position back to original grid space
     constants.gridType = m_gridType;      // Pass grid type to shader (FLOAT=1, HALF=9, FP16=15)
     constants.materialType = static_cast<uint32_t>(m_materialType);  // Material behavior (SMOKE=0, FIRE=1, etc.)
+    constants.enableShadows = m_enableShadows ? 1 : 0;  // Phase 1 shadow rays
+    constants.shadowSteps = m_shadowSteps;              // Shadow march steps (8-32)
     constants.albedo = m_albedo;          // Base color for scattering/emission tint
     constants.gridScale = m_gridScale;    // Cumulative scale factor for coordinate transform
     constants.originalGridCenter = m_originalGridCenter;  // Original grid center before scaling

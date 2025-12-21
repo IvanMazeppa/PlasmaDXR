@@ -154,6 +154,13 @@ public:
     void SetAlbedo(const DirectX::XMFLOAT3& albedo) { m_albedo = albedo; }
     DirectX::XMFLOAT3 GetAlbedo() const { return m_albedo; }
 
+    // Phase 1 Shadow Rays - volumetric self-shadowing
+    void SetShadowsEnabled(bool enabled) { m_enableShadows = enabled; }
+    bool GetShadowsEnabled() const { return m_enableShadows; }
+
+    void SetShadowSteps(uint32_t steps) { m_shadowSteps = std::min(steps, 32u); }
+    uint32_t GetShadowSteps() const { return m_shadowSteps; }
+
     // Sphere parameters (from CreateFogSphere)
     DirectX::XMFLOAT3 GetSphereCenter() const { return m_sphereCenter; }
     float GetSphereRadius() const { return m_sphereRadius; }
@@ -361,10 +368,12 @@ private:
         DirectX::XMFLOAT3 gridOffset;        // 12 bytes (offset from original grid position)
         uint32_t gridType;                   // 4 bytes - grid value type (1=FLOAT, 9=HALF, 15=FP16)
         uint32_t materialType;               // 4 bytes - material behavior (0=SMOKE, 1=FIRE, 2=PLASMA, etc.)
-        DirectX::XMFLOAT3 albedo;            // 12 bytes - base color for scattering/emission tint
+        uint32_t enableShadows;              // 4 bytes - Phase 1 shadow rays (0=off, 1=on)
+        uint32_t shadowSteps;                // 4 bytes - shadow march steps (8-32, 0=default 16)
+        DirectX::XMFLOAT3 albedo;            // 12 bytes - base color for scattering/emission tint (now at offset 192)
         float gridScale;                     // 4 bytes - cumulative scale factor applied to grid bounds
         DirectX::XMFLOAT3 originalGridCenter; // 12 bytes - original grid center before scaling/repositioning
-    };  // Total: 224 bytes (padded to 256 for cbuffer)
+    };  // Total: 220 bytes (+8 alignment padding for albedo), padded to 256 for D3D12 cbuffer
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -416,6 +425,10 @@ private:
     // GAS_CLOUD (4): Slight emission with scattering
     NanoVDBMaterialType m_materialType = NanoVDBMaterialType::SMOKE;
     DirectX::XMFLOAT3 m_albedo = { 0.9f, 0.9f, 0.9f };  // Base color (grey-white for smoke)
+
+    // Phase 1 Shadow Rays - volumetric self-shadowing
+    bool m_enableShadows = false;        // Disabled by default (performance)
+    uint32_t m_shadowSteps = 16;         // Default shadow march steps
 
     // Sphere parameters (set by CreateFogSphere)
     DirectX::XMFLOAT3 m_sphereCenter = { 0.0f, 0.0f, 0.0f };

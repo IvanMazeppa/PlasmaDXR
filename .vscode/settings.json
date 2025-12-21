@@ -1,4 +1,21 @@
 {
     "editor.wordWrap": "on",
-    "workbench.statusBar.visible": true
+    "workbench.statusBar.visible": true,
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/external",
+        "/mnt/c/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um",
+        "/mnt/c/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared",
+        "/mnt/c/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/winrt",
+        "/mnt/c/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/ucrt",
+        "/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/include"
+    ],
+    "C_Cpp.default.defines": [
+        "UNICODE",
+        "_UNICODE",
+        "WIN32",
+        "_WINDOWS",
+        "NOMINMAX",
+        "USE_PIX"
+    ]
 }

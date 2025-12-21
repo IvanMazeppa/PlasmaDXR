@@ -52,7 +52,9 @@ cbuffer NanoVDBConstants : register(b0) {
     uint gridType;                     // Grid value type (1=FLOAT, 9=HALF, 15=FP16) - passed from C++
 
     uint materialType;                 // Material behavior (SMOKE=0, FIRE=1, PLASMA=2, etc.)
-    float3 albedo;                     // Base color for scattering/emission tint
+    uint enableShadows;                // 0=disabled, 1=enabled (Phase 1 shadow rays)
+    uint shadowSteps;                  // Shadow march steps (8-32, 0=use default 16)
+    float3 albedo;                     // Base color for scattering/emission tint (offset 192)
     float gridScale;                   // Cumulative scale factor applied to grid bounds
     float3 originalGridCenter;         // Original grid center before scaling/repositioning
 };
@@ -75,14 +77,24 @@ cbuffer NanoVDBConstants : register(b0) {
 // StructuredBuffer<uint> maps to pnanovdb_buf_t in HLSL mode
 StructuredBuffer<uint> g_gridBuffer : register(t0);
 
-// Light data (reuse existing light structure)
+// Light structure - MUST match C++ and Gaussian shader (72 bytes)
 struct Light {
-    float3 position;
-    float intensity;
-    float3 color;
-    float radius;
-    float4 godRayParams1;
-    float4 godRayParams2;
+    // Base properties (32 bytes)
+    float3 position;               // 12 bytes
+    float intensity;               // 4 bytes
+    float3 color;                  // 12 bytes
+    float radius;                  // 4 bytes
+
+    // God ray parameters (40 bytes) - must match C++ layout exactly
+    float enableGodRays;           // 4 bytes
+    float godRayIntensity;         // 4 bytes
+    float godRayLength;            // 4 bytes
+    float godRayFalloff;           // 4 bytes
+    float3 godRayDirection;        // 12 bytes
+    float godRayConeAngle;         // 4 bytes
+    float godRayRotationSpeed;     // 4 bytes
+    float _padding;                // 4 bytes
+    // Total: 72 bytes (matches ParticleRenderer_Gaussian.h)
 };
 StructuredBuffer<Light> g_lights : register(t1);
 
@@ -521,6 +533,57 @@ float SampleProceduralDensity(float3 worldPos) {
 }
 
 // ============================================================================
+// VOLUMETRIC SELF-SHADOWING (Phase 1)
+// ============================================================================
+
+// Compute shadow attenuation by marching toward a light through the volume
+// Returns transmittance (1.0 = fully lit, 0.0 = fully shadowed)
+float ComputeShadowAttenuation(float3 samplePos, float3 lightPos) {
+    float3 toLight = lightPos - samplePos;
+    float lightDist = length(toLight);
+    float3 lightDir = toLight / lightDist;
+
+    // Use shadowSteps from cbuffer, default to 16 if not set
+    uint numSteps = (shadowSteps > 0 && shadowSteps <= 32) ? shadowSteps : 16;
+
+    // Shadow step size - coarser than primary march for performance
+    // March up to light position or edge of volume, whichever is closer
+    float shadowStepSize = stepSize * 2.0;
+    float maxShadowDist = min(lightDist, maxRayDistance * 0.5);
+
+    float shadowOpticalDepth = 0.0;
+    float3 shadowPos = samplePos;
+
+    [loop]
+    for (uint s = 0; s < numSteps; s++) {
+        shadowPos += lightDir * shadowStepSize;
+
+        // Check if we've passed the light or exited the volume bounds
+        float distTraveled = shadowStepSize * float(s + 1);
+        if (distTraveled > maxShadowDist) break;
+
+        // Check if outside grid AABB
+        if (shadowPos.x < gridWorldMin.x || shadowPos.x > gridWorldMax.x ||
+            shadowPos.y < gridWorldMin.y || shadowPos.y > gridWorldMax.y ||
+            shadowPos.z < gridWorldMin.z || shadowPos.z > gridWorldMax.z) {
+            break;
+        }
+
+        // Sample density at shadow position
+        float shadowDensity = SampleDensity(shadowPos);
+        shadowOpticalDepth += shadowDensity * absorptionCoeff * shadowStepSize;
+
+        // Early out if already very dark (optimization)
+        if (shadowOpticalDepth > 5.0) {
+            return exp(-shadowOpticalDepth);  // Already < 1% transmittance
+        }
+    }
+
+    // Beer-Lambert transmittance
+    return exp(-shadowOpticalDepth);
+}
+
+// ============================================================================
 // LIGHTING
 // ============================================================================
 
@@ -535,15 +598,26 @@ float3 CalculateLighting(float3 samplePos, float3 viewDir, float density) {
         ? albedo  // Smoke uses albedo directly (neutral grey/white)
         : lerp(float3(1, 1, 1), albedo, 0.3);  // Other materials: slight tint
 
-    for (uint i = 0; i < lightCount && i < 16; i++) {
+    // Phase 1 shadows: compute for first 4 lights only (performance)
+    // Remaining lights use full intensity (no shadow)
+    const uint MAX_SHADOW_LIGHTS = 4;
+
+    for (uint i = 0; i < lightCount && i < 32; i++) {
         Light light = g_lights[i];
         float3 lightDir = normalize(light.position - samplePos);
         float lightDist = length(light.position - samplePos);
         float attenuation = light.intensity / (1.0 + lightDist * lightDist * 0.0001);
         float cosTheta = dot(-viewDir, lightDir);
         float phase = HenyeyGreenstein(cosTheta, phaseG);
-        // Apply scattering albedo to light color
-        float3 scattering = light.color * scatterAlbedo * attenuation * phase * scatteringCoeff;
+
+        // Compute shadow attenuation for first N lights when enabled
+        float shadowTrans = 1.0;
+        if (enableShadows != 0 && i < MAX_SHADOW_LIGHTS && density > 0.01) {
+            shadowTrans = ComputeShadowAttenuation(samplePos, light.position);
+        }
+
+        // Apply scattering albedo, shadow, and light color
+        float3 scattering = light.color * scatterAlbedo * attenuation * phase * scatteringCoeff * shadowTrans;
         totalLight += scattering;
     }
 
@@ -694,8 +768,8 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         return;
     }
 
-    // TEST 1: No depth (use max distance) + additive blend + noise enabled
-    float effectiveDepth = maxRayDistance;  // NO DEPTH TEST
+    // Use scene depth for proper occlusion by geometry
+    float effectiveDepth = sceneDepth;
 
     // Ray march the volume
     float4 volumeColor = RayMarchVolume(rayOrigin, rayDir, effectiveDepth);
