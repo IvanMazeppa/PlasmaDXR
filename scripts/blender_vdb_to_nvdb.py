@@ -26,10 +26,13 @@ from pathlib import Path
 # ============================================================================
 
 # Input directory containing .vdb files
-VDB_DIR = r"D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean\VDBs\Clouds\CloudPackVDB"
+# CloudPack clouds:
+VDB_DIR = "/home/maz3ppa/projects/PlasmaDXR/assets/VDB_packs/CloudPackVDB/CloudPack/CloudPackVDB"
+# Gasoline explosion sequence:
+# VDB_DIR = "/home/maz3ppa/projects/PlasmaDXR/assets/VDB_packs/Gasoline_Explosion_01/Gasoline_Explosion_01"
 
 # Output directory for .nvdb files (will be created if doesn't exist)
-OUTPUT_DIR = r"D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean\VDBs\NanoVDB"
+OUTPUT_DIR = "/home/maz3ppa/projects/PlasmaDXR/assets/volumes"
 
 # ============================================================================
 # CONVERSION SCRIPT

@@ -216,6 +216,8 @@ private:
     float m_nanoVDBSphereRadius = 400.0f;  // Fog sphere radius - larger for visibility
     bool m_nanoVDBTestSphere = false;      // Create procedural test fog sphere on startup
     bool m_nanoVDBDebugMode = false;       // Debug visualization (solid color output)
+    bool m_nanoVDBShadowsEnabled = false;  // Phase 1 volumetric self-shadowing (off by default for perf)
+    int m_nanoVDBShadowSteps = 16;         // Shadow ray march steps (8-32)
 
     // Enhancement toggles and strengths (DISABLED - focusing on RT lighting)
     bool m_usePhysicalEmission = false;

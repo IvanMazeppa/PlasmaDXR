@@ -1292,6 +1292,8 @@ void Application::Render() {
                 m_nanoVDBSystem->SetScatteringCoeff(m_nanoVDBScattering);
                 m_nanoVDBSystem->SetStepSize(m_nanoVDBStepSize);
                 m_nanoVDBSystem->SetDebugMode(m_nanoVDBDebugMode);
+                m_nanoVDBSystem->SetShadowsEnabled(m_nanoVDBShadowsEnabled);
+                m_nanoVDBSystem->SetShadowSteps(static_cast<uint32_t>(m_nanoVDBShadowSteps));
 
                 // Render NanoVDB volumetrics (composites with existing output)
                 // Uses GPU descriptor handles for proper binding
@@ -5470,34 +5472,42 @@ void Application::RenderImGui() {
             if (m_nanoVDBSystem) {
                 ImGui::Separator();
                 ImGui::Text("Load Animation:");
-                if (ImGui::Button("Load Chimney Smoke (Anim)")) {
+                if (ImGui::Button("Gasoline Explosion (131 frames)")) {
                     // Path is relative to build/bin/Debug/ (where exe runs from)
-                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("../../../VDBs/NanoVDB/chimney_smoke");
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("../../../assets/volumes/explosion");
                     if (frames > 0) {
                         LOG_INFO("Loaded {} animation frames", frames);
-                        // Auto-scale to reasonable size
-                        m_nanoVDBSystem->ScaleGridBounds(50.0f);
+                        // Explosion VDBs from EmberGen - scale to fit scene
+                        m_nanoVDBSystem->ScaleGridBounds(100.0f);
+                        m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::FIRE);
+                        m_nanoVDBSystem->SetDensityScale(3.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(2.0f);
                     }
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Load all .nvdb files from ../../../VDBs/NanoVDB/chimney_smoke/");
+                    ImGui::SetTooltip("Load 131-frame gasoline explosion sequence from assets/volumes/explosion/");
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Button("Load Example: CloudPack (nozip)")) {
-                    const std::string filepath =
-                        "../../../assets/volumes/nanovdb_examples/GPT-5.2/cloud_pack/cloud_01_variant_0000_density_nozip.nvdb";
-                    if (m_nanoVDBSystem->LoadFromFile(filepath)) {
+                if (ImGui::Button("CloudPack (10 clouds)")) {
+                    // Static cloud variants - cycle through with dropdown
+                    static int cloudIndex = 1;
+                    char cloudPath[256];
+                    snprintf(cloudPath, sizeof(cloudPath),
+                             "../../../assets/volumes/clouds/cloud_%02d_variant_0000.nvdb", cloudIndex);
+                    if (m_nanoVDBSystem->LoadFromFile(cloudPath)) {
                         m_nanoVDBSystem->SetEnabled(true);
                         m_enableNanoVDB = true;
-                        // Cloud packs tend to be large; scale to a readable size.
+                        // Cloud packs are small in grid space; scale up
                         m_nanoVDBSystem->ScaleGridBounds(200.0f);
+                        m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::SMOKE);
                         m_nanoVDBSystem->SetDensityScale(5.0f);
                         m_nanoVDBSystem->SetEmissionStrength(0.0f);
                     }
+                    cloudIndex = (cloudIndex % 10) + 1;  // Cycle 1-10
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Load a curated single-frame NanoVDB example from assets/volumes (repo-tracked)");
+                    ImGui::SetTooltip("Load cloud variants (click repeatedly to cycle through 10 clouds)");
                 }
 
                 ImGui::SameLine();
@@ -5553,6 +5563,32 @@ void Application::RenderImGui() {
             ImGui::SliderFloat("Step Size", &m_nanoVDBStepSize, 1.0f, 20.0f, "%.1f");
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Ray march step size (world units)\nSmaller = higher quality, slower");
+            }
+
+            // Shadow controls (Phase 1 - volumetric self-shadowing)
+            ImGui::Separator();
+            ImGui::Text("Volumetric Shadows (Phase 1):");
+
+            if (ImGui::Checkbox("Enable Shadows", &m_nanoVDBShadowsEnabled)) {
+                if (m_nanoVDBSystem) {
+                    m_nanoVDBSystem->SetShadowsEnabled(m_nanoVDBShadowsEnabled);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Volumetric self-shadowing via Beer-Lambert transmittance\nFirst 4 lights cast shadows into the volume\nPerformance cost: ~10-20%% depending on step count");
+            }
+
+            if (m_nanoVDBShadowsEnabled) {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(100);
+                if (ImGui::SliderInt("Steps", &m_nanoVDBShadowSteps, 8, 32)) {
+                    if (m_nanoVDBSystem) {
+                        m_nanoVDBSystem->SetShadowSteps(static_cast<uint32_t>(m_nanoVDBShadowSteps));
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Shadow ray march steps (8-32)\nMore steps = softer, more accurate shadows\n16 is a good balance");
+                }
             }
 
             // Sphere radius for new spheres

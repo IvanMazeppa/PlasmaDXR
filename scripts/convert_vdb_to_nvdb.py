@@ -29,6 +29,12 @@ from pathlib import Path
 
 def check_dependencies():
     """Check if required dependencies are available."""
+    # First try nanovdb_convert CLI tool (preferred)
+    import shutil
+    if shutil.which('nanovdb_convert'):
+        return True, 'nanovdb_convert'
+
+    # Fallback to pyopenvdb
     try:
         import pyopenvdb as vdb
         return True, vdb
@@ -95,6 +101,66 @@ def _print_grid_summary(grids) -> None:
     for grid in grids:
         print(f"    - {_grid_name(grid) or '<unnamed>'}: {_grid_type_name(grid)}")
 
+
+def _convert_with_cli(input_path: str, output_path: str, verbose: bool = True, grid_name: str | None = None) -> bool:
+    """
+    Convert VDB to NanoVDB using the nanovdb_convert CLI tool.
+
+    Args:
+        input_path: Path to input .vdb file
+        output_path: Path to output .nvdb file
+        verbose: Print progress messages
+        grid_name: Optional grid name to convert (default: density)
+
+    Returns:
+        bool: True if conversion succeeded
+    """
+    import subprocess
+
+    if not os.path.exists(input_path):
+        print(f"ERROR: Input file not found: {input_path}")
+        return False
+
+    # Ensure output directory exists
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Build command
+    cmd = ['nanovdb_convert', '-f']  # -f to overwrite existing
+    if grid_name:
+        cmd.extend(['-g', grid_name])
+    if verbose:
+        cmd.append('-v')
+    cmd.extend([input_path, output_path])
+
+    if verbose:
+        print(f"Converting: {os.path.basename(input_path)}")
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  ERROR: {result.stderr}")
+            return False
+
+        if verbose and result.stdout:
+            # Parse output for grid info
+            for line in result.stdout.strip().split('\n'):
+                if 'grid named' in line.lower() or 'allocated' in line.lower():
+                    print(f"  {line}")
+
+        if out_path.exists():
+            if verbose:
+                size_mb = out_path.stat().st_size / (1024 * 1024)
+                print(f"  Saved: {out_path.name} ({size_mb:.1f} MB)")
+            return True
+        else:
+            print(f"  ERROR: Output file not created")
+            return False
+
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        return False
+
 def convert_single_file(
     input_path: str,
     output_path: str,
@@ -113,14 +179,21 @@ def convert_single_file(
     Returns:
         bool: True if conversion succeeded
     """
-    success, vdb = check_dependencies()
+    success, backend = check_dependencies()
     if not success:
-        print("ERROR: pyopenvdb not installed!")
-        print("Install with: pip install pyopenvdb")
-        print("Or use conda: conda install -c conda-forge openvdb")
+        print("ERROR: No conversion backend available!")
+        print("Install nanovdb_convert: sudo apt install libnanovdb-dev")
+        print("Or install pyopenvdb: pip install pyopenvdb")
         print("")
         print("Alternative: Use Blender to export VDB with NanoVDB format")
         return False
+
+    # Use nanovdb_convert CLI if available (faster and simpler)
+    if backend == 'nanovdb_convert':
+        return _convert_with_cli(input_path, output_path, verbose, grid_name)
+
+    # Fallback to pyopenvdb
+    vdb = backend
 
     if not os.path.exists(input_path):
         print(f"ERROR: Input file not found: {input_path}")

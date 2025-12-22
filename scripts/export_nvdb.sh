@@ -30,6 +30,8 @@ NC='\033[0m' # No Color
 find_blender() {
     # Try common locations
     local candidates=(
+        # Custom Linux Blender installation (highest priority)
+        "$HOME/apps/blender-5.0.1-linux-x64/blender"
         # WSL Linux Blender
         "/usr/bin/blender"
         "/usr/local/bin/blender"
