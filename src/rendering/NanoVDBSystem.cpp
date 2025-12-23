@@ -965,49 +965,119 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
             m_hasGrid = true;
             m_hasFileGrid = true;
 
-            // Extract grid bounds from the first frame using NanoVDB
-            // NOTE: Use gridData() to get type-agnostic GridData* - works for ALL grid types
-            // (FLOAT, HALF, FP16, etc.) without needing to know the specific type
+            // Extract grid bounds from a NON-EMPTY frame using NanoVDB
+            // NOTE: Frame 0 is often empty in animation sequences - search for first frame with data
+            // Use gridData() to get type-agnostic GridData* - works for ALL grid types
             try {
-                nanovdb::GridHandle<nanovdb::HostBuffer> handle =
-                    nanovdb::io::readGrid<nanovdb::HostBuffer>(filepaths[0], 0, 0);
-                if (handle) {
-                    // Use gridData() instead of grid<float>() - this works for ALL grid types
-                    const nanovdb::GridData* gridData = handle.gridData();
-                    if (gridData) {
-                        // Access mWorldBBox directly from GridData struct (type-agnostic)
-                        const auto& worldBBox = gridData->worldBBox();
-                        m_gridWorldMin = {
-                            static_cast<float>(worldBBox.min()[0]),
-                            static_cast<float>(worldBBox.min()[1]),
-                            static_cast<float>(worldBBox.min()[2])
-                        };
-                        m_gridWorldMax = {
-                            static_cast<float>(worldBBox.max()[0]),
-                            static_cast<float>(worldBBox.max()[1]),
-                            static_cast<float>(worldBBox.max()[2])
-                        };
-                        // Store original center for repositioning
-                        m_originalGridCenter = {
-                            (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
-                            (m_gridWorldMin.y + m_gridWorldMax.y) * 0.5f,
-                            (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
-                        };
-                        m_gridOffset = { 0.0f, 0.0f, 0.0f };
-                        m_gridScale = 1.0f;  // Reset cumulative scale factor
+                bool boundsExtracted = false;
 
-                        // Log grid type for debugging
-                        uint32_t gridType = static_cast<uint32_t>(gridData->mGridType);
-                        LOG_INFO("[NanoVDB] Animation grid type: {} ({})", gridType, GridTypeToString(gridType));
-                        LOG_INFO("[NanoVDB] Animation bounds: ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
-                                 m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
-                                 m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
-                    } else {
-                        LOG_WARN("[NanoVDB] Could not get GridData from animation frame");
+                // Try frames until we find one with valid voxel data
+                // Start from frame 1 (skip frame 0 which is often empty), then try others
+                std::vector<size_t> framesToTry;
+                if (filepaths.size() > 1) framesToTry.push_back(1);  // Try frame 1 first
+                if (filepaths.size() > 10) framesToTry.push_back(10); // Then frame 10
+                framesToTry.push_back(0);  // Finally try frame 0
+                if (filepaths.size() > 50) framesToTry.push_back(50); // Also try mid-sequence
+
+                for (size_t frameIdx : framesToTry) {
+                    if (frameIdx >= filepaths.size()) continue;
+
+                    LOG_INFO("[NanoVDB] Trying to extract bounds from frame {}...", frameIdx);
+
+                    nanovdb::GridHandle<nanovdb::HostBuffer> handle =
+                        nanovdb::io::readGrid<nanovdb::HostBuffer>(filepaths[frameIdx], 0, 0);
+                    if (!handle) continue;
+
+                    const nanovdb::GridData* gridData = handle.gridData();
+                    if (!gridData) continue;
+
+                    // Log grid type for debugging (only once)
+                    if (!boundsExtracted) {
+                        m_gridType = static_cast<uint32_t>(gridData->mGridType);
+                        m_gridTypeName = GridTypeToString(m_gridType);
+                        LOG_INFO("[NanoVDB] Animation grid type: {} ({})", m_gridType, m_gridTypeName);
                     }
+
+                    // Try to get float grid and check voxel count
+                    const nanovdb::NanoGrid<float>* floatGrid = handle.grid<float>();
+                    if (!floatGrid) {
+                        LOG_WARN("[NanoVDB] Frame {} is not a float grid", frameIdx);
+                        continue;
+                    }
+
+                    uint64_t voxelCount = floatGrid->activeVoxelCount();
+                    if (voxelCount == 0) {
+                        LOG_WARN("[NanoVDB] Frame {} has 0 active voxels, skipping...", frameIdx);
+                        continue;
+                    }
+
+                    LOG_INFO("[NanoVDB] Frame {} has {} active voxels", frameIdx, voxelCount);
+
+                    // Get bounds from gridData->mWorldBBox (matches shader's pnanovdb_grid_world_to_indexf)
+                    // NOTE: Using mWorldBBox instead of indexBBox * voxelSize ensures coordinate
+                    // consistency between C++ bounds and HLSL sampling transform.
+                    // See: docs/PROJECT_STATUS_DEC2025.md for root cause analysis.
+                    auto worldBBox = gridData->mWorldBBox;
+
+                    float minX = static_cast<float>(worldBBox.mCoord[0][0]);
+                    float minY = static_cast<float>(worldBBox.mCoord[0][1]);
+                    float minZ = static_cast<float>(worldBBox.mCoord[0][2]);
+                    float maxX = static_cast<float>(worldBBox.mCoord[1][0]);
+                    float maxY = static_cast<float>(worldBBox.mCoord[1][1]);
+                    float maxZ = static_cast<float>(worldBBox.mCoord[1][2]);
+
+                    // Validate bounds - check for inf/NaN (common in corrupt VDB files)
+                    bool boundsValid = std::isfinite(minX) && std::isfinite(minY) && std::isfinite(minZ) &&
+                                       std::isfinite(maxX) && std::isfinite(maxY) && std::isfinite(maxZ) &&
+                                       maxX > minX && maxY > minY && maxZ > minZ;
+
+                    if (boundsValid) {
+                        m_gridWorldMin = { minX, minY, minZ };
+                        m_gridWorldMax = { maxX, maxY, maxZ };
+                        m_voxelCount = static_cast<uint32_t>(voxelCount);
+                        m_gridName = floatGrid->gridName();
+
+                        LOG_INFO("[NanoVDB] Animation bounds from frame {} (mWorldBBox): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
+                                 frameIdx, minX, minY, minZ, maxX, maxY, maxZ);
+                        boundsExtracted = true;
+                        break;
+                    } else {
+                        LOG_WARN("[NanoVDB] Frame {} has invalid worldBBox (inf/NaN or zero volume), trying next frame...", frameIdx);
+                    }
+                }
+
+                if (!boundsExtracted) {
+                    // Fallback: use a reasonable default size centered at origin
+                    LOG_WARN("[NanoVDB] Could not extract valid bounds from any frame - using default 200x200x200");
+                    m_gridWorldMin = { -100.0f, -100.0f, -100.0f };
+                    m_gridWorldMax = { 100.0f, 100.0f, 100.0f };
+                }
+
+                // Store original center for repositioning
+                m_originalGridCenter = {
+                    (m_gridWorldMin.x + m_gridWorldMax.x) * 0.5f,
+                    (m_gridWorldMin.y + m_gridWorldMax.y) * 0.5f,
+                    (m_gridWorldMin.z + m_gridWorldMax.z) * 0.5f
+                };
+                m_gridOffset = { 0.0f, 0.0f, 0.0f };
+                m_gridScale = 1.0f;  // Reset cumulative scale factor
+
+                // Log final bounds
+                float sizeX = m_gridWorldMax.x - m_gridWorldMin.x;
+                float sizeY = m_gridWorldMax.y - m_gridWorldMin.y;
+                float sizeZ = m_gridWorldMax.z - m_gridWorldMin.z;
+                LOG_INFO("[NanoVDB] Animation bounds size: {:.2f} x {:.2f} x {:.2f} units", sizeX, sizeY, sizeZ);
+
+                // Warn if bounds are very small (in world units, not the huge INT_MAX values)
+                if (sizeX < 10.0f && sizeY < 10.0f && sizeZ < 10.0f && sizeX > 0 && sizeY > 0 && sizeZ > 0) {
+                    LOG_WARN("[NanoVDB] WARNING: Animation bounds are very small (<10 units)!");
+                    LOG_WARN("[NanoVDB] Use ScaleGridBounds() or the Scale slider to enlarge.");
                 }
             } catch (const std::exception& e) {
                 LOG_WARN("[NanoVDB] Could not extract animation bounds: {}", e.what());
+                // Use default bounds on error
+                m_gridWorldMin = { -100.0f, -100.0f, -100.0f };
+                m_gridWorldMax = { 100.0f, 100.0f, 100.0f };
             }
         }
 
