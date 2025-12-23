@@ -5477,7 +5477,10 @@ void Application::RenderImGui() {
                     size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("../../../assets/volumes/explosion");
                     if (frames > 0) {
                         LOG_INFO("Loaded {} animation frames", frames);
-                        // Explosion VDBs from EmberGen - scale to fit scene
+                        // Explosion VDBs from EmberGen - CENTER FIRST then scale to fit scene
+                        // The grid loads with its original position (e.g., 0-256 in X)
+                        // Must center at origin before scaling so camera can see it
+                        m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
                         m_nanoVDBSystem->ScaleGridBounds(100.0f);
                         m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::FIRE);
                         m_nanoVDBSystem->SetDensityScale(3.0f);
