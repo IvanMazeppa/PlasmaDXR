@@ -5493,6 +5493,42 @@ void Application::RenderImGui() {
                     ImGui::SetTooltip("Load 131-frame gasoline explosion sequence from assets/volumes/explosion/");
                 }
 
+                // AerialExplosion - 120 frames, 24GB on disk - needs subsampling for 8GB VRAM
+                ImGui::SameLine();
+                if (ImGui::Button("Aerial Explosion (30 frames)")) {
+                    // frameStep=4 loads every 4th frame: 120 -> 30 frames, ~6GB VRAM
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
+                        "../../../assets/volumes/AerialExplosion", "*.nvdb", 4);
+                    if (frames > 0) {
+                        LOG_INFO("Loaded {} animation frames (subsampled from 120)", frames);
+                        m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
+                        m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::FIRE);
+                        m_nanoVDBSystem->SetDensityScale(3.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(2.0f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load aerial explosion (24GB -> ~6GB VRAM via frame subsampling)");
+                }
+
+                // DustShockwave - 155 frames, 24GB on disk - needs subsampling
+                ImGui::SameLine();
+                if (ImGui::Button("Dust Shockwave (39 frames)")) {
+                    // frameStep=4 loads every 4th frame: 155 -> ~39 frames, ~6GB VRAM
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
+                        "../../../assets/volumes/DustShockwave", "*.nvdb", 4);
+                    if (frames > 0) {
+                        LOG_INFO("Loaded {} animation frames (subsampled from 155)", frames);
+                        m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
+                        m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::SMOKE);
+                        m_nanoVDBSystem->SetDensityScale(5.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(0.5f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load dust shockwave (24GB -> ~6GB VRAM via frame subsampling)");
+                }
+
                 ImGui::SameLine();
                 if (ImGui::Button("CloudPack (10 clouds)")) {
                     // Static cloud variants - cycle through with dropdown

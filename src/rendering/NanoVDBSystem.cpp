@@ -978,24 +978,43 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
             m_hasGrid = true;
             m_hasFileGrid = true;
 
-            // Extract grid bounds from a NON-EMPTY frame using NanoVDB
-            // NOTE: Frame 0 is often empty in animation sequences - search for first frame with data
-            // Use gridData() to get type-agnostic GridData* - works for ALL grid types
+            // Extract grid bounds as UNION of ALL frames (max extents)
+            // Animation volumes like explosions GROW over time, so we need the bounds
+            // that encompass the ENTIRE animation, not just one frame.
+            // Sample frames throughout the sequence to compute the union.
             try {
                 bool boundsExtracted = false;
 
-                // Try frames until we find one with valid voxel data
-                // Start from frame 1 (skip frame 0 which is often empty), then try others
-                std::vector<size_t> framesToTry;
-                if (filepaths.size() > 1) framesToTry.push_back(1);  // Try frame 1 first
-                if (filepaths.size() > 10) framesToTry.push_back(10); // Then frame 10
-                framesToTry.push_back(0);  // Finally try frame 0
-                if (filepaths.size() > 50) framesToTry.push_back(50); // Also try mid-sequence
+                // Initialize union bounds to inverted extremes
+                float unionMinX = FLT_MAX, unionMinY = FLT_MAX, unionMinZ = FLT_MAX;
+                float unionMaxX = -FLT_MAX, unionMaxY = -FLT_MAX, unionMaxZ = -FLT_MAX;
+                uint64_t maxVoxelCount = 0;
 
-                for (size_t frameIdx : framesToTry) {
+                // Sample frames throughout the animation to compute union bounds
+                // For efficiency, sample ~20 frames evenly distributed + key frames
+                std::vector<size_t> framesToSample;
+
+                // Add key frames: start, middle, end
+                framesToSample.push_back(0);
+                framesToSample.push_back(filepaths.size() / 4);
+                framesToSample.push_back(filepaths.size() / 2);
+                framesToSample.push_back(3 * filepaths.size() / 4);
+                framesToSample.push_back(filepaths.size() - 1);
+
+                // Add evenly distributed samples
+                size_t step = std::max(size_t(1), filepaths.size() / 15);
+                for (size_t i = 0; i < filepaths.size(); i += step) {
+                    framesToSample.push_back(i);
+                }
+
+                // Remove duplicates
+                std::sort(framesToSample.begin(), framesToSample.end());
+                framesToSample.erase(std::unique(framesToSample.begin(), framesToSample.end()), framesToSample.end());
+
+                LOG_INFO("[NanoVDB] Sampling {} frames for union bounds...", framesToSample.size());
+
+                for (size_t frameIdx : framesToSample) {
                     if (frameIdx >= filepaths.size()) continue;
-
-                    LOG_INFO("[NanoVDB] Trying to extract bounds from frame {}...", frameIdx);
 
                     nanovdb::GridHandle<nanovdb::HostBuffer> handle =
                         nanovdb::io::readGrid<nanovdb::HostBuffer>(filepaths[frameIdx], 0, 0);
@@ -1013,23 +1032,18 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
 
                     // Try to get float grid and check voxel count
                     const nanovdb::NanoGrid<float>* floatGrid = handle.grid<float>();
-                    if (!floatGrid) {
-                        LOG_WARN("[NanoVDB] Frame {} is not a float grid", frameIdx);
-                        continue;
-                    }
+                    if (!floatGrid) continue;
 
                     uint64_t voxelCount = floatGrid->activeVoxelCount();
-                    if (voxelCount == 0) {
-                        LOG_WARN("[NanoVDB] Frame {} has 0 active voxels, skipping...", frameIdx);
-                        continue;
+                    if (voxelCount == 0) continue;  // Skip empty frames
+
+                    // Track max voxel count
+                    if (voxelCount > maxVoxelCount) {
+                        maxVoxelCount = voxelCount;
+                        m_gridName = floatGrid->gridName();
                     }
 
-                    LOG_INFO("[NanoVDB] Frame {} has {} active voxels", frameIdx, voxelCount);
-
-                    // Get bounds from gridData->mWorldBBox (matches shader's pnanovdb_grid_world_to_indexf)
-                    // NOTE: Using mWorldBBox instead of indexBBox * voxelSize ensures coordinate
-                    // consistency between C++ bounds and HLSL sampling transform.
-                    // See: docs/PROJECT_STATUS_DEC2025.md for root cause analysis.
+                    // Get bounds from gridData->mWorldBBox
                     auto worldBBox = gridData->mWorldBBox;
 
                     float minX = static_cast<float>(worldBBox.mCoord[0][0]);
@@ -1039,27 +1053,34 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
                     float maxY = static_cast<float>(worldBBox.mCoord[1][1]);
                     float maxZ = static_cast<float>(worldBBox.mCoord[1][2]);
 
-                    // Validate bounds - check for inf/NaN (common in corrupt VDB files)
+                    // Validate bounds
                     bool boundsValid = std::isfinite(minX) && std::isfinite(minY) && std::isfinite(minZ) &&
                                        std::isfinite(maxX) && std::isfinite(maxY) && std::isfinite(maxZ) &&
                                        maxX > minX && maxY > minY && maxZ > minZ;
 
                     if (boundsValid) {
-                        m_gridWorldMin = { minX, minY, minZ };
-                        m_gridWorldMax = { maxX, maxY, maxZ };
-                        m_voxelCount = static_cast<uint32_t>(voxelCount);
-                        m_gridName = floatGrid->gridName();
-
-                        LOG_INFO("[NanoVDB] Animation bounds from frame {} (mWorldBBox): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
-                                 frameIdx, minX, minY, minZ, maxX, maxY, maxZ);
+                        // Expand union bounds
+                        unionMinX = std::min(unionMinX, minX);
+                        unionMinY = std::min(unionMinY, minY);
+                        unionMinZ = std::min(unionMinZ, minZ);
+                        unionMaxX = std::max(unionMaxX, maxX);
+                        unionMaxY = std::max(unionMaxY, maxY);
+                        unionMaxZ = std::max(unionMaxZ, maxZ);
                         boundsExtracted = true;
-                        break;
-                    } else {
-                        LOG_WARN("[NanoVDB] Frame {} has invalid worldBBox (inf/NaN or zero volume), trying next frame...", frameIdx);
+
+                        LOG_INFO("[NanoVDB] Frame {} bounds: ({:.1f},{:.1f},{:.1f}) to ({:.1f},{:.1f},{:.1f}), voxels: {}",
+                                 frameIdx, minX, minY, minZ, maxX, maxY, maxZ, voxelCount);
                     }
                 }
 
-                if (!boundsExtracted) {
+                if (boundsExtracted) {
+                    m_gridWorldMin = { unionMinX, unionMinY, unionMinZ };
+                    m_gridWorldMax = { unionMaxX, unionMaxY, unionMaxZ };
+                    m_voxelCount = static_cast<uint32_t>(maxVoxelCount);
+
+                    LOG_INFO("[NanoVDB] UNION bounds (all frames): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
+                             unionMinX, unionMinY, unionMinZ, unionMaxX, unionMaxY, unionMaxZ);
+                } else {
                     // Fallback: use a reasonable default size centered at origin
                     LOG_WARN("[NanoVDB] Could not extract valid bounds from any frame - using default 200x200x200");
                     m_gridWorldMin = { -100.0f, -100.0f, -100.0f };
@@ -1109,7 +1130,7 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
     return false;
 }
 
-size_t NanoVDBSystem::LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern) {
+size_t NanoVDBSystem::LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern, size_t frameStep) {
     namespace fs = std::filesystem;
 
     std::vector<std::string> filepaths;
@@ -1133,10 +1154,61 @@ size_t NanoVDBSystem::LoadAnimationFromDirectory(const std::string& directory, c
         return 0;
     }
 
-    // Sort files by name (assumes numbered sequence like smoke_0001.nvdb)
-    std::sort(filepaths.begin(), filepaths.end());
+    // Sort files using NATURAL NUMERIC order (not lexicographic!)
+    // Lexicographic: _0, _1, _10, _100, _101, _109, _11, _110, ...
+    // Natural:       _0, _1, _2, _3, ..., _10, _11, ..., _100, _101, ...
+    std::sort(filepaths.begin(), filepaths.end(), [](const std::string& a, const std::string& b) {
+        // Extract trailing number from filename (before .nvdb extension)
+        auto extractNumber = [](const std::string& path) -> int {
+            size_t lastUnderscore = path.rfind('_');
+            size_t lastDot = path.rfind('.');
+            if (lastUnderscore == std::string::npos || lastDot == std::string::npos) {
+                return -1;  // Fallback to lexicographic if no number found
+            }
+            std::string numStr = path.substr(lastUnderscore + 1, lastDot - lastUnderscore - 1);
+            try {
+                return std::stoi(numStr);
+            } catch (...) {
+                return -1;
+            }
+        };
+
+        int numA = extractNumber(a);
+        int numB = extractNumber(b);
+
+        // If both have valid numbers, sort numerically
+        if (numA >= 0 && numB >= 0) {
+            return numA < numB;
+        }
+        // Otherwise fall back to lexicographic
+        return a < b;
+    });
 
     LOG_INFO("[NanoVDB] Found {} .nvdb files in {}", filepaths.size(), directory);
+
+    // Apply frame step to reduce VRAM usage (load every Nth frame)
+    // frameStep=1: all frames, frameStep=4: every 4th frame (25% VRAM)
+    if (frameStep > 1) {
+        std::vector<std::string> subsampled;
+        for (size_t i = 0; i < filepaths.size(); i += frameStep) {
+            subsampled.push_back(filepaths[i]);
+        }
+        size_t originalCount = filepaths.size();
+        filepaths = std::move(subsampled);
+        LOG_INFO("[NanoVDB] Frame subsampling: step={}, {} -> {} frames (saves ~{}% VRAM)",
+                 frameStep, originalCount, filepaths.size(),
+                 100 - (100 * filepaths.size() / originalCount));
+    }
+
+    // Log first few sorted filenames to verify order
+    if (filepaths.size() >= 5) {
+        LOG_INFO("[NanoVDB] Sort order verification: [0]={}, [1]={}, [2]={}, [3]={}, [4]={}",
+                 std::filesystem::path(filepaths[0]).filename().string(),
+                 std::filesystem::path(filepaths[1]).filename().string(),
+                 std::filesystem::path(filepaths[2]).filename().string(),
+                 std::filesystem::path(filepaths[3]).filename().string(),
+                 std::filesystem::path(filepaths[4]).filename().string());
+    }
 
     if (LoadAnimationSequence(filepaths)) {
         return m_animFrames.size();

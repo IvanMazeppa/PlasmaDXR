@@ -315,9 +315,10 @@ public:
      * Load animation from a directory pattern (e.g., "smoke_*.nvdb")
      * @param directory Directory containing .nvdb files
      * @param pattern Glob pattern for matching files
+     * @param frameStep Load every Nth frame (1=all, 2=half, 4=quarter) - saves VRAM
      * @return Number of frames loaded
      */
-    size_t LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern = "*.nvdb");
+    size_t LoadAnimationFromDirectory(const std::string& directory, const std::string& pattern = "*.nvdb", size_t frameStep = 1);
 
     // Animation playback control
     void SetAnimationPlaying(bool playing) { m_animPlaying = playing; }
