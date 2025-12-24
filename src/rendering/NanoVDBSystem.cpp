@@ -745,6 +745,18 @@ void NanoVDBSystem::Render(
     constants.gridScale = m_gridScale;    // Cumulative scale factor for coordinate transform
     constants.originalGridCenter = m_originalGridCenter;  // Original grid center before scaling
 
+    // DEBUG: Log transform parameters periodically for animation debugging
+    static int debugFrameCounter = 0;
+    if (m_animFrames.size() > 0 && (debugFrameCounter++ % 120 == 0)) {
+        LOG_INFO("[NanoVDB] Animation Transform Debug:");
+        LOG_INFO("  gridWorldMin: ({:.2f}, {:.2f}, {:.2f})", m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z);
+        LOG_INFO("  gridWorldMax: ({:.2f}, {:.2f}, {:.2f})", m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+        LOG_INFO("  originalGridCenter: ({:.2f}, {:.2f}, {:.2f})", m_originalGridCenter.x, m_originalGridCenter.y, m_originalGridCenter.z);
+        LOG_INFO("  gridOffset: ({:.2f}, {:.2f}, {:.2f})", m_gridOffset.x, m_gridOffset.y, m_gridOffset.z);
+        LOG_INFO("  gridScale: {:.2f}", m_gridScale);
+        LOG_INFO("  currentFrame: {}/{}", m_animCurrentFrame, m_animFrames.size());
+    }
+
     // Map and update constants
     void* mappedData = nullptr;
     m_constantBuffer->Map(0, nullptr, &mappedData);
@@ -814,24 +826,25 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
         const auto& filepath = filepaths[i];
 
         try {
-            // Read file
-            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
-            if (!file.is_open()) {
-                LOG_WARN("[NanoVDB] Failed to open frame {}: {}", i, filepath);
+            // CRITICAL FIX: Use nanovdb::io::readGrid() to properly parse the .nvdb file
+            // The old code read raw file bytes which are COMPRESSED/serialized!
+            // The shader expects DECOMPRESSED NanoVDB grid data from handle.data()
+            nanovdb::GridHandle<nanovdb::HostBuffer> handle =
+                nanovdb::io::readGrid<nanovdb::HostBuffer>(filepath, 0, 0);
+
+            if (!handle) {
+                LOG_WARN("[NanoVDB] Failed to parse frame {}: {}", i, filepath);
                 continue;
             }
 
-            std::streamsize fileSize = file.tellg();
-            file.seekg(0, std::ios::beg);
+            const void* bufferData = handle.data();
+            uint64_t bufferSize = handle.bufferSize();
 
-            std::vector<char> fileData(fileSize);
-            if (!file.read(fileData.data(), fileSize)) {
-                LOG_WARN("[NanoVDB] Failed to read frame {}: {}", i, filepath);
-                continue;
+            // Log first frame size for debugging
+            if (i == 0 || i == 1) {
+                LOG_INFO("[NanoVDB] Frame {} parsed: {:.2f} MB ({} bytes)",
+                         i, bufferSize / (1024.0 * 1024.0), bufferSize);
             }
-
-            const void* bufferData = fileData.data();
-            uint64_t bufferSize = static_cast<uint64_t>(fileSize);
 
             // Create GPU buffer for this frame
             AnimationFrame frame;

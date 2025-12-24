@@ -5477,14 +5477,16 @@ void Application::RenderImGui() {
                     size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory("../../../assets/volumes/explosion");
                     if (frames > 0) {
                         LOG_INFO("Loaded {} animation frames", frames);
-                        // Explosion VDBs from EmberGen - CENTER FIRST then scale to fit scene
-                        // The grid loads with its original position (e.g., 0-256 in X)
-                        // Must center at origin before scaling so camera can see it
+                        // Explosion VDBs from EmberGen - center at origin for camera visibility
+                        // The grid loads with its original position (e.g., -128 to +128 in X)
+                        // Center at origin so camera can see it
                         m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
-                        m_nanoVDBSystem->ScaleGridBounds(100.0f);
+                        // DEBUG: Disable scaling to test if coordinate transform is working
+                        // m_nanoVDBSystem->ScaleGridBounds(100.0f);
                         m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::FIRE);
                         m_nanoVDBSystem->SetDensityScale(3.0f);
                         m_nanoVDBSystem->SetEmissionStrength(2.0f);
+                        LOG_INFO("[NanoVDB] Animation loaded WITHOUT scaling - bounds ~257x242x329 units");
                     }
                 }
                 if (ImGui::IsItemHovered()) {
