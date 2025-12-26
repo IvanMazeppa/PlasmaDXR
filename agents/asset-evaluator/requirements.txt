@@ -1,0 +1,54 @@
+# Asset Evaluator MCP Server dependencies
+# Install: pip install -r requirements.txt
+
+# MCP SDK
+mcp[cli]>=1.0.0
+
+# Environment loading
+python-dotenv>=1.0.0
+
+# Image processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# PyTorch (CPU or CUDA)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# LPIPS perceptual similarity
+lpips>=0.1.4
+
+# CLIP semantic similarity
+# Note: Install from GitHub for latest version
+# pip install git+https://github.com/openai/CLIP.git
+ftfy>=6.1.0
+regex>=2023.0.0
+
+# =============================================================================
+# Enhanced Evaluation Dependencies (Optional but Recommended)
+# =============================================================================
+
+# ImageReward - Human preference alignment scoring
+# Better than CLIP for quality judgment, trained on human feedback
+# pip install image-reward
+image-reward>=1.0.0
+
+# Moondream VLM - Tiny vision-language model for diagnostics
+# 2B parameters, runs on CPU/GPU, provides actionable feedback
+transformers>=4.36.0
+timm>=0.9.0
+einops>=0.7.0
+
+# PyIQA - Comprehensive image quality assessment (optional)
+# Includes BRISQUE, NIQE, MUSIQ, NIMA and many more metrics
+# pip install pyiqa
+# pyiqa>=0.1.10
+
+# =============================================================================
+# LAION Aesthetics V2 Notes
+# =============================================================================
+# The aesthetic predictor uses CLIP ViT-L/14 embeddings + linear head
+# Download weights from: https://github.com/LAION-AI/aesthetic-predictor
+# Place in: agents/asset-evaluator/weights/sa_0_4_vit_l_14_linear.pth
+#
+# Or use without weights (fallback to CLIP-based heuristic)

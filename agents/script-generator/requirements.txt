@@ -1,0 +1,8 @@
+# Script Generator MCP Server dependencies
+# Install: pip install -r requirements.txt
+
+# MCP SDK
+mcp[cli]>=1.0.0
+
+# Environment loading
+python-dotenv>=1.0.0

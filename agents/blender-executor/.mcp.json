@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "blender-executor": {
+      "command": "python",
+      "args": ["server.py"],
+      "cwd": "agents/blender-executor",
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR",
+        "BLENDER_EXE": "/home/maz3ppa/apps/blender-5.0.1-linux-x64/blender"
+      }
+    }
+  }
+}

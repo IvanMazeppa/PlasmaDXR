@@ -41,7 +41,7 @@ PY_EXIT_CODE=1
 LOG_LEVEL="${BLENDER_LOG_LEVEL:-info}"
 LOG_MATCH="${BLENDER_LOG_MATCH:-}"
 
-DEFAULT_BLENDER_EXE="/mnt/e/Program Files/Blender Foundation/Blender 5.0/blender.exe"
+DEFAULT_BLENDER_EXE="/home/maz3ppa/apps/blender-5.0.1-linux-x64/blender"
 BLENDER_EXE="${BLENDER_EXE:-$DEFAULT_BLENDER_EXE}"
 
 usage() {
