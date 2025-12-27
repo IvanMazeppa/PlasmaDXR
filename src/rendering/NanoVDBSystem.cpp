@@ -745,6 +745,12 @@ void NanoVDBSystem::Render(
     constants.gridScale = m_gridScale;    // Cumulative scale factor for coordinate transform
     constants.originalGridCenter = m_originalGridCenter;  // Original grid center before scaling
 
+    // Ground plane (Phase 2: Simple plane intersection)
+    constants.enableGroundPlane = m_enableGroundPlane ? 1 : 0;
+    constants.groundPlaneHeight = m_groundPlaneHeight;
+    constants.groundPlaneAlbedo = m_groundPlaneAlbedo;
+    constants.groundPlaneRoughness = m_groundPlaneRoughness;
+
     // DEBUG: Log transform parameters periodically for animation debugging
     static int debugFrameCounter = 0;
     if (m_animFrames.size() > 0 && (debugFrameCounter++ % 120 == 0)) {

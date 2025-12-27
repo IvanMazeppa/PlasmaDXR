@@ -1295,6 +1295,12 @@ void Application::Render() {
                 m_nanoVDBSystem->SetShadowsEnabled(m_nanoVDBShadowsEnabled);
                 m_nanoVDBSystem->SetShadowSteps(static_cast<uint32_t>(m_nanoVDBShadowSteps));
 
+                // Ground plane (Phase 2: Simple plane intersection for NanoVDB)
+                m_nanoVDBSystem->SetGroundPlaneEnabled(m_enableGroundPlane);
+                m_nanoVDBSystem->SetGroundPlaneHeight(m_groundPlaneHeight);
+                m_nanoVDBSystem->SetGroundPlaneAlbedo(DirectX::XMFLOAT3(
+                    m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]));
+
                 // Render NanoVDB volumetrics (composites with existing output)
                 // Uses GPU descriptor handles for proper binding
                 // Depth buffer provides occlusion, time drives procedural animation

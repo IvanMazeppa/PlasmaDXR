@@ -976,50 +976,53 @@ void RTLightingSystem_RayQuery::BuildTLAS_ForSet(
 }
 
 void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList, bool skipBarrier) {
-    // Build a combined TLAS with 2-3 instances for full visibility
-    // Instance 0: Probe Grid BLAS (particles 0-2043)
-    // Instance 1: Direct RT BLAS (particles 2044+)
-    // Instance 2: Ground Plane BLAS (optional, if enabled)
-
-    // Determine instance count
-    uint32_t instanceCount = 2;
-    if (m_groundPlane.enabled && m_groundPlane.blas) {
-        instanceCount = 3;
-    }
+    // Build a combined TLAS with 1-3 instances for full visibility
+    // Dynamically includes only the BLAS instances that actually exist:
+    //   - Probe Grid BLAS (particles 0-2043) - always exists
+    //   - Direct RT BLAS (particles 2044+) - only if overflow particles
+    //   - Ground Plane BLAS - only if enabled
+    //
+    // Instance IDs are preserved for shader identification:
+    //   ID 0 = Probe Grid, ID 1 = Direct RT, ID 2 = Ground Plane
 
     // Create instance descriptors array (max 3 instances)
     D3D12_RAYTRACING_INSTANCE_DESC instances[3] = {};
+    uint32_t instanceCount = 0;
 
-    // Instance 0: Probe Grid BLAS
-    instances[0].InstanceID = 0;
-    instances[0].InstanceMask = 0xFF;
-    instances[0].InstanceContributionToHitGroupIndex = 0;
-    instances[0].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
-    instances[0].Transform[0][0] = 1.0f;
-    instances[0].Transform[1][1] = 1.0f;
-    instances[0].Transform[2][2] = 1.0f;
-    instances[0].AccelerationStructure = m_probeGridAS.blas->GetGPUVirtualAddress();
+    // Helper lambda to set up an instance descriptor
+    auto SetupInstance = [](D3D12_RAYTRACING_INSTANCE_DESC& inst, uint32_t id, ID3D12Resource* blas) {
+        inst.InstanceID = id;
+        inst.InstanceMask = 0xFF;
+        inst.InstanceContributionToHitGroupIndex = 0;
+        inst.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+        inst.Transform[0][0] = 1.0f;
+        inst.Transform[1][1] = 1.0f;
+        inst.Transform[2][2] = 1.0f;
+        inst.AccelerationStructure = blas->GetGPUVirtualAddress();
+    };
 
-    // Instance 1: Direct RT BLAS
-    instances[1].InstanceID = 1;
-    instances[1].InstanceMask = 0xFF;
-    instances[1].InstanceContributionToHitGroupIndex = 0;
-    instances[1].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
-    instances[1].Transform[0][0] = 1.0f;
-    instances[1].Transform[1][1] = 1.0f;
-    instances[1].Transform[2][2] = 1.0f;
-    instances[1].AccelerationStructure = m_directRTAS.blas->GetGPUVirtualAddress();
+    // Instance: Probe Grid BLAS (always exists)
+    if (m_probeGridAS.blas) {
+        SetupInstance(instances[instanceCount], 0, m_probeGridAS.blas.Get());
+        instanceCount++;
+    }
 
-    // Instance 2: Ground Plane BLAS (optional)
+    // Instance: Direct RT BLAS (only if overflow particles exist)
+    if (m_directRTAS.blas) {
+        SetupInstance(instances[instanceCount], 1, m_directRTAS.blas.Get());
+        instanceCount++;
+    }
+
+    // Instance: Ground Plane BLAS (only if enabled)
     if (m_groundPlane.enabled && m_groundPlane.blas) {
-        instances[2].InstanceID = 2;  // ID 2 = ground plane (for shader identification)
-        instances[2].InstanceMask = 0xFF;
-        instances[2].InstanceContributionToHitGroupIndex = 0;
-        instances[2].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
-        instances[2].Transform[0][0] = 1.0f;
-        instances[2].Transform[1][1] = 1.0f;
-        instances[2].Transform[2][2] = 1.0f;
-        instances[2].AccelerationStructure = m_groundPlane.blas->GetGPUVirtualAddress();
+        SetupInstance(instances[instanceCount], 2, m_groundPlane.blas.Get());
+        instanceCount++;
+    }
+
+    // Safety check - need at least one instance
+    if (instanceCount == 0) {
+        LOG_WARN("BuildCombinedTLAS: No valid BLAS instances available");
+        return;
     }
 
     // Upload instance descriptors to legacy instance buffer

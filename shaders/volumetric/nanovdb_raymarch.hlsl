@@ -57,6 +57,12 @@ cbuffer NanoVDBConstants : register(b0) {
     float3 albedo;                     // Base color for scattering/emission tint (offset 192)
     float gridScale;                   // Cumulative scale factor applied to grid bounds
     float3 originalGridCenter;         // Original grid center before scaling/repositioning
+
+    // Ground plane parameters (Phase 2: Simple plane intersection)
+    uint enableGroundPlane;            // 0=disabled, 1=enabled
+    float groundPlaneHeight;           // Y position of infinite plane
+    float3 groundPlaneAlbedo;          // Surface color/reflectance
+    float groundPlaneRoughness;        // 0=mirror, 1=diffuse
 };
 
 // ============================================================================
@@ -584,6 +590,63 @@ float ComputeShadowAttenuation(float3 samplePos, float3 lightPos) {
 }
 
 // ============================================================================
+// GROUND PLANE INTERSECTION (Phase 2)
+// ============================================================================
+
+// Ray-plane intersection for infinite horizontal plane at Y = planeHeight
+// Returns distance to plane (negative if plane is behind ray origin)
+float RayPlaneIntersection(float3 rayOrigin, float3 rayDir, float planeHeight) {
+    // Plane equation: Y = planeHeight (normal = (0, 1, 0))
+    // Solve: rayOrigin.y + t * rayDir.y = planeHeight
+    // t = (planeHeight - rayOrigin.y) / rayDir.y
+
+    if (abs(rayDir.y) < 0.0001) {
+        // Ray is parallel to plane
+        return -1.0;
+    }
+
+    float t = (planeHeight - rayOrigin.y) / rayDir.y;
+    return t;
+}
+
+// Calculate ground plane lighting using all active lights
+float3 CalculateGroundPlaneLighting(float3 hitPos, float3 viewDir, float3 planeNormal) {
+    float3 totalLight = float3(0.05, 0.05, 0.05);  // Ambient base
+
+    for (uint i = 0; i < lightCount && i < 32; i++) {
+        Light light = g_lights[i];
+        float3 lightDir = normalize(light.position - hitPos);
+        float lightDist = length(light.position - hitPos);
+
+        // Only light from above the plane
+        float NdotL = max(dot(planeNormal, lightDir), 0.0);
+
+        // Distance attenuation
+        float attenuation = light.intensity / (1.0 + lightDist * lightDist * 0.00005);
+
+        // Simple diffuse + slight specular
+        float3 diffuse = light.color * NdotL * attenuation;
+
+        // Blinn-Phong specular for slight reflectivity
+        float3 halfVec = normalize(lightDir - viewDir);
+        float NdotH = max(dot(planeNormal, halfVec), 0.0);
+        float specPower = lerp(256.0, 4.0, groundPlaneRoughness);  // roughness 0=shiny, 1=rough
+        float spec = pow(NdotH, specPower) * (1.0 - groundPlaneRoughness * 0.9);
+        float3 specular = light.color * spec * attenuation * 0.3;
+
+        // Check for volume shadow (march from hit point toward light)
+        float shadowTrans = 1.0;
+        if (enableShadows != 0 && i < 4) {
+            shadowTrans = ComputeShadowAttenuation(hitPos, light.position);
+        }
+
+        totalLight += (diffuse + specular) * shadowTrans;
+    }
+
+    return totalLight * groundPlaneAlbedo;
+}
+
+// ============================================================================
 // LIGHTING
 // ============================================================================
 
@@ -771,15 +834,55 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     // Use scene depth for proper occlusion by geometry
     float effectiveDepth = sceneDepth;
 
-    // Ray march the volume
+    // ========================================================================
+    // GROUND PLANE INTERSECTION (Phase 2)
+    // ========================================================================
+    float3 groundPlaneColor = float3(0, 0, 0);
+    float groundPlaneOpacity = 0.0;
+    float groundPlaneT = -1.0;
+
+    if (enableGroundPlane != 0) {
+        groundPlaneT = RayPlaneIntersection(rayOrigin, rayDir, groundPlaneHeight);
+
+        // Check if plane is in front of camera and closer than scene geometry
+        if (groundPlaneT > 0.0 && groundPlaneT < effectiveDepth) {
+            float3 hitPos = rayOrigin + rayDir * groundPlaneT;
+            float3 planeNormal = float3(0, 1, 0);  // Up-facing plane
+
+            // Calculate lighting on ground plane (includes volumetric shadows)
+            groundPlaneColor = CalculateGroundPlaneLighting(hitPos, rayDir, planeNormal);
+            groundPlaneOpacity = 1.0;
+
+            // Limit volume ray march to stop at ground plane
+            effectiveDepth = groundPlaneT;
+        }
+    }
+
+    // Ray march the volume (up to ground plane if present)
     float4 volumeColor = RayMarchVolume(rayOrigin, rayDir, effectiveDepth);
 
     // Read existing content
     float4 existingColor = g_output[DTid.xy];
 
-    // ADDITIVE BLEND (known working)
-    float3 finalColor = existingColor.rgb + volumeColor.rgb;
-    float finalAlpha = max(existingColor.a, volumeColor.a);
+    // Composite: Ground plane (if hit) behind volume, both over existing
+    float3 finalColor;
+    float finalAlpha;
+
+    if (groundPlaneOpacity > 0.0) {
+        // Volume transmittance - how much of the ground plane shows through
+        float volumeTransmittance = 1.0 - volumeColor.a;
+
+        // Ground plane is behind volume: ground * transmittance + volume emission
+        float3 groundWithVolume = groundPlaneColor * volumeTransmittance + volumeColor.rgb;
+
+        // Composite over existing background
+        finalColor = existingColor.rgb * (1.0 - max(volumeColor.a, groundPlaneOpacity)) + groundWithVolume;
+        finalAlpha = max(existingColor.a, max(volumeColor.a, groundPlaneOpacity));
+    } else {
+        // No ground plane - original additive blend
+        finalColor = existingColor.rgb + volumeColor.rgb;
+        finalAlpha = max(existingColor.a, volumeColor.a);
+    }
 
     g_output[DTid.xy] = float4(finalColor, finalAlpha);
 }

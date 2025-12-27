@@ -1,0 +1,9 @@
+# Experiment Tracker MCP Server dependencies
+
+# MCP SDK
+mcp[cli]>=1.0.0
+
+# Environment loading
+python-dotenv>=1.0.0
+
+# SQLite is built into Python - no extra dependency needed

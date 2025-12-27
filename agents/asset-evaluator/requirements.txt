@@ -28,16 +28,31 @@ regex>=2023.0.0
 # Enhanced Evaluation Dependencies (Optional but Recommended)
 # =============================================================================
 
-# ImageReward - Human preference alignment scoring
-# Better than CLIP for quality judgment, trained on human feedback
-# pip install image-reward
-image-reward>=1.0.0
-
 # Moondream VLM - Tiny vision-language model for diagnostics
 # 2B parameters, runs on CPU/GPU, provides actionable feedback
 transformers>=4.36.0
 timm>=0.9.0
 einops>=0.7.0
+
+# -----------------------------------------------------------------------------
+# ImageReward - Human preference alignment scoring
+# CONFLICT: ImageReward requires timm==0.6.13, but Moondream needs timm>=0.9.0
+#
+# Choose ONE of these options:
+#
+# Option A: Skip ImageReward (recommended - system works fine without it)
+#   Just don't install it. The code gracefully falls back.
+#
+# Option B: Install ImageReward in a separate venv for standalone use:
+#   python -m venv venv-imagereward
+#   source venv-imagereward/bin/activate
+#   pip install image-reward
+#
+# Option C: Use the fork with relaxed dependencies (if available):
+#   pip install git+https://github.com/THUDM/ImageReward.git --no-deps
+#   Then manually install compatible deps
+# -----------------------------------------------------------------------------
+# image-reward>=1.0.0  # COMMENTED OUT due to timm conflict
 
 # PyIQA - Comprehensive image quality assessment (optional)
 # Includes BRISQUE, NIQE, MUSIQ, NIMA and many more metrics

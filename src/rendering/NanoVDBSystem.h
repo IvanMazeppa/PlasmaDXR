@@ -161,6 +161,19 @@ public:
     void SetShadowSteps(uint32_t steps) { m_shadowSteps = std::min(steps, 32u); }
     uint32_t GetShadowSteps() const { return m_shadowSteps; }
 
+    // Ground plane (Phase 2: Simple plane intersection for NanoVDB)
+    void SetGroundPlaneEnabled(bool enabled) { m_enableGroundPlane = enabled; }
+    bool GetGroundPlaneEnabled() const { return m_enableGroundPlane; }
+
+    void SetGroundPlaneHeight(float height) { m_groundPlaneHeight = height; }
+    float GetGroundPlaneHeight() const { return m_groundPlaneHeight; }
+
+    void SetGroundPlaneAlbedo(const DirectX::XMFLOAT3& albedo) { m_groundPlaneAlbedo = albedo; }
+    DirectX::XMFLOAT3 GetGroundPlaneAlbedo() const { return m_groundPlaneAlbedo; }
+
+    void SetGroundPlaneRoughness(float roughness) { m_groundPlaneRoughness = roughness; }
+    float GetGroundPlaneRoughness() const { return m_groundPlaneRoughness; }
+
     // Sphere parameters (from CreateFogSphere)
     DirectX::XMFLOAT3 GetSphereCenter() const { return m_sphereCenter; }
     float GetSphereRadius() const { return m_sphereRadius; }
@@ -374,7 +387,13 @@ private:
         DirectX::XMFLOAT3 albedo;            // 12 bytes - base color for scattering/emission tint (now at offset 192)
         float gridScale;                     // 4 bytes - cumulative scale factor applied to grid bounds
         DirectX::XMFLOAT3 originalGridCenter; // 12 bytes - original grid center before scaling/repositioning
-    };  // Total: 220 bytes (+8 alignment padding for albedo), padded to 256 for D3D12 cbuffer
+
+        // Ground plane parameters (Phase 2: Simple plane intersection)
+        uint32_t enableGroundPlane;          // 4 bytes - 0=disabled, 1=enabled
+        float groundPlaneHeight;             // 4 bytes - Y position of infinite plane
+        DirectX::XMFLOAT3 groundPlaneAlbedo; // 12 bytes - surface color/reflectance
+        float groundPlaneRoughness;          // 4 bytes - 0=mirror, 1=diffuse
+    };  // Total: 244 bytes, padded to 256 for D3D12 cbuffer
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -430,6 +449,12 @@ private:
     // Phase 1 Shadow Rays - volumetric self-shadowing
     bool m_enableShadows = false;        // Disabled by default (performance)
     uint32_t m_shadowSteps = 16;         // Default shadow march steps
+
+    // Ground plane (Phase 2: Simple plane intersection)
+    bool m_enableGroundPlane = false;
+    float m_groundPlaneHeight = -500.0f;
+    DirectX::XMFLOAT3 m_groundPlaneAlbedo = { 0.3f, 0.3f, 0.35f };
+    float m_groundPlaneRoughness = 0.8f;
 
     // Sphere parameters (set by CreateFogSphere)
     DirectX::XMFLOAT3 m_sphereCenter = { 0.0f, 0.0f, 0.0f };
