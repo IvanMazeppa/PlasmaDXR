@@ -192,6 +192,18 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             } else {
                 LOG_INFO("Ground plane enabled (default height: {})", m_groundPlaneHeight);
             }
+        } else if (arg == "--ground-albedo" && i + 3 < argc) {
+            // Parse RGB values (0-1 range)
+            m_groundPlaneAlbedo[0] = static_cast<float>(std::atof(argv[++i]));
+            m_groundPlaneAlbedo[1] = static_cast<float>(std::atof(argv[++i]));
+            m_groundPlaneAlbedo[2] = static_cast<float>(std::atof(argv[++i]));
+            LOG_INFO("Ground plane albedo: ({}, {}, {})",
+                m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
+        } else if (arg == "--ground-roughness" && i + 1 < argc) {
+            m_groundPlaneRoughness = static_cast<float>(std::atof(argv[++i]));
+            // Clamp to valid range
+            m_groundPlaneRoughness = std::max(0.0f, std::min(1.0f, m_groundPlaneRoughness));
+            LOG_INFO("Ground plane roughness: {} (0=mirror, 1=diffuse)", m_groundPlaneRoughness);
         } else if (arg == "--pinn" && i + 1 < argc) {
             std::string modelArg = argv[++i];
 
@@ -272,7 +284,11 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             LOG_INFO("  --pinn <model>       : Select PINN model (v1, v2, v3, v4, or path)");
             LOG_INFO("  --dump-buffers [frame] : Enable buffer dumps (optional: auto-dump at frame)");
             LOG_INFO("  --dump-dir <path>    : Set buffer dump output directory");
-            LOG_INFO("  --ground-plane [height] : Enable reflective ground plane (default: -500)");
+            LOG_INFO("");
+            LOG_INFO("  Ground Plane (NanoVDB volumetric shadows):");
+            LOG_INFO("  --ground-plane [height] : Enable ground plane (default height: -500)");
+            LOG_INFO("  --ground-albedo R G B   : Surface color (0-1 range, default: 0.3 0.3 0.35)");
+            LOG_INFO("  --ground-roughness <val>: Surface roughness (0=mirror, 1=diffuse, default: 0.8)");
             LOG_INFO("");
             LOG_INFO("  Physics Parameters (GA-optimized, Phase 5):");
             LOG_INFO("  --gm <value>         : Gravitational parameter (default: 100, range: 50-200)");
@@ -1300,6 +1316,7 @@ void Application::Render() {
                 m_nanoVDBSystem->SetGroundPlaneHeight(m_groundPlaneHeight);
                 m_nanoVDBSystem->SetGroundPlaneAlbedo(DirectX::XMFLOAT3(
                     m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]));
+                m_nanoVDBSystem->SetGroundPlaneRoughness(m_groundPlaneRoughness);
 
                 // Render NanoVDB volumetrics (composites with existing output)
                 // Uses GPU descriptor handles for proper binding
@@ -5533,6 +5550,24 @@ void Application::RenderImGui() {
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("Load dust shockwave (24GB -> ~6GB VRAM via frame subsampling)");
+                }
+
+                // VolcanicPlume - 250 frames, 2.1GB on disk - Blender-generated volcanic eruption
+                ImGui::SameLine();
+                if (ImGui::Button("Volcanic Plume (250 frames)")) {
+                    // frameStep=1 loads all frames: 250 frames, ~2.1GB VRAM (fits on 8GB GPU)
+                    size_t frames = m_nanoVDBSystem->LoadAnimationFromDirectory(
+                        "../../../assets/volumes/VolcanicPlume", "*.nvdb", 1);
+                    if (frames > 0) {
+                        LOG_INFO("Loaded {} Volcanic Plume animation frames", frames);
+                        m_nanoVDBSystem->SetGridCenter(DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f));
+                        m_nanoVDBSystem->SetMaterialType(NanoVDBSystem::NanoVDBMaterialType::FIRE);
+                        m_nanoVDBSystem->SetDensityScale(4.0f);
+                        m_nanoVDBSystem->SetEmissionStrength(2.0f);
+                    }
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Load Blender-generated volcanic plume (2.1GB, 250 frames @ 24fps)");
                 }
 
                 ImGui::SameLine();

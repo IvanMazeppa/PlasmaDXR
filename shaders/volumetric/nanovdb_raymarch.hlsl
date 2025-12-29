@@ -63,6 +63,10 @@ cbuffer NanoVDBConstants : register(b0) {
     float groundPlaneHeight;           // Y position of infinite plane
     float3 groundPlaneAlbedo;          // Surface color/reflectance
     float groundPlaneRoughness;        // 0=mirror, 1=diffuse
+
+    // Coordinate system conversion (Blender Z-up → DirectX Y-up)
+    uint convertFromBlenderCoords;     // 0=no conversion, 1=swap Y/Z when sampling
+    float3 _padding1;                  // Padding to 256-byte alignment
 };
 
 // ============================================================================
@@ -156,6 +160,14 @@ float SampleNanoVDBDensity(float3 worldPos) {
     float3 currentCenter = originalGridCenter + gridOffset;
     float3 originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale;
 
+    // If bounds were converted from Blender coords, convert sample position back
+    // DirectX (Y-up) → Blender (Z-up): swap Y and Z
+    if (convertFromBlenderCoords != 0) {
+        float tempY = originalPos.y;
+        originalPos.y = originalPos.z;
+        originalPos.z = tempY;
+    }
+
     // Convert world position to index space using the grid's transform
     pnanovdb_vec3_t worldVec;
     worldVec.x = originalPos.x;
@@ -225,6 +237,14 @@ float SampleNanoVDBDensityTrilinear(float3 worldPos) {
     // Where currentCenter = originalGridCenter + gridOffset
     float3 currentCenter = originalGridCenter + gridOffset;
     float3 originalPos = originalGridCenter + (worldPos - currentCenter) / gridScale;
+
+    // If bounds were converted from Blender coords, convert sample position back
+    // DirectX (Y-up) → Blender (Z-up): swap Y and Z
+    if (convertFromBlenderCoords != 0) {
+        float tempY = originalPos.y;
+        originalPos.y = originalPos.z;
+        originalPos.z = tempY;
+    }
 
     // Convert world to index space
     pnanovdb_vec3_t worldVec;
@@ -544,40 +564,50 @@ float SampleProceduralDensity(float3 worldPos) {
 
 // Compute shadow attenuation by marching toward a light through the volume
 // Returns transmittance (1.0 = fully lit, 0.0 = fully shadowed)
+// NOTE: samplePos may be outside the volume (e.g., on ground plane)
+// We compute the ray-AABB intersection to find where to march through the volume
 float ComputeShadowAttenuation(float3 samplePos, float3 lightPos) {
     float3 toLight = lightPos - samplePos;
     float lightDist = length(toLight);
     float3 lightDir = toLight / lightDist;
 
+    // Compute ray-AABB intersection to find where shadow ray passes through volume
+    float3 invDir = 1.0 / lightDir;
+    float tMin, tMax;
+    if (!RayAABBIntersection(samplePos, invDir, gridWorldMin, gridWorldMax, tMin, tMax)) {
+        // Shadow ray doesn't intersect volume at all - fully lit
+        return 1.0;
+    }
+
+    // Clamp march distance to not exceed light position
+    tMax = min(tMax, lightDist);
+
+    // If intersection is behind us or light is before volume entry, return 1.0
+    if (tMax <= 0.0 || tMax < tMin) {
+        return 1.0;
+    }
+
     // Use shadowSteps from cbuffer, default to 16 if not set
     uint numSteps = (shadowSteps > 0 && shadowSteps <= 32) ? shadowSteps : 16;
 
-    // Shadow step size - coarser than primary march for performance
-    // March up to light position or edge of volume, whichever is closer
-    float shadowStepSize = stepSize * 2.0;
-    float maxShadowDist = min(lightDist, maxRayDistance * 0.5);
+    // Calculate step size to cover the intersection region
+    float marchDist = tMax - tMin;
+    float shadowStepSize = marchDist / float(numSteps);
 
     float shadowOpticalDepth = 0.0;
-    float3 shadowPos = samplePos;
+
+    // Start at the entry point of the volume (tMin)
+    float t = tMin;
 
     [loop]
     for (uint s = 0; s < numSteps; s++) {
-        shadowPos += lightDir * shadowStepSize;
-
-        // Check if we've passed the light or exited the volume bounds
-        float distTraveled = shadowStepSize * float(s + 1);
-        if (distTraveled > maxShadowDist) break;
-
-        // Check if outside grid AABB
-        if (shadowPos.x < gridWorldMin.x || shadowPos.x > gridWorldMax.x ||
-            shadowPos.y < gridWorldMin.y || shadowPos.y > gridWorldMax.y ||
-            shadowPos.z < gridWorldMin.z || shadowPos.z > gridWorldMax.z) {
-            break;
-        }
+        float3 shadowPos = samplePos + lightDir * t;
 
         // Sample density at shadow position
         float shadowDensity = SampleDensity(shadowPos);
         shadowOpticalDepth += shadowDensity * absorptionCoeff * shadowStepSize;
+
+        t += shadowStepSize;
 
         // Early out if already very dark (optimization)
         if (shadowOpticalDepth > 5.0) {

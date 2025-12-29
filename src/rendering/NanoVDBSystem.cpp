@@ -336,6 +336,20 @@ bool NanoVDBSystem::LoadFromFile(const std::string& filepath, const std::string&
                 static_cast<float>(worldBBox.mCoord[1][2])
             };
 
+            // Apply Blender Z-up → DirectX Y-up coordinate transform if enabled
+            // Blender: X=right, Y=forward, Z=up
+            // DirectX: X=right, Y=up, Z=forward
+            // Transform: newX=oldX, newY=oldZ, newZ=oldY
+            if (m_convertFromBlenderCoords) {
+                LOG_INFO("[NanoVDB]   Applying Blender (Z-up) -> DirectX (Y-up) coordinate transform...");
+                float tempMinY = m_gridWorldMin.y;
+                float tempMaxY = m_gridWorldMax.y;
+                m_gridWorldMin.y = m_gridWorldMin.z;
+                m_gridWorldMax.y = m_gridWorldMax.z;
+                m_gridWorldMin.z = tempMinY;
+                m_gridWorldMax.z = tempMaxY;
+            }
+
             LOG_INFO("[NanoVDB]   World Bounds: ({:.2f}, {:.2f}, {:.2f}) to ({:.2f}, {:.2f}, {:.2f})",
                      m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
                      m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
@@ -751,6 +765,9 @@ void NanoVDBSystem::Render(
     constants.groundPlaneAlbedo = m_groundPlaneAlbedo;
     constants.groundPlaneRoughness = m_groundPlaneRoughness;
 
+    // Coordinate system conversion (Blender Z-up → DirectX Y-up)
+    constants.convertFromBlenderCoords = m_convertFromBlenderCoords ? 1 : 0;
+
     // DEBUG: Log transform parameters periodically for animation debugging
     static int debugFrameCounter = 0;
     if (m_animFrames.size() > 0 && (debugFrameCounter++ % 120 == 0)) {
@@ -1084,8 +1101,22 @@ bool NanoVDBSystem::LoadAnimationSequence(const std::vector<std::string>& filepa
                     m_gridWorldMax = { unionMaxX, unionMaxY, unionMaxZ };
                     m_voxelCount = static_cast<uint32_t>(maxVoxelCount);
 
-                    LOG_INFO("[NanoVDB] UNION bounds (all frames): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
+                    LOG_INFO("[NanoVDB] UNION bounds (all frames, raw): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
                              unionMinX, unionMinY, unionMinZ, unionMaxX, unionMaxY, unionMaxZ);
+
+                    // Apply Blender Z-up → DirectX Y-up coordinate transform if enabled
+                    if (m_convertFromBlenderCoords) {
+                        LOG_INFO("[NanoVDB] Applying Blender (Z-up) -> DirectX (Y-up) coordinate transform...");
+                        float tempMinY = m_gridWorldMin.y;
+                        float tempMaxY = m_gridWorldMax.y;
+                        m_gridWorldMin.y = m_gridWorldMin.z;
+                        m_gridWorldMax.y = m_gridWorldMax.z;
+                        m_gridWorldMin.z = tempMinY;
+                        m_gridWorldMax.z = tempMaxY;
+                        LOG_INFO("[NanoVDB] UNION bounds (transformed): ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})",
+                                 m_gridWorldMin.x, m_gridWorldMin.y, m_gridWorldMin.z,
+                                 m_gridWorldMax.x, m_gridWorldMax.y, m_gridWorldMax.z);
+                    }
                 } else {
                     // Fallback: use a reasonable default size centered at origin
                     LOG_WARN("[NanoVDB] Could not extract valid bounds from any frame - using default 200x200x200");

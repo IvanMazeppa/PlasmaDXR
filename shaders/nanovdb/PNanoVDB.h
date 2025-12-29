@@ -1150,17 +1150,17 @@ PNANOVDB_FORCE_INLINE void pnanovdb_write_vec3(pnanovdb_buf_t buf, pnanovdb_addr
 
 // BuildType = Unknown, float, double, int16_t, int32_t, int64_t, Vec3f, Vec3d, Mask, ...
 // bit count of values in leaf nodes, i.e. 8*sizeof(*nanovdb::LeafNode<BuildType>::mValues) or zero if no values are stored
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_value_strides_bits[PNANOVDB_GRID_TYPE_CAP]  = {  0, 32, 64, 16, 32, 64,  96, 192,  0, 16, 32,  1, 32,  4,  8, 16,  0, 128, 256,  0,  0,  0,  0, 16, 24, 48,  8,  0 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_value_strides_bits[PNANOVDB_GRID_TYPE_CAP]  = {  0, 32, 64, 16, 32, 64,  96, 192,  0, 16, 32,  1, 32,  4,  8, 16,  0, 128, 256,  0,  0,  0,  0, 16, 24, 48,  8,  0,  0,  0,  0,  0 };
 // bit count of the Tile union in InternalNodes, i.e. 8*sizeof(nanovdb::InternalData::Tile)
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_table_strides_bits[PNANOVDB_GRID_TYPE_CAP]  = { 64, 64, 64, 64, 64, 64, 128, 192, 64, 64, 64, 64, 64, 64, 64, 64, 64, 128, 256, 64, 64, 64, 64, 64, 64, 64, 64, 64 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_table_strides_bits[PNANOVDB_GRID_TYPE_CAP]  = { 64, 64, 64, 64, 64, 64, 128, 192, 64, 64, 64, 64, 64, 64, 64, 64, 64, 128, 256, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64 };
 // bit count of min/max values, i.e. 8*sizeof(nanovdb::LeafData::mMinimum) or zero if no min/max exists
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_minmax_strides_bits[PNANOVDB_GRID_TYPE_CAP] = {  0, 32, 64, 16, 32, 64,  96, 192,  8, 16, 32,  8, 32, 32, 32, 32, 32, 128, 256, 64, 64,  0,  0, 64, 24, 48,  8,  0 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_minmax_strides_bits[PNANOVDB_GRID_TYPE_CAP] = {  0, 32, 64, 16, 32, 64,  96, 192,  8, 16, 32,  8, 32, 32, 32, 32, 32, 128, 256, 64, 64,  0,  0, 64, 24, 48,  8,  0,  0,  0,  0,  0 };
 // bit alignment of the value type, controlled by the smallest native type, which is why it is always 0, 8, 16, 32, or 64, e.g. for Vec3f it is 32
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_minmax_aligns_bits[PNANOVDB_GRID_TYPE_CAP]  = {  0, 32, 64, 16, 32, 64,  32,  64,  8, 16, 32,  8, 32, 32, 32, 32, 32,  32,  64, 64, 64,  0,  0, 64,  8, 16,  8,  0 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_minmax_aligns_bits[PNANOVDB_GRID_TYPE_CAP]  = {  0, 32, 64, 16, 32, 64,  32,  64,  8, 16, 32,  8, 32, 32, 32, 32, 32,  32,  64, 64, 64,  0,  0, 64,  8, 16,  8,  0,  0,  0,  0,  0 };
 // bit alignment of the stats (avg/std-dev) types, e.g. 8*sizeof(nanovdb::LeafData::mAverage)
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_stat_strides_bits[PNANOVDB_GRID_TYPE_CAP]   = {  0, 32, 64, 32, 32, 64,  32,  64,  8, 32, 32,  8, 32, 32, 32, 32, 32,  32,  64, 64, 64,  0,  0, 64, 32, 32, 32,  0 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_stat_strides_bits[PNANOVDB_GRID_TYPE_CAP]   = {  0, 32, 64, 32, 32, 64,  32,  64,  8, 32, 32,  8, 32, 32, 32, 32, 32,  32,  64, 64, 64,  0,  0, 64, 32, 32, 32,  0,  0,  0,  0,  0 };
 // one of the 4 leaf types defined above, e.g. PNANOVDB_LEAF_TYPE_INDEX = 3
-PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_leaf_type[PNANOVDB_GRID_TYPE_CAP]           = {  0,  0,  0,  0,  0,  0,  0,    0,  1,  0,  0,  1,  0,  2,  2,  2,  2,   0,   0,  3,  3,  0,  0,  5,  0,  0,  0,  0 };
+PNANOVDB_STATIC_CONST pnanovdb_uint32_t pnanovdb_grid_type_leaf_type[PNANOVDB_GRID_TYPE_CAP]           = {  0,  0,  0,  0,  0,  0,  0,    0,  1,  0,  0,  1,  0,  2,  2,  2,  2,   0,   0,  3,  3,  0,  0,  5,  0,  0,  0,  0,  0,  0,  0,  0 };
 
 struct pnanovdb_map_t
 {
@@ -1909,6 +1909,10 @@ PNANOVDB_STATIC_CONST pnanovdb_grid_type_constants_t pnanovdb_grid_type_constant
 {28, 31, 34, 40, 44, 64,  24, 8, 20, 32,  8224, 8227, 8232, 8236, 8256, 270400,  1056, 1059, 1064, 1068, 1088, 33856,  80, 83, 88, 92, 96, 1632},
 {28, 34, 40, 48, 52, 64,  48, 8, 20, 32,  8224, 8230, 8236, 8240, 8256, 270400,  1056, 1062, 1068, 1072, 1088, 33856,  80, 86, 92, 96, 128, 3200},
 {28, 29, 30, 32, 36, 64,  8, 8, 20, 32,  8224, 8225, 8228, 8232, 8256, 270400,  1056, 1057, 1060, 1064, 1088, 33856,  80, 81, 84, 88, 96, 608},
+{28, 28, 28, 28, 28, 32,  0, 8, 20, 32,  8224, 8224, 8224, 8224, 8224, 270368,  1056, 1056, 1056, 1056, 1056, 33824,  80, 80, 80, 80, 96, 96},
+{28, 28, 28, 28, 28, 32,  0, 8, 20, 32,  8224, 8224, 8224, 8224, 8224, 270368,  1056, 1056, 1056, 1056, 1056, 33824,  80, 80, 80, 80, 96, 96},
+{28, 28, 28, 28, 28, 32,  0, 8, 20, 32,  8224, 8224, 8224, 8224, 8224, 270368,  1056, 1056, 1056, 1056, 1056, 33824,  80, 80, 80, 80, 96, 96},
+{28, 28, 28, 28, 28, 32,  0, 8, 20, 32,  8224, 8224, 8224, 8224, 8224, 270368,  1056, 1056, 1056, 1056, 1056, 33824,  80, 80, 80, 80, 96, 96},
 {28, 28, 28, 28, 28, 32,  0, 8, 20, 32,  8224, 8224, 8224, 8224, 8224, 270368,  1056, 1056, 1056, 1056, 1056, 33824,  80, 80, 80, 80, 96, 96},
 };
 

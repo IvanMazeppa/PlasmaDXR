@@ -43,6 +43,7 @@ class IterationResult:
     passed: bool
     lpips_score: Optional[float]
     clip_score: Optional[float]
+    temporal_score: Optional[float]  # Temporal consistency (0-1, higher = better)
     overall_score: float
     script_path: str
     render_path: Optional[str]
@@ -97,6 +98,7 @@ async def create_asset(
     max_iterations: int = 5,
     lpips_threshold: float = 0.35,
     clip_threshold: float = 0.60,
+    temporal_threshold: float = 0.7,
     resolution: int = 96,
     frame_end: int = 50
 ) -> str:
@@ -115,6 +117,7 @@ async def create_asset(
         max_iterations: Maximum improvement attempts (default 5)
         lpips_threshold: LPIPS score to pass (default 0.35)
         clip_threshold: CLIP score to pass (default 0.60)
+        temporal_threshold: Temporal consistency to pass (default 0.7, higher = smoother)
         resolution: Blender simulation resolution (default 96)
         frame_end: Animation end frame (default 50)
 
@@ -151,6 +154,7 @@ async def create_asset(
             semantic_query=semantic_query or description,
             lpips_threshold=lpips_threshold,
             clip_threshold=clip_threshold,
+            temporal_threshold=temporal_threshold,
             resolution=current_resolution,
             frame_end=frame_end,
             turbulence=current_turbulence
@@ -208,6 +212,7 @@ async def run_iteration(
     semantic_query: Optional[str] = None,
     lpips_threshold: float = 0.35,
     clip_threshold: float = 0.60,
+    temporal_threshold: float = 0.7,
     resolution: int = 96,
     frame_end: int = 50,
     turbulence: float = 0.3
@@ -215,7 +220,7 @@ async def run_iteration(
     """
     Execute one iteration of the asset generation pipeline.
 
-    Steps: Generate/modify script → Execute Blender → Evaluate result
+    Steps: Generate/modify script → Execute Blender → Evaluate spatial → Evaluate temporal
 
     Returns:
         JSON with IterationResult
@@ -226,6 +231,7 @@ async def run_iteration(
     script_name = f"{asset_name}_v{iteration}"
     vdb_files = []
     render_path = None
+    render_dir = f"build/vdb_output/{asset_name}"
 
     # This is a coordinator - in practice, Claude Code will call the
     # individual MCP tools. Here we return the iteration structure.
@@ -234,15 +240,20 @@ async def run_iteration(
         passed=False,
         lpips_score=None,
         clip_score=None,
+        temporal_score=None,
         overall_score=0.0,
         script_path=f"assets/blender_scripts/generated/{script_name}.py",
         render_path=render_path,
         vdb_files=vdb_files,
         recommendations=[
-            f"Use script-generator to create/modify script for: {description}",
-            f"Use blender-executor to run the script with resolution={resolution}",
-            f"Use asset-evaluator to compare output against reference/query",
-            "Analyze recommendations and adjust parameters for next iteration"
+            f"1. Use script-generator to create/modify script for: {description}",
+            f"2. Use blender-executor to run the script with resolution={resolution}",
+            f"3. Use asset-evaluator evaluate_render for spatial quality (LPIPS/CLIP)",
+            f"4. If spatial quality passes (LPIPS<{lpips_threshold}, CLIP>{clip_threshold}):",
+            f"   Run asset-evaluator analyze_temporal_quality on {render_dir}",
+            f"   Temporal threshold: {temporal_threshold} (higher = smoother)",
+            "5. If temporal has flickering: increase noise_scale or reduce turbulence",
+            "6. Adjust parameters based on recommendations for next iteration"
         ],
         duration_seconds=time.time() - start_time,
         timestamp=datetime.now().isoformat()

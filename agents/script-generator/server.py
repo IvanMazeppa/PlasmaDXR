@@ -29,6 +29,16 @@ from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+# Import technique catalog for variety in generation
+from technique_catalog import (
+    PYRO_TECHNIQUES,
+    ADVANCED_TECHNIQUES,
+    get_technique_by_keywords,
+    get_technique_with_randomized_params,
+    get_random_technique,
+    list_all_techniques,
+)
+
 # Load environment
 load_dotenv()
 
@@ -238,6 +248,9 @@ def create_domain():
     # Gas behavior
 {gas_settings}
 
+    # Noise upres for fine detail (2-4x visual improvement)
+{noise_settings}
+
     # Add volumetric material for rendering
     add_volume_material(domain)
 
@@ -305,6 +318,11 @@ def create_emitter():
     emitter.hide_render = True
 
     return emitter
+
+
+def setup_emission_dynamics(emitter):
+    """Setup animated emission dynamics with keyframes."""
+{emission_keyframes}
 
 
 def setup_camera_and_lighting():
@@ -444,6 +462,7 @@ def main():
 
     domain = create_domain()
     emitter = create_emitter()
+    setup_emission_dynamics(emitter)  # Animated emission profiles
     setup_camera_and_lighting()
 
     if Config.BAKE:
@@ -898,10 +917,15 @@ async def generate_script(
     resolution: int = 96,
     frame_start: int = 1,
     frame_end: int = 50,
-    template_name: Optional[str] = None
+    template_name: Optional[str] = None,
+    technique_name: Optional[str] = None,
+    force_random_technique: bool = False
 ) -> str:
     """
     Generate a new Blender script from a description.
+
+    Uses the Technique Catalog to select categorically different approaches,
+    ensuring variety across generated scripts.
 
     Args:
         effect_type: Type of effect ("pyro", "liquid", "explosion", "nebula", etc.)
@@ -911,6 +935,8 @@ async def generate_script(
         frame_start: Start frame (default 1)
         frame_end: End frame (default 50)
         template_name: Optional template to base on
+        technique_name: Optional specific technique from catalog (e.g., "rising_mushroom")
+        force_random_technique: If True, ignore keywords and pick randomly for maximum variety
 
     Returns:
         JSON with GeneratedScript containing path and content
@@ -945,52 +971,259 @@ async def generate_script(
         domain_template = PYRO_DOMAIN_TEMPLATE
         domain_type = "GAS"
 
-        # Customize gas settings based on effect
-        if "explosion" in effect_lower or "explosion" in description.lower():
-            # Aggressive settings for visible, dramatic explosions
-            gas_settings = """    settings.burning_rate = 1.5      # High burn rate for intense flames
-    settings.flame_smoke = 1.0       # Maximum smoke from flames
-    settings.flame_vorticity = 0.8   # Strong turbulent swirling
-    settings.flame_max_temp = 5.0    # Very hot flames (bright yellow/white)
-    settings.vorticity = 0.5         # Additional turbulence"""
-            emitter_geometry = """    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, 0))  # Larger emitter"""
-            flow_settings = """    flow.flow_type = 'BOTH'  # Fire and smoke
-    flow.fuel_amount = 3.0    # High fuel for dramatic flames
-    flow.temperature = 3.0    # Hot initial temperature"""
+        # =====================================================================
+        # TECHNIQUE SELECTION - Core variety mechanism
+        # =====================================================================
+        selected_technique = None
+
+        if technique_name and technique_name in PYRO_TECHNIQUES:
+            # Explicit technique requested
+            selected_technique = get_technique_with_randomized_params(technique_name, "pyro")
+            notes.append(f"Using requested technique: {technique_name}")
+        elif force_random_technique:
+            # Force random for maximum variety
+            selected_technique = get_random_technique("pyro")
+            selected_technique = get_technique_with_randomized_params(
+                selected_technique["name"], "pyro"
+            )
+            notes.append(f"Random technique selected: {selected_technique['name']}")
         else:
-            gas_settings = """    settings.vorticity = 0.1
-    settings.dissolve_speed = 25
-    settings.use_dissolve_smoke = True"""
-            emitter_geometry = """    bpy.ops.mesh.primitive_ico_sphere_add(radius=0.3, location=(0, 0, -1))"""
-            flow_settings = """    flow.flow_type = 'SMOKE'
-    flow.smoke_color = (1.0, 0.8, 0.6)
-    flow.temperature = 1.0"""
+            # Keyword matching with fallback to random
+            selected_technique = get_technique_with_randomized_params(description, "pyro")
+            notes.append(f"Technique: {selected_technique['name']} (keyword match)")
+
+        # Extract parameters from technique
+        domain_params = selected_technique.get("domain_params", {})
+        flow_params = selected_technique.get("flow_params", {})
+        emitter_config = selected_technique.get("emitter", {})
+        noise_params = selected_technique.get("noise_params", {})
+        emission_dynamics = selected_technique.get("emission_dynamics", {})
+
+        # Build gas settings from technique parameters
+        gas_lines = []
+        if "burning_rate" in domain_params:
+            gas_lines.append(f"    settings.burning_rate = {domain_params['burning_rate']:.2f}")
+        if "flame_smoke" in domain_params:
+            gas_lines.append(f"    settings.flame_smoke = {domain_params['flame_smoke']:.2f}")
+        if "flame_vorticity" in domain_params:
+            gas_lines.append(f"    settings.flame_vorticity = {domain_params['flame_vorticity']:.2f}")
+        if "flame_max_temp" in domain_params:
+            gas_lines.append(f"    settings.flame_max_temp = {domain_params['flame_max_temp']:.2f}")
+        if "flame_ignition" in domain_params:
+            gas_lines.append(f"    settings.flame_ignition = {domain_params['flame_ignition']:.2f}")
+        if "alpha" in domain_params:
+            gas_lines.append(f"    settings.alpha = {domain_params['alpha']:.2f}  # Density buoyancy")
+        if "beta" in domain_params:
+            gas_lines.append(f"    settings.beta = {domain_params['beta']:.2f}  # Heat buoyancy")
+        if "dissolve_speed" in domain_params:
+            gas_lines.append(f"    settings.dissolve_speed = {int(domain_params['dissolve_speed'])}")
+            gas_lines.append("    settings.use_dissolve_smoke = True")
+
+        # Add technique signature comment
+        gas_lines.insert(0, f"    # Technique: {selected_technique['name']}")
+        gas_lines.insert(1, f"    # {selected_technique.get('visual_signature', 'Custom effect')}")
+
+        gas_settings = "\n".join(gas_lines)
+
+        # =====================================================================
+        # NOISE UPRES SETTINGS - 2-4x visual detail improvement
+        # =====================================================================
+        noise_lines = []
+        if noise_params.get("use_noise", False):
+            noise_lines.append("    settings.use_noise = True")
+            if "noise_scale" in noise_params:
+                noise_lines.append(f"    settings.noise_scale = {int(noise_params['noise_scale'])}")
+            if "noise_strength" in noise_params:
+                noise_lines.append(f"    settings.noise_strength = {noise_params['noise_strength']:.2f}")
+            if "noise_pos_scale" in noise_params:
+                noise_lines.append(f"    settings.noise_pos_scale = {noise_params['noise_pos_scale']:.2f}")
+            notes.append(f"Noise upres: scale={noise_params.get('noise_scale', 2)}, strength={noise_params.get('noise_strength', 1.0):.1f}")
+        else:
+            noise_lines.append("    # Noise upres disabled for this technique")
+        noise_settings = "\n".join(noise_lines)
+
+        # =====================================================================
+        # EMISSION DYNAMICS KEYFRAMES - Realistic combustion animation
+        # =====================================================================
+        emission_lines = []
+        if emission_dynamics:
+            profile = emission_dynamics.get("profile", "sustained")
+            peak_frame = int(emission_dynamics.get("peak_frame", 5))
+            decay_start = int(emission_dynamics.get("decay_start", 25))
+            decay_end = int(emission_dynamics.get("decay_end", 50))
+            peak_fuel = emission_dynamics.get("peak_fuel_multiplier", 1.5)
+            decay_fuel = emission_dynamics.get("decay_fuel_multiplier", 0.2)
+
+            emission_lines.append(f"    # Emission profile: {profile}")
+            emission_lines.append("    flow = emitter.modifiers['Fluid'].flow_settings")
+            emission_lines.append(f"    base_fuel = flow.fuel_amount")
+            emission_lines.append("")
+            emission_lines.append("    # Keyframe emission dynamics")
+
+            if profile == "burst":
+                # Explosive start with rapid decay
+                emission_lines.append(f"    # Frame 1: Initial state (low)")
+                emission_lines.append(f"    bpy.context.scene.frame_set(1)")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * 0.3")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {peak_frame}: Peak explosion")
+                emission_lines.append(f"    bpy.context.scene.frame_set({peak_frame})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {peak_fuel:.1f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {decay_start}: Decay begins")
+                emission_lines.append(f"    bpy.context.scene.frame_set({decay_start})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {(peak_fuel + decay_fuel) / 2:.1f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {decay_end}: Nearly burned out")
+                emission_lines.append(f"    bpy.context.scene.frame_set({decay_end})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {decay_fuel:.2f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+
+            elif profile == "sustained":
+                # Steady burn with gradual ramp up and down
+                emission_lines.append(f"    # Frame 1: Ramp up start")
+                emission_lines.append(f"    bpy.context.scene.frame_set(1)")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * 0.5")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {peak_frame}: Full intensity")
+                emission_lines.append(f"    bpy.context.scene.frame_set({peak_frame})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {peak_fuel:.1f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {decay_start}: Still burning strong")
+                emission_lines.append(f"    bpy.context.scene.frame_set({decay_start})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {peak_fuel:.1f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {decay_end}: Fade out")
+                emission_lines.append(f"    bpy.context.scene.frame_set({decay_end})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {decay_fuel:.2f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+
+            elif profile == "pulsing":
+                # Rhythmic emission waves
+                pulse_period = int(emission_dynamics.get("pulse_period", 10))
+                emission_lines.append(f"    # Pulsing emission with {pulse_period}-frame period")
+                emission_lines.append(f"    for frame in range(1, Config.FRAME_END, {pulse_period}):")
+                emission_lines.append(f"        bpy.context.scene.frame_set(frame)")
+                emission_lines.append(f"        flow.fuel_amount = base_fuel * {peak_fuel:.1f}")
+                emission_lines.append(f"        flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append(f"        bpy.context.scene.frame_set(frame + {pulse_period // 2})")
+                emission_lines.append(f"        flow.fuel_amount = base_fuel * {decay_fuel:.1f}")
+                emission_lines.append(f"        flow.keyframe_insert(data_path='fuel_amount')")
+
+            elif profile == "decay_only":
+                # Already burning, just fading
+                emission_lines.append(f"    # Frame 1: Already smoldering")
+                emission_lines.append(f"    bpy.context.scene.frame_set(1)")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {peak_fuel:.1f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+                emission_lines.append("")
+                emission_lines.append(f"    # Frame {decay_end}: Embers dying")
+                emission_lines.append(f"    bpy.context.scene.frame_set({decay_end})")
+                emission_lines.append(f"    flow.fuel_amount = base_fuel * {decay_fuel:.2f}")
+                emission_lines.append(f"    flow.keyframe_insert(data_path='fuel_amount')")
+
+            emission_lines.append("")
+            emission_lines.append("    # Reset to frame 1")
+            emission_lines.append("    bpy.context.scene.frame_set(1)")
+            emission_lines.append(f"    print(f'[script] Emission dynamics: {profile} profile applied')")
+
+            notes.append(f"Emission: {profile} (peak@{peak_frame}, decay@{decay_start}-{decay_end})")
+        else:
+            emission_lines.append("    # No emission dynamics for this technique")
+            emission_lines.append("    pass")
+
+        emission_keyframes = "\n".join(emission_lines)
+
+        # Build emitter geometry based on technique
+        emitter_shape = emitter_config.get("shape", "sphere")
+        emitter_z = emitter_config.get("position_z", "ground")
+
+        # Map position to Z coordinate
+        z_positions = {
+            "ground": -2.0,
+            "bottom": -3.0,
+            "mid": 0.0,
+            "elevated": 2.0,
+            "ceiling": 4.0,
+            "surface": 0.0,
+        }
+        z_coord = z_positions.get(emitter_z, 0.0)
+
+        if emitter_shape == "sphere":
+            radius = emitter_config.get("radius", (0.8, 1.2))
+            if isinstance(radius, tuple):
+                radius = (radius[0] + radius[1]) / 2
+            emitter_geometry = f"    bpy.ops.mesh.primitive_uv_sphere_add(radius={radius:.2f}, location=(0, 0, {z_coord:.1f}))"
+        elif emitter_shape == "plane":
+            scale = emitter_config.get("scale_xy", (2.0, 2.0))
+            if isinstance(scale, tuple):
+                scale_val = (scale[0] + scale[1]) / 2
+            else:
+                scale_val = scale
+            emitter_geometry = f"    bpy.ops.mesh.primitive_plane_add(size={scale_val:.1f}, location=(0, 0, {z_coord:.1f}))"
+        elif emitter_shape == "cone":
+            emitter_geometry = f"    bpy.ops.mesh.primitive_cone_add(radius1=0.5, depth=1.0, location=(0, 0, {z_coord:.1f}))"
+        else:
+            emitter_geometry = f"    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, {z_coord:.1f}))"
+
+        # Build flow settings from technique
+        flow_lines = []
+        flow_type = flow_params.get("flow_type", "BOTH")
+        flow_lines.append(f"    flow.flow_type = '{flow_type}'")
+
+        if flow_params.get("flow_behavior"):
+            flow_lines.append(f"    flow.flow_behavior = '{flow_params['flow_behavior']}'")
+
+        if "fuel_amount" in flow_params:
+            flow_lines.append(f"    flow.fuel_amount = {flow_params['fuel_amount']:.2f}")
+        if "temperature" in flow_params:
+            flow_lines.append(f"    flow.temperature = {flow_params['temperature']:.2f}")
+        if "velocity_normal" in flow_params:
+            flow_lines.append(f"    flow.velocity_normal = {flow_params['velocity_normal']:.2f}")
+        if "velocity_random" in flow_params:
+            flow_lines.append(f"    flow.velocity_random = {flow_params['velocity_random']:.2f}")
+
+        flow_settings = "\n".join(flow_lines)
+
+        # Domain scale based on technique
+        domain_scale = 8.0 if selected_technique["name"] in ["volcanic_plume", "stellar_flare"] else 6.0
+
+        # Add technique info to notes
+        notes.append(f"Visual: {selected_technique.get('visual_signature', 'N/A')}")
 
     elif effect_lower in ["liquid", "water", "fluid"]:
         domain_template = LIQUID_DOMAIN_TEMPLATE
         domain_type = "LIQUID"
         gas_settings = ""
+        noise_settings = "    # Noise not applicable for liquid simulations"
+        emission_keyframes = "    # No emission dynamics for liquid\n    pass"
         emitter_geometry = """    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.3, location=(0, 0, 1))"""
         flow_settings = """    flow.use_initial_velocity = True
     flow.velocity_factor = 1.0"""
+        domain_scale = 4.0
     else:
-        # Default to pyro
+        # Default to pyro with random technique for variety
         domain_template = PYRO_DOMAIN_TEMPLATE
         domain_type = "GAS"
-        gas_settings = """    settings.vorticity = 0.1"""
+        selected_technique = get_random_technique("pyro")
+        notes.append(f"Unknown effect '{effect_type}', using random pyro technique: {selected_technique['name']}")
+        gas_settings = """    settings.vorticity = 0.3
+    settings.flame_vorticity = 0.5"""
+        noise_settings = "    settings.use_noise = True\n    settings.noise_scale = 2\n    settings.noise_strength = 1.0"
+        emission_keyframes = "    # Default emission (no keyframes)\n    pass"
         emitter_geometry = """    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 0))"""
-        flow_settings = """    flow.flow_type = 'SMOKE'"""
-        notes.append(f"Unknown effect type '{effect_type}', defaulting to pyro")
+        flow_settings = """    flow.flow_type = 'BOTH'"""
+        domain_scale = 6.0
 
     # Build simulation settings for Config class
     sim_settings = f"""    # Effect: {effect_type}
     # {description[:50]}..."""
-
-    # Determine domain scale based on effect type
-    if effect_lower in ["explosion", "pyro"] or "explosion" in description.lower():
-        domain_scale = 6.0  # Larger domain for explosive effects
-    else:
-        domain_scale = 4.0
 
     # Format the header
     header = SCRIPT_HEADER.format(
@@ -1013,6 +1246,8 @@ async def generate_script(
         title=f"{output_name.replace('_', ' ').title()}",
         filename_stem=output_name,
         gas_settings=gas_settings,
+        noise_settings=noise_settings,
+        emission_keyframes=emission_keyframes,
         emitter_geometry=emitter_geometry,
         flow_settings=flow_settings,
         liquid_settings=gas_settings,
@@ -1186,6 +1421,56 @@ async def modify_script(
     )
 
     return json.dumps(asdict(result), indent=2)
+
+
+@mcp.tool()
+async def list_techniques(
+    effect_type: str = "pyro"
+) -> str:
+    """
+    List available techniques from the catalog for variety in generation.
+
+    Each technique produces categorically different visual results.
+    Use technique_name parameter in generate_script to select specific techniques.
+
+    Args:
+        effect_type: Type of effect ("pyro" currently supported)
+
+    Returns:
+        JSON with available techniques and their descriptions
+
+    Example:
+        list_techniques("pyro")
+    """
+    if effect_type.lower() == "pyro":
+        techniques = []
+        for name, tech in PYRO_TECHNIQUES.items():
+            domain_params = tech.get("domain_params", {})
+            techniques.append({
+                "name": name,
+                "description": tech.get("description", ""),
+                "visual_signature": tech.get("visual_signature", ""),
+                "keywords": tech.get("keywords", []),
+                "key_differences": {
+                    "burning_rate": domain_params.get("burning_rate", "default"),
+                    "flame_smoke": domain_params.get("flame_smoke", "default"),
+                    "flame_vorticity": domain_params.get("flame_vorticity", "default"),
+                    "beta_buoyancy": domain_params.get("beta", "default"),
+                }
+            })
+
+        return json.dumps({
+            "effect_type": effect_type,
+            "count": len(techniques),
+            "techniques": techniques,
+            "usage": "Use technique_name='rising_mushroom' in generate_script()",
+            "tip": "Use force_random_technique=True for maximum variety"
+        }, indent=2)
+
+    return json.dumps({
+        "error": f"Unknown effect type: {effect_type}",
+        "supported": ["pyro"]
+    })
 
 
 # =============================================================================

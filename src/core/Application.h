@@ -386,6 +386,7 @@ private:
     float m_groundPlaneHeight = -500.0f;        // Y position (below accretion disk)
     float m_groundPlaneSize = 3000.0f;          // Width/depth extent
     float m_groundPlaneAlbedo[3] = {0.3f, 0.3f, 0.35f};  // Surface reflectance (gray)
+    float m_groundPlaneRoughness = 0.8f;        // 0=mirror, 1=diffuse (--ground-roughness)
     
     // === PINN Model Selection (--pinn flag) ===
     std::string m_pinnModelPath;                // Model path from --pinn flag (empty = auto-detect)

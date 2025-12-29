@@ -161,6 +161,12 @@ public:
     void SetShadowSteps(uint32_t steps) { m_shadowSteps = std::min(steps, 32u); }
     uint32_t GetShadowSteps() const { return m_shadowSteps; }
 
+    // Coordinate system conversion (Blender Z-up → DirectX Y-up)
+    // When enabled, swaps Y and Z coordinates when loading VDB files
+    // Enable this when loading VDBs exported from Blender which uses Z-up
+    void SetConvertFromBlenderCoords(bool convert) { m_convertFromBlenderCoords = convert; }
+    bool GetConvertFromBlenderCoords() const { return m_convertFromBlenderCoords; }
+
     // Ground plane (Phase 2: Simple plane intersection for NanoVDB)
     void SetGroundPlaneEnabled(bool enabled) { m_enableGroundPlane = enabled; }
     bool GetGroundPlaneEnabled() const { return m_enableGroundPlane; }
@@ -393,7 +399,11 @@ private:
         float groundPlaneHeight;             // 4 bytes - Y position of infinite plane
         DirectX::XMFLOAT3 groundPlaneAlbedo; // 12 bytes - surface color/reflectance
         float groundPlaneRoughness;          // 4 bytes - 0=mirror, 1=diffuse
-    };  // Total: 244 bytes, padded to 256 for D3D12 cbuffer
+
+        // Coordinate system conversion (Blender Z-up → DirectX Y-up)
+        uint32_t convertFromBlenderCoords;   // 4 bytes - 0=no conversion, 1=swap Y/Z
+        DirectX::XMFLOAT3 _padding1;         // 12 bytes - padding to 256-byte alignment
+    };  // Total: 256 bytes for D3D12 cbuffer
 
     Device* m_device = nullptr;
     ResourceManager* m_resources = nullptr;
@@ -449,6 +459,9 @@ private:
     // Phase 1 Shadow Rays - volumetric self-shadowing
     bool m_enableShadows = false;        // Disabled by default (performance)
     uint32_t m_shadowSteps = 16;         // Default shadow march steps
+
+    // Coordinate system conversion (Blender Z-up → DirectX Y-up)
+    bool m_convertFromBlenderCoords = true;  // Enabled by default for Blender exports
 
     // Ground plane (Phase 2: Simple plane intersection)
     bool m_enableGroundPlane = false;
