@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -38,6 +38,195 @@ from technique_catalog import (
     get_random_technique,
     list_all_techniques,
 )
+
+# =============================================================================
+# Blender API Parameter Ranges (from Blender 5.0 Python API)
+# Source: bpy.types.FluidDomainSettings, bpy.types.FluidFlowSettings
+# These ranges are used for validation to prevent invalid parameter errors
+# =============================================================================
+
+BLENDER_PARAM_RANGES = {
+    # FluidDomainSettings - GAS domain
+    "burning_rate": {"min": 0.01, "max": 4.0, "default": 0.75, "type": "float"},
+    "flame_smoke": {"min": 0.0, "max": 8.0, "default": 1.0, "type": "float"},
+    "flame_vorticity": {"min": 0.0, "max": 2.0, "default": 0.5, "type": "float"},
+    "flame_max_temp": {"min": 1.0, "max": 10.0, "default": 3.0, "type": "float"},
+    "flame_ignition": {"min": 0.5, "max": 5.0, "default": 1.5, "type": "float"},
+    "alpha": {"min": -5.0, "max": 5.0, "default": 1.0, "type": "float"},  # density buoyancy
+    "beta": {"min": -5.0, "max": 5.0, "default": 1.0, "type": "float"},   # heat buoyancy
+    "dissolve_speed": {"min": 1, "max": 10000, "default": 5, "type": "int"},
+    "vorticity": {"min": 0.0, "max": 4.0, "default": 0.0, "type": "float"},
+
+    # Noise upres parameters
+    "noise_scale": {"min": 1, "max": 10, "default": 2, "type": "int"},
+    "noise_strength": {"min": 0.0, "max": 10.0, "default": 1.0, "type": "float"},
+    "noise_pos_scale": {"min": 0.0001, "max": 10.0, "default": 2.0, "type": "float"},
+
+    # FluidFlowSettings
+    "fuel_amount": {"min": 0.0, "max": 10.0, "default": 1.0, "type": "float"},
+    "temperature": {"min": -10.0, "max": 10.0, "default": 1.0, "type": "float"},
+    "velocity_normal": {"min": -100.0, "max": 100.0, "default": 0.0, "type": "float"},
+    "velocity_random": {"min": 0.0, "max": 10.0, "default": 0.0, "type": "float"},
+
+    # Domain settings
+    "resolution_max": {"min": 8, "max": 4096, "default": 64, "type": "int"},
+}
+
+
+def validate_parameter(param_name: str, value: float) -> Dict[str, Any]:
+    """
+    Validate a single parameter against Blender API ranges.
+
+    Returns dict with:
+        valid: bool - True if in range
+        clamped_value: The value clamped to valid range (if out of range)
+        warning: Optional warning message
+    """
+    if param_name not in BLENDER_PARAM_RANGES:
+        return {"valid": True, "clamped_value": value, "warning": None}
+
+    range_info = BLENDER_PARAM_RANGES[param_name]
+    min_val = range_info["min"]
+    max_val = range_info["max"]
+
+    if value < min_val:
+        return {
+            "valid": False,
+            "clamped_value": min_val,
+            "warning": f"{param_name}={value} below minimum {min_val}, clamped"
+        }
+    elif value > max_val:
+        return {
+            "valid": False,
+            "clamped_value": max_val,
+            "warning": f"{param_name}={value} above maximum {max_val}, clamped"
+        }
+
+    return {"valid": True, "clamped_value": value, "warning": None}
+
+
+def validate_and_clamp_params(params: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    """
+    Validate all parameters in a dict and clamp to valid ranges.
+
+    Returns:
+        - Validated params dict with clamped values
+        - List of warning messages for out-of-range params
+    """
+    validated = {}
+    warnings = []
+
+    for param_name, value in params.items():
+        if isinstance(value, (int, float)):
+            result = validate_parameter(param_name, value)
+            validated[param_name] = result["clamped_value"]
+            if result["warning"]:
+                warnings.append(result["warning"])
+        else:
+            validated[param_name] = value
+
+    return validated, warnings
+
+
+def generate_effector_code(effector_config: Dict[str, Any]) -> str:
+    """
+    Generate Blender Python code to create fluid effectors from config.
+
+    Args:
+        effector_config: Dict of effector name -> effector properties
+                        {"ground_plane": {"type": "COLLISION", "shape": "plane", ...}}
+
+    Returns:
+        Python code string for the create_effectors() function body
+    """
+    if not effector_config:
+        return "    # No effectors for this technique\n    pass"
+
+    lines = []
+    lines.append("    effectors = []")
+    lines.append("")
+
+    for effector_name, props in effector_config.items():
+        effector_type = props.get("type", "COLLISION")
+        shape = props.get("shape", "plane")
+
+        # Position
+        pos_x = props.get("position_x", 0.0)
+        pos_y = props.get("position_y", 0.0)
+        pos_z = props.get("position_z", 0.0)
+
+        lines.append(f"    # {effector_name}: {props.get('description', effector_type)}")
+
+        if shape == "plane":
+            scale = props.get("scale", 10.0)
+            lines.append(f"    bpy.ops.mesh.primitive_plane_add(size={scale}, location=({pos_x}, {pos_y}, {pos_z}))")
+            lines.append(f"    effector = bpy.context.active_object")
+            lines.append(f"    effector.name = '{effector_name}'")
+
+            # Handle rotation for planes (default is XY plane, rotation_x=90 makes XZ plane, etc.)
+            rot_x = props.get("rotation_x", 0)
+            rot_y = props.get("rotation_y", 0)
+            rot_z = props.get("rotation_z", 0)
+            if rot_x != 0 or rot_y != 0 or rot_z != 0:
+                import math
+                rot_x_rad = rot_x * 3.14159 / 180
+                rot_y_rad = rot_y * 3.14159 / 180
+                rot_z_rad = rot_z * 3.14159 / 180
+                lines.append(f"    effector.rotation_euler = ({rot_x_rad:.4f}, {rot_y_rad:.4f}, {rot_z_rad:.4f})")
+
+        elif shape == "cylinder":
+            radius = props.get("radius", 1.0)
+            height = props.get("height", 2.0)
+            lines.append(f"    bpy.ops.mesh.primitive_cylinder_add(radius={radius}, depth={height}, location=({pos_x}, {pos_y}, {pos_z}))")
+            lines.append(f"    effector = bpy.context.active_object")
+            lines.append(f"    effector.name = '{effector_name}'")
+
+            # Rotation for cylinders
+            rot_x = props.get("rotation_x", 0)
+            rot_y = props.get("rotation_y", 0)
+            rot_z = props.get("rotation_z", 0)
+            if rot_x != 0 or rot_y != 0 or rot_z != 0:
+                rot_x_rad = rot_x * 3.14159 / 180
+                rot_y_rad = rot_y * 3.14159 / 180
+                rot_z_rad = rot_z * 3.14159 / 180
+                lines.append(f"    effector.rotation_euler = ({rot_x_rad:.4f}, {rot_y_rad:.4f}, {rot_z_rad:.4f})")
+
+        elif shape == "cube":
+            scale = props.get("scale", 2.0)
+            lines.append(f"    bpy.ops.mesh.primitive_cube_add(size={scale}, location=({pos_x}, {pos_y}, {pos_z}))")
+            lines.append(f"    effector = bpy.context.active_object")
+            lines.append(f"    effector.name = '{effector_name}'")
+
+        else:
+            # Default to sphere
+            radius = props.get("radius", 1.0)
+            lines.append(f"    bpy.ops.mesh.primitive_uv_sphere_add(radius={radius}, location=({pos_x}, {pos_y}, {pos_z}))")
+            lines.append(f"    effector = bpy.context.active_object")
+            lines.append(f"    effector.name = '{effector_name}'")
+
+        # Add Fluid modifier with Effector type
+        lines.append(f"    bpy.ops.object.modifier_add(type='FLUID')")
+        lines.append(f"    effector.modifiers['Fluid'].fluid_type = 'EFFECTOR'")
+        lines.append(f"    eff_settings = effector.modifiers['Fluid'].effector_settings")
+        lines.append(f"    eff_settings.effector_type = '{effector_type}'")
+
+        # GUIDE-specific settings
+        if effector_type == "GUIDE":
+            guide_mode = props.get("guide_mode", "MAXIMUM")
+            velocity_factor = props.get("velocity_factor", 1.0)
+            lines.append(f"    eff_settings.guide_mode = '{guide_mode}'")
+            lines.append(f"    eff_settings.velocity_factor = {velocity_factor}")
+
+        # Hide effector in render (invisible collision surface)
+        lines.append(f"    effector.hide_render = True")
+        lines.append(f"    effectors.append(effector)")
+        lines.append("")
+
+    lines.append(f"    print(f'[script] Created {{len(effectors)}} effector(s)')")
+    lines.append(f"    return effectors")
+
+    return "\n".join(lines)
+
 
 # Load environment
 load_dotenv()
@@ -325,6 +514,11 @@ def setup_emission_dynamics(emitter):
 {emission_keyframes}
 
 
+def create_effectors(domain):
+    """Create fluid effectors (collision/guide objects) for shaping flow."""
+{effector_code}
+
+
 def setup_camera_and_lighting():
     """Add camera and lights for rendering."""
     # Camera
@@ -463,6 +657,7 @@ def main():
     domain = create_domain()
     emitter = create_emitter()
     setup_emission_dynamics(emitter)  # Animated emission profiles
+    create_effectors(domain)  # Create collision/guide effectors
     setup_camera_and_lighting()
 
     if Config.BAKE:
@@ -998,6 +1193,20 @@ async def generate_script(
         emitter_config = selected_technique.get("emitter", {})
         noise_params = selected_technique.get("noise_params", {})
         emission_dynamics = selected_technique.get("emission_dynamics", {})
+        effector_config = selected_technique.get("effectors", {})
+
+        # =====================================================================
+        # PARAMETER VALIDATION - Clamp to Blender API ranges
+        # =====================================================================
+        domain_params, domain_warnings = validate_and_clamp_params(domain_params)
+        flow_params, flow_warnings = validate_and_clamp_params(flow_params)
+        noise_params, noise_warnings = validate_and_clamp_params(noise_params)
+
+        all_warnings = domain_warnings + flow_warnings + noise_warnings
+        if all_warnings:
+            notes.append(f"Validation: {len(all_warnings)} param(s) clamped to valid ranges")
+            for w in all_warnings[:3]:  # Show first 3 warnings
+                notes.append(f"  - {w}")
 
         # Build gas settings from technique parameters
         gas_lines = []
@@ -1197,6 +1406,11 @@ async def generate_script(
         # Add technique info to notes
         notes.append(f"Visual: {selected_technique.get('visual_signature', 'N/A')}")
 
+        # Generate effector code from technique config
+        effector_code = generate_effector_code(effector_config)
+        if effector_config:
+            notes.append(f"Effectors: {len(effector_config)} ({', '.join(effector_config.keys())})")
+
     elif effect_lower in ["liquid", "water", "fluid"]:
         domain_template = LIQUID_DOMAIN_TEMPLATE
         domain_type = "LIQUID"
@@ -1207,6 +1421,7 @@ async def generate_script(
         flow_settings = """    flow.use_initial_velocity = True
     flow.velocity_factor = 1.0"""
         domain_scale = 4.0
+        effector_code = "    # No effectors for liquid simulation\n    pass"
     else:
         # Default to pyro with random technique for variety
         domain_template = PYRO_DOMAIN_TEMPLATE
@@ -1220,6 +1435,9 @@ async def generate_script(
         emitter_geometry = """    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 0))"""
         flow_settings = """    flow.flow_type = 'BOTH'"""
         domain_scale = 6.0
+        # Use effector config from selected random technique if available
+        effector_config = selected_technique.get("effectors", {})
+        effector_code = generate_effector_code(effector_config)
 
     # Build simulation settings for Config class
     sim_settings = f"""    # Effect: {effect_type}
@@ -1250,6 +1468,7 @@ async def generate_script(
         emission_keyframes=emission_keyframes,
         emitter_geometry=emitter_geometry,
         flow_settings=flow_settings,
+        effector_code=effector_code,
         liquid_settings=gas_settings,
         inflow_geometry=emitter_geometry,
         inflow_settings=flow_settings
@@ -1471,6 +1690,73 @@ async def list_techniques(
         "error": f"Unknown effect type: {effect_type}",
         "supported": ["pyro"]
     })
+
+
+@mcp.tool()
+async def validate_parameters(
+    params: Dict[str, Any]
+) -> str:
+    """
+    Validate Blender fluid simulation parameters against API ranges.
+
+    Uses documented Blender 5.0 Python API ranges to validate parameters.
+    Returns validation results with any necessary clamping.
+
+    Args:
+        params: Dictionary of parameter name -> value to validate
+
+    Returns:
+        JSON with validation results, including:
+        - valid: True if all params in range
+        - validated_params: Clamped values
+        - warnings: List of any out-of-range issues
+
+    Example:
+        validate_parameters({
+            "burning_rate": 5.0,  # Above max of 4.0
+            "flame_smoke": 3.5,   # Valid
+            "temperature": 15.0   # Above max of 10.0
+        })
+    """
+    validated, warnings = validate_and_clamp_params(params)
+
+    return json.dumps({
+        "valid": len(warnings) == 0,
+        "validated_params": validated,
+        "warnings": warnings,
+        "param_count": len(params),
+        "clamped_count": len(warnings),
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_parameter_ranges() -> str:
+    """
+    Get all documented Blender 5.0 fluid simulation parameter ranges.
+
+    Returns the valid ranges for all known parameters, sourced from
+    bpy.types.FluidDomainSettings and bpy.types.FluidFlowSettings.
+
+    Useful for understanding what values are valid before generation.
+
+    Returns:
+        JSON with all parameter ranges
+
+    Example:
+        get_parameter_ranges()
+    """
+    return json.dumps({
+        "source": "Blender 5.0 Python API",
+        "parameter_ranges": BLENDER_PARAM_RANGES,
+        "categories": {
+            "domain_gas": ["burning_rate", "flame_smoke", "flame_vorticity",
+                          "flame_max_temp", "flame_ignition", "alpha", "beta",
+                          "dissolve_speed", "vorticity"],
+            "noise_upres": ["noise_scale", "noise_strength", "noise_pos_scale"],
+            "flow": ["fuel_amount", "temperature", "velocity_normal", "velocity_random"],
+            "general": ["resolution_max"],
+        }
+    }, indent=2)
 
 
 # =============================================================================

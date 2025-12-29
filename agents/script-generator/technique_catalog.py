@@ -97,6 +97,17 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
             "radius": (0.8, 1.2),
         },
 
+        # Effector configuration - ground deflector shapes mushroom cap
+        "effectors": {
+            "ground_plane": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": -3.5,           # Below emitter
+                "scale": 12.0,                # Wide ground plane
+                "description": "Ground deflector - forces smoke upward, creates mushroom shape",
+            },
+        },
+
         # Camera suggestion
         "camera": {
             "angle": "low_angle_upward",      # Look up at rising cloud
@@ -152,6 +163,24 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
             "shape": "plane",                 # Flat emission surface
             "position_z": "ground",
             "scale_xy": (2.0, 3.0),           # Wide emission area
+        },
+
+        # Effector configuration - ground surface keeps smoke low
+        "effectors": {
+            "ground_surface": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": -0.5,           # Just below emitter
+                "scale": 20.0,                # Very wide ground
+                "description": "Ground surface - keeps smoke hugging terrain",
+            },
+            "ceiling_barrier": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": 3.0,            # Low ceiling
+                "scale": 20.0,
+                "description": "Invisible ceiling - prevents smoke from rising too high",
+            },
         },
 
         "camera": {
@@ -318,6 +347,22 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
             "direction": "horizontal",
         },
 
+        # Effector configuration - beam guide for directed flow
+        "effectors": {
+            "beam_guide": {
+                "type": "GUIDE",
+                "shape": "cylinder",
+                "position_z": 0.0,
+                "position_x": 3.0,            # Extend in beam direction
+                "radius": 0.8,
+                "height": 10.0,
+                "rotation_y": 90,             # Horizontal orientation
+                "guide_mode": "MAXIMIZE",
+                "velocity_factor": 2.0,       # Strong directional pull
+                "description": "Cylindrical guide - focuses plasma into tight beam",
+            },
+        },
+
         "camera": {
             "angle": "side_profile",
             "distance": "medium",
@@ -373,6 +418,27 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
             "direction": "vertical",
         },
 
+        # Effector configuration - vent guide for directed upward flow
+        "effectors": {
+            "vent_guide": {
+                "type": "GUIDE",
+                "shape": "cylinder",
+                "position_z": 0.0,
+                "radius": 1.5,
+                "height": 8.0,
+                "guide_mode": "MAXIMIZE",     # Maximize velocity along guide
+                "velocity_factor": 1.5,
+                "description": "Cylindrical guide - concentrates eruption into vertical column",
+            },
+            "ground_surface": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": -0.2,
+                "scale": 15.0,
+                "description": "Ground surface around volcanic vent",
+            },
+        },
+
         "camera": {
             "angle": "distant_low",
             "distance": "very_far",
@@ -423,6 +489,34 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
         "emitter": {
             "shape": "volume",                # Fill volume
             "position_z": "ceiling",          # Start high, spread down
+        },
+
+        # Effector configuration - room boundaries contain fire
+        "effectors": {
+            "floor": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": -2.0,
+                "scale": 8.0,
+                "description": "Room floor",
+            },
+            "ceiling": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": 3.0,
+                "scale": 8.0,
+                "rotation_x": 180,            # Flip to face down
+                "description": "Room ceiling - fire rolls along",
+            },
+            "wall_back": {
+                "type": "COLLISION",
+                "shape": "plane",
+                "position_z": 0.5,
+                "position_y": -4.0,
+                "rotation_x": 90,             # Vertical
+                "scale": 6.0,
+                "description": "Back wall - contains spread",
+            },
         },
 
         "camera": {
