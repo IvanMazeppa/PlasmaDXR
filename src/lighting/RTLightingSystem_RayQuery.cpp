@@ -630,9 +630,9 @@ bool RTLightingSystem_RayQuery::CreateAccelerationStructures() {
             return false;
         }
 
-        // Create instance descs buffer (3 instances for combined TLAS: probe grid, direct RT, ground plane)
+        // Create instance descs buffer (4 instances for combined TLAS: probe grid, direct RT, ground plane, water mesh)
         D3D12_HEAP_PROPERTIES uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(3 * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        D3D12_RESOURCE_DESC instanceDesc = CD3DX12_RESOURCE_DESC::Buffer(4 * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
 
         hr = m_device->GetDevice()->CreateCommittedResource(
             &uploadHeapProps, D3D12_HEAP_FLAG_NONE, &instanceDesc,
@@ -976,17 +976,18 @@ void RTLightingSystem_RayQuery::BuildTLAS_ForSet(
 }
 
 void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cmdList, bool skipBarrier) {
-    // Build a combined TLAS with 1-3 instances for full visibility
+    // Build a combined TLAS with 1-4 instances for full visibility
     // Dynamically includes only the BLAS instances that actually exist:
     //   - Probe Grid BLAS (particles 0-2043) - always exists
     //   - Direct RT BLAS (particles 2044+) - only if overflow particles
     //   - Ground Plane BLAS - only if enabled
+    //   - Water Mesh BLAS - only if enabled
     //
     // Instance IDs are preserved for shader identification:
-    //   ID 0 = Probe Grid, ID 1 = Direct RT, ID 2 = Ground Plane
+    //   ID 0 = Probe Grid, ID 1 = Direct RT, ID 2 = Ground Plane, ID 3 = Water Mesh
 
-    // Create instance descriptors array (max 3 instances)
-    D3D12_RAYTRACING_INSTANCE_DESC instances[3] = {};
+    // Create instance descriptors array (max 4 instances)
+    D3D12_RAYTRACING_INSTANCE_DESC instances[4] = {};
     uint32_t instanceCount = 0;
 
     // Helper lambda to set up an instance descriptor
@@ -1017,6 +1018,18 @@ void RTLightingSystem_RayQuery::BuildCombinedTLAS(ID3D12GraphicsCommandList4* cm
     if (m_groundPlane.enabled && m_groundPlane.blas) {
         SetupInstance(instances[instanceCount], 2, m_groundPlane.blas.Get());
         instanceCount++;
+    }
+
+    // Instance: Water Mesh BLAS (only if enabled)
+    if (m_waterMesh.enabled && m_waterMesh.blas) {
+        SetupInstance(instances[instanceCount], 3, m_waterMesh.blas.Get());
+        instanceCount++;
+        static bool loggedWaterInTLAS = false;
+        if (!loggedWaterInTLAS) {
+            LOG_INFO("Water mesh added to TLAS (InstanceID=3, vertices={}, triangles={})",
+                     m_waterMesh.vertexCount, m_waterMesh.indexCount / 3);
+            loggedWaterInTLAS = true;
+        }
     }
 
     // Safety check - need at least one instance
@@ -1209,6 +1222,11 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
     // Ground plane BLAS (built with its own barrier since it's triangle-based)
     if (m_groundPlane.enabled && m_groundPlane.blas) {
         BuildGroundPlaneBLAS(cmdList);
+    }
+
+    // Water mesh BLAS (built with its own barrier since it's triangle-based)
+    if (m_waterMesh.enabled && m_waterMesh.blas) {
+        BuildWaterMeshBLAS(cmdList);
     }
 
     // BATCHED BLAS BARRIERS: Single call for both particle BLAS
@@ -1477,5 +1495,123 @@ void RTLightingSystem_RayQuery::BuildGroundPlaneBLAS(ID3D12GraphicsCommandList4*
 
     // UAV barrier
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_groundPlane.blas.Get());
+    cmdList->ResourceBarrier(1, &barrier);
+}
+
+// ============================================================================
+// Water Mesh BLAS (Triangle-based for liquid simulation meshes)
+// ============================================================================
+
+void RTLightingSystem_RayQuery::SetWaterMesh(ID3D12Resource* vertexBuffer, ID3D12Resource* indexBuffer,
+                                              uint32_t vertexCount, uint32_t indexCount) {
+    m_waterMesh.vertexBuffer = vertexBuffer;
+    m_waterMesh.indexBuffer = indexBuffer;
+    m_waterMesh.vertexCount = vertexCount;
+    m_waterMesh.indexCount = indexCount;
+
+    if (!vertexBuffer || !indexBuffer || vertexCount == 0 || indexCount == 0) {
+        m_waterMesh.blas.Reset();
+        m_waterMesh.blasScratch.Reset();
+        m_waterMesh.blasSize = 0;
+        LOG_INFO("Water mesh cleared");
+        return;
+    }
+
+    LOG_INFO("Setting water mesh: {} vertices, {} triangles", vertexCount, indexCount / 3);
+
+    // Get BLAS size requirements for triangle geometry
+    // Vertex stride: 6 floats (pos.xyz + normal.xyz) = 24 bytes
+    D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
+    geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+    geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+    geomDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(float) * 6;  // pos + normal
+    geomDesc.Triangles.VertexCount = vertexCount;
+    geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+    geomDesc.Triangles.IndexBuffer = indexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.IndexCount = indexCount;
+    geomDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+    blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    blasInputs.NumDescs = 1;
+    blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    blasInputs.pGeometryDescs = &geomDesc;
+
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+    m_device->GetDevice()->GetRaytracingAccelerationStructurePrebuildInfo(&blasInputs, &prebuildInfo);
+
+    m_waterMesh.blasSize = prebuildInfo.ResultDataMaxSizeInBytes;
+    size_t scratchSize = prebuildInfo.ScratchDataSizeInBytes;
+
+    LOG_INFO("Water mesh BLAS: size={} bytes, scratch={} bytes", m_waterMesh.blasSize, scratchSize);
+
+    // Create BLAS buffer
+    D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_RESOURCE_DESC blasDesc = CD3DX12_RESOURCE_DESC::Buffer(
+        m_waterMesh.blasSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    HRESULT hr = m_device->GetDevice()->CreateCommittedResource(
+        &heapProps, D3D12_HEAP_FLAG_NONE, &blasDesc,
+        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+        nullptr, IID_PPV_ARGS(&m_waterMesh.blas));
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create water mesh BLAS buffer: 0x{:08X}", hr);
+        return;
+    }
+
+    // Create scratch buffer
+    D3D12_RESOURCE_DESC scratchDesc = CD3DX12_RESOURCE_DESC::Buffer(
+        scratchSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    hr = m_device->GetDevice()->CreateCommittedResource(
+        &heapProps, D3D12_HEAP_FLAG_NONE, &scratchDesc,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        nullptr, IID_PPV_ARGS(&m_waterMesh.blasScratch));
+
+    if (FAILED(hr)) {
+        LOG_ERROR("Failed to create water mesh BLAS scratch buffer: 0x{:08X}", hr);
+        m_waterMesh.blas.Reset();
+        return;
+    }
+
+    LOG_INFO("Water mesh BLAS buffers created successfully");
+}
+
+void RTLightingSystem_RayQuery::BuildWaterMeshBLAS(ID3D12GraphicsCommandList4* cmdList) {
+    if (!m_waterMesh.enabled || !m_waterMesh.blas || !m_waterMesh.vertexBuffer) {
+        return;
+    }
+
+    // Build BLAS for triangle geometry
+    D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {};
+    geomDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+    geomDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+    geomDesc.Triangles.VertexBuffer.StartAddress = m_waterMesh.vertexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(float) * 6;  // pos + normal
+    geomDesc.Triangles.VertexCount = m_waterMesh.vertexCount;
+    geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+    geomDesc.Triangles.IndexBuffer = m_waterMesh.indexBuffer->GetGPUVirtualAddress();
+    geomDesc.Triangles.IndexCount = m_waterMesh.indexCount;
+    geomDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS blasInputs = {};
+    blasInputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    blasInputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    blasInputs.NumDescs = 1;
+    blasInputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    blasInputs.pGeometryDescs = &geomDesc;
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc = {};
+    blasDesc.Inputs = blasInputs;
+    blasDesc.DestAccelerationStructureData = m_waterMesh.blas->GetGPUVirtualAddress();
+    blasDesc.ScratchAccelerationStructureData = m_waterMesh.blasScratch->GetGPUVirtualAddress();
+
+    cmdList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
+
+    // UAV barrier
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_waterMesh.blas.Get());
     cmdList->ResourceBarrier(1, &barrier);
 }

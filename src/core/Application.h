@@ -387,7 +387,28 @@ private:
     float m_groundPlaneSize = 3000.0f;          // Width/depth extent
     float m_groundPlaneAlbedo[3] = {0.3f, 0.3f, 0.35f};  // Surface reflectance (gray)
     float m_groundPlaneRoughness = 0.8f;        // 0=mirror, 1=diffuse (--ground-roughness)
-    
+
+    // === Water Mesh System (Phase 5.x - RT Water Rendering) ===
+    struct WaterMeshData {
+        std::vector<float> vertices;   // Interleaved pos + normal (6 floats per vertex)
+        std::vector<uint32_t> indices;
+        uint32_t vertexCount = 0;
+        uint32_t indexCount = 0;
+    };
+    WaterMeshData m_waterMesh;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_waterVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_waterIndexBuffer;
+    bool m_waterMeshEnabled = false;
+    bool m_waterMeshLoaded = false;
+    std::string m_waterMeshPath;
+    float m_waterIOR = 1.33f;                   // Index of refraction
+    float m_waterAbsorption[3] = {0.45f, 0.09f, 0.06f};  // Absorption coefficients (RGB)
+
+    // Water mesh functions
+    bool LoadWaterMesh(const std::string& path);
+    void CreateWaterGPUBuffers();
+    void ReleaseWaterGPUBuffers();
+
     // === PINN Model Selection (--pinn flag) ===
     std::string m_pinnModelPath;                // Model path from --pinn flag (empty = auto-detect)
     int m_pinnModelIndex = 0;                   // Currently selected model in dropdown

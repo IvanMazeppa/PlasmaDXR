@@ -115,6 +115,19 @@ public:
     }
     bool IsGroundPlaneEnabled() const { return m_groundPlane.enabled; }
 
+    // Water mesh settings
+    void SetWaterMesh(ID3D12Resource* vertexBuffer, ID3D12Resource* indexBuffer,
+                      uint32_t vertexCount, uint32_t indexCount);
+    void SetWaterMeshEnabled(bool enabled) { m_waterMesh.enabled = enabled; }
+    bool IsWaterMeshEnabled() const { return m_waterMesh.enabled; }
+    void SetWaterIOR(float ior) { m_waterMesh.ior = ior; }
+    void SetWaterAbsorption(float r, float g, float b) {
+        m_waterMesh.absorption[0] = r;
+        m_waterMesh.absorption[1] = g;
+        m_waterMesh.absorption[2] = b;
+    }
+    bool HasWaterMeshBLAS() const { return m_waterMesh.blas != nullptr; }
+
 private:
     // ========================================================================
     // Dual AS Architecture - Type Definitions (Phase 1)
@@ -149,6 +162,20 @@ private:
         float albedo[3] = {0.3f, 0.3f, 0.35f};
     };
 
+    // Water mesh geometry (triangle-based BLAS for liquid simulation meshes)
+    struct WaterMeshGeometry {
+        ID3D12Resource* vertexBuffer = nullptr;      // External buffer from Application
+        ID3D12Resource* indexBuffer = nullptr;       // External buffer from Application
+        Microsoft::WRL::ComPtr<ID3D12Resource> blas;            // BLAS for water triangles
+        Microsoft::WRL::ComPtr<ID3D12Resource> blasScratch;     // Build scratch
+        uint32_t vertexCount = 0;
+        uint32_t indexCount = 0;
+        size_t blasSize = 0;
+        bool enabled = false;
+        float ior = 1.33f;                           // Index of refraction (water)
+        float absorption[3] = {0.45f, 0.09f, 0.06f}; // Beer-Lambert absorption
+    };
+
     // ========================================================================
     // Private Functions
     // ========================================================================
@@ -168,6 +195,9 @@ private:
     // Ground plane helpers
     bool CreateGroundPlaneGeometry();
     void BuildGroundPlaneBLAS(ID3D12GraphicsCommandList4* cmdList);
+
+    // Water mesh helpers
+    void BuildWaterMeshBLAS(ID3D12GraphicsCommandList4* cmdList);
 
     // Legacy functions (will be removed after migration)
     void GenerateAABBs(ID3D12GraphicsCommandList4* cmdList, ID3D12Resource* particleBuffer);
@@ -245,4 +275,9 @@ private:
     // Ground Plane Geometry (Reflective Surface Experiment)
     // ============================================================================
     GroundPlaneGeometry m_groundPlane;
+
+    // ============================================================================
+    // Water Mesh Geometry (Liquid Simulation RT Rendering)
+    // ============================================================================
+    WaterMeshGeometry m_waterMesh;
 };

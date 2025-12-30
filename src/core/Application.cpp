@@ -22,8 +22,10 @@
 #include "../debug/PIXCaptureHelper.h"
 #endif
 #include <algorithm>
+#include <cfloat>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 
 // STB Image Write for PNG screenshots
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -627,6 +629,7 @@ void Application::Shutdown() {
     m_dlssSystem.reset();
 #endif
 
+    ReleaseWaterGPUBuffers();     // Release Water Mesh GPU buffers
     m_luminousParticles.reset();  // Release Luminous Star Particles
     m_nanoVDBSystem.reset();  // Release NanoVDB volumetric system
     m_rtLighting.reset();
@@ -1253,6 +1256,21 @@ void Application::Render() {
             gaussianConstants.enableGroundPlane = m_enableGroundPlane ? 1u : 0u;
             gaussianConstants.groundPlaneAlbedo = DirectX::XMFLOAT3(
                 m_groundPlaneAlbedo[0], m_groundPlaneAlbedo[1], m_groundPlaneAlbedo[2]);
+
+            // Water Mesh (RT Liquid Simulation)
+            gaussianConstants.enableWaterMesh = (m_waterMeshEnabled && m_waterMeshLoaded) ? 1u : 0u;
+            gaussianConstants.waterIOR = m_waterIOR;
+            gaussianConstants.waterPadding = DirectX::XMFLOAT2(0.0f, 0.0f);
+            gaussianConstants.waterAbsorption = DirectX::XMFLOAT3(
+                m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+            gaussianConstants.waterPadding2 = 0.0f;
+
+            // Debug: Log when water mesh rendering is enabled
+            static bool loggedWaterEnabled = false;
+            if (gaussianConstants.enableWaterMesh != 0 && !loggedWaterEnabled) {
+                LOG_INFO("Water mesh rendering ENABLED in shader constants (IOR={:.2f})", m_waterIOR);
+                loggedWaterEnabled = true;
+            }
 
             // Debug: Log RT toggle values once
             static bool loggedToggles = false;
@@ -4170,6 +4188,98 @@ void Application::RenderImGui() {
         // === Volumetric ReSTIR Controls (Phase 1) ===
         // REMOVED: Legacy ReSTIR system (see docs/ARCHITECTURE_PROPOSAL.md)
 
+        // === Water Mesh (RT Liquid Simulation) ===
+        ImGui::Separator();
+        ImGui::Text("Water Mesh (RT Liquid Simulation)");
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Ray-traced water rendering with:\n"
+                              "- Fresnel-Schlick reflection/refraction\n"
+                              "- Single-bounce RT rays (DXR 1.1 RayQuery)\n"
+                              "- Beer-Lambert absorption\n"
+                              "Export from Blender using assets/blender_scripts/export_water_mesh.py");
+        }
+
+        // Enable checkbox (only when mesh is loaded)
+        if (m_waterMeshLoaded) {
+            if (ImGui::Checkbox("Enable Water Mesh", &m_waterMeshEnabled)) {
+                if (m_rtLighting) {
+                    m_rtLighting->SetWaterMeshEnabled(m_waterMeshEnabled);
+                }
+                LOG_INFO("Water mesh rendering: {}", m_waterMeshEnabled ? "ENABLED" : "DISABLED");
+            }
+        } else {
+            ImGui::BeginDisabled();
+            bool disabled = false;
+            ImGui::Checkbox("Enable Water Mesh", &disabled);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "(No mesh loaded)");
+        }
+
+        // Load mesh controls
+        ImGui::Text("Mesh File:");
+        static char waterMeshPathBuf[512] = "assets/water_meshes/bowl_pour/water_mesh_0020.bin";
+        ImGui::InputText("##WaterMeshPath", waterMeshPathBuf, sizeof(waterMeshPathBuf));
+        ImGui::SameLine();
+        if (ImGui::Button("Load")) {
+            if (LoadWaterMesh(waterMeshPathBuf)) {
+                m_waterMeshPath = waterMeshPathBuf;
+                m_waterMeshLoaded = true;
+                m_waterMeshEnabled = true;  // Auto-enable on successful load
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Load a .bin water mesh exported from Blender\n"
+                              "Format: uint32 vertexCount, uint32 indexCount,\n"
+                              "        float[vertexCount * 6] (pos+normal interleaved),\n"
+                              "        uint32[indexCount] indices");
+        }
+
+        // Material properties (only show when mesh is loaded)
+        if (m_waterMeshLoaded) {
+            ImGui::Separator();
+            ImGui::Text("Water Material Properties:");
+
+            // Index of refraction
+            if (ImGui::SliderFloat("IOR", &m_waterIOR, 1.0f, 2.0f, "%.3f")) {
+                if (m_rtLighting) {
+                    m_rtLighting->SetWaterIOR(m_waterIOR);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Index of Refraction:\n"
+                                  "1.00 = Air (no refraction)\n"
+                                  "1.33 = Water (default)\n"
+                                  "1.50 = Glass\n"
+                                  "2.42 = Diamond");
+            }
+
+            // Absorption coefficients (RGB)
+            bool absorptionChanged = false;
+            ImGui::Text("Absorption (RGB):");
+            absorptionChanged |= ImGui::SliderFloat("R (Red)", &m_waterAbsorption[0], 0.0f, 1.0f, "%.3f");
+            absorptionChanged |= ImGui::SliderFloat("G (Green)", &m_waterAbsorption[1], 0.0f, 1.0f, "%.3f");
+            absorptionChanged |= ImGui::SliderFloat("B (Blue)", &m_waterAbsorption[2], 0.0f, 1.0f, "%.3f");
+            if (absorptionChanged && m_rtLighting) {
+                m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Beer-Lambert absorption coefficients\n"
+                                  "Higher = more light absorbed at that wavelength\n"
+                                  "Default (0.45, 0.09, 0.06) = blue tint\n"
+                                  "(0.05, 0.05, 0.05) = crystal clear");
+            }
+
+            // Mesh statistics
+            ImGui::Separator();
+            ImGui::Text("Mesh Statistics:");
+            ImGui::BulletText("Vertices: %u", m_waterMesh.vertexCount);
+            ImGui::BulletText("Triangles: %u", m_waterMesh.indexCount / 3);
+            ImGui::BulletText("Path: %s", m_waterMeshPath.c_str());
+        }
+
     }
 
     // Hybrid Probe Grid System (Phase 0.13.1)
@@ -6174,6 +6284,137 @@ void Application::RenderImGui() {
         }
     }
 
+    // === Water Mesh (RT Liquid Simulation) ===
+    if (ImGui::CollapsingHeader("Water Mesh (RT Liquid)")) {
+        ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "RT liquid simulation mesh rendering");
+
+        // Enable toggle (only if mesh is loaded)
+        if (m_waterMeshLoaded) {
+            if (ImGui::Checkbox("Enable Water Rendering", &m_waterMeshEnabled)) {
+                if (m_rtLighting) {
+                    m_rtLighting->SetWaterMeshEnabled(m_waterMeshEnabled);
+                }
+            }
+        } else {
+            ImGui::BeginDisabled();
+            bool disabled = false;
+            ImGui::Checkbox("Enable Water Rendering", &disabled);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "(No mesh loaded)");
+        }
+
+        ImGui::Separator();
+
+        // Load mesh buttons
+        ImGui::Text("Load Test Mesh:");
+        if (ImGui::Button("Bowl (Static)")) {
+            if (LoadWaterMesh("assets/water/water_bowl.bin")) {
+                m_waterMeshEnabled = true;
+                LOG_INFO("Loaded water bowl mesh");
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Sphere (Full)")) {
+            if (LoadWaterMesh("assets/water/water_sphere.bin")) {
+                m_waterMeshEnabled = true;
+                LOG_INFO("Loaded water sphere mesh");
+            }
+        }
+
+        // Custom path input
+        static char meshPathBuffer[256] = "assets/water/water_mesh.bin";
+        ImGui::InputText("Mesh Path", meshPathBuffer, sizeof(meshPathBuffer));
+        if (ImGui::Button("Load Custom Mesh")) {
+            if (LoadWaterMesh(meshPathBuffer)) {
+                m_waterMeshEnabled = true;
+                LOG_INFO("Loaded custom water mesh: {}", meshPathBuffer);
+            }
+        }
+
+        // Mesh info
+        if (m_waterMeshLoaded) {
+            ImGui::Separator();
+            ImGui::Text("Mesh Info:");
+            ImGui::Text("  Vertices: %u", m_waterMesh.vertexCount);
+            ImGui::Text("  Triangles: %u", m_waterMesh.indexCount / 3);
+            ImGui::Text("  Path: %s", m_waterMeshPath.c_str());
+
+            // Check if BLAS is built
+            if (m_rtLighting && m_rtLighting->HasWaterMeshBLAS()) {
+                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "  BLAS: Built");
+            } else {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "  BLAS: Not built");
+            }
+        }
+
+        ImGui::Separator();
+
+        // Material properties
+        ImGui::Text("Material Properties:");
+        if (ImGui::SliderFloat("Index of Refraction", &m_waterIOR, 1.0f, 2.0f, "%.2f")) {
+            if (m_rtLighting) {
+                m_rtLighting->SetWaterIOR(m_waterIOR);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("IOR controls refraction angle (Snell's law)\n"
+                             "1.00 = Air (no refraction)\n"
+                             "1.33 = Water (default)\n"
+                             "1.52 = Glass\n"
+                             "2.42 = Diamond");
+        }
+
+        ImGui::Text("Absorption (Beer-Lambert):");
+        bool absorptionChanged = false;
+        absorptionChanged |= ImGui::SliderFloat("Red", &m_waterAbsorption[0], 0.0f, 1.0f, "%.2f");
+        absorptionChanged |= ImGui::SliderFloat("Green", &m_waterAbsorption[1], 0.0f, 1.0f, "%.2f");
+        absorptionChanged |= ImGui::SliderFloat("Blue", &m_waterAbsorption[2], 0.0f, 1.0f, "%.2f");
+        if (absorptionChanged && m_rtLighting) {
+            m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Absorption coefficients for Beer-Lambert law\n"
+                             "Higher values = more light absorbed per unit distance\n"
+                             "Default (0.45, 0.09, 0.06) gives blue-green tint");
+        }
+
+        // Presets
+        ImGui::Text("Presets:");
+        if (ImGui::Button("Clear Water")) {
+            m_waterAbsorption[0] = 0.1f;
+            m_waterAbsorption[1] = 0.02f;
+            m_waterAbsorption[2] = 0.01f;
+            m_waterIOR = 1.33f;
+            if (m_rtLighting) {
+                m_rtLighting->SetWaterIOR(m_waterIOR);
+                m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Ocean Blue")) {
+            m_waterAbsorption[0] = 0.45f;
+            m_waterAbsorption[1] = 0.09f;
+            m_waterAbsorption[2] = 0.06f;
+            m_waterIOR = 1.33f;
+            if (m_rtLighting) {
+                m_rtLighting->SetWaterIOR(m_waterIOR);
+                m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Murky")) {
+            m_waterAbsorption[0] = 0.8f;
+            m_waterAbsorption[1] = 0.6f;
+            m_waterAbsorption[2] = 0.4f;
+            m_waterIOR = 1.35f;
+            if (m_rtLighting) {
+                m_rtLighting->SetWaterIOR(m_waterIOR);
+                m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+            }
+        }
+    }
+
     ImGui::End();
 
     // Rendering
@@ -7019,4 +7260,173 @@ int Application::RunBenchmark() {
 
     // Return exit code based on success
     return (results.overallScore >= 50.0f) ? 0 : 1;
+}
+
+// === Water Mesh System (Phase 5.x - RT Water Rendering) ===
+
+bool Application::LoadWaterMesh(const std::string& path) {
+    LOG_INFO("Loading water mesh from: {}", path);
+
+    // Open binary file
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        LOG_ERROR("Failed to open water mesh file: {}", path);
+        return false;
+    }
+
+    // Read header: vertex count and index count
+    file.read(reinterpret_cast<char*>(&m_waterMesh.vertexCount), sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(&m_waterMesh.indexCount), sizeof(uint32_t));
+
+    if (!file) {
+        LOG_ERROR("Failed to read water mesh header");
+        return false;
+    }
+
+    LOG_INFO("Water mesh header: {} vertices, {} indices ({} triangles)",
+             m_waterMesh.vertexCount, m_waterMesh.indexCount, m_waterMesh.indexCount / 3);
+
+    // Validate reasonable sizes
+    if (m_waterMesh.vertexCount == 0 || m_waterMesh.vertexCount > 10000000 ||
+        m_waterMesh.indexCount == 0 || m_waterMesh.indexCount > 30000000) {
+        LOG_ERROR("Invalid water mesh counts: {} vertices, {} indices",
+                  m_waterMesh.vertexCount, m_waterMesh.indexCount);
+        return false;
+    }
+
+    // Read vertices (6 floats per vertex: pos.xyz + normal.xyz)
+    size_t vertexFloatCount = m_waterMesh.vertexCount * 6;
+    m_waterMesh.vertices.resize(vertexFloatCount);
+    file.read(reinterpret_cast<char*>(m_waterMesh.vertices.data()),
+              vertexFloatCount * sizeof(float));
+
+    if (!file) {
+        LOG_ERROR("Failed to read water mesh vertices");
+        m_waterMesh.vertices.clear();
+        return false;
+    }
+
+    // Read indices
+    m_waterMesh.indices.resize(m_waterMesh.indexCount);
+    file.read(reinterpret_cast<char*>(m_waterMesh.indices.data()),
+              m_waterMesh.indexCount * sizeof(uint32_t));
+
+    if (!file) {
+        LOG_ERROR("Failed to read water mesh indices");
+        m_waterMesh.vertices.clear();
+        m_waterMesh.indices.clear();
+        return false;
+    }
+
+    // Calculate bounds for logging
+    float minY = FLT_MAX, maxY = -FLT_MAX;
+    for (uint32_t i = 0; i < m_waterMesh.vertexCount; i++) {
+        float y = m_waterMesh.vertices[i * 6 + 1];  // Y component
+        minY = std::min(minY, y);
+        maxY = std::max(maxY, y);
+    }
+    LOG_INFO("Water mesh Y range: [{:.2f}, {:.2f}]", minY, maxY);
+
+    // Create GPU buffers
+    CreateWaterGPUBuffers();
+
+    m_waterMeshPath = path;
+    m_waterMeshLoaded = true;
+    m_waterMeshEnabled = true;
+
+    // Wire up to RT lighting system for BLAS/TLAS inclusion
+    if (m_rtLighting && m_waterVertexBuffer && m_waterIndexBuffer) {
+        m_rtLighting->SetWaterMesh(
+            m_waterVertexBuffer.Get(),
+            m_waterIndexBuffer.Get(),
+            m_waterMesh.vertexCount,
+            m_waterMesh.indexCount);
+        m_rtLighting->SetWaterMeshEnabled(true);
+        m_rtLighting->SetWaterIOR(m_waterIOR);
+        m_rtLighting->SetWaterAbsorption(m_waterAbsorption[0], m_waterAbsorption[1], m_waterAbsorption[2]);
+        LOG_INFO("Water mesh connected to RT lighting system");
+    }
+
+    LOG_INFO("Water mesh loaded successfully: {} KB",
+             (m_waterMesh.vertices.size() * sizeof(float) + m_waterMesh.indices.size() * sizeof(uint32_t)) / 1024);
+
+    return true;
+}
+
+void Application::CreateWaterGPUBuffers() {
+    if (!m_device || m_waterMesh.vertices.empty()) {
+        LOG_ERROR("Cannot create water GPU buffers: device or mesh data missing");
+        return;
+    }
+
+    // Release any existing buffers
+    ReleaseWaterGPUBuffers();
+
+    auto* device = m_device->GetDevice();
+
+    // Vertex buffer size (6 floats per vertex: pos.xyz + normal.xyz)
+    size_t vertexBufferSize = m_waterMesh.vertices.size() * sizeof(float);
+
+    // Create vertex buffer (upload heap for simplicity - water mesh is static per frame)
+    {
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+
+        HRESULT hr = device->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_waterVertexBuffer));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create water vertex buffer: 0x{:08X}", hr);
+            return;
+        }
+
+        // Upload vertex data
+        void* mapped = nullptr;
+        m_waterVertexBuffer->Map(0, nullptr, &mapped);
+        memcpy(mapped, m_waterMesh.vertices.data(), vertexBufferSize);
+        m_waterVertexBuffer->Unmap(0, nullptr);
+
+        LOG_INFO("Water vertex buffer created: {} KB", vertexBufferSize / 1024);
+    }
+
+    // Index buffer size
+    size_t indexBufferSize = m_waterMesh.indices.size() * sizeof(uint32_t);
+
+    // Create index buffer
+    {
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
+
+        HRESULT hr = device->CreateCommittedResource(
+            &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(&m_waterIndexBuffer));
+
+        if (FAILED(hr)) {
+            LOG_ERROR("Failed to create water index buffer: 0x{:08X}", hr);
+            m_waterVertexBuffer.Reset();
+            return;
+        }
+
+        // Upload index data
+        void* mapped = nullptr;
+        m_waterIndexBuffer->Map(0, nullptr, &mapped);
+        memcpy(mapped, m_waterMesh.indices.data(), indexBufferSize);
+        m_waterIndexBuffer->Unmap(0, nullptr);
+
+        LOG_INFO("Water index buffer created: {} KB", indexBufferSize / 1024);
+    }
+
+    LOG_INFO("Water GPU buffers created successfully");
+}
+
+void Application::ReleaseWaterGPUBuffers() {
+    if (m_waterVertexBuffer) {
+        m_waterVertexBuffer.Reset();
+    }
+    if (m_waterIndexBuffer) {
+        m_waterIndexBuffer.Reset();
+    }
 }

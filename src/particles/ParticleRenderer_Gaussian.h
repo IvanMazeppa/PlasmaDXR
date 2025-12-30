@@ -131,6 +131,13 @@ public:
         uint32_t enableGroundPlane;        // Toggle ground plane rendering
         DirectX::XMFLOAT3 groundPlaneAlbedo;  // Surface reflectance (RGB)
 
+        // === Water Mesh (RT Liquid Simulation) ===
+        uint32_t enableWaterMesh;          // Toggle water mesh rendering
+        float waterIOR;                    // Index of refraction (1.33 for water)
+        DirectX::XMFLOAT2 waterPadding;    // Padding for alignment
+        DirectX::XMFLOAT3 waterAbsorption; // Beer-Lambert absorption coefficients (RGB)
+        float waterPadding2;               // Padding for alignment
+
         // === DEPRECATED: Froxel Volumetric Fog (removed Dec 2025) ===
         // NOTE: These fields are kept for constant buffer layout compatibility with existing shaders.
         // The froxel system was replaced by NanoVDB volumetric rendering.

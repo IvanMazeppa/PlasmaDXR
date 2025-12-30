@@ -4,6 +4,7 @@
 
 #include "gaussian_common.hlsl"
 #include "plasma_emission.hlsl"
+#include "../materials/water_material.hlsl"
 // NOTE: volumetric_shadows.hlsl inlined below after resource declarations (Phase 0.15.0)
 // NOTE: god_rays.hlsl removed - atmospheric fog function defined inline below for Light struct access
 // NOTE: sample_froxel_grid.hlsl included AFTER resource declarations (needs g_froxelLightingGrid, constant buffer params)
@@ -97,6 +98,13 @@ cbuffer GaussianConstants : register(b0)
     // === Ground Plane (Reflective Surface Experiment) ===
     uint enableGroundPlane;        // Toggle ground plane rendering
     float3 groundPlaneAlbedo;      // Surface reflectance (RGB)
+
+    // === Water Mesh (RT Liquid Simulation) ===
+    uint enableWaterMesh;          // Toggle water mesh rendering
+    float waterIOR;                // Index of refraction (1.33 for water)
+    float2 waterPadding;           // Padding for alignment
+    float3 waterAbsorption;        // Beer-Lambert absorption coefficients (RGB)
+    float waterPadding2;           // Padding for alignment
 };
 
 // ============================================================================
@@ -1241,9 +1249,11 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     float3 groundPlaneColor = float3(0, 0, 0);
     bool groundPlaneHit = false;
 
-    if (enableGroundPlane != 0 && query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+    if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+        uint instanceID = query.CommittedInstanceID();
+
         // Check if this is the ground plane (InstanceID == 2)
-        if (query.CommittedInstanceID() == 2) {
+        if (enableGroundPlane != 0 && instanceID == INSTANCE_ID_GROUND) {
             groundPlaneHit = true;
             groundPlaneT = query.CommittedRayT();
 
@@ -1270,6 +1280,42 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
             // Apply ground plane albedo
             groundPlaneColor = groundPlaneAlbedo * diffuse;
+        }
+    }
+
+    // =============================================================================
+    // WATER MESH HIT DETECTION (RT Liquid Simulation)
+    // =============================================================================
+    float waterMeshT = 1e10;     // Distance to water surface (very far = no hit)
+    float3 waterMeshColor = float3(0, 0, 0);
+    bool waterMeshHit = false;
+
+    if (enableWaterMesh != 0 && query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+        // Check if this is the water mesh (InstanceID == 3)
+        if (query.CommittedInstanceID() == INSTANCE_ID_WATER) {
+            waterMeshHit = true;
+            waterMeshT = query.CommittedRayT();
+
+            // Water hit position
+            float3 hitPos = ray.Origin + ray.Direction * waterMeshT;
+
+            // Get triangle normal from barycentrics
+            // For MVP, use simple geometric normal estimation
+            // TODO: Proper vertex buffer access for smooth normals
+            float3 normal = float3(0, 1, 0);  // Placeholder: assume up-facing water
+
+            // View direction
+            float3 viewDir = -ray.Direction;
+
+            // Shade water with reflection/refraction
+            waterMeshColor = ShadeWater(
+                hitPos,
+                normal,
+                viewDir,
+                g_particleBVH,
+                waterIOR,
+                waterAbsorption
+            );
         }
     }
 
@@ -1735,8 +1781,21 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
         }
     }
 
-    // Background color (pure black space - or ground plane if hit)
-    float3 backgroundColor = groundPlaneHit ? groundPlaneColor : float3(0.0, 0.0, 0.0);
+    // Background color (pure black space - or water/ground plane if hit)
+    // Water takes priority over ground plane, use closest hit
+    float3 backgroundColor = float3(0.0, 0.0, 0.0);
+    if (waterMeshHit && (!groundPlaneHit || waterMeshT < groundPlaneT)) {
+        backgroundColor = waterMeshColor;
+    } else if (groundPlaneHit) {
+        backgroundColor = groundPlaneColor;
+    }
+
+    // DEBUG: Show cyan tint if water is enabled (helps verify constant is set)
+    // Remove this debug code after water is working
+    if (enableWaterMesh != 0 && !waterMeshHit) {
+        // Subtle cyan tint on background to show water rendering is enabled but no hit
+        backgroundColor += float3(0.0, 0.02, 0.03);
+    }
     float finalTransmittance = exp(logTransmittance);
     float3 finalColor = accumulatedColor + finalTransmittance * backgroundColor;
 

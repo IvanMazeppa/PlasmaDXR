@@ -581,6 +581,156 @@ PYRO_TECHNIQUES: Dict[str, Dict[str, Any]] = {
             "distance": "very_far",
         },
     },
+
+    "main_sequence_star": {
+        "description": "Main sequence star surface (Sun-like) with convective granulation",
+        "visual_signature": "Roiling spherical surface with cellular granulation, bright emission, and limb darkening",
+        "keywords": ["sun", "star", "solar", "surface", "photosphere", "convection", "granulation", "main sequence"],
+
+        # Domain settings - SUSTAINED turbulence, SURFACE dynamics, SPHERICAL
+        "domain_params": {
+            "burning_rate": (0.5, 0.8),        # Slow, sustained burn (not explosive)
+            "flame_smoke": (2.0, 3.5),          # Visible surface density for texture
+            "flame_vorticity": (1.2, 1.8),      # HIGH turbulence for granular convection cells
+            "flame_max_temp": (6.0, 8.0),       # Very hot (yellow-orange emission)
+            "flame_ignition": (0.5, 1.0),       # Low ignition (continuous emission)
+            "alpha": (-0.3, 0.2),               # NEGATIVE/LOW buoyancy (stays at surface, slight inward)
+            "beta": (0.3, 0.8),                 # Low heat buoyancy (prevents rapid rise)
+            "dissolve_speed": (200, 400),       # Moderate dissolution (visible cells)
+            "use_dissolve_smoke": True,
+        },
+
+        # Noise upres - HIGH detail for granular cell texture
+        "noise_params": {
+            "use_noise": True,
+            "noise_scale": (3, 4),              # High resolution boost for cell detail
+            "noise_strength": (1.5, 2.5),       # Strong turbulent detail (granulation)
+            "noise_pos_scale": (1.0, 2.0),      # Small vortex size (convection cells ~1000km scale)
+        },
+
+        # Emission dynamics - SUSTAINED profile (continuous solar emission)
+        "emission_dynamics": {
+            "profile": "sustained",
+            "peak_frame": (1, 3),               # Quick ramp-up
+            "sustain_level": (0.85, 1.0),       # Nearly full emission throughout
+            "decay_start": (9999, 9999),        # No decay (continuous star)
+            "decay_end": (9999, 9999),
+            "peak_fuel_multiplier": (1.0, 1.2), # Stable emission
+            "decay_fuel_multiplier": (0.9, 1.0),
+        },
+
+        # Flow settings - FIRE dominant (glowing plasma, not smoky)
+        "flow_params": {
+            "flow_type": "BOTH",                # Fire + some smoke for texture
+            "fuel_amount": (4.0, 6.0),          # High fuel for sustained glow
+            "temperature": (6.0, 8.0),          # ~5778K photosphere equivalent
+            "velocity_normal": (0.3, 0.8),      # LOW outward velocity (surface, not eruption)
+            "velocity_random": (1.5, 3.0),      # HIGH random (turbulent convection)
+        },
+
+        # Emitter configuration - SPHERICAL surface emitter
+        "emitter": {
+            "shape": "sphere",
+            "position_z": "center",             # Centered sphere
+            "radius": (2.0, 2.5),               # Large spherical emitter
+            "surface_emission": True,           # Emit from surface only
+        },
+
+        # Effector configuration - optional outer boundary
+        "effectors": {
+            "outer_shell": {
+                "type": "COLLISION",
+                "shape": "sphere",
+                "radius": 3.5,
+                "description": "Optional outer boundary to contain surface dynamics",
+                "invert_normals": True,         # Collide from inside
+            },
+        },
+
+        # Material hints for shader
+        "material": {
+            "blackbody_intensity": (6.0, 10.0),
+            "temperature_base": 5778,           # Actual solar photosphere temperature
+            "color_hint": "orange_yellow",
+            "limb_darkening": True,             # Edges appear darker
+        },
+
+        "camera": {
+            "angle": "side",                    # View from side for full disk
+            "distance": "medium",
+        },
+    },
+
+    "solar_prominence": {
+        "description": "Solar prominence/CME - plasma loop extending from star surface",
+        "visual_signature": "Arcing plasma loop rising from and returning to stellar surface",
+        "keywords": ["prominence", "cme", "coronal", "loop", "eruption", "mass ejection", "solar", "arc"],
+
+        # Domain settings - SMOOTH arcs, MAGNETIC guidance
+        "domain_params": {
+            "burning_rate": (1.0, 1.5),         # Moderate burn
+            "flame_smoke": (0.3, 0.8),          # Light smoke (plasma is hot and clean)
+            "flame_vorticity": (0.4, 0.7),      # Moderate - arcs are relatively smooth
+            "flame_max_temp": (8.0, 10.0),      # Very hot
+            "flame_ignition": (1.0, 1.5),
+            "alpha": (0.0, 0.1),                # Minimal gravity (follows magnetic field)
+            "beta": (0.1, 0.3),                 # Low buoyancy
+            "dissolve_speed": (150, 250),
+        },
+
+        "noise_params": {
+            "use_noise": True,
+            "noise_scale": (2, 3),
+            "noise_strength": (0.8, 1.2),       # Moderate detail
+            "noise_pos_scale": (2.0, 4.0),      # Larger scale instabilities
+        },
+
+        "emission_dynamics": {
+            "profile": "burst",
+            "peak_frame": (5, 15),              # Build-up phase
+            "decay_start": (40, 60),
+            "decay_end": (100, 150),            # Long prominence lifetime
+            "peak_fuel_multiplier": (2.5, 3.5),
+            "decay_fuel_multiplier": (0.2, 0.4),
+            "peak_velocity_multiplier": (3.0, 4.0),  # Strong initial ejection
+        },
+
+        "flow_params": {
+            "flow_type": "FIRE",
+            "fuel_amount": (5.0, 8.0),
+            "temperature": (8.0, 10.0),
+            "velocity_normal": (8.0, 15.0),     # Strong outward velocity for prominence arc
+            "velocity_random": (1.0, 2.0),
+        },
+
+        # Arc-shaped emitter from surface
+        "emitter": {
+            "shape": "arc_source",
+            "position_z": "surface",
+            "arc_angle": (30, 90),              # Arc height angle
+        },
+
+        # Guide effector for magnetic field loop
+        "effectors": {
+            "magnetic_guide": {
+                "type": "GUIDE",
+                "shape": "torus_segment",
+                "guide_mode": "MAXIMUM",
+                "velocity_factor": 1.5,
+                "description": "Simulates magnetic field loop guiding plasma arc",
+            },
+        },
+
+        "material": {
+            "blackbody_intensity": (8.0, 15.0),
+            "temperature_base": 10000,          # Hotter than photosphere
+        },
+
+        "camera": {
+            "angle": "side_profile",
+            "distance": "medium",
+        },
+    },
 }
 
 # =============================================================================
