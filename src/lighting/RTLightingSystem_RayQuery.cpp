@@ -1292,7 +1292,9 @@ void RTLightingSystem_RayQuery::ComputeLighting(ID3D12GraphicsCommandList4* cmdL
     // Avoids 2045 crash while maintaining full visibility
 
     // 4. Build combined TLAS (if we have overflow particles OR ground plane)
-    bool buildCombinedTLAS = (directRTCount > 0 || (m_groundPlane.enabled && m_groundPlane.blas));
+    bool buildCombinedTLAS = (directRTCount > 0 ||
+        (m_groundPlane.enabled && m_groundPlane.blas) ||
+        (m_waterMesh.enabled && m_waterMesh.blas));
     if (buildCombinedTLAS) {
         BuildCombinedTLAS(cmdList, true);  // skipBarrier=true
     }

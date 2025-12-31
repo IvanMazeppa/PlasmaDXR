@@ -88,6 +88,442 @@ def save_session(session: AssetSession):
     session_file.write_text(json.dumps(data, indent=2))
 
 
+# =============================================================================
+# Iteration Decision Engine
+# =============================================================================
+
+# Maps issues to parameter fixes with expected impact
+ISSUE_TO_FIXES: Dict[str, List[Dict[str, Any]]] = {
+    "TOO DARK": [
+        {"param": "flame_max_temp", "action": "increase", "delta": 500, "blender_param": "flame_max_temp"},
+        {"param": "emission_multiplier", "action": "increase", "delta": 0.5, "blender_param": "emission_strength"},
+        {"param": "burning_rate", "action": "increase", "delta": 0.3, "blender_param": "burning_rate"},
+    ],
+    "TOO SMALL": [
+        {"param": "domain_scale", "action": "increase", "delta": 2.0, "blender_param": "domain_scale"},
+        {"param": "flow_radius", "action": "increase", "delta": 0.5, "blender_param": "flow_radius"},
+        {"param": "flow_velocity", "action": "increase", "delta": 2.0, "blender_param": "initial_velocity"},
+    ],
+    "WRONG COLOR": [
+        {"param": "burning_rate", "action": "increase", "delta": 0.5, "blender_param": "burning_rate"},
+        {"param": "flame_smoke", "action": "increase", "delta": 1.0, "blender_param": "flame_smoke"},
+        {"param": "flame_max_temp", "action": "increase", "delta": 300, "blender_param": "flame_max_temp"},
+    ],
+    "NO STRUCTURE": [
+        {"param": "turbulence", "action": "increase", "delta": 0.2, "blender_param": "turbulence_strength"},
+        {"param": "vorticity", "action": "increase", "delta": 0.3, "blender_param": "flame_vorticity"},
+        {"param": "noise_scale", "action": "increase", "delta": 1.5, "blender_param": "noise_strength"},
+    ],
+    "LOW CONTRAST": [
+        {"param": "density_multiplier", "action": "increase", "delta": 0.3, "blender_param": "density"},
+        {"param": "flame_smoke", "action": "increase", "delta": 0.5, "blender_param": "flame_smoke"},
+    ],
+    "Overexposed": [
+        {"param": "flame_max_temp", "action": "decrease", "delta": 300, "blender_param": "flame_max_temp"},
+        {"param": "emission_multiplier", "action": "decrease", "delta": 0.3, "blender_param": "emission_strength"},
+    ],
+    "clipped": [
+        {"param": "domain_height", "action": "increase", "delta": 2.0, "blender_param": "domain_size_z"},
+        {"param": "flow_position_z", "action": "decrease", "delta": 0.5, "blender_param": "flow_position"},
+    ],
+}
+
+
+def diagnose_issues_from_quality(quality_result: Dict) -> List[str]:
+    """Extract issue keywords from VFX quality result."""
+    issues = quality_result.get("issues", [])
+    critical = quality_result.get("critical_issues", [])
+    return critical + [i for i in issues if i not in critical]
+
+
+def suggest_fixes_for_issues(issues: List[str], max_fixes: int = 3) -> List[Dict]:
+    """
+    Suggest parameter fixes based on identified issues.
+
+    Returns up to max_fixes suggestions, prioritizing critical issues.
+    """
+    fixes = []
+    seen_params = set()
+
+    for issue in issues:
+        # Find matching fix category
+        for keyword, fix_list in ISSUE_TO_FIXES.items():
+            if keyword.upper() in issue.upper():
+                for fix in fix_list:
+                    if fix["param"] not in seen_params:
+                        fixes.append({
+                            "issue": issue,
+                            "parameter": fix["param"],
+                            "blender_parameter": fix["blender_param"],
+                            "action": fix["action"],
+                            "suggested_delta": fix["delta"],
+                            "rationale": f"Addresses: {keyword}"
+                        })
+                        seen_params.add(fix["param"])
+                        if len(fixes) >= max_fixes:
+                            return fixes
+                break  # Move to next issue after finding match
+
+    return fixes
+
+
+# =============================================================================
+# Session State Persistence (for Claude Code orchestration)
+# =============================================================================
+
+ORCHESTRATION_STATE_DIR = PROJECT_ROOT / "build/orchestration_state"
+
+
+@dataclass
+class OrchestrationState:
+    """State that persists across Claude Code context resets."""
+    session_id: str
+    asset_name: str
+    effect_type: str
+    current_iteration: int
+    best_score: float
+    best_iteration: int
+    parameters_current: Dict[str, Any]
+    parameters_tried: List[Dict[str, Any]]
+    issues_history: List[List[str]]
+    fixes_applied: List[Dict[str, Any]]
+    next_action: str
+    status: str  # in_progress, paused, completed, failed
+    saved_at: str = ""
+
+    def __post_init__(self):
+        if not self.saved_at:
+            self.saved_at = datetime.now().isoformat()
+
+
+def save_orchestration_state(state: OrchestrationState):
+    """Save orchestration state to disk."""
+    ORCHESTRATION_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    state_file = ORCHESTRATION_STATE_DIR / f"{state.session_id}_state.json"
+    state.saved_at = datetime.now().isoformat()
+    state_file.write_text(json.dumps(asdict(state), indent=2))
+
+
+def load_orchestration_state(session_id: str) -> Optional[OrchestrationState]:
+    """Load orchestration state from disk."""
+    state_file = ORCHESTRATION_STATE_DIR / f"{session_id}_state.json"
+    if state_file.exists():
+        data = json.loads(state_file.read_text())
+        return OrchestrationState(**data)
+    return None
+
+
+# =============================================================================
+# MCP Tools - Decision Engine
+# =============================================================================
+
+@mcp.tool()
+async def diagnose_vfx_issues(
+    quality_json: str
+) -> str:
+    """
+    Diagnose issues from VFX quality evaluation and suggest fixes.
+
+    Takes the output from asset-evaluator's evaluate_vfx_quality tool
+    and returns specific parameter changes to try.
+
+    Args:
+        quality_json: JSON string from evaluate_vfx_quality result
+
+    Returns:
+        JSON with:
+        - diagnosed_issues: List of issues found
+        - suggested_fixes: Parameter changes to try
+        - priority_order: Which fix to try first
+        - rationale: Why these fixes should help
+
+    Example:
+        diagnose_vfx_issues('{"quality": {"issues": ["TOO DARK: ..."], ...}}')
+    """
+    try:
+        data = json.loads(quality_json)
+        quality = data.get("quality", data)  # Handle nested or flat structure
+
+        issues = diagnose_issues_from_quality(quality)
+        fixes = suggest_fixes_for_issues(issues)
+
+        if not issues:
+            return json.dumps({
+                "status": "no_issues",
+                "message": "No issues found - quality is acceptable",
+                "score": quality.get("composite_score", 0)
+            }, indent=2)
+
+        return json.dumps({
+            "status": "issues_found",
+            "diagnosed_issues": issues,
+            "issue_count": len(issues),
+            "suggested_fixes": fixes,
+            "priority_order": [f["parameter"] for f in fixes],
+            "recommendation": f"Apply fix for '{fixes[0]['parameter']}' first" if fixes else "Review issues manually"
+        }, indent=2)
+    except json.JSONDecodeError:
+        return json.dumps({"error": "Invalid JSON input"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def get_next_iteration_params(
+    current_params: str,
+    quality_json: str,
+    iteration: int = 1
+) -> str:
+    """
+    Get parameters for the next iteration based on current state and issues.
+
+    Intelligently adjusts parameters to address identified quality issues.
+
+    Args:
+        current_params: JSON string of current Blender parameters
+        quality_json: JSON string from evaluate_vfx_quality result
+        iteration: Current iteration number
+
+    Returns:
+        JSON with:
+        - next_params: Updated parameters for next iteration
+        - changes: What was changed and why
+        - expected_improvement: What should get better
+
+    Example:
+        get_next_iteration_params(
+            '{"flame_max_temp": 2000, "turbulence": 0.3}',
+            '{"quality": {"issues": ["TOO DARK: ..."]}}',
+            iteration=2
+        )
+    """
+    try:
+        params = json.loads(current_params)
+        quality_data = json.loads(quality_json)
+        quality = quality_data.get("quality", quality_data)
+
+        issues = diagnose_issues_from_quality(quality)
+        fixes = suggest_fixes_for_issues(issues, max_fixes=2)  # Apply max 2 fixes per iteration
+
+        next_params = params.copy()
+        changes = []
+
+        for fix in fixes:
+            param = fix["parameter"]
+            action = fix["action"]
+            delta = fix["suggested_delta"]
+
+            current_value = params.get(param, 0)
+
+            if action == "increase":
+                new_value = current_value + delta
+            elif action == "decrease":
+                new_value = max(0, current_value - delta)
+            else:
+                new_value = current_value
+
+            next_params[param] = new_value
+            changes.append({
+                "parameter": param,
+                "old_value": current_value,
+                "new_value": new_value,
+                "reason": fix["rationale"]
+            })
+
+        return json.dumps({
+            "iteration": iteration + 1,
+            "next_params": next_params,
+            "changes": changes,
+            "issues_addressed": [f["issue"] for f in fixes],
+            "expected_improvement": [f["rationale"] for f in fixes] if fixes else ["No changes suggested"]
+        }, indent=2)
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Invalid JSON: {e}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+# =============================================================================
+# MCP Tools - Orchestration State
+# =============================================================================
+
+@mcp.tool()
+async def save_iteration_state(
+    session_id: str,
+    asset_name: str,
+    effect_type: str,
+    current_iteration: int,
+    best_score: float,
+    best_iteration: int,
+    parameters_current: str,
+    issues_current: str,
+    next_action: str,
+    status: str = "in_progress"
+) -> str:
+    """
+    Save orchestration state so Claude Code can resume after context limit.
+
+    Call this after each iteration to preserve progress.
+
+    Args:
+        session_id: Unique session identifier
+        asset_name: Name of asset being created
+        effect_type: Effect type (explosion, fire, etc.)
+        current_iteration: Current iteration number
+        best_score: Best VFX quality score so far
+        best_iteration: Which iteration had best score
+        parameters_current: JSON string of current parameters
+        issues_current: JSON array of current issues
+        next_action: What to do next (e.g., "run_blender", "evaluate", "adjust_params")
+        status: Session status
+
+    Returns:
+        JSON confirmation with state file path
+
+    Example:
+        save_iteration_state(
+            "sun_surface_2024",
+            "sun_surface",
+            "sun",
+            5,
+            72.5,
+            4,
+            '{"flame_max_temp": 3000}',
+            '["Needs more structure"]',
+            "adjust_params"
+        )
+    """
+    try:
+        # Load existing state or create new
+        existing = load_orchestration_state(session_id)
+
+        params = json.loads(parameters_current)
+        issues = json.loads(issues_current)
+
+        if existing:
+            # Update existing state
+            existing.current_iteration = current_iteration
+            if best_score > existing.best_score:
+                existing.best_score = best_score
+                existing.best_iteration = best_iteration
+            existing.parameters_tried.append(params)
+            existing.issues_history.append(issues)
+            existing.parameters_current = params
+            existing.next_action = next_action
+            existing.status = status
+            state = existing
+        else:
+            # Create new state
+            state = OrchestrationState(
+                session_id=session_id,
+                asset_name=asset_name,
+                effect_type=effect_type,
+                current_iteration=current_iteration,
+                best_score=best_score,
+                best_iteration=best_iteration,
+                parameters_current=params,
+                parameters_tried=[params],
+                issues_history=[issues],
+                fixes_applied=[],
+                next_action=next_action,
+                status=status
+            )
+
+        save_orchestration_state(state)
+
+        return json.dumps({
+            "success": True,
+            "session_id": session_id,
+            "saved_at": state.saved_at,
+            "state_file": str(ORCHESTRATION_STATE_DIR / f"{session_id}_state.json"),
+            "message": f"State saved at iteration {current_iteration}"
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def load_iteration_state(session_id: str) -> str:
+    """
+    Load saved orchestration state to resume after context limit.
+
+    Use this at the start of a new Claude Code session to continue
+    where you left off.
+
+    Args:
+        session_id: Session ID to load
+
+    Returns:
+        JSON with full orchestration state, or error if not found
+
+    Example:
+        load_iteration_state("sun_surface_2024")
+    """
+    state = load_orchestration_state(session_id)
+
+    if not state:
+        # Try to find similar sessions
+        ORCHESTRATION_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        available = [f.stem.replace("_state", "") for f in ORCHESTRATION_STATE_DIR.glob("*_state.json")]
+
+        return json.dumps({
+            "error": f"No state found for session: {session_id}",
+            "available_sessions": available[:10],
+            "hint": "Use list_orchestration_sessions to see all sessions"
+        }, indent=2)
+
+    return json.dumps({
+        "success": True,
+        "state": asdict(state),
+        "resume_instructions": [
+            f"Current iteration: {state.current_iteration}",
+            f"Best score so far: {state.best_score} (iteration {state.best_iteration})",
+            f"Next action: {state.next_action}",
+            f"Current parameters: {json.dumps(state.parameters_current)}",
+            f"Recent issues: {state.issues_history[-1] if state.issues_history else []}"
+        ]
+    }, indent=2)
+
+
+@mcp.tool()
+async def list_orchestration_sessions() -> str:
+    """
+    List all saved orchestration sessions.
+
+    Returns:
+        JSON with list of sessions and their status
+    """
+    ORCHESTRATION_STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    sessions = []
+    for state_file in ORCHESTRATION_STATE_DIR.glob("*_state.json"):
+        try:
+            data = json.loads(state_file.read_text())
+            sessions.append({
+                "session_id": data.get("session_id"),
+                "asset_name": data.get("asset_name"),
+                "effect_type": data.get("effect_type"),
+                "current_iteration": data.get("current_iteration"),
+                "best_score": data.get("best_score"),
+                "status": data.get("status"),
+                "saved_at": data.get("saved_at"),
+                "next_action": data.get("next_action")
+            })
+        except:
+            continue
+
+    sessions.sort(key=lambda x: x.get("saved_at", ""), reverse=True)
+
+    return json.dumps({
+        "count": len(sessions),
+        "sessions": sessions
+    }, indent=2)
+
+
+# =============================================================================
+# MCP Tools - Asset Creation
+# =============================================================================
+
 @mcp.tool()
 async def create_asset(
     asset_name: str,
