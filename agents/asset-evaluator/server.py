@@ -2054,6 +2054,811 @@ def save_structural_heatmap(
 
 
 # =============================================================================
+# Phase 2: Multi-Scale Wavelet/Texture Analysis Tools
+# =============================================================================
+
+@mcp.tool()
+def analyze_texture_procedural(
+    render_path: str,
+    reference_path: str = ""
+) -> str:
+    """
+    Comprehensive procedural texture detection using multiple methods.
+
+    This tool detects whether a render has PROCEDURAL (synthetic/generated)
+    or NATURAL (organic/realistic) texture patterns. Addresses the critical
+    flaw where aggregate statistics miss texture issues like "popcorn" noise.
+
+    Combines 4 analysis methods:
+    1. Feature Size Distribution (60% weight - MOST DISCRIMINATING)
+       - Procedural textures have UNIFORM feature sizes (low CV)
+       - Natural textures have VARIED sizes (high CV)
+       - Tested: Render CV=1.83 vs Reference CV=36.97 (20x difference!)
+
+    2. Wavelet Scale Entropy (25% weight)
+       - Procedural noise concentrates energy at specific scales
+       - Natural images distribute energy across many scales
+
+    3. Texture Uniformity (10% weight)
+       - Procedural has consistent local variance
+       - Natural has varying local variance
+
+    4. Repetitive Pattern Detection (5% weight)
+       - Procedural often has periodic autocorrelation peaks
+
+    Args:
+        render_path: Path to rendered image to analyze
+        reference_path: Optional reference image for comparison
+
+    Returns:
+        JSON with:
+        - procedural_score: 0-100 (higher = more procedural)
+        - texture_quality: procedural/mixed/natural
+        - texture_verdict: Human-readable assessment
+        - feature_sizes: Detailed feature size metrics
+        - wavelet: Scale entropy and dominant scale
+        - signals_detected: Which procedural signals were found
+        - recommendations: Actionable fixes
+
+    Example:
+        analyze_texture_procedural(
+            "build/vdb_output/sun_prominences_v2/render_0060.png",
+            "assets/reference_images/star/.../frame_00639.jpg"
+        )
+
+    Research basis:
+        - Feature size CV is empirically the best discriminator
+        - See: docs/EVALUATION_SYSTEM_IMPROVEMENT_PROPOSAL.md
+    """
+    try:
+        from wavelet_scale_analysis import comprehensive_texture_analysis
+        import numpy as np
+
+        # Convert numpy types for JSON serialization
+        def convert_np(obj):
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [convert_np(v) for v in obj]
+            return obj
+
+        result = comprehensive_texture_analysis(
+            render_path,
+            reference_path if reference_path else None
+        )
+
+        return json.dumps(convert_np(result), indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "hint": "Ensure PyWavelets and opencv-python-headless are installed"
+        }, indent=2)
+
+
+@mcp.tool()
+def analyze_feature_size_distribution(
+    image_path: str,
+    content_threshold: int = 30
+) -> str:
+    """
+    Analyze feature size distribution to detect procedural textures.
+
+    This is the SINGLE MOST DISCRIMINATING metric discovered for detecting
+    procedural vs natural textures:
+
+    - Procedural textures: CV = 1.83 (uniform feature sizes)
+    - Natural textures: CV = 36.97 (varied feature sizes - 20x higher!)
+
+    Uses connected component analysis to find features and measures
+    their size distribution. Low coefficient of variation (CV) indicates
+    uniform/procedural texture.
+
+    Args:
+        image_path: Path to image to analyze
+        content_threshold: Brightness threshold for content mask (default 30)
+
+    Returns:
+        JSON with:
+        - size_cv: Coefficient of variation (key metric)
+        - is_uniform_size: True if CV < 10 (procedural signature)
+        - feature_count: Number of features detected
+        - uniformity_type: highly_uniform/uniform/mixed/varied
+        - interpretation: Human-readable assessment
+        - size_mean, size_std, size_min, size_max: Statistics
+
+    Example:
+        analyze_feature_size_distribution(
+            "build/vdb_output/sun_prominences_v2/render_0060.png"
+        )
+
+    Interpretation:
+        - CV < 3: HIGHLY UNIFORM - strong procedural signature
+        - CV < 10: UNIFORM - likely procedural
+        - CV < 20: MIXED - some variation
+        - CV > 20: VARIED - natural multi-scale structure
+    """
+    try:
+        from wavelet_scale_analysis import analyze_feature_sizes
+        import numpy as np
+
+        def convert_np(obj):
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            return obj
+
+        result = analyze_feature_sizes(image_path, content_threshold)
+
+        return json.dumps(convert_np(result), indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "hint": "Ensure opencv-python-headless is installed"
+        }, indent=2)
+
+
+@mcp.tool()
+def compare_texture_quality(
+    render_path: str,
+    reference_path: str
+) -> str:
+    """
+    Compare texture quality between render and reference.
+
+    Computes procedural scores for both images and determines which
+    is more natural/realistic. Useful for A/B testing renders against
+    real footage.
+
+    Args:
+        render_path: Path to rendered image
+        reference_path: Path to reference image (ideally real footage)
+
+    Returns:
+        JSON with:
+        - render_score: Procedural score for render (0-100)
+        - reference_score: Procedural score for reference (0-100)
+        - score_difference: How much more procedural render is
+        - discrimination_quality: strong/good/weak/failed
+        - render_verdict: Assessment of render
+        - reference_verdict: Assessment of reference
+        - which_is_better: render/reference/similar
+        - recommendations: What to fix in render
+
+    Example:
+        compare_texture_quality(
+            "build/vdb_output/sun_v10/render_0060.png",
+            "assets/reference_images/star/.../frame_00639.jpg"
+        )
+    """
+    try:
+        from wavelet_scale_analysis import comprehensive_texture_analysis
+        import numpy as np
+
+        def convert_np(obj):
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [convert_np(v) for v in obj]
+            return obj
+
+        render_result = convert_np(comprehensive_texture_analysis(render_path))
+        ref_result = convert_np(comprehensive_texture_analysis(reference_path))
+
+        r_score = render_result["combined_score"]["procedural_score"]
+        ref_score = ref_result["combined_score"]["procedural_score"]
+        diff = r_score - ref_score
+
+        # Determine discrimination quality
+        if diff > 30:
+            discrimination = "strong"
+        elif diff > 15:
+            discrimination = "good"
+        elif diff > 0:
+            discrimination = "weak"
+        else:
+            discrimination = "failed"
+
+        # Determine which is better (lower procedural score = more natural)
+        if diff > 10:
+            which_better = "reference"
+        elif diff < -10:
+            which_better = "render"
+        else:
+            which_better = "similar"
+
+        return json.dumps({
+            "render_score": r_score,
+            "reference_score": ref_score,
+            "score_difference": round(diff, 1),
+            "discrimination_quality": discrimination,
+            "render_verdict": render_result["combined_score"]["texture_verdict"],
+            "reference_verdict": ref_result["combined_score"]["texture_verdict"],
+            "which_is_better": which_better,
+            "render_signals": render_result["combined_score"]["signals_detected"],
+            "reference_signals": ref_result["combined_score"]["signals_detected"],
+            "render_feature_cv": render_result["feature_sizes"].get("size_cv"),
+            "reference_feature_cv": ref_result["feature_sizes"].get("size_cv"),
+            "recommendations": render_result["recommendations"]
+        }, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+# =============================================================================
+# Phase 3: Solar Discriminator Tools
+# =============================================================================
+# EfficientNetV2-based binary classifier: real solar footage vs synthetic renders
+# Trained on 840 real frames + 750 synthetic renders (100% val accuracy)
+# Provides Grad-CAM visualization of "fake" regions
+
+@mcp.tool()
+def predict_real_or_synthetic(
+    image_path: str,
+    include_gradcam: bool = True,
+    gradcam_output: str = ""
+) -> str:
+    """
+    Predict whether an image is real solar footage or a synthetic render.
+
+    Uses a trained EfficientNetV2 discriminator that achieved 100% validation
+    accuracy on held-out data. Also provides Grad-CAM heatmap showing WHERE
+    the "fake" signal comes from.
+
+    Args:
+        image_path: Path to image to analyze
+        include_gradcam: Whether to compute Grad-CAM regions (default True)
+        gradcam_output: Optional path to save Grad-CAM visualization
+
+    Returns:
+        JSON with:
+        - verdict: REAL, SYNTHETIC, LIKELY_REAL, LIKELY_SYNTHETIC, or UNCERTAIN
+        - real_probability: 0-100%
+        - synthetic_probability: 0-100%
+        - confidence: How confident the prediction is
+        - gradcam_regions: Where the discriminator focused attention
+        - interpretation: Human-readable explanation
+
+    Example:
+        predict_real_or_synthetic(
+            "build/vdb_output/sun_prominences_v2/render_0060.png",
+            gradcam_output="evaluation_outputs/gradcam.png"
+        )
+
+    Note: Model must be trained first. Default path: models/solar_discriminator.pth
+    """
+    try:
+        from solar_discriminator import predict_with_explanation
+        import os
+
+        # Use default gradcam path if not specified but requested
+        if include_gradcam and not gradcam_output:
+            os.makedirs("evaluation_outputs", exist_ok=True)
+            base = os.path.splitext(os.path.basename(image_path))[0]
+            gradcam_output = f"evaluation_outputs/{base}_gradcam.png"
+
+        result = predict_with_explanation(
+            image_path,
+            model_path="models/solar_discriminator.pth",
+            gradcam_output=gradcam_output if include_gradcam else None
+        )
+
+        return json.dumps({
+            "image_path": result.image_path,
+            "verdict": result.verdict,
+            "is_real": result.is_real,
+            "real_probability": round(result.real_probability * 100, 2),
+            "synthetic_probability": round(result.synthetic_probability * 100, 2),
+            "confidence": round(result.confidence * 100, 2),
+            "gradcam_regions": result.gradcam_regions[:5],  # Top 5 regions
+            "gradcam_heatmap_path": result.gradcam_heatmap_path,
+            "interpretation": (
+                f"Image is {result.verdict} with {result.confidence*100:.1f}% confidence. "
+                f"{'Primary synthetic signature detected in ' + result.gradcam_regions[0]['region'] + ' region.' if result.gradcam_regions and not result.is_real else ''}"
+                if result.confidence > 0.65 else
+                "Classification uncertain - image may have ambiguous characteristics."
+            )
+        }, indent=2)
+
+    except FileNotFoundError:
+        return json.dumps({
+            "error": "Model not found",
+            "hint": "Train the discriminator first: python solar_discriminator.py train --epochs 10",
+            "model_path": "models/solar_discriminator.pth"
+        }, indent=2)
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def train_discriminator(
+    epochs: int = 10,
+    batch_size: int = 4,
+    real_dir: str = "assets/reference_images/star/Eruptions_20241008_Activity_2048p30",
+    synthetic_dir: str = "build/vdb_output"
+) -> str:
+    """
+    Train the real/synthetic solar discriminator.
+
+    Uses EfficientNetV2-S with transfer learning. Automatically handles
+    class imbalance through weighted sampling and augmentation.
+
+    Args:
+        epochs: Number of training epochs (default 10)
+        batch_size: Batch size (default 4, reduce if OOM)
+        real_dir: Directory with real solar frames (JPG)
+        synthetic_dir: Directory with synthetic renders (PNG)
+
+    Returns:
+        JSON with training results:
+        - final_accuracy: Validation accuracy
+        - best_epoch: Which epoch had best accuracy
+        - model_path: Where model was saved
+        - training_history: Per-epoch metrics
+
+    Note: Uses GPU if available. Training takes ~5-10 minutes on RTX 4060 Ti.
+    """
+    try:
+        from solar_discriminator import train_solar_discriminator
+
+        result = train_solar_discriminator(
+            real_dir=real_dir,
+            synthetic_dirs=[synthetic_dir],
+            epochs=epochs,
+            batch_size=batch_size,
+            output_path="models/solar_discriminator.pth"
+        )
+
+        return json.dumps({
+            "success": True,
+            "final_accuracy": round(result.final_accuracy * 100, 2),
+            "best_accuracy": round(result.best_accuracy * 100, 2),
+            "best_epoch": result.best_epoch,
+            "model_path": result.model_path,
+            "epochs_trained": result.epochs_trained,
+            "training_samples": result.train_samples,
+            "validation_samples": result.val_samples,
+            "history": result.history
+        }, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "hint": "Ensure PyTorch and timm are installed, and training data exists"
+        }, indent=2)
+
+
+@mcp.tool()
+def compare_real_synthetic_batch(
+    image_paths: str,
+    reference_path: str = ""
+) -> str:
+    """
+    Batch analysis of multiple images for real/synthetic classification.
+
+    Useful for evaluating an entire animation or comparing iterations.
+
+    Args:
+        image_paths: Comma-separated list of image paths OR glob pattern
+        reference_path: Optional reference image for comparison
+
+    Returns:
+        JSON with:
+        - results: Per-image classification
+        - summary: Aggregate statistics
+        - recommendations: Overall suggestions
+
+    Example:
+        compare_real_synthetic_batch(
+            "build/vdb_output/sun_v10/render_*.png",
+            "assets/reference_images/star/.../frame_00639.jpg"
+        )
+    """
+    try:
+        from solar_discriminator import SolarDiscriminator
+        import glob
+
+        # Parse image paths
+        paths = []
+        for p in image_paths.split(","):
+            p = p.strip()
+            if "*" in p or "?" in p:
+                paths.extend(glob.glob(p))
+            else:
+                paths.append(p)
+
+        if not paths:
+            return json.dumps({"error": "No valid image paths found"})
+
+        discriminator = SolarDiscriminator(model_path="models/solar_discriminator.pth")
+
+        results = []
+        synthetic_count = 0
+        real_count = 0
+
+        for path in paths[:20]:  # Limit to 20 images
+            try:
+                result = discriminator.predict(path, include_gradcam=False)
+                results.append({
+                    "path": path,
+                    "verdict": result.verdict,
+                    "confidence": round(result.confidence * 100, 2)
+                })
+                if "SYNTHETIC" in result.verdict:
+                    synthetic_count += 1
+                elif "REAL" in result.verdict:
+                    real_count += 1
+            except Exception as e:
+                results.append({"path": path, "error": str(e)})
+
+        # Analyze reference if provided
+        ref_result = None
+        if reference_path:
+            try:
+                ref = discriminator.predict(reference_path, include_gradcam=False)
+                ref_result = {
+                    "path": reference_path,
+                    "verdict": ref.verdict,
+                    "confidence": round(ref.confidence * 100, 2)
+                }
+            except Exception as e:
+                ref_result = {"path": reference_path, "error": str(e)}
+
+        return json.dumps({
+            "total_analyzed": len(results),
+            "synthetic_count": synthetic_count,
+            "real_count": real_count,
+            "uncertain_count": len(results) - synthetic_count - real_count,
+            "results": results,
+            "reference": ref_result,
+            "recommendation": (
+                "All images appear synthetic - consider structural improvements"
+                if synthetic_count == len(results) else
+                f"{synthetic_count}/{len(results)} images classified as synthetic"
+            )
+        }, indent=2)
+
+    except FileNotFoundError:
+        return json.dumps({
+            "error": "Model not found",
+            "hint": "Train the discriminator first"
+        }, indent=2)
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+# =============================================================================
+# Phase 4: Prominence Shape Classifier Tools
+# =============================================================================
+
+@mcp.tool()
+def analyze_prominence_shapes(
+    image_path: str,
+    save_visualization: bool = True,
+    output_path: str = ""
+) -> str:
+    """
+    Analyze prominence morphology to detect synthetic artifacts.
+
+    Detects:
+    - "Cat ear" triangular protrusions
+    - Ribbon artifacts (too regular, uniform width)
+    - Missing filamentary structure
+    - Unnatural symmetry
+
+    Real prominences have high internal texture variance (>2.0) from filamentary structure.
+    Synthetic artifacts have low variance (<1.5) from uniform procedural noise.
+
+    Args:
+        image_path: Path to solar render or reference image
+        save_visualization: Save annotated image showing detected regions
+        output_path: Custom output path for visualization (optional)
+
+    Returns:
+        JSON with:
+        - overall_score: 0-100 shape quality score
+        - artifact_count: Number of detected artifacts
+        - natural_count: Number of natural-looking prominences
+        - prominences: Detailed per-prominence analysis
+        - issues: List of detected morphological problems
+        - summary: Human-readable assessment
+
+    Example:
+        analyze_prominence_shapes("build/vdb_output/sun_prominences_v2/render_0060.png")
+    """
+    try:
+        from prominence_shape_classifier import analyze_image
+
+        # Determine output path
+        if save_visualization:
+            if not output_path:
+                path = Path(image_path)
+                output_path = str(PROJECT_ROOT / "evaluation_outputs" / f"{path.stem}_prominence_analysis.png")
+
+        result = analyze_image(image_path, output_path if save_visualization else None)
+
+        # Add visualization path to result
+        if save_visualization and output_path:
+            result["visualization_path"] = output_path
+
+        return json.dumps(result, indent=2, default=float)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def compare_prominence_quality(
+    synthetic_path: str,
+    reference_path: str
+) -> str:
+    """
+    Compare prominence quality between synthetic render and real reference.
+
+    Provides side-by-side comparison highlighting the morphological differences
+    between synthetic and real solar prominences.
+
+    Args:
+        synthetic_path: Path to synthetic render
+        reference_path: Path to real solar reference image
+
+    Returns:
+        JSON with:
+        - synthetic: Full analysis of synthetic render
+        - reference: Full analysis of reference image
+        - comparison: Key differences and severity rating
+        - recommendations: What to improve in the synthetic render
+
+    Example:
+        compare_prominence_quality(
+            "build/vdb_output/sun_prominences_v2/render_0060.png",
+            "assets/reference_images/star/.../frame_00639.jpg"
+        )
+    """
+    try:
+        from prominence_shape_classifier import analyze_image
+
+        # Analyze both images
+        syn_result = analyze_image(
+            synthetic_path,
+            str(PROJECT_ROOT / "evaluation_outputs" / "prominence_comparison_synthetic.png")
+        )
+        ref_result = analyze_image(
+            reference_path,
+            str(PROJECT_ROOT / "evaluation_outputs" / "prominence_comparison_reference.png")
+        )
+
+        # Build comparison
+        score_diff = ref_result.get("overall_score", 0) - syn_result.get("overall_score", 0)
+        artifact_diff = syn_result.get("artifact_count", 0) - ref_result.get("artifact_count", 0)
+
+        # Determine severity
+        if score_diff > 60:
+            severity = "CRITICAL"
+            color = "red"
+        elif score_diff > 30:
+            severity = "HIGH"
+            color = "orange"
+        elif score_diff > 10:
+            severity = "MEDIUM"
+            color = "yellow"
+        else:
+            severity = "LOW"
+            color = "green"
+
+        # Extract key issues from synthetic
+        key_issues = []
+        for issue in syn_result.get("issues", [])[:5]:
+            if "CAT_EAR" in issue:
+                key_issues.append("Cat ear triangular artifacts detected")
+            elif "UNIFORM_TEXTURE" in issue:
+                key_issues.append("Missing filamentary structure (uniform procedural texture)")
+            elif "HIGH_SYMMETRY" in issue:
+                key_issues.append("Unnatural bilateral symmetry")
+            elif "ANGULAR" in issue:
+                key_issues.append("Sharp angular transitions (not smooth curves)")
+
+        # Remove duplicates
+        key_issues = list(dict.fromkeys(key_issues))
+
+        # Generate recommendations
+        recommendations = []
+        if "Cat ear" in str(key_issues):
+            recommendations.append("Reduce flame_max_temp or adjust smoke_color to soften triangular shapes")
+        if "filamentary" in str(key_issues):
+            recommendations.append("Increase turbulence/vorticity to add internal structure")
+            recommendations.append("Add procedural displacement to prominence geometry")
+        if "symmetry" in str(key_issues):
+            recommendations.append("Add asymmetric noise or randomization to prominence positions")
+        if "angular" in str(key_issues):
+            recommendations.append("Smooth geometry or add noise to edge contours")
+
+        comparison = {
+            "synthetic": {
+                "score": syn_result.get("overall_score", 0),
+                "artifacts": syn_result.get("artifact_count", 0),
+                "natural": syn_result.get("natural_count", 0),
+                "visualization": str(PROJECT_ROOT / "evaluation_outputs" / "prominence_comparison_synthetic.png")
+            },
+            "reference": {
+                "score": ref_result.get("overall_score", 0),
+                "artifacts": ref_result.get("artifact_count", 0),
+                "natural": ref_result.get("natural_count", 0),
+                "visualization": str(PROJECT_ROOT / "evaluation_outputs" / "prominence_comparison_reference.png")
+            },
+            "comparison": {
+                "score_difference": score_diff,
+                "artifact_difference": artifact_diff,
+                "severity": severity,
+                "key_issues": key_issues
+            },
+            "recommendations": recommendations if recommendations else ["Prominence shapes appear acceptable"]
+        }
+
+        return json.dumps(comparison, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def detect_cat_ear_artifacts(
+    image_path: str,
+    sensitivity: str = "medium"
+) -> str:
+    """
+    Specifically detect "cat ear" triangular prominence artifacts.
+
+    Cat ears are symmetric triangular protrusions that are a hallmark of
+    poorly-configured procedural prominence generation. They occur when:
+    - Flame/smoke rises uniformly without turbulence
+    - Domain boundaries create regular peaks
+    - Insufficient noise/randomization in the simulation
+
+    Args:
+        image_path: Path to solar render
+        sensitivity: Detection sensitivity ("low", "medium", "high")
+
+    Returns:
+        JSON with:
+        - cat_ear_count: Number of cat ear patterns detected
+        - locations: Bounding boxes and angles of each cat ear
+        - confidence_scores: Per-detection confidence
+        - severity: Overall severity rating
+        - fixes: Specific parameter changes to try
+
+    Example:
+        detect_cat_ear_artifacts("build/vdb_output/sun_prominences_v2/render_0060.png")
+    """
+    try:
+        from prominence_shape_classifier import ProminenceShapeClassifier
+        import cv2
+
+        # Load image
+        image = cv2.imread(image_path)
+        if image is None:
+            return json.dumps({"error": f"Could not load image: {image_path}"})
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Analyze
+        classifier = ProminenceShapeClassifier()
+        result = classifier.analyze_prominences(image)
+
+        if result["status"] != "analyzed":
+            return json.dumps(result, indent=2)
+
+        # Filter for cat ear patterns
+        cat_ears = [p for p in result["prominences"] if p["classification"] == "cat_ear"]
+
+        # Adjust thresholds based on sensitivity
+        if sensitivity == "high":
+            threshold = 0.5
+        elif sensitivity == "low":
+            threshold = 0.8
+        else:
+            threshold = 0.65
+
+        filtered_ears = [e for e in cat_ears if e["cat_ear_confidence"] >= threshold]
+
+        # Determine severity
+        if len(filtered_ears) >= 5:
+            severity = "CRITICAL"
+            recommendation = "Major prominence overhaul needed"
+        elif len(filtered_ears) >= 3:
+            severity = "HIGH"
+            recommendation = "Significant cat ear artifacts - adjust parameters"
+        elif len(filtered_ears) >= 1:
+            severity = "MEDIUM"
+            recommendation = "Some cat ear artifacts detected"
+        else:
+            severity = "NONE"
+            recommendation = "No cat ear artifacts detected at this sensitivity"
+
+        # Compile locations
+        locations = [{
+            "bbox": ear["bbox"],
+            "angle_from_center": round(ear["angle_from_center"], 1),
+            "confidence": round(ear["cat_ear_confidence"], 2),
+            "symmetry": round(ear["symmetry"], 2)
+        } for ear in filtered_ears]
+
+        # Generate specific fixes
+        fixes = []
+        if len(filtered_ears) > 0:
+            fixes = [
+                "Increase vorticity (try 0.5-0.8) to break symmetric updrafts",
+                "Add turbulence noise to flame/smoke source",
+                "Reduce flame_max_temp slightly to soften peaks",
+                "Expand domain height to avoid boundary clipping",
+                "Add wind force with slight randomization"
+            ]
+
+        return json.dumps({
+            "cat_ear_count": len(filtered_ears),
+            "sensitivity": sensitivity,
+            "threshold_used": threshold,
+            "locations": locations,
+            "severity": severity,
+            "recommendation": recommendation,
+            "fixes": fixes if fixes else ["No fixes needed"]
+        }, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+# =============================================================================
 # Main
 # =============================================================================
 

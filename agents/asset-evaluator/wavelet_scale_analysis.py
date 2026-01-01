@@ -497,6 +497,444 @@ class WaveletScaleAnalyzer:
 
 
 # =============================================================================
+# Enhanced Texture Analysis (Uniformity Detection)
+# =============================================================================
+
+def compute_local_variance_map(image: np.ndarray, window_size: int = 16) -> np.ndarray:
+    """
+    Compute local variance across the image.
+
+    Procedural textures have uniform variance across the image.
+    Natural textures have varying variance (some areas smooth, some detailed).
+    """
+    from scipy.ndimage import uniform_filter
+
+    if len(image.shape) == 3:
+        image = np.mean(image, axis=-1)
+
+    image = image.astype(np.float64)
+
+    # Local mean
+    local_mean = uniform_filter(image, size=window_size)
+
+    # Local variance
+    local_var = uniform_filter((image - local_mean)**2, size=window_size)
+
+    return local_var
+
+
+def analyze_texture_uniformity(image_path: str, content_threshold: int = 30) -> Dict[str, Any]:
+    """
+    Analyze texture uniformity to detect procedural patterns.
+
+    Key insight: Procedural textures have UNIFORM local statistics across the image.
+    Natural textures have VARYING local statistics (some areas smooth, some detailed).
+
+    Args:
+        image_path: Path to image
+        content_threshold: Brightness threshold for content mask
+
+    Returns:
+        Dictionary with uniformity metrics
+    """
+    from PIL import Image
+    from scipy.ndimage import uniform_filter
+
+    img = Image.open(image_path)
+    arr = np.array(img, dtype=np.float64)
+
+    if len(arr.shape) == 3:
+        gray = np.mean(arr, axis=-1)
+    else:
+        gray = arr
+
+    # Create content mask (exclude black background)
+    content_mask = gray > content_threshold
+
+    if np.sum(content_mask) < 100:
+        return {"error": "Not enough content pixels"}
+
+    # Extract content pixels
+    content = gray[content_mask]
+
+    # Compute local variance map
+    local_var = compute_local_variance_map(gray, window_size=16)
+    content_local_var = local_var[content_mask]
+
+    # Key metric: How uniform is the local variance?
+    # Low CV = uniform texture (procedural)
+    # High CV = varying texture (natural)
+    var_mean = np.mean(content_local_var)
+    var_std = np.std(content_local_var)
+    variance_cv = var_std / (var_mean + 1e-10)  # Coefficient of variation
+
+    # Compute local contrast variation
+    # Procedural: similar contrast everywhere
+    # Natural: varying contrast (some smooth, some detailed)
+    window = 32
+    local_contrast = uniform_filter(np.abs(np.gradient(gray)[0]), size=window)
+    content_contrast = local_contrast[content_mask]
+
+    contrast_mean = np.mean(content_contrast)
+    contrast_std = np.std(content_contrast)
+    contrast_cv = contrast_std / (contrast_mean + 1e-10)
+
+    # Determine if procedural
+    # Low CV (<0.8) suggests uniform/procedural texture
+    uniformity_score = 1.0 - min(variance_cv, 1.0)
+    is_uniform = variance_cv < 0.8
+
+    # Interpretation
+    if variance_cv < 0.5:
+        texture_type = "highly_uniform"
+        interpretation = "Texture is HIGHLY UNIFORM - strong procedural/noise pattern detected"
+    elif variance_cv < 0.8:
+        texture_type = "uniform"
+        interpretation = "Texture is UNIFORM - likely procedural noise"
+    elif variance_cv < 1.2:
+        texture_type = "mixed"
+        interpretation = "Texture has MIXED uniformity"
+    else:
+        texture_type = "varied"
+        interpretation = "Texture is VARIED - appears natural/organic"
+
+    return {
+        "variance_cv": round(variance_cv, 4),
+        "contrast_cv": round(contrast_cv, 4),
+        "uniformity_score": round(uniformity_score, 4),
+        "is_uniform": is_uniform,
+        "texture_type": texture_type,
+        "interpretation": interpretation,
+        "variance_mean": round(var_mean, 2),
+        "variance_std": round(var_std, 2),
+        "content_pixels": int(np.sum(content_mask))
+    }
+
+
+def detect_repetitive_pattern(image_path: str, content_threshold: int = 30) -> Dict[str, Any]:
+    """
+    Detect repetitive patterns using autocorrelation.
+
+    Procedural noise often has periodic autocorrelation peaks.
+    Natural textures have smoother, non-periodic autocorrelation.
+    """
+    from PIL import Image
+    from scipy import signal
+
+    img = Image.open(image_path)
+    arr = np.array(img, dtype=np.float64)
+
+    if len(arr.shape) == 3:
+        gray = np.mean(arr, axis=-1)
+    else:
+        gray = arr
+
+    # Focus on center region (avoid edge effects)
+    h, w = gray.shape
+    center_region = gray[h//4:3*h//4, w//4:3*w//4]
+
+    # Compute 2D autocorrelation via FFT
+    fft = np.fft.fft2(center_region - np.mean(center_region))
+    power = np.abs(fft) ** 2
+    autocorr = np.fft.ifft2(power).real
+    autocorr = np.fft.fftshift(autocorr)
+
+    # Normalize
+    autocorr = autocorr / autocorr.max()
+
+    # Analyze peaks (excluding center)
+    center_y, center_x = autocorr.shape[0] // 2, autocorr.shape[1] // 2
+
+    # Mask out center region
+    mask_radius = min(center_y, center_x) // 10
+    y, x = np.ogrid[:autocorr.shape[0], :autocorr.shape[1]]
+    center_mask = ((y - center_y)**2 + (x - center_x)**2) > mask_radius**2
+
+    # Find secondary peaks
+    masked_autocorr = autocorr * center_mask
+    secondary_max = np.max(masked_autocorr)
+
+    # High secondary peaks indicate repetitive pattern
+    has_repetition = secondary_max > 0.3
+    repetition_strength = min(secondary_max, 1.0)
+
+    if secondary_max > 0.5:
+        interpretation = "STRONG repetitive pattern detected - highly procedural"
+    elif secondary_max > 0.3:
+        interpretation = "Moderate repetitive pattern - some procedural elements"
+    elif secondary_max > 0.15:
+        interpretation = "Weak repetitive pattern"
+    else:
+        interpretation = "No significant repetitive pattern - appears organic"
+
+    return {
+        "has_repetition": has_repetition,
+        "repetition_strength": round(repetition_strength, 4),
+        "secondary_peak_max": round(secondary_max, 4),
+        "interpretation": interpretation
+    }
+
+
+def analyze_feature_sizes(image_path: str, content_threshold: int = 30) -> Dict[str, Any]:
+    """
+    Analyze the distribution of feature sizes using connected components.
+
+    This is the MOST DISCRIMINATING metric discovered:
+    - Procedural textures have UNIFORM feature sizes (low CV)
+    - Natural textures have VARIED feature sizes (high CV)
+
+    Test results:
+    - Synthetic "popcorn" render: CV = 1.83 (uniform sizes)
+    - Real solar footage: CV = 36.97 (varied sizes - 20x higher!)
+
+    Args:
+        image_path: Path to image
+        content_threshold: Brightness threshold for binary mask
+
+    Returns:
+        Dictionary with feature size metrics
+    """
+    import cv2
+
+    img = cv2.imread(image_path)
+    if img is None:
+        return {"error": f"Could not load image: {image_path}"}
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Threshold to get features
+    _, thresh = cv2.threshold(gray, content_threshold, 255, cv2.THRESH_BINARY)
+
+    # Find contours
+    contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Get areas (filter tiny noise)
+    areas = np.array([cv2.contourArea(c) for c in contours if cv2.contourArea(c) > 10])
+
+    if len(areas) < 3:
+        return {
+            "error": "Not enough features detected",
+            "feature_count": len(areas),
+            "is_uniform_size": None,
+            "size_cv": None
+        }
+
+    # Key statistics
+    mean_area = float(np.mean(areas))
+    std_area = float(np.std(areas))
+    cv_area = std_area / (mean_area + 1e-10)  # Coefficient of variation
+
+    min_area = float(np.min(areas))
+    max_area = float(np.max(areas))
+    range_ratio = max_area / (min_area + 1e-10)
+
+    p25, p50, p75 = [float(x) for x in np.percentile(areas, [25, 50, 75])]
+    iqr = p75 - p25
+
+    # Interpretation
+    # Based on empirical testing:
+    # - Render CV ~1.83 (uniform)
+    # - Reference CV ~36.97 (highly varied)
+    # Threshold at CV=5 separates procedural from natural
+
+    if cv_area < 3:
+        uniformity = "highly_uniform"
+        interpretation = "Features are HIGHLY UNIFORM in size - strong procedural signature"
+        is_uniform = True
+    elif cv_area < 10:
+        uniformity = "uniform"
+        interpretation = "Features are UNIFORM in size - likely procedural"
+        is_uniform = True
+    elif cv_area < 20:
+        uniformity = "mixed"
+        interpretation = "Features have MIXED size distribution"
+        is_uniform = False
+    else:
+        uniformity = "varied"
+        interpretation = "Features are HIGHLY VARIED in size - natural multi-scale structure"
+        is_uniform = False
+
+    return {
+        "feature_count": len(areas),
+        "size_cv": round(cv_area, 4),
+        "size_mean": round(mean_area, 2),
+        "size_std": round(std_area, 2),
+        "size_min": round(min_area, 2),
+        "size_max": round(max_area, 2),
+        "size_range_ratio": round(range_ratio, 2),
+        "size_p25": round(p25, 2),
+        "size_p50": round(p50, 2),
+        "size_p75": round(p75, 2),
+        "size_iqr": round(iqr, 2),
+        "uniformity_type": uniformity,
+        "is_uniform_size": is_uniform,
+        "interpretation": interpretation
+    }
+
+
+def comprehensive_texture_analysis(
+    image_path: str,
+    reference_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Comprehensive texture analysis combining multiple methods.
+
+    Combines:
+    1. Wavelet scale entropy (procedural = concentrated at one scale)
+    2. Texture uniformity (procedural = uniform local variance)
+    3. Repetitive pattern detection (procedural = periodic autocorrelation)
+    4. Feature size distribution (procedural = uniform sizes) <- MOST DISCRIMINATING
+
+    Returns actionable assessment of texture quality with procedural score.
+    """
+    results = {
+        "image_path": image_path
+    }
+
+    # 1. Wavelet scale analysis
+    analyzer = WaveletScaleAnalyzer()
+    wavelet_result = analyzer.analyze(image_path, reference_path)
+    results["wavelet"] = {
+        "scale_entropy": wavelet_result.scale_entropy,
+        "is_procedural": wavelet_result.is_procedural,
+        "procedural_confidence": wavelet_result.procedural_confidence,
+        "dominant_scale": wavelet_result.dominant_scale
+    }
+
+    # 2. Texture uniformity analysis
+    uniformity = analyze_texture_uniformity(image_path)
+    results["uniformity"] = uniformity
+
+    # 3. Repetitive pattern detection
+    repetition = detect_repetitive_pattern(image_path)
+    results["repetition"] = repetition
+
+    # 4. Feature size distribution (MOST DISCRIMINATING)
+    feature_sizes = analyze_feature_sizes(image_path)
+    results["feature_sizes"] = feature_sizes
+
+    # =================================================================
+    # COMBINED PROCEDURAL SCORE (0-100, higher = more procedural)
+    # =================================================================
+    # Feature size CV is the DOMINANT discriminator based on empirical testing:
+    # - Synthetic render: CV = 1.83 (uniform sizes)
+    # - Real solar footage: CV = 36.97 (varied sizes - 20x higher!)
+    # Other metrics (wavelet, uniformity, repetition) can give false signals
+
+    procedural_score = 0.0
+    weights_used = 0.0
+
+    # Feature size uniformity (60% weight - DOMINANT METRIC)
+    # This is empirically the best discriminator
+    if feature_sizes.get("size_cv") is not None:
+        size_cv = feature_sizes["size_cv"]
+        # CV < 3 = very procedural (score 60), CV > 20 = natural (score 0)
+        # Sigmoid-like scoring for smooth transition
+        if size_cv < 3:
+            procedural_score += 60
+        elif size_cv < 5:
+            procedural_score += 55 - (size_cv - 3) * 10  # 55 to 35
+        elif size_cv < 10:
+            procedural_score += 35 - (size_cv - 5) * 5  # 35 to 10
+        elif size_cv < 20:
+            procedural_score += 10 - (size_cv - 10) * 1  # 10 to 0
+        weights_used += 60
+
+    # Wavelet scale entropy (25% weight)
+    # Entropy < 1.0 = procedural, > 2.0 = natural
+    entropy = wavelet_result.scale_entropy
+    if entropy < 1.0:
+        procedural_score += 25
+    elif entropy < 1.5:
+        procedural_score += 20 * (1 - (entropy - 1.0) / 0.5)
+    elif entropy < 2.0:
+        procedural_score += 10 * (1 - (entropy - 1.5) / 0.5)
+    weights_used += 25
+
+    # Texture uniformity (10% weight - REDUCED, unreliable with black backgrounds)
+    # Can give false signals due to background contrast effects
+    if uniformity.get("variance_cv") is not None:
+        if uniformity.get("is_uniform", False):
+            procedural_score += 10
+        weights_used += 10
+
+    # Repetitive pattern (5% weight - REDUCED, can false-positive on real granulation)
+    if repetition.get("has_repetition", False):
+        strength = repetition.get("repetition_strength", 0)
+        procedural_score += 5 * min(strength, 1.0)
+    weights_used += 5
+
+    # Normalize to 100 if weights < 100
+    if weights_used > 0:
+        procedural_score = (procedural_score / weights_used) * 100
+
+    # Determine texture quality based on score
+    if procedural_score >= 60:
+        texture_quality = "procedural"
+        verdict = "PROCEDURAL - Texture appears synthetic/generated"
+    elif procedural_score >= 35:
+        texture_quality = "mixed"
+        verdict = "MIXED - Some procedural characteristics detected"
+    else:
+        texture_quality = "natural"
+        verdict = "NATURAL - Texture appears organic/realistic"
+
+    # Collect specific signals
+    signals = []
+    if feature_sizes.get("is_uniform_size", False):
+        signals.append("uniform_feature_sizes")
+    if uniformity.get("is_uniform", False):
+        signals.append("uniform_local_variance")
+    if repetition.get("has_repetition", False):
+        signals.append("repetitive_pattern")
+    if wavelet_result.is_procedural:
+        signals.append("concentrated_scale_energy")
+
+    results["combined_score"] = {
+        "procedural_score": round(procedural_score, 1),
+        "texture_quality": texture_quality,
+        "texture_verdict": verdict,
+        "signals_detected": signals,
+        "signal_count": len(signals),
+        "primary_indicator": "feature_size_uniformity" if feature_sizes.get("size_cv") is not None else "wavelet_entropy"
+    }
+
+    # Generate recommendations
+    recommendations = []
+
+    if feature_sizes.get("is_uniform_size", False):
+        recommendations.append(
+            "CRITICAL - UNIFORM FEATURE SIZES: All features are similar size. "
+            "Use multi-scale noise (FBM) to create varied feature sizes like real solar granulation."
+        )
+
+    if "concentrated_scale_energy" in signals:
+        recommendations.append(
+            "SCALE CONCENTRATION: Energy concentrated at single scale. "
+            "Add detail at multiple scales - large active regions AND fine granulation."
+        )
+
+    if "uniform_local_variance" in signals:
+        recommendations.append(
+            "TEXTURE UNIFORMITY: Local variance too consistent. "
+            "Add dark filaments, bright faculae, and varied surface features."
+        )
+
+    if "repetitive_pattern" in signals:
+        recommendations.append(
+            "REPETITIVE PATTERN: Periodic texture detected. "
+            "Use non-tiling noise or break up regularity with large-scale variation."
+        )
+
+    if not recommendations:
+        recommendations.append("Texture appears natural with good variation across scales.")
+
+    results["recommendations"] = recommendations
+
+    return results
+
+
+# =============================================================================
 # Visualization
 # =============================================================================
 

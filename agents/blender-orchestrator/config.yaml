@@ -1,0 +1,204 @@
+# Blender VFX Orchestrator Configuration
+# Controls autonomy, guardrails, and workflow behavior
+
+orchestrator:
+  name: "blender-vfx-orchestrator"
+  version: "0.1.0"
+  description: "Autonomous Blender VFX asset generation with adaptive autonomy"
+
+# Adaptive Autonomy System
+# The orchestrator earns more autonomy with good performance, loses it with failures
+autonomy:
+  # Starting trust score (0.0 - 1.0)
+  # 0.2 = SUPERVISED (ask before everything)
+  initial_trust_score: 0.2
+
+  # Override autonomy level (ignores trust score if set)
+  # Options: null (use trust score), "supervised", "guided", "autonomous", "trusted"
+  override: null
+
+  # Autonomy level thresholds
+  levels:
+    supervised:
+      min_trust: 0.0
+      max_trust: 0.3
+      description: "Ask before every major step"
+    guided:
+      min_trust: 0.3
+      max_trust: 0.6
+      description: "Ask before technique changes and session end"
+    autonomous:
+      min_trust: 0.6
+      max_trust: 0.8
+      description: "Ask only for session end and error recovery"
+    trusted:
+      min_trust: 0.8
+      max_trust: 1.0
+      description: "Fully autonomous, only notify on completion"
+
+  # Trust score adjustments
+  # Positive values increase trust, negative values decrease it
+  trust_adjustments:
+    # Positive events
+    quality_improved: 0.05        # Iteration improved quality score
+    quality_threshold_met: 0.10   # VFX score >= pass threshold
+    asset_completed: 0.15         # Successful asset generation
+    human_approval: 0.02          # Human approved a decision
+
+    # Negative events
+    quality_degraded: -0.05       # Quality score got worse
+    execution_error: -0.10        # Blender execution failed
+    technique_change: -0.03       # Had to switch techniques
+    token_limit_exceeded: -0.15   # Hit token guardrails
+    human_override: -0.10         # Human overrode agent decision
+    critical_failure: -0.20       # Unrecoverable error
+
+  # Trust score bounds and decay
+  min_trust: 0.0
+  max_trust: 1.0
+  daily_decay: 0.02  # Trust decays slightly each day without use
+
+# Token Usage Guardrails
+# Prevents runaway API costs
+guardrails:
+  token_limits:
+    per_session: 100000          # Max tokens per asset generation session
+    per_iteration: 20000         # Max tokens per iteration cycle
+    per_tool_call: 5000          # Max tokens per MCP tool call
+    absolute_max: 150000         # Hard stop regardless of session
+
+  cost_limits:
+    per_session_usd: 5.00        # Max cost per session
+    per_day_usd: 20.00           # Max daily cost
+    per_week_usd: 75.00          # Max weekly cost (your ~$31 budget buffer)
+
+  # Warning and action thresholds
+  thresholds:
+    warning: 0.80                # Warn at 80% of limit
+    pause: 0.95                  # Ask approval at 95%
+    hard_stop: 1.00              # Stop at 100%
+
+  # Token pricing (Opus 4.5)
+  pricing:
+    input_per_million: 15.00     # $15/1M input tokens
+    output_per_million: 75.00    # $75/1M output tokens
+
+# Workflow Limits
+workflow:
+  max_iterations: 10             # Hard limit on iterations per asset
+  max_retries: 3                 # Max retries on execution failure
+  max_technique_changes: 2       # Max technique switches before asking
+
+  # Timeouts (seconds)
+  timeouts:
+    blender_execution: 900       # 15 min max per Blender run
+    evaluation: 120              # 2 min max for ML evaluation
+    mcp_tool_call: 60            # 1 min max per MCP call
+
+  # Validation settings
+  validate_api: true             # Query blender-manual before generation
+  use_knowledge_base: true       # Check experiment-tracker before params
+  record_learnings: true         # Save outcomes to knowledge base
+
+# Quality Thresholds
+# Based on VFX quality metrics (NOT LPIPS/CLIP)
+quality:
+  vfx_pass_threshold: 70         # VFX quality score to pass (0-100)
+  vfx_good_threshold: 80         # Score considered "good"
+  vfx_excellent_threshold: 90    # Score considered "excellent"
+
+  plateau_detection:
+    threshold: 5                 # Score change < 5 = plateau
+    iterations: 3                # Plateau if stable for 3 iterations
+
+  temporal_threshold: 0.70       # Temporal consistency threshold (for animations)
+
+  # Effect-specific thresholds (can override defaults)
+  effect_overrides:
+    sun:
+      vfx_pass_threshold: 65     # Sun is harder, lower bar
+      plateau_threshold: 3
+    explosion:
+      vfx_pass_threshold: 70
+    fire:
+      vfx_pass_threshold: 75
+    smoke:
+      vfx_pass_threshold: 75
+
+# MCP Server Configuration
+# Paths relative to project root
+mcp_servers:
+  script_generator:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/script-generator"
+    timeout: 30
+
+  blender_executor:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/blender-executor"
+    timeout: 900  # Long timeout for Blender
+
+  asset_evaluator:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/asset-evaluator"
+    timeout: 120
+
+  experiment_tracker:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/experiment-tracker"
+    timeout: 30
+
+  blender_manual:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/blender-manual"
+    timeout: 30
+
+  iteration_controller:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/iteration-controller"
+    timeout: 60
+
+# Logging Configuration
+logging:
+  level: INFO
+  session_logs: "build/orchestrator_logs/"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log rotation
+  max_log_files: 50
+  max_log_size_mb: 10
+
+  # Verbosity levels
+  log_tool_calls: true
+  log_token_usage: true
+  log_trust_changes: true
+  log_decisions: true
+
+# State Persistence
+persistence:
+  state_directory: "build/orchestrator_state/"
+  daily_stats_file: "daily_stats.json"
+  session_state_file: "session_{session_id}.json"
+
+  # Auto-save frequency
+  auto_save_interval_seconds: 30
+
+  # Keep completed sessions for N days
+  session_retention_days: 30
+
+# Notification Settings
+notifications:
+  # Format for approval requests
+  approval_format: "detailed"    # "detailed" or "compact"
+
+  # Show progress updates during autonomous operation
+  progress_interval: 30          # Seconds between progress updates
+
+  # Sound notification on completion (if terminal supports)
+  sound_on_completion: false
