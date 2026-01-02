@@ -3,8 +3,26 @@
 
 orchestrator:
   name: "blender-vfx-orchestrator"
-  version: "0.1.0"
+  version: "0.2.0"
   description: "Autonomous Blender VFX asset generation with adaptive autonomy"
+
+  # Claude Agent SDK configuration (0.1.17+)
+  model:
+    # Extended thinking tokens (SDK 0.1.6+)
+    # Controls how much "thinking" budget the agent has per turn
+    max_thinking_tokens: 8000
+
+    # Permission mode for file edits
+    # Options: acceptEdits, ask, deny
+    permission_mode: "acceptEdits"
+
+  # File checkpointing (SDK 0.1.15+)
+  # Enables rewind_files() for error recovery
+  enable_file_checkpointing: true
+
+  # Session forking (SDK 0.1.0+)
+  # Allow exploring alternative approaches from same starting point
+  enable_session_forking: true
 
 # Adaptive Autonomy System
 # The orchestrator earns more autonomy with good performance, loses it with failures
@@ -15,7 +33,7 @@ autonomy:
 
   # Override autonomy level (ignores trust score if set)
   # Options: null (use trust score), "supervised", "guided", "autonomous", "trusted"
-  override: null
+  override: "autonomous"  # For testing - ask only for errors and session end
 
   # Autonomy level thresholds
   levels:

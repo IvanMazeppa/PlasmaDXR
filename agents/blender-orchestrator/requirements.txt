@@ -1,7 +1,15 @@
 # Blender VFX Orchestrator Dependencies
 
-# Claude Agent SDK
-claude-agent-sdk>=0.1.0
+# Claude Agent SDK - minimum 0.1.17 for all features:
+# - 0.1.3+: Strongly-typed hook inputs (PreToolUseHookInput, etc.)
+# - 0.1.6+: max_budget_usd, max_thinking_tokens
+# - 0.1.12+: tools option with preset support
+# - 0.1.15+: enable_file_checkpointing, rewind_files()
+# - 0.1.17+: UserMessage UUID for checkpointing
+claude-agent-sdk>=0.1.17
+
+# MCP Server (FastMCP)
+mcp>=1.0.0
 
 # Configuration
 pyyaml>=6.0

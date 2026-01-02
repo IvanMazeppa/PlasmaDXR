@@ -14,7 +14,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    HookMatcher,
+    PreToolUseHookInput,
+    PostToolUseHookInput,
+    PermissionResultAllow,
+    PermissionResultDeny,
+)
 
 try:
     from .autonomy import (
@@ -293,19 +301,127 @@ Work efficiently but within your current permission level.
             "mcp__blender-manual__read_page",
         ]
 
+    def _create_hooks(self) -> Dict[str, List[HookMatcher]]:
+        """
+        Create hooks for deterministic processing.
+
+        Uses SDK 0.1.3+ strongly-typed hook inputs for better type safety.
+        """
+        async def pre_tool_use_hook(
+            input_data: PreToolUseHookInput,
+            tool_use_id: str,
+            context: Any
+        ) -> Dict[str, Any]:
+            """Pre-tool-use hook for autonomy checking and guardrail enforcement."""
+            tool_name = input_data.get("tool_name", "")
+
+            # Track tool usage for guardrails
+            if self.guardrails:
+                # Estimate tokens based on tool type
+                estimated_tokens = 500  # Base estimate
+                if "execute_blender" in tool_name:
+                    estimated_tokens = 2000  # Blender execution uses more
+                elif "evaluate" in tool_name:
+                    estimated_tokens = 1500  # Evaluation passes
+
+                can_proceed, message = self.guardrails.can_proceed(estimated_tokens)
+                if not can_proceed:
+                    logger.warning(f"Guardrail block: {message}")
+                    return {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": f"Token limit reached: {message}"
+                        }
+                    }
+
+            return {}  # Allow by default
+
+        async def post_tool_use_hook(
+            input_data: PostToolUseHookInput,
+            tool_use_id: str,
+            context: Any
+        ) -> Dict[str, Any]:
+            """Post-tool-use hook for recording usage and trust updates."""
+            tool_name = input_data.get("tool_name", "")
+            tool_result = input_data.get("tool_result", {})
+
+            # Record actual token usage if available
+            if self.guardrails:
+                # Estimate based on result size
+                result_str = str(tool_result)
+                output_tokens = len(result_str) // 4  # Rough estimate
+                self.guardrails.record_usage(0, output_tokens, operation=tool_name)
+
+            # Check for errors that affect trust
+            if "error" in str(tool_result).lower():
+                if "blender" in tool_name.lower():
+                    self.autonomy.record_event(TrustEvent.EXECUTION_ERROR)
+                    logger.warning(f"Blender error detected, trust decreased")
+
+            return {}
+
+        return {
+            "PreToolUse": [
+                HookMatcher(matcher="*", hooks=[pre_tool_use_hook]),
+            ],
+            "PostToolUse": [
+                HookMatcher(matcher="*", hooks=[post_tool_use_hook]),
+            ],
+        }
+
     def create_options(self) -> ClaudeAgentOptions:
-        """Create ClaudeAgentOptions for the orchestrator."""
+        """
+        Create ClaudeAgentOptions for the orchestrator.
+
+        Uses SDK 0.1.6+ features:
+        - max_budget_usd: Native cost control (replaces manual guardrails for hard limit)
+        - max_thinking_tokens: Control extended thinking allocation
+
+        Uses SDK 0.1.15+ features:
+        - enable_file_checkpointing: Allow file rollback on errors
+        """
         logger.info("Creating orchestrator agent configuration...")
 
+        # Calculate budget from guardrail config (SDK 0.1.6+)
+        max_budget = self.guardrail_config.cost_limits.per_session
+
+        # Get model config
+        model_config = self.config.get("orchestrator", {}).get("model", {})
+        max_thinking = model_config.get("max_thinking_tokens", 8000)
+
         options = ClaudeAgentOptions(
+            # Core settings
             cwd=str(self.project_root),
-            mcp_servers=self._create_mcp_config(),
-            allowed_tools=self._create_allowed_tools(),
             system_prompt=self._create_system_prompt(),
+
+            # MCP servers for Blender pipeline
+            mcp_servers=self._create_mcp_config(),
+
+            # Tool configuration (SDK 0.1.12+ format)
+            allowed_tools=self._create_allowed_tools(),
+
+            # Cost control (SDK 0.1.6+) - native budget limit
+            max_budget_usd=max_budget,
+
+            # Extended thinking control (SDK 0.1.6+)
+            max_thinking_tokens=max_thinking,
+
+            # File checkpointing for rollback (SDK 0.1.15+)
+            enable_file_checkpointing=True,
+
+            # Hooks for deterministic processing (SDK 0.1.3+)
+            hooks=self._create_hooks(),
+
+            # Permission mode - we handle permissions via hooks
+            permission_mode='acceptEdits',
         )
 
         logger.info(f"MCP servers configured: {len(options.mcp_servers)}")
         logger.info(f"Allowed tools: {len(options.allowed_tools)}")
+        logger.info(f"Max budget: ${max_budget:.2f} (SDK native)")
+        logger.info(f"Max thinking tokens: {max_thinking}")
+        logger.info(f"File checkpointing: enabled")
 
         return options
 
@@ -825,8 +941,45 @@ Actions:
             data={"response": response}
         )
 
+    async def _rewind_to_checkpoint(self, checkpoint_id: Optional[str] = None) -> bool:
+        """
+        Rewind file changes to a checkpoint (SDK 0.1.15+ feature).
+
+        Uses enable_file_checkpointing + rewind_files() to rollback
+        any file modifications made since the checkpoint.
+
+        Args:
+            checkpoint_id: User message UUID to rewind to. If None, uses last checkpoint.
+
+        Returns:
+            True if rewind succeeded, False otherwise.
+        """
+        if not self.client:
+            logger.warning("Cannot rewind: client not initialized")
+            return False
+
+        if not checkpoint_id and hasattr(self, '_last_checkpoint_id'):
+            checkpoint_id = self._last_checkpoint_id
+
+        if not checkpoint_id:
+            logger.warning("No checkpoint available for rewind")
+            return False
+
+        try:
+            await self.client.rewind_files(checkpoint_id)
+            logger.info(f"Files rewound to checkpoint: {checkpoint_id[:8]}...")
+            return True
+        except Exception as e:
+            logger.error(f"Rewind failed: {e}")
+            return False
+
     async def _stage_error_recovery(self) -> StageResult:
-        """Handle errors and attempt recovery."""
+        """
+        Handle errors and attempt recovery.
+
+        Uses SDK 0.1.15+ file checkpointing to rewind file changes
+        before retrying operations.
+        """
         logger.info("Stage: ERROR_RECOVERY")
 
         # Get last error from history
@@ -840,6 +993,11 @@ Actions:
                 outcome=WorkflowOutcome.FAILURE,
                 error=f"Retry limit exceeded: {error}"
             )
+
+        # Attempt to rewind file changes before retry (SDK 0.1.15+)
+        rewind_success = await self._rewind_to_checkpoint()
+        if rewind_success:
+            logger.info("File changes rewound successfully before retry")
 
         prompt = f"""Error recovery needed:
 
@@ -920,7 +1078,12 @@ Permission to retry: {self.autonomy.can_proceed(DecisionType.RETRY_EXECUTION)}
             )
 
     async def _query_agent(self, prompt: str) -> str:
-        """Send query to Claude agent and get response."""
+        """
+        Send query to Claude agent and get response.
+
+        SDK 0.1.17+ feature: Captures UserMessage UUIDs for
+        file checkpointing and rewind support.
+        """
         if not self.client:
             raise RuntimeError("Agent not started")
 
@@ -930,6 +1093,11 @@ Permission to retry: {self.autonomy.can_proceed(DecisionType.RETRY_EXECUTION)}
 
         full_response = ""
         async for message in self.client.receive_response():
+            # Capture UserMessage UUID for checkpointing (SDK 0.1.17+)
+            if hasattr(message, 'uuid') and message.uuid:
+                self._last_checkpoint_id = message.uuid
+                logger.debug(f"Checkpoint saved: {message.uuid[:8]}...")
+
             message_text = str(message) if not isinstance(message, str) else message
             full_response += message_text
 

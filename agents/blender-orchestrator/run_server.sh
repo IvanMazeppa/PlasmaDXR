@@ -1,5 +1,6 @@
 #!/bin/bash
-# Run the Blender VFX Orchestrator
+# Blender VFX Orchestrator - MCP Server Launcher
+# Runs the FastMCP server for Claude Code integration
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -15,6 +16,7 @@ fi
 export PROJECT_ROOT="$PROJECT_ROOT"
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
-# Run the server
+# Run the MCP server (for Claude Code integration)
+# Use server.py for CLI interface
 cd "$SCRIPT_DIR"
-python server.py "$@"
+exec python mcp_server.py

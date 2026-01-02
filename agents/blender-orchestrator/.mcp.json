@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "blender-orchestrator": {
+      "command": "bash",
+      "args": ["run_server.sh"],
+      "cwd": "agents/blender-orchestrator",
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}

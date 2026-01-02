@@ -414,7 +414,7 @@ agents/blender-orchestrator/
 - [ ] Approval request formatting
 
 ### Phase 4: Testing
-- [ ] Unit tests for autonomy logic
+- [x] Unit tests for autonomy logic
 - [ ] Integration tests with MCP servers
 - [ ] End-to-end asset generation test
 
@@ -422,3 +422,88 @@ agents/blender-orchestrator/
 - [ ] Tune trust score adjustments
 - [ ] Optimize token usage
 - [ ] Add more workflow hooks
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+cd agents/blender-orchestrator
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### CLI Usage
+
+```bash
+# Check orchestrator status
+./run_server.sh status
+
+# Create a new VFX asset
+./run_server.sh create explosion_01 pyro "A dramatic fireball explosion"
+
+# Create with specific technique and resolution
+./run_server.sh create sun_surface pyro "Realistic sun surface" \
+    --resolution 128 --frames 100 --technique rising_mushroom
+
+# List all sessions
+./run_server.sh list
+
+# Resume an interrupted session
+./run_server.sh resume explosion_01_20250101_120000
+
+# Set trust score manually (for testing)
+./run_server.sh trust 0.8
+
+# Override autonomy level
+./run_server.sh autonomy supervised
+```
+
+### Python API Usage
+
+```python
+from orchestrator import BlenderOrchestratorAgent
+from state import AssetRequest
+
+# Initialize orchestrator
+agent = BlenderOrchestratorAgent()
+
+# Create an asset request
+request = AssetRequest(
+    asset_name="supernova_burst",
+    effect_type="pyro",
+    description="Expanding stellar explosion with hot core",
+    resolution=96,
+    frame_end=50
+)
+
+# Run with adaptive autonomy
+import asyncio
+result = asyncio.run(agent.create_asset(request))
+print(f"Best score: {result['best_score']}")
+```
+
+### Environment Variables
+
+```bash
+export ANTHROPIC_API_KEY="your-api-key"  # Required for Claude API
+export PLASMADX_CONFIG="path/to/config.yaml"  # Optional config override
+```
+
+### File Structure
+
+```
+blender-orchestrator/
+├── orchestrator.py    # Main BlenderOrchestratorAgent class
+├── autonomy.py        # Trust score and autonomy level system
+├── guardrails.py      # Token usage limits and cost tracking
+├── workflow.py        # Workflow state machine
+├── state.py           # Session persistence
+├── server.py          # CLI entry point
+├── config.yaml        # Default configuration
+├── run_server.sh      # Shell launcher
+└── DESIGN.md          # This document
+```

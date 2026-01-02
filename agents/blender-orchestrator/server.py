@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-Blender VFX Orchestrator - Server Entry Point
+Blender VFX Orchestrator - MCP Server + CLI Entry Point
+
+This is a HYBRID agent: both an MCP server (exposing tools to Claude Code)
+AND a Claude Agent SDK client (for autonomous reasoning).
 
 Usage:
+    # MCP Server mode (for Claude Code integration)
+    python server.py --mcp
+
     # Interactive mode
     python server.py
 
@@ -28,6 +34,13 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Import MCP server factory
+try:
+    from claude_agent_sdk import create_sdk_mcp_server
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
 
 # Load environment variables
 load_dotenv()
@@ -408,12 +421,56 @@ async def main():
         await orchestrator.stop()
 
 
+def create_mcp_server():
+    """Create MCP server exposing orchestrator tools."""
+    if not MCP_AVAILABLE:
+        raise RuntimeError("claude_agent_sdk not available - cannot create MCP server")
+
+    # Import tools
+    from tools import create_asset, get_status, list_sessions, resume_session
+
+    # Create MCP server with all tools
+    server = create_sdk_mcp_server(
+        name="blender-orchestrator",
+        version="0.2.0",
+        tools=[
+            create_asset,
+            get_status,
+            list_sessions,
+            resume_session,
+        ],
+    )
+
+    return server
+
+
+async def run_mcp_server():
+    """Run as MCP server (for Claude Code integration)."""
+    server = create_mcp_server()
+    logger.info("Starting Blender VFX Orchestrator MCP server...")
+
+    # Run the MCP server
+    await server.run()
+
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nShutdown requested. Goodbye!")
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        sys.exit(1)
+    # Check for MCP mode flag
+    if "--mcp" in sys.argv:
+        if not MCP_AVAILABLE:
+            print("Error: claude_agent_sdk not available for MCP mode")
+            sys.exit(1)
+        try:
+            asyncio.run(run_mcp_server())
+        except KeyboardInterrupt:
+            print("\nMCP server shutdown.")
+            sys.exit(0)
+    else:
+        # CLI mode
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("\nShutdown requested. Goodbye!")
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Fatal error: {e}", exc_info=True)
+            sys.exit(1)
