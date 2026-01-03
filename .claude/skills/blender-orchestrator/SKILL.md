@@ -247,4 +247,165 @@ Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
 
 ---
 
+## Autonomous Workflow Instructions
+
+**IMPORTANT:** When this skill is invoked, follow these stages in order. Execute MCP tools directly - do not describe what you would do, actually call the tools.
+
+### Stage 1: Initialize Session
+
+1. Parse the user's request for:
+   - `asset_name`: Name for output files
+   - `effect_type`: pyro, explosion, fire, smoke, nebula, or sun
+   - `description`: What the effect should look like
+   - `reference_path`: (optional) Path to reference image
+
+2. Announce the session start with configuration summary
+
+### Stage 2: Generate Script
+
+1. First, explore available techniques:
+   ```
+   Call: mcp__script-generator__list_techniques(effect_type="pyro")
+   ```
+
+2. Generate the initial script:
+   ```
+   Call: mcp__script-generator__generate_script(
+       effect_type=<effect_type>,
+       description=<description>,
+       output_name=<asset_name>,
+       resolution=96,
+       frame_end=50
+   )
+   ```
+
+3. If generation fails, check for parameter issues:
+   ```
+   Call: mcp__script-generator__validate_parameters(params={...})
+   ```
+
+4. Extract the script path from the result (e.g., `assets/blender_scripts/generated/<name>.py`)
+
+### Stage 3: Execute Blender
+
+1. Run the Blender simulation:
+   ```
+   Call: mcp__blender-executor__execute_blender_script(
+       script_path=<script_path>,
+       script_args={"--bake": "1", "--resolution": "96"}
+   )
+   ```
+
+2. If execution fails, parse the error:
+   ```
+   Call: mcp__blender-executor__parse_blender_errors(stderr=<error_output>)
+   ```
+
+3. Apply suggested fixes and retry (max 3 attempts per stage)
+
+4. Locate output files in `build/vdb_output/<asset_name>/`
+
+### Stage 4: Evaluate Quality
+
+1. Find the middle frame render (e.g., `render_0025.png`)
+
+2. Evaluate VFX quality (no reference needed):
+   ```
+   Call: mcp__asset-evaluator__evaluate_vfx_quality(
+       image_path="build/vdb_output/<asset_name>/render_0025.png",
+       effect_type=<effect_type>
+   )
+   ```
+
+3. If reference image provided, also evaluate ground truth:
+   ```
+   Call: mcp__asset-evaluator__evaluate_ground_truth(
+       image_path="build/vdb_output/<asset_name>/render_0025.png",
+       effect_type="sun"
+   )
+   ```
+
+4. Extract scores and issues from results:
+   - `composite_score`: 0-100 (target: >= 60)
+   - `passed`: boolean
+   - `issues`: list of problems found
+
+### Stage 5: Decide Next Action
+
+**If quality passed (score >= 60 AND no critical issues):**
+- Report success with final score and output paths
+- Session complete
+
+**If quality failed AND iteration < 5:**
+1. Diagnose issues:
+   ```
+   Call: mcp__iteration-controller__diagnose_vfx_issues(
+       quality_json=<evaluation_result_json>
+   )
+   ```
+
+2. Get suggested parameter changes from diagnosis
+
+3. Modify the script:
+   ```
+   Call: mcp__script-generator__modify_script(
+       script_path=<current_script>,
+       modifications={
+           "turbulence": <new_value>,
+           "temperature": <new_value>,
+           ...
+       }
+   )
+   ```
+
+4. Return to Stage 3 (Execute Blender)
+
+**If max iterations reached (5):**
+- Report best score achieved across all iterations
+- Provide the best iteration's output paths
+- Suggest manual refinements based on remaining issues
+
+### Stage 6: Record Learning (Optional)
+
+After each iteration, record what was learned:
+```
+Call: mcp__experiment-tracker__record_experiment_result(
+    hypothesis="<what we tried>",
+    issue_addressed="<what problem we targeted>",
+    success=<true/false>,
+    learnings='["<what we learned>"]'
+)
+```
+
+This builds a knowledge base for future sessions.
+
+---
+
+## Common Issues and Fixes
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| TOO DARK | Low flame temperature | Increase `flame_max_temp` by 500-1000K |
+| NO STRUCTURE | Low turbulence | Increase `turbulence` to 0.5-0.8 |
+| WRONG COLOR | Temperature mismatch | Adjust `flame_max_temp` for target color |
+| CLIPPING | Domain too small | Increase `domain_scale` and reposition |
+| SPARSE | Low density | Increase `density_multiplier` |
+
+---
+
+## Parallel Evaluation (Advanced)
+
+For complex effects, spawn parallel Task subagents:
+
+```
+Use Task tool to spawn:
+1. VFX quality evaluation subagent
+2. Temporal consistency subagent (if animated)
+3. Ground truth comparison subagent (if reference provided)
+```
+
+Combine results and use worst score for quality gate.
+
+---
+
 **Remember**: The orchestrator works autonomously but respects quality gates. It will iterate until the asset meets thresholds or max iterations are reached. For best results, provide detailed descriptions and reference images when available.

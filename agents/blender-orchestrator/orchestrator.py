@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -131,6 +132,13 @@ class BlenderOrchestratorAgent:
         # Approval callback (for external integration)
         self.approval_callback: Optional[Callable[[str], str]] = None
 
+        # Direct MCP tool modules (hybrid mode - bypass inner agent)
+        self._direct_tools: Dict[str, Any] = {}
+        self._direct_mode = True  # Enable hybrid mode by default
+
+        # Load direct tool modules
+        self._load_direct_tools()
+
         logger.info(f"BlenderOrchestratorAgent initialized")
         logger.info(f"  Config: {self.config_path}")
         logger.info(f"  State: {self.state_dir}")
@@ -145,6 +153,121 @@ class BlenderOrchestratorAgent:
 
         with open(self.config_path, "r") as f:
             return yaml.safe_load(f)
+
+    def _load_direct_tools(self) -> None:
+        """
+        Load MCP server modules for direct tool calls.
+
+        This bypasses the Claude Agent SDK's inner agent which doesn't execute
+        MCP tools reliably. Instead, we import the server modules directly and
+        call the tool functions as regular Python async functions.
+
+        Uses importlib to load each server.py with a unique module name,
+        avoiding Python's module caching issues.
+        """
+        import importlib.util
+
+        agents_dir = self.project_root / "agents"
+
+        # Define servers to load: (name, path)
+        servers = [
+            ("script-generator", agents_dir / "script-generator" / "server.py"),
+            ("blender-executor", agents_dir / "blender-executor" / "server.py"),
+            ("asset-evaluator", agents_dir / "asset-evaluator" / "server.py"),
+        ]
+
+        for server_name, server_path in servers:
+            if not server_path.exists():
+                logger.warning(f"[DIRECT] Server not found: {server_path}")
+                continue
+
+            try:
+                # Create unique module name to avoid cache conflicts
+                module_name = f"mcp_server_{server_name.replace('-', '_')}"
+
+                # Load the module using importlib
+                spec = importlib.util.spec_from_file_location(module_name, server_path)
+                if spec is None or spec.loader is None:
+                    logger.warning(f"[DIRECT] Failed to create spec for {server_name}")
+                    continue
+
+                module = importlib.util.module_from_spec(spec)
+
+                # Add the server's directory to sys.path temporarily for imports
+                server_dir = str(server_path.parent)
+                original_path = sys.path.copy()
+                if server_dir not in sys.path:
+                    sys.path.insert(0, server_dir)
+
+                try:
+                    spec.loader.exec_module(module)
+                    self._direct_tools[server_name] = module
+                    logger.info(f"[DIRECT] Loaded {server_name} module")
+
+                    # Debug: List available tools
+                    tools = [name for name in dir(module)
+                             if not name.startswith('_') and callable(getattr(module, name, None))]
+                    logger.debug(f"[DIRECT] {server_name} tools: {tools[:10]}...")
+                finally:
+                    # Restore original path
+                    sys.path = original_path
+
+            except Exception as e:
+                logger.warning(f"[DIRECT] Failed to load {server_name}: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+
+        logger.info(f"[DIRECT] Loaded {len(self._direct_tools)} direct tool modules")
+
+    async def _call_tool_direct(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: Dict[str, Any]
+    ) -> Any:
+        """
+        Call an MCP tool directly by invoking the Python function.
+
+        This bypasses the JSON-RPC protocol and inner Claude agent entirely.
+        Tools are called as regular async Python functions.
+
+        Args:
+            server_name: MCP server name (e.g., "script-generator")
+            tool_name: Tool function name (e.g., "generate_script")
+            arguments: Keyword arguments for the tool function
+
+        Returns:
+            Tool function result (typically JSON string or dict)
+        """
+        if server_name not in self._direct_tools:
+            raise ValueError(f"Unknown MCP server: {server_name}")
+
+        module = self._direct_tools[server_name]
+
+        # Get the tool function by name
+        if not hasattr(module, tool_name):
+            # Try without async prefix
+            raise ValueError(f"Tool not found: {server_name}.{tool_name}")
+
+        tool_func = getattr(module, tool_name)
+
+        logger.info(f"[DIRECT CALL] {server_name}.{tool_name}({list(arguments.keys())})")
+
+        try:
+            # Call the async function directly
+            if asyncio.iscoroutinefunction(tool_func):
+                result = await tool_func(**arguments)
+            else:
+                result = tool_func(**arguments)
+
+            # Log success
+            result_preview = str(result)[:200] if result else "None"
+            logger.info(f"[DIRECT RESULT] {result_preview}...")
+            return result
+
+        except Exception as e:
+            logger.error(f"[DIRECT ERROR] {server_name}.{tool_name} failed: {e}")
+            raise
 
     def _create_system_prompt(self) -> str:
         """Create system prompt for the orchestrator agent."""
@@ -232,14 +355,29 @@ Work efficiently but within your current permission level.
 
             cwd = self.project_root / server_config.get("cwd", f"agents/{name}")
 
-            mcp_config[name] = {
+            # CRITICAL: Convert underscores to hyphens to match tool naming convention
+            # Tool names are: mcp__script-generator__generate_script (hyphens)
+            # Config keys are: script_generator (underscores)
+            mcp_name = name.replace("_", "-")
+
+            # SDK McpStdioServerConfig only supports: type, command, args, env
+            # NO cwd field - use cd in bash command instead
+            run_command = server_config.get('command', './run_server.sh')
+            mcp_config[mcp_name] = {
                 "type": "stdio",
                 "command": "bash",
-                "args": ["-c", f"cd {cwd} && {server_config.get('command', './run_server.sh')}"],
-                "cwd": str(self.project_root),
-                "env": {"PROJECT_ROOT": str(self.project_root)}
+                "args": [
+                    "-c",
+                    f"cd '{cwd}' && PROJECT_ROOT='{self.project_root}' exec {run_command}"
+                ],
+                "env": {
+                    "PROJECT_ROOT": str(self.project_root),
+                    "PYTHONPATH": str(self.project_root),
+                }
             }
+            logger.debug(f"  MCP server registered: {mcp_name} (from config: {name})")
 
+        logger.info(f"MCP servers registered: {list(mcp_config.keys())}")
         return mcp_config
 
     def _create_allowed_tools(self) -> List[str]:
@@ -687,8 +825,137 @@ Do NOT generate the script yet - just initialize and report what techniques are 
         )
 
     async def _stage_generate_script(self) -> StageResult:
-        """Generate Blender Python script."""
+        """Generate Blender Python script using DIRECT tool calls."""
         logger.info(f"Stage: GENERATE_SCRIPT (iteration {self.workflow.iteration + 1})")
+
+        try:
+            if self._direct_mode and "script-generator" in self._direct_tools:
+                # HYBRID MODE: Call tools directly, bypassing inner agent
+                return await self._stage_generate_script_direct()
+            else:
+                # FALLBACK: Use inner agent (may not work)
+                return await self._stage_generate_script_agent()
+        except Exception as e:
+            logger.error(f"GENERATE_SCRIPT failed: {e}")
+            return StageResult(
+                stage=WorkflowStage.GENERATE_SCRIPT,
+                outcome=WorkflowOutcome.FAILURE,
+                error=str(e)
+            )
+
+    async def _stage_generate_script_direct(self) -> StageResult:
+        """Generate script using direct tool calls (hybrid mode)."""
+        logger.info("[HYBRID] Using direct tool calls for script generation")
+
+        if self.workflow.iteration == 0:
+            # First iteration: Generate new script
+            logger.info(f"[HYBRID] Generating initial script for: {self.session.request.asset_name}")
+
+            # Call script-generator.generate_script directly
+            result_json = await self._call_tool_direct(
+                "script-generator",
+                "generate_script",
+                {
+                    "effect_type": self.session.request.effect_type,
+                    "description": self.session.request.description,
+                    "output_name": f"{self.session.request.asset_name}_v{self.workflow.iteration + 1}",
+                    "resolution": self.session.request.resolution,
+                    "frame_start": 1,
+                    "frame_end": self.session.request.frame_end,
+                    "technique_name": self.session.request.technique_name,
+                }
+            )
+
+            # Parse result
+            result = json.loads(result_json) if isinstance(result_json, str) else result_json
+            script_path = result.get("script_path") or result.get("path")
+            success = result.get("success", True) and script_path
+
+            if success:
+                self.session.current_script_path = script_path
+                # Extract technique and parameters from result
+                if "parameters" in result:
+                    self.session.current_parameters = result["parameters"]
+                if "notes" in result:
+                    for note in result.get("notes", []):
+                        if "Technique:" in note:
+                            technique = note.split("Technique:")[-1].strip().split()[0]
+                            self.session.current_technique = technique
+
+            logger.info(f"[HYBRID] Script generated: {script_path}")
+            return StageResult(
+                stage=WorkflowStage.GENERATE_SCRIPT,
+                outcome=WorkflowOutcome.SUCCESS if success else WorkflowOutcome.FAILURE,
+                data={
+                    "script_path": script_path,
+                    "result": result,
+                    "mode": "direct"
+                },
+                error=None if success else "Script generation failed"
+            )
+
+        else:
+            # Subsequent iterations: Modify existing script
+            logger.info(f"[HYBRID] Modifying script for iteration {self.workflow.iteration + 1}")
+
+            prev_issues = self.session.iterations[-1].issues if self.session.iterations else []
+
+            # Get adjusted parameters based on issues
+            # For now, use simple adjustments based on common issues
+            modifications = {}
+            if "TOO DARK" in str(prev_issues):
+                modifications["turbulence"] = min(
+                    self.session.current_parameters.get("turbulence", 0.3) + 0.2, 1.0
+                )
+            if "NO STRUCTURE" in str(prev_issues):
+                modifications["resolution"] = min(
+                    self.session.current_parameters.get("resolution", 96) + 32, 256
+                )
+
+            if not modifications:
+                # Default: increase turbulence slightly
+                modifications["turbulence"] = min(
+                    self.session.current_parameters.get("turbulence", 0.3) + 0.1, 1.0
+                )
+
+            # Call script-generator.modify_script directly
+            result_json = await self._call_tool_direct(
+                "script-generator",
+                "modify_script",
+                {
+                    "script_path": str(self.session.current_script_path),
+                    "modifications": modifications,
+                    "output_name": f"{self.session.request.asset_name}_v{self.workflow.iteration + 1}",
+                }
+            )
+
+            # Parse result
+            result = json.loads(result_json) if isinstance(result_json, str) else result_json
+            script_path = result.get("modified_path") or result.get("path")
+            success = result.get("success", True) and script_path
+
+            if success:
+                self.session.current_script_path = script_path
+                # Update parameters
+                if "parameters_changed" in result:
+                    self.session.current_parameters.update(result["parameters_changed"])
+
+            logger.info(f"[HYBRID] Script modified: {script_path}")
+            return StageResult(
+                stage=WorkflowStage.GENERATE_SCRIPT,
+                outcome=WorkflowOutcome.SUCCESS if success else WorkflowOutcome.FAILURE,
+                data={
+                    "script_path": script_path,
+                    "modifications": modifications,
+                    "result": result,
+                    "mode": "direct"
+                },
+                error=None if success else "Script modification failed"
+            )
+
+    async def _stage_generate_script_agent(self) -> StageResult:
+        """Generate script using inner agent (fallback mode)."""
+        logger.warning("[FALLBACK] Using inner agent for script generation")
 
         # Build generation prompt
         if self.workflow.iteration == 0:
@@ -735,14 +1002,92 @@ Actions:
             outcome=WorkflowOutcome.SUCCESS if script_path else WorkflowOutcome.FAILURE,
             data={
                 "script_path": script_path,
-                "response": response
+                "response": response,
+                "mode": "agent"
             },
             error="Failed to extract script path" if not script_path else None
         )
 
     async def _stage_execute_blender(self) -> StageResult:
-        """Execute Blender simulation."""
+        """Execute Blender simulation using DIRECT tool calls."""
         logger.info("Stage: EXECUTE_BLENDER")
+
+        try:
+            if self._direct_mode and "blender-executor" in self._direct_tools:
+                return await self._stage_execute_blender_direct()
+            else:
+                return await self._stage_execute_blender_agent()
+        except Exception as e:
+            logger.error(f"EXECUTE_BLENDER failed: {e}")
+            return StageResult(
+                stage=WorkflowStage.EXECUTE_BLENDER,
+                outcome=WorkflowOutcome.FAILURE,
+                error=str(e)
+            )
+
+    async def _stage_execute_blender_direct(self) -> StageResult:
+        """Execute Blender using direct tool calls (hybrid mode)."""
+        logger.info("[HYBRID] Using direct tool calls for Blender execution")
+
+        script_path = self.session.current_script_path
+
+        # Call blender-executor.execute_blender_script directly
+        result_json = await self._call_tool_direct(
+            "blender-executor",
+            "execute_blender_script",
+            {
+                "script_path": str(script_path),
+                "timeout_seconds": self.workflow_config.blender_timeout,
+            }
+        )
+
+        # Parse result
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        success = result.get("success", False)
+        exit_code = result.get("exit_code", -1)
+        vdb_files = result.get("vdb_files", [])
+        render_files = result.get("render_files", [])
+
+        if success or exit_code == 0:
+            # Store output paths
+            if vdb_files:
+                self.session.current_vdb_path = vdb_files[0]
+            if render_files:
+                self.session.current_render_path = render_files[0]
+
+            logger.info(f"[HYBRID] Blender execution SUCCESS")
+            logger.info(f"  VDB files: {len(vdb_files)}")
+            logger.info(f"  Render files: {len(render_files)}")
+        else:
+            # Parse errors if execution failed
+            stderr = result.get("stderr", "")
+            if stderr:
+                try:
+                    errors_json = await self._call_tool_direct(
+                        "blender-executor",
+                        "parse_blender_errors",
+                        {"stderr": stderr, "stdout": result.get("stdout", "")}
+                    )
+                    errors = json.loads(errors_json) if isinstance(errors_json, str) else errors_json
+                    logger.error(f"[HYBRID] Blender errors: {errors}")
+                except Exception as e:
+                    logger.error(f"[HYBRID] Failed to parse errors: {e}")
+
+        return StageResult(
+            stage=WorkflowStage.EXECUTE_BLENDER,
+            outcome=WorkflowOutcome.SUCCESS if success else WorkflowOutcome.FAILURE,
+            data={
+                "result": result,
+                "vdb_files": vdb_files,
+                "render_files": render_files,
+                "mode": "direct"
+            },
+            error=None if success else f"Blender execution failed (exit code: {exit_code})"
+        )
+
+    async def _stage_execute_blender_agent(self) -> StageResult:
+        """Execute Blender using inner agent (fallback mode)."""
+        logger.warning("[FALLBACK] Using inner agent for Blender execution")
 
         script_path = self.session.current_script_path
 
@@ -766,12 +1111,106 @@ Actions:
         return StageResult(
             stage=WorkflowStage.EXECUTE_BLENDER,
             outcome=WorkflowOutcome.SUCCESS if success else WorkflowOutcome.FAILURE,
-            data={"response": response}
+            data={"response": response, "mode": "agent"}
         )
 
     async def _stage_evaluate_quality(self) -> StageResult:
-        """Evaluate VFX quality."""
+        """Evaluate VFX quality using DIRECT tool calls."""
         logger.info("Stage: EVALUATE_QUALITY")
+
+        try:
+            if self._direct_mode and "asset-evaluator" in self._direct_tools:
+                return await self._stage_evaluate_quality_direct()
+            else:
+                return await self._stage_evaluate_quality_agent()
+        except Exception as e:
+            logger.error(f"EVALUATE_QUALITY failed: {e}")
+            return StageResult(
+                stage=WorkflowStage.EVALUATE_QUALITY,
+                outcome=WorkflowOutcome.FAILURE,
+                error=str(e)
+            )
+
+    async def _stage_evaluate_quality_direct(self) -> StageResult:
+        """Evaluate quality using direct tool calls (hybrid mode)."""
+        logger.info("[HYBRID] Using direct tool calls for quality evaluation")
+
+        # Find render path - use stored path or get from latest run
+        render_path = getattr(self.session, 'current_render_path', None)
+
+        if not render_path:
+            # Get latest run to find render output
+            try:
+                run_json = await self._call_tool_direct(
+                    "blender-executor",
+                    "get_latest_run",
+                    {}
+                )
+                run = json.loads(run_json) if isinstance(run_json, str) else run_json
+                render_files = run.get("render_files", [])
+                if render_files:
+                    render_path = render_files[0]
+            except Exception as e:
+                logger.warning(f"[HYBRID] Could not get latest run: {e}")
+
+        if not render_path:
+            logger.warning("[HYBRID] No render path found, skipping evaluation")
+            return StageResult(
+                stage=WorkflowStage.EVALUATE_QUALITY,
+                outcome=WorkflowOutcome.SKIP,
+                data={"mode": "direct", "reason": "No render to evaluate"}
+            )
+
+        # Call asset-evaluator.evaluate_vfx_quality directly
+        result_json = await self._call_tool_direct(
+            "asset-evaluator",
+            "evaluate_vfx_quality",
+            {
+                "image_path": str(render_path),
+                "effect_type": self.session.request.effect_type,
+            }
+        )
+
+        # Parse result
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        score = result.get("composite_score") or result.get("overall_score") or result.get("score")
+        issues = result.get("issues", []) or result.get("critical_issues", [])
+        passed = result.get("passed", False)
+
+        logger.info(f"[HYBRID] VFX Quality Score: {score}")
+        logger.info(f"[HYBRID] Issues: {issues}")
+
+        # Update trust based on quality change
+        if score is not None:
+            if len(self.workflow.scores) > 0:
+                if score > self.workflow.scores[-1]:
+                    self.autonomy.record_event(TrustEvent.QUALITY_IMPROVED)
+                elif score < self.workflow.scores[-1]:
+                    self.autonomy.record_event(TrustEvent.QUALITY_DEGRADED)
+
+            if score >= self.quality_config.get_pass_threshold(self.session.request.effect_type):
+                self.autonomy.record_event(TrustEvent.QUALITY_THRESHOLD_MET)
+
+        # Store issues for next iteration
+        if self.session.iterations:
+            self.session.iterations[-1].issues = issues
+
+        return StageResult(
+            stage=WorkflowStage.EVALUATE_QUALITY,
+            outcome=WorkflowOutcome.SUCCESS if score is not None else WorkflowOutcome.SKIP,
+            data={
+                "score": score,
+                "issues": issues,
+                "passed": passed,
+                "result": result,
+                "render_path": render_path,
+                "mode": "direct"
+            }
+        )
+
+    async def _stage_evaluate_quality_agent(self) -> StageResult:
+        """Evaluate quality using inner agent (fallback mode)."""
+        logger.warning("[FALLBACK] Using inner agent for quality evaluation")
 
         prompt = f"""Evaluate VFX quality for iteration {self.workflow.iteration}:
 
@@ -810,7 +1249,8 @@ Actions:
             outcome=WorkflowOutcome.SUCCESS if score is not None else WorkflowOutcome.SKIP,
             data={
                 "score": score,
-                "response": response
+                "response": response,
+                "mode": "agent"
             }
         )
 
@@ -1083,25 +1523,61 @@ Permission to retry: {self.autonomy.can_proceed(DecisionType.RETRY_EXECUTION)}
 
         SDK 0.1.17+ feature: Captures UserMessage UUIDs for
         file checkpointing and rewind support.
+
+        Enhanced logging (2026-01): Detects tool execution vs text-only responses.
         """
         if not self.client:
             raise RuntimeError("Agent not started")
 
-        logger.debug(f"Query: {prompt[:100]}...")
+        logger.info(f"[QUERY] Sending prompt ({len(prompt)} chars)")
+        logger.debug(f"Query content: {prompt[:200]}...")
 
         await self.client.query(prompt)
 
         full_response = ""
+        tool_calls_detected = []
+        message_count = 0
+
         async for message in self.client.receive_response():
+            message_count += 1
+            message_type = type(message).__name__
+
             # Capture UserMessage UUID for checkpointing (SDK 0.1.17+)
             if hasattr(message, 'uuid') and message.uuid:
                 self._last_checkpoint_id = message.uuid
                 logger.debug(f"Checkpoint saved: {message.uuid[:8]}...")
 
+            # Detect ToolUseBlock messages (indicates actual tool execution)
+            if message_type == 'ToolUseBlock' or 'ToolUse' in message_type:
+                tool_name = getattr(message, 'name', 'unknown')
+                tool_calls_detected.append(tool_name)
+                logger.info(f"[TOOL CALL] {tool_name}")
+
+            # Detect ToolResultBlock (indicates tool returned result)
+            if message_type == 'ToolResultBlock' or 'ToolResult' in message_type:
+                tool_id = getattr(message, 'tool_use_id', 'unknown')
+                logger.info(f"[TOOL RESULT] tool_use_id={tool_id[:20]}...")
+
             message_text = str(message) if not isinstance(message, str) else message
             full_response += message_text
 
-        logger.debug(f"Response: {full_response[:200]}...")
+        # Log summary
+        logger.info(f"[RESPONSE] {message_count} messages, {len(full_response)} chars")
+
+        if tool_calls_detected:
+            logger.info(f"[TOOLS EXECUTED] {len(tool_calls_detected)}: {', '.join(tool_calls_detected)}")
+        else:
+            # WARNING: No tools were called - likely means MCP servers failed to start
+            logger.warning("[NO TOOLS] Agent responded with text only - MCP tools may not be available!")
+            # Check for common "I will use" phrases that indicate tool wasn't actually called
+            no_tool_phrases = ["I'll use", "I will use", "I will call", "Let me use", "I'm going to use"]
+            for phrase in no_tool_phrases:
+                if phrase.lower() in full_response.lower():
+                    logger.error(f"[CRITICAL] Found '{phrase}' in response - tool was DESCRIBED but NOT CALLED")
+                    logger.error(f"[RESPONSE EXCERPT] {full_response[:500]}...")
+                    break
+
+        logger.debug(f"Full response: {full_response[:500]}...")
 
         return full_response
 
@@ -1112,24 +1588,54 @@ Permission to retry: {self.autonomy.can_proceed(DecisionType.RETRY_EXECUTION)}
         logger.info(f"  {status}")
 
     def _extract_script_path(self, response: str) -> Optional[str]:
-        """Extract script path from agent response."""
-        # Look for common patterns
+        """
+        Extract script path from agent response.
+
+        Enhanced (2026-01): Handles JSON output, detects tool non-execution.
+        """
         import re
 
+        # Expanded patterns to handle various output formats
         patterns = [
-            r"Script path:\s*([^\s]+\.py)",
-            r"Generated:\s*([^\s]+\.py)",
-            r"saved to\s*([^\s]+\.py)",
-            r"([^\s]+blender_scripts[^\s]+\.py)",
+            # Direct path mentions
+            r"Script path:\s*([^\s\"']+\.py)",
+            r"Generated:\s*([^\s\"']+\.py)",
+            r"saved to\s*([^\s\"']+\.py)",
+            r"created at\s*([^\s\"']+\.py)",
+            r"output:\s*([^\s\"']+\.py)",
+            # Path in blender_scripts directory
+            r"([^\s\"']+blender_scripts[^\s\"']+\.py)",
+            r"([^\s\"']+/generated/[^\s\"']+\.py)",
+            # JSON-style output (from MCP tool results)
+            r'"path"\s*:\s*"([^"]+\.py)"',
+            r"'path'\s*:\s*'([^']+\.py)'",
+            r'"script_path"\s*:\s*"([^"]+\.py)"',
+            r'"output_path"\s*:\s*"([^"]+\.py)"',
         ]
 
         for pattern in patterns:
             match = re.search(pattern, response, re.IGNORECASE)
             if match:
                 path = match.group(1)
+                logger.info(f"[EXTRACT] Found script path: {path}")
                 self.session.current_script_path = path
                 return path
 
+        # No path found - check for signs that tools weren't actually called
+        no_tool_phrases = [
+            "I'll use", "I will use", "I will call",
+            "Let me use", "I'm going to use", "I would use"
+        ]
+        for phrase in no_tool_phrases:
+            if phrase.lower() in response.lower():
+                logger.error(f"[EXTRACT FAILED] No path found. Response contains '{phrase}' "
+                             "suggesting tool was DESCRIBED but NOT CALLED")
+                logger.error(f"[RESPONSE EXCERPT] {response[:300]}...")
+                return None
+
+        # Generic failure
+        logger.warning(f"[EXTRACT FAILED] No script path found in response")
+        logger.debug(f"[RESPONSE] {response[:500]}...")
         return None
 
     def _extract_score(self, response: str) -> Optional[float]:

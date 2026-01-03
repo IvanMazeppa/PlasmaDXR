@@ -74,13 +74,9 @@ async def main():
         result = await agent.create_asset(
             asset_name="test_explosion_v1",
             effect_type="pyro",
-            description="""A dramatic fiery explosion with:
-- Intense orange and red flames at the core
-- Rising mushroom cloud shape
-- Dark smoke billowing outward
-- Bright hot center fading to cooler edges
-- Debris and particles at the base
-Similar to a gasoline or fuel explosion.""",
+            # Note: Multi-line descriptions break the script template
+            # Using a single-line description for now
+            description="A dramatic fiery explosion with orange flames, rising mushroom cloud, and dark smoke",
             reference_path=reference_path,
             semantic_query="dramatic fiery explosion with orange flames and dark smoke",
             resolution=96,  # Start with moderate resolution
