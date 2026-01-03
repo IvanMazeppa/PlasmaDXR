@@ -1435,6 +1435,7 @@ def evaluate_ground_truth(
     """
     try:
         from ground_truth_evaluation import evaluate_against_ground_truth
+        import numpy as np
 
         img_path = Path(image_path)
         if not img_path.is_absolute():
@@ -1444,7 +1445,23 @@ def evaluate_ground_truth(
             return json.dumps({"error": f"Image not found: {img_path}"})
 
         result = evaluate_against_ground_truth(str(img_path), effect_type, pass_threshold)
-        return json.dumps(result, indent=2)
+        # Convert numpy scalar/array types into JSON-serializable Python types.
+        def convert_np(obj):
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [convert_np(v) for v in obj]
+            return obj
+
+        return json.dumps(convert_np(result), indent=2)
 
     except ImportError as e:
         return json.dumps({
@@ -1549,6 +1566,7 @@ def evaluate_solar_features(image_path: str) -> str:
     try:
         from ground_truth_evaluation import evaluate_solar_specific
         from dataclasses import asdict
+        import numpy as np
 
         img_path = Path(image_path)
         if not img_path.is_absolute():
@@ -1558,7 +1576,23 @@ def evaluate_solar_features(image_path: str) -> str:
             return json.dumps({"error": f"Image not found: {img_path}"})
 
         result = evaluate_solar_specific(str(img_path))
-        return json.dumps(asdict(result), indent=2)
+        # Convert numpy scalar/array types into JSON-serializable Python types.
+        def convert_np(obj):
+            if isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            if isinstance(obj, (np.integer, int)):
+                return int(obj)
+            if isinstance(obj, (np.floating, float)):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            if isinstance(obj, dict):
+                return {k: convert_np(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [convert_np(v) for v in obj]
+            return obj
+
+        return json.dumps(convert_np(asdict(result)), indent=2)
 
     except ImportError as e:
         return json.dumps({"error": f"Ground truth module not available: {e}"})

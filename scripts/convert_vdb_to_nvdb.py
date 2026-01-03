@@ -277,7 +277,7 @@ def convert_single_file(
         print(f"ERROR: Conversion failed: {e}")
         return False
 
-def batch_convert(input_dir: str, output_dir: str = None, verbose: bool = True):
+def batch_convert(input_dir: str, output_dir: str = None, verbose: bool = True, grid_name: str | None = None):
     """
     Convert all .vdb files in a directory to .nvdb format.
 
@@ -312,7 +312,7 @@ def batch_convert(input_dir: str, output_dir: str = None, verbose: bool = True):
         nvdb_file = output_path / relative_path.with_suffix('.nvdb')
         nvdb_file.parent.mkdir(parents=True, exist_ok=True)
 
-        if convert_single_file(str(vdb_file), str(nvdb_file), verbose):
+        if convert_single_file(str(vdb_file), str(nvdb_file), verbose, grid_name=grid_name):
             success_count += 1
 
     print("")
@@ -414,7 +414,7 @@ Examples:
         return
 
     if args.batch or os.path.isdir(args.input):
-        batch_convert(args.input, args.output, verbose)
+        batch_convert(args.input, args.output, verbose, grid_name=args.grid)
     else:
         if not args.output:
             # Default output: same name with .nvdb extension
