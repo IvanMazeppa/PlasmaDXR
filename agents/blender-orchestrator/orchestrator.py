@@ -43,6 +43,16 @@ try:
         WorkflowStage,
         WorkflowStateMachine,
     )
+    # Phase 1: Guardrail Intelligence components
+    from .tool_executor import ToolExecutionVerifier, get_verifier
+    from .workflow_tracer import WorkflowTracer, get_tracer
+    from .health_check import HealthChecker, get_health_checker
+    from .state_machine import (
+        WorkflowState as FormalWorkflowState,
+        WorkflowStateMachine as FormalStateMachine,
+        get_state_machine,
+        reset_state_machine,
+    )
 except ImportError:
     from autonomy import (
         AutonomyConfig,
@@ -65,6 +75,16 @@ except ImportError:
         WorkflowOutcome,
         WorkflowStage,
         WorkflowStateMachine,
+    )
+    # Phase 1: Guardrail Intelligence components
+    from tool_executor import ToolExecutionVerifier, get_verifier
+    from workflow_tracer import WorkflowTracer, get_tracer, reset_tracer
+    from health_check import HealthChecker, get_health_checker
+    from state_machine import (
+        WorkflowState as FormalWorkflowState,
+        WorkflowStateMachine as FormalStateMachine,
+        get_state_machine,
+        reset_state_machine,
     )
 
 logger = logging.getLogger("blender-orchestrator")
@@ -146,6 +166,12 @@ class BlenderOrchestratorAgent:
 
         # Load direct tool modules
         self._load_direct_tools()
+
+        # Phase 1: Guardrail Intelligence components
+        self._verifier = get_verifier(log_dir=self.state_dir / "tool_logs")
+        self._tracer = get_tracer()
+        self._health_checker = get_health_checker()
+        self._formal_state_machine: Optional[FormalStateMachine] = None  # Created per-session
 
         logger.info(f"BlenderOrchestratorAgent initialized")
         logger.info(f"  Config: {self.config_path}")
@@ -239,6 +265,12 @@ class BlenderOrchestratorAgent:
         This bypasses the JSON-RPC protocol and inner Claude agent entirely.
         Tools are called as regular async Python functions.
 
+        Phase 1 Enhancement: Wrapped with ToolExecutionVerifier for:
+        - Pre/post execution hooks
+        - Result schema validation
+        - Execution logging with latency
+        - Mismatch detection between claimed and executed tools
+
         Args:
             server_name: MCP server name (e.g., "script-generator")
             tool_name: Tool function name (e.g., "generate_script")
@@ -254,19 +286,26 @@ class BlenderOrchestratorAgent:
 
         # Get the tool function by name
         if not hasattr(module, tool_name):
-            # Try without async prefix
             raise ValueError(f"Tool not found: {server_name}.{tool_name}")
 
         tool_func = getattr(module, tool_name)
 
         logger.info(f"[DIRECT CALL] {server_name}.{tool_name}({list(arguments.keys())})")
 
-        try:
-            # Call the async function directly
+        # Define executor closure for verifier
+        async def execute_tool():
             if asyncio.iscoroutinefunction(tool_func):
-                result = await tool_func(**arguments)
+                return await tool_func(**arguments)
             else:
-                result = tool_func(**arguments)
+                return tool_func(**arguments)
+
+        try:
+            # Wrap with Phase 1 verifier for logging, validation, hooks
+            result = await self._verifier.wrap_tool_call(
+                tool_name=tool_name,
+                params={"server": server_name, **arguments},
+                executor=execute_tool,
+            )
 
             # Log success
             result_preview = str(result)[:200] if result else "None"
@@ -716,6 +755,9 @@ Work efficiently but within your current permission level.
 
         Integrates circuit breakers to prevent runaway iterations.
 
+        Phase 1 Enhancement: Integrates WorkflowTracer for debugging loop control,
+        and FormalStateMachine for state validation.
+
         Returns:
             Final session result
         """
@@ -724,13 +766,33 @@ Work efficiently but within your current permission level.
         circuit_breaker_triggered = False
         circuit_breaker_reason = ""
 
+        # Phase 1: Initialize tracer and formal state machine for this session
+        reset_tracer()  # Reset global tracer for new session
+        self._tracer = get_tracer(session_id=self.session.session_id)
+        self._tracer.max_iterations = self.workflow_config.max_iterations
+        reset_state_machine()  # Reset global state machine for new session
+        self._formal_state_machine = get_state_machine()
+
+        # Set tracer references in verifier for cross-component visibility
+        self._verifier.set_session_id(self.session.session_id)
+
         try:
             while self.workflow.current_stage != WorkflowStage.SESSION_END:
+                # Phase 1: Trace iteration start for GENERATE_SCRIPT stage
+                if self.workflow.current_stage == WorkflowStage.GENERATE_SCRIPT:
+                    self._tracer.trace_iteration_start(self.workflow.iteration + 1)
+
                 # Check guardrails before each stage
                 can_proceed, message = self.guardrails.can_proceed()
                 if not can_proceed:
                     logger.warning(f"Guardrail stop: {message}")
                     self.autonomy.record_event(TrustEvent.TOKEN_LIMIT_EXCEEDED)
+                    # Phase 1: Trace circuit breaker event
+                    self._tracer.trace_circuit_breaker_check(
+                        breaker_name="TOKEN_LIMIT",
+                        triggered=True,
+                        details={"action": "stop", "reason": message},
+                    )
                     break
 
                 # Check circuit breakers before each stage
@@ -743,6 +805,12 @@ Work efficiently but within your current permission level.
                     logger.warning(f"CIRCUIT BREAKER: {cb_reason}")
                     circuit_breaker_triggered = True
                     circuit_breaker_reason = cb_reason
+                    # Phase 1: Trace circuit breaker event
+                    self._tracer.trace_circuit_breaker_check(
+                        breaker_name="CONVERGENCE",
+                        triggered=True,
+                        details={"action": "stop", "reason": cb_reason},
+                    )
                     break
                 elif cb_status == "pause":
                     logger.warning(f"CIRCUIT BREAKER PAUSE: {cb_reason}")
@@ -751,10 +819,23 @@ Work efficiently but within your current permission level.
                     await self._sync_to_controller(next_action="pause")
                     circuit_breaker_triggered = True
                     circuit_breaker_reason = cb_reason
+                    # Phase 1: Trace circuit breaker event
+                    self._tracer.trace_circuit_breaker_check(
+                        breaker_name="CONVERGENCE",
+                        triggered=True,
+                        details={"action": "pause", "reason": cb_reason},
+                    )
                     break
 
-                # Execute current stage
+                # Phase 1: Trace state transition
                 stage = self.workflow.current_stage
+                self._tracer.trace_state_transition(
+                    from_state="previous",  # Simplified - actual tracking in state_machine
+                    to_state=stage.value,
+                    reason="workflow_advance",
+                )
+
+                # Execute current stage
                 result = await self._execute_stage(stage)
 
                 # Record token usage (estimate based on stage)
@@ -762,12 +843,25 @@ Work efficiently but within your current permission level.
 
                 # Update circuit breaker state after evaluation stages
                 if stage == WorkflowStage.EVALUATE_QUALITY and result.success:
-                    # Extract score from result data
+                    # Extract score and issues from result data
                     score = result.data.get("vfx_score", 0.0) if result.data else 0.0
+                    issues = result.data.get("issues", []) if result.data else []
                     self.circuit_breaker_state.record_iteration(score, blender_succeeded=True)
+                    # Phase 1: Record iteration end in tracer
+                    self._tracer.trace_iteration_end(
+                        vfx_score=score,
+                        issues=issues,
+                        blender_success=True,
+                    )
                 elif stage == WorkflowStage.EXECUTE_BLENDER and not result.success:
                     # Record Blender failure
                     self.circuit_breaker_state.record_iteration(0.0, blender_succeeded=False)
+                    # Phase 1: Record failure in tracer
+                    self._tracer.trace_iteration_end(
+                        vfx_score=0.0,
+                        issues=[result.error or "Unknown Blender error"],
+                        blender_success=False,
+                    )
 
                 # Advance workflow
                 self.workflow.advance(result)
@@ -806,12 +900,31 @@ Work efficiently but within your current permission level.
             else:
                 self.autonomy.record_event(TrustEvent.QUALITY_DEGRADED)
 
+            # Phase 1: Save tracer and tool logs
+            trace_file = self._tracer.save()
+            logger.info(f"Workflow trace saved to: {trace_file}")
+            # Save tool execution log for debugging
+            self._verifier.save_log()
+            # Log tracer summary
+            logger.info(f"Workflow trace summary: {json.dumps(self._tracer.get_trace_summary(), indent=2)}")
+
             return self._create_result_summary()
 
         except Exception as e:
             logger.error(f"Workflow error: {e}", exc_info=True)
             self.autonomy.record_event(TrustEvent.CRITICAL_FAILURE)
             self.session_manager.finalize_session(self.session, "failed")
+            # Phase 1: Save tracer on error (best effort)
+            try:
+                self._tracer.trace_error(
+                    error_type="workflow_exception",
+                    error_message=str(e),
+                    recoverable=False,
+                )
+                self._tracer.save()
+                self._verifier.save_log()
+            except Exception:
+                pass  # Best effort
             # Try to sync failure state
             try:
                 await self._sync_to_controller(next_action="fail")
@@ -876,8 +989,25 @@ Work efficiently but within your current permission level.
             )
 
     async def _stage_session_start(self) -> StageResult:
-        """Initialize session with experiment tracker."""
+        """Initialize session with experiment tracker.
+
+        Phase 1 Enhancement: Performs MCP server health checks before proceeding.
+        """
         logger.info("Stage: SESSION_START")
+
+        # Phase 1: Run health checks on critical MCP servers
+        logger.info("Running MCP server health checks...")
+        all_healthy, unhealthy_servers = await self._health_checker.check_critical_servers()
+        if not all_healthy:
+            logger.error(f"Critical MCP servers unhealthy: {unhealthy_servers}")
+            self._health_checker.print_status()
+            return StageResult(
+                stage=WorkflowStage.SESSION_START,
+                outcome=WorkflowOutcome.FAILURE,
+                error=f"Critical MCP servers unavailable: {unhealthy_servers}",
+                data={"unhealthy_servers": unhealthy_servers}
+            )
+        logger.info("All critical MCP servers healthy")
 
         # Build initialization prompt
         prompt = f"""Initialize asset generation session:
