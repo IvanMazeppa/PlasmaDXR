@@ -1,8 +1,13 @@
 """
 Blender VFX Orchestrator Agent
 
-Autonomous Claude Agent SDK agent that orchestrates the Blender VFX asset
-generation pipeline with adaptive autonomy and token guardrails.
+Autonomous orchestrator for Blender VFX asset generation pipeline.
+Uses direct Python tool calls (hybrid mode) with adaptive autonomy and token guardrails.
+
+Note: This module no longer uses claude_agent_sdk. Instead, it:
+- Exposes tools via FastMCP (see tools.py)
+- Calls MCP server tools directly via Python imports (hybrid mode)
+- Runs orchestration logic in Python (not via inner Claude agent)
 """
 
 import asyncio
@@ -15,16 +20,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from claude_agent_sdk import (
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    HookMatcher,
-    PreToolUseHookInput,
-    PostToolUseHookInput,
-    PermissionResultAllow,
-    PermissionResultDeny,
-)
-
 try:
     from .autonomy import (
         AutonomyConfig,
@@ -32,6 +27,11 @@ try:
         AutonomyLevel,
         DecisionType,
         TrustEvent,
+    )
+    from .circuit_breakers import (
+        CircuitBreakerState,
+        ConvergenceCriteria,
+        check_circuit_breakers,
     )
     from .guardrails import GuardrailAction, GuardrailConfig, TokenGuardrails
     from .state import AssetRequest, SessionManager, SessionState
@@ -50,6 +50,11 @@ except ImportError:
         AutonomyLevel,
         DecisionType,
         TrustEvent,
+    )
+    from circuit_breakers import (
+        CircuitBreakerState,
+        ConvergenceCriteria,
+        check_circuit_breakers,
     )
     from guardrails import GuardrailAction, GuardrailConfig, TokenGuardrails
     from state import AssetRequest, SessionManager, SessionState
@@ -125,9 +130,12 @@ class BlenderOrchestratorAgent:
         self.workflow: Optional[WorkflowStateMachine] = None
         self.guardrails: Optional[TokenGuardrails] = None
 
-        # Claude SDK client
-        self.client: Optional[ClaudeSDKClient] = None
-        self.options: Optional[ClaudeAgentOptions] = None
+        # Circuit breakers for preventing runaway loops
+        self.convergence_criteria = ConvergenceCriteria()
+        self.circuit_breaker_state: Optional[CircuitBreakerState] = None
+
+        # Started flag (replaces SDK client reference)
+        self._started: bool = False
 
         # Approval callback (for external integration)
         self.approval_callback: Optional[Callable[[str], str]] = None
@@ -439,159 +447,92 @@ Work efficiently but within your current permission level.
             "mcp__blender-manual__read_page",
         ]
 
-    def _create_hooks(self) -> Dict[str, List[HookMatcher]]:
-        """
-        Create hooks for deterministic processing.
-
-        Uses SDK 0.1.3+ strongly-typed hook inputs for better type safety.
-        """
-        async def pre_tool_use_hook(
-            input_data: PreToolUseHookInput,
-            tool_use_id: str,
-            context: Any
-        ) -> Dict[str, Any]:
-            """Pre-tool-use hook for autonomy checking and guardrail enforcement."""
-            tool_name = input_data.get("tool_name", "")
-
-            # Track tool usage for guardrails
-            if self.guardrails:
-                # Estimate tokens based on tool type
-                estimated_tokens = 500  # Base estimate
-                if "execute_blender" in tool_name:
-                    estimated_tokens = 2000  # Blender execution uses more
-                elif "evaluate" in tool_name:
-                    estimated_tokens = 1500  # Evaluation passes
-
-                can_proceed, message = self.guardrails.can_proceed(estimated_tokens)
-                if not can_proceed:
-                    logger.warning(f"Guardrail block: {message}")
-                    return {
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": "deny",
-                            "permissionDecisionReason": f"Token limit reached: {message}"
-                        }
-                    }
-
-            return {}  # Allow by default
-
-        async def post_tool_use_hook(
-            input_data: PostToolUseHookInput,
-            tool_use_id: str,
-            context: Any
-        ) -> Dict[str, Any]:
-            """Post-tool-use hook for recording usage and trust updates."""
-            tool_name = input_data.get("tool_name", "")
-            tool_result = input_data.get("tool_result", {})
-
-            # Record actual token usage if available
-            if self.guardrails:
-                # Estimate based on result size
-                result_str = str(tool_result)
-                output_tokens = len(result_str) // 4  # Rough estimate
-                self.guardrails.record_usage(0, output_tokens, operation=tool_name)
-
-            # Check for errors that affect trust
-            if "error" in str(tool_result).lower():
-                if "blender" in tool_name.lower():
-                    self.autonomy.record_event(TrustEvent.EXECUTION_ERROR)
-                    logger.warning(f"Blender error detected, trust decreased")
-
-            return {}
-
-        return {
-            "PreToolUse": [
-                HookMatcher(matcher="*", hooks=[pre_tool_use_hook]),
-            ],
-            "PostToolUse": [
-                HookMatcher(matcher="*", hooks=[post_tool_use_hook]),
-            ],
-        }
-
-    def create_options(self) -> ClaudeAgentOptions:
-        """
-        Create ClaudeAgentOptions for the orchestrator.
-
-        Uses SDK 0.1.6+ features:
-        - max_budget_usd: Native cost control (replaces manual guardrails for hard limit)
-        - max_thinking_tokens: Control extended thinking allocation
-
-        Uses SDK 0.1.15+ features:
-        - enable_file_checkpointing: Allow file rollback on errors
-        """
-        logger.info("Creating orchestrator agent configuration...")
-
-        # Calculate budget from guardrail config (SDK 0.1.6+)
-        max_budget = self.guardrail_config.cost_limits.per_session
-
-        # Get model config
-        model_config = self.config.get("orchestrator", {}).get("model", {})
-        max_thinking = model_config.get("max_thinking_tokens", 8000)
-
-        options = ClaudeAgentOptions(
-            # Core settings
-            cwd=str(self.project_root),
-            system_prompt=self._create_system_prompt(),
-
-            # MCP servers for Blender pipeline
-            mcp_servers=self._create_mcp_config(),
-
-            # Tool configuration (SDK 0.1.12+ format)
-            allowed_tools=self._create_allowed_tools(),
-
-            # Cost control (SDK 0.1.6+) - native budget limit
-            max_budget_usd=max_budget,
-
-            # Extended thinking control (SDK 0.1.6+)
-            max_thinking_tokens=max_thinking,
-
-            # File checkpointing for rollback (SDK 0.1.15+)
-            enable_file_checkpointing=True,
-
-            # Hooks for deterministic processing (SDK 0.1.3+)
-            hooks=self._create_hooks(),
-
-            # Permission mode - we handle permissions via hooks
-            permission_mode='acceptEdits',
-        )
-
-        logger.info(f"MCP servers configured: {len(options.mcp_servers)}")
-        logger.info(f"Allowed tools: {len(options.allowed_tools)}")
-        logger.info(f"Max budget: ${max_budget:.2f} (SDK native)")
-        logger.info(f"Max thinking tokens: {max_thinking}")
-        logger.info(f"File checkpointing: enabled")
-
-        return options
-
     async def start(self) -> None:
-        """Initialize the orchestrator agent."""
-        logger.info("Starting Blender VFX Orchestrator...")
+        """Initialize the orchestrator agent.
 
-        self.options = self.create_options()
-        self.client = ClaudeSDKClient(options=self.options)
-        await self.client.__aenter__()
+        In hybrid mode, this simply marks the orchestrator as ready.
+        Direct tool calls are used instead of an inner Claude agent.
+        """
+        logger.info("Starting Blender VFX Orchestrator (hybrid mode)...")
+
+        # Verify direct tools are loaded
+        if not self._direct_tools:
+            logger.warning("No direct tools loaded - loading now...")
+            self._load_direct_tools()
+
+        self._started = True
 
         logger.info("✅ Blender VFX Orchestrator ready")
+        logger.info(f"   Mode: Hybrid (direct tool calls)")
         logger.info(f"   Trust: {self.autonomy.get_trust_score():.2f}")
         logger.info(f"   Level: {self.autonomy.get_level().value}")
+        logger.info(f"   Direct tools: {list(self._direct_tools.keys())}")
 
     async def stop(self) -> None:
         """Shutdown the orchestrator agent."""
-        # Save session state if active
+        # Sync session state to iteration-controller if active
         if self.session:
-            self._save_current_state()
+            await self._sync_to_controller(next_action="paused")
 
-        if self.client:
-            await self.client.__aexit__(None, None, None)
-
+        self._started = False
         logger.info("Blender VFX Orchestrator stopped")
 
     def _save_current_state(self) -> None:
-        """Save current session state."""
+        """Save current session state to local SessionManager (in-memory + local file)."""
         if self.session and self.workflow and self.guardrails:
             self.session_manager.update_session_from_workflow(self.session, self.workflow)
             self.session_manager.update_session_from_guardrails(self.session, self.guardrails)
             self.session_manager.save_session(self.session)
+
+    async def _sync_to_controller(self, next_action: str = "continue") -> None:
+        """
+        Sync state to iteration-controller for authoritative persistence.
+
+        This makes iteration-controller the single source of truth for session state,
+        enabling recovery after context limits or crashes. Local SessionManager
+        provides rich in-memory state, but iteration-controller is authoritative.
+
+        Args:
+            next_action: What should happen next (continue, iterate, complete, fail)
+        """
+        if not self.session:
+            return
+
+        # Save to local SessionManager first (for in-memory richness)
+        self._save_current_state()
+
+        # Extract current issues from workflow if available
+        current_issues = []
+        if self.workflow and hasattr(self.workflow, 'current_issues'):
+            current_issues = self.workflow.current_issues or []
+        elif self.session.iterations:
+            # Get issues from last iteration
+            last_iter = self.session.iterations[-1]
+            if hasattr(last_iter, 'issues') and last_iter.issues:
+                current_issues = last_iter.issues
+
+        # Build state for iteration-controller
+        try:
+            result = await self._call_tool_direct(
+                "iteration-controller",
+                "save_iteration_state",
+                {
+                    "session_id": self.session.session_id,
+                    "asset_name": self.session.request.asset_name,
+                    "effect_type": self.session.request.effect_type,
+                    "current_iteration": len(self.session.iterations),
+                    "best_score": self.session.best_score,
+                    "best_iteration": self.session.best_iteration,
+                    "parameters_current": json.dumps(self.session.current_parameters),
+                    "issues_current": json.dumps(current_issues),
+                    "next_action": next_action,
+                    "status": self.session.status,
+                }
+            )
+            logger.debug(f"State synced to iteration-controller: {result[:100]}...")
+        except Exception as e:
+            # Log but don't fail - local state is still saved
+            logger.warning(f"Failed to sync to iteration-controller: {e}")
 
     async def create_asset(
         self,
@@ -620,7 +561,7 @@ Work efficiently but within your current permission level.
         Returns:
             Session result summary
         """
-        if not self.client:
+        if not self._started:
             raise RuntimeError("Orchestrator not started. Call start() first.")
 
         # Create asset request
@@ -657,21 +598,38 @@ Work efficiently but within your current permission level.
         """
         Resume an interrupted session.
 
+        First tries to load from iteration-controller (authoritative source),
+        falls back to local SessionManager if not found.
+
         Args:
             session_id: Session ID to resume
 
         Returns:
             Session result summary
         """
-        if not self.client:
+        if not self._started:
             raise RuntimeError("Orchestrator not started. Call start() first.")
 
-        self.session = self.session_manager.load_session(session_id)
+        # Try to load from iteration-controller first (authoritative)
+        controller_state = await self._load_from_controller(session_id)
+
+        if controller_state:
+            # Create session from controller state
+            self.session = self._create_session_from_controller_state(controller_state)
+            logger.info(f"Session loaded from iteration-controller (authoritative)")
+        else:
+            # Fall back to local SessionManager
+            self.session = self.session_manager.load_session(session_id)
+
         if not self.session:
             raise ValueError(f"Session not found: {session_id}")
 
-        if self.session.status != "in_progress":
+        if self.session.status not in ("in_progress", "paused"):
             raise ValueError(f"Session {session_id} is not resumable (status: {self.session.status})")
+
+        # Update status to in_progress if paused
+        if self.session.status == "paused":
+            self.session.status = "in_progress"
 
         # Restore workflow and create new guardrails
         self.workflow = self.session_manager.create_workflow(self.session)
@@ -687,13 +645,85 @@ Work efficiently but within your current permission level.
 
         return result
 
+    async def _load_from_controller(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load session state from iteration-controller (authoritative source).
+
+        Args:
+            session_id: Session ID to load
+
+        Returns:
+            State dict if found, None otherwise
+        """
+        try:
+            result_json = await self._call_tool_direct(
+                "iteration-controller",
+                "load_iteration_state",
+                {"session_id": session_id}
+            )
+            result = json.loads(result_json)
+            if "error" in result:
+                logger.debug(f"Session not in iteration-controller: {result['error']}")
+                return None
+            return result
+        except Exception as e:
+            logger.debug(f"Failed to load from iteration-controller: {e}")
+            return None
+
+    def _create_session_from_controller_state(
+        self, controller_state: Dict[str, Any]
+    ) -> SessionState:
+        """
+        Create a SessionState from iteration-controller state.
+
+        The controller state is simpler, so we create a minimal SessionState
+        that can be used to resume the workflow.
+
+        Args:
+            controller_state: State dict from iteration-controller
+
+        Returns:
+            SessionState object
+        """
+        # Create asset request from controller state
+        request = AssetRequest(
+            asset_name=controller_state.get("asset_name", "unknown"),
+            effect_type=controller_state.get("effect_type", "pyro"),
+            description=f"Resumed from controller: {controller_state.get('asset_name', 'unknown')}",
+        )
+
+        # Create session
+        session = SessionState(
+            session_id=controller_state.get("session_id", "unknown"),
+            request=request,
+            status=controller_state.get("status", "in_progress"),
+            best_score=controller_state.get("best_score", 0.0),
+            best_iteration=controller_state.get("best_iteration", 0),
+        )
+
+        # Restore parameters
+        params_str = controller_state.get("parameters_current", "{}")
+        if isinstance(params_str, str):
+            session.current_parameters = json.loads(params_str)
+        else:
+            session.current_parameters = params_str
+
+        return session
+
     async def _run_workflow(self) -> Dict[str, Any]:
         """
         Run the main workflow loop.
 
+        Integrates circuit breakers to prevent runaway iterations.
+
         Returns:
             Final session result
         """
+        # Initialize circuit breaker state for this session
+        self.circuit_breaker_state = CircuitBreakerState()
+        circuit_breaker_triggered = False
+        circuit_breaker_reason = ""
+
         try:
             while self.workflow.current_stage != WorkflowStage.SESSION_END:
                 # Check guardrails before each stage
@@ -703,6 +733,26 @@ Work efficiently but within your current permission level.
                     self.autonomy.record_event(TrustEvent.TOKEN_LIMIT_EXCEEDED)
                     break
 
+                # Check circuit breakers before each stage
+                cb_status, cb_reason = check_circuit_breakers(
+                    criteria=self.convergence_criteria,
+                    state=self.circuit_breaker_state,
+                    trust_score=self.autonomy.get_trust_score(),
+                )
+                if cb_status == "stop":
+                    logger.warning(f"CIRCUIT BREAKER: {cb_reason}")
+                    circuit_breaker_triggered = True
+                    circuit_breaker_reason = cb_reason
+                    break
+                elif cb_status == "pause":
+                    logger.warning(f"CIRCUIT BREAKER PAUSE: {cb_reason}")
+                    # Save state and mark as paused
+                    self.session.status = "paused"
+                    await self._sync_to_controller(next_action="pause")
+                    circuit_breaker_triggered = True
+                    circuit_breaker_reason = cb_reason
+                    break
+
                 # Execute current stage
                 stage = self.workflow.current_stage
                 result = await self._execute_stage(stage)
@@ -710,23 +760,49 @@ Work efficiently but within your current permission level.
                 # Record token usage (estimate based on stage)
                 self._record_stage_tokens(stage, result)
 
+                # Update circuit breaker state after evaluation stages
+                if stage == WorkflowStage.EVALUATE_QUALITY and result.success:
+                    # Extract score from result data
+                    score = result.data.get("vfx_score", 0.0) if result.data else 0.0
+                    self.circuit_breaker_state.record_iteration(score, blender_succeeded=True)
+                elif stage == WorkflowStage.EXECUTE_BLENDER and not result.success:
+                    # Record Blender failure
+                    self.circuit_breaker_state.record_iteration(0.0, blender_succeeded=False)
+
                 # Advance workflow
                 self.workflow.advance(result)
 
-                # Save state after each stage
-                self._save_current_state()
+                # Sync state to iteration-controller (authoritative persistence)
+                await self._sync_to_controller(next_action="continue")
 
                 # Log progress
                 logger.info(self.workflow.format_progress())
                 logger.info(self.guardrails.format_status_line())
 
             # Finalize session
-            final_status = "completed" if self.workflow.check_quality_passed() else "failed"
+            if circuit_breaker_triggered:
+                if self.session.status == "paused":
+                    final_status = "paused"
+                else:
+                    # Circuit breaker stop - report best result
+                    final_status = "completed" if self.circuit_breaker_state.best_score >= 60 else "failed"
+                    logger.info(f"Circuit breaker stopped session: {circuit_breaker_reason}")
+                    logger.info(f"Best score achieved: {self.circuit_breaker_state.best_score:.1f}")
+            else:
+                final_status = "completed" if self.workflow.check_quality_passed() else "failed"
+
             self.session_manager.finalize_session(self.session, final_status)
+
+            # Sync final state to iteration-controller
+            next_action = "complete" if final_status == "completed" else ("pause" if final_status == "paused" else "fail")
+            await self._sync_to_controller(next_action=next_action)
 
             # Record trust event
             if final_status == "completed":
                 self.autonomy.record_event(TrustEvent.ASSET_COMPLETED)
+            elif final_status == "paused":
+                # No trust impact for pause (human review requested)
+                pass
             else:
                 self.autonomy.record_event(TrustEvent.QUALITY_DEGRADED)
 
@@ -736,6 +812,11 @@ Work efficiently but within your current permission level.
             logger.error(f"Workflow error: {e}", exc_info=True)
             self.autonomy.record_event(TrustEvent.CRITICAL_FAILURE)
             self.session_manager.finalize_session(self.session, "failed")
+            # Try to sync failure state
+            try:
+                await self._sync_to_controller(next_action="fail")
+            except Exception:
+                pass  # Best effort
             raise
 
     async def _execute_stage(self, stage: WorkflowStage) -> StageResult:
@@ -1394,7 +1475,7 @@ Actions:
         Returns:
             True if rewind succeeded, False otherwise.
         """
-        if not self.client:
+        if not self._started:
             logger.warning("Cannot rewind: client not initialized")
             return False
 
@@ -1526,7 +1607,7 @@ Permission to retry: {self.autonomy.can_proceed(DecisionType.RETRY_EXECUTION)}
 
         Enhanced logging (2026-01): Detects tool execution vs text-only responses.
         """
-        if not self.client:
+        if not self._started:
             raise RuntimeError("Agent not started")
 
         logger.info(f"[QUERY] Sending prompt ({len(prompt)} chars)")

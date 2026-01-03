@@ -2,8 +2,12 @@
 """
 Blender VFX Orchestrator - MCP Server + CLI Entry Point
 
-This is a HYBRID agent: both an MCP server (exposing tools to Claude Code)
-AND a Claude Agent SDK client (for autonomous reasoning).
+This is a HYBRID agent that operates in two modes:
+1. MCP Server mode: Exposes tools to Claude Code via FastMCP
+2. CLI mode: Direct command-line interface for asset generation
+
+The orchestrator coordinates script-generator, blender-executor, and asset-evaluator
+MCP servers to autonomously generate NanoVDB volumetric assets.
 
 Usage:
     # MCP Server mode (for Claude Code integration)
@@ -35,13 +39,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Import MCP server factory
-try:
-    from claude_agent_sdk import create_sdk_mcp_server
-    MCP_AVAILABLE = True
-except ImportError:
-    MCP_AVAILABLE = False
-
 # Load environment variables
 load_dotenv()
 
@@ -64,6 +61,9 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # MCP Server mode (for Claude Code integration)
+  python server.py --mcp
+
   # Interactive mode
   python server.py
 
@@ -94,10 +94,17 @@ Examples:
         """,
     )
 
+    # Add --mcp flag for MCP server mode
+    parser.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Run as MCP server (stdio transport)",
+    )
+
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Interactive mode (default)
-    interactive_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "interactive", help="Interactive mode (default)"
     )
 
@@ -142,7 +149,7 @@ Examples:
     )
 
     # Status
-    status_parser = subparsers.add_parser("status", help="Show orchestrator status")
+    subparsers.add_parser("status", help="Show orchestrator status")
 
     # Trust score
     trust_parser = subparsers.add_parser("trust", help="Set trust score")
@@ -371,11 +378,11 @@ def cmd_autonomy(args, orchestrator):
 
 
 async def main():
-    """Main entry point."""
+    """Main entry point for CLI mode."""
     parser = create_parser()
     args = parser.parse_args()
 
-    # Import here to avoid import errors if dependencies missing
+    # Import orchestrator
     try:
         from .orchestrator import BlenderOrchestratorAgent
     except ImportError:
@@ -386,7 +393,7 @@ async def main():
     # Create orchestrator
     orchestrator = BlenderOrchestratorAgent(project_root=PROJECT_ROOT)
 
-    # Handle commands that don't need agent SDK
+    # Handle commands that don't need async
     if args.command == "list":
         cmd_list(args, orchestrator)
         return
@@ -403,7 +410,7 @@ async def main():
         cmd_autonomy(args, orchestrator)
         return
 
-    # Commands that need agent SDK
+    # Commands that need async
     try:
         await orchestrator.start()
 
@@ -421,48 +428,25 @@ async def main():
         await orchestrator.stop()
 
 
-def create_mcp_server():
-    """Create MCP server exposing orchestrator tools."""
-    if not MCP_AVAILABLE:
-        raise RuntimeError("claude_agent_sdk not available - cannot create MCP server")
+def run_mcp_server():
+    """Run as MCP server using FastMCP."""
+    # Import tools module which has the FastMCP server with registered tools
+    from tools import get_mcp_server
 
-    # Import tools
-    from tools import create_asset, get_status, list_sessions, resume_session
-
-    # Create MCP server with all tools
-    server = create_sdk_mcp_server(
-        name="blender-orchestrator",
-        version="0.2.0",
-        tools=[
-            create_asset,
-            get_status,
-            list_sessions,
-            resume_session,
-        ],
-    )
-
-    return server
-
-
-async def run_mcp_server():
-    """Run as MCP server (for Claude Code integration)."""
-    server = create_mcp_server()
+    mcp = get_mcp_server()
     logger.info("Starting Blender VFX Orchestrator MCP server...")
 
-    # Run the MCP server
-    await server.run()
+    # Run the FastMCP server (uses stdio transport by default)
+    mcp.run()
 
 
 if __name__ == "__main__":
     # Check for MCP mode flag
     if "--mcp" in sys.argv:
-        if not MCP_AVAILABLE:
-            print("Error: claude_agent_sdk not available for MCP mode")
-            sys.exit(1)
         try:
-            asyncio.run(run_mcp_server())
+            run_mcp_server()
         except KeyboardInterrupt:
-            print("\nMCP server shutdown.")
+            print("\nMCP server shutdown.", file=sys.stderr)
             sys.exit(0)
     else:
         # CLI mode

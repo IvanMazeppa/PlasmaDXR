@@ -99,6 +99,11 @@ The orchestrator coordinates these specialized agents:
 - Diagnoses issues and suggests next steps
 - Manages state persistence
 
+**6. blender-manual**
+- Searches Blender documentation
+- Finds tutorials and techniques
+- Provides API reference
+
 ## Quality Thresholds
 
 | Metric | Threshold | Description |
@@ -107,149 +112,210 @@ The orchestrator coordinates these specialized agents:
 | Temporal Consistency | >= 0.7 | Animation smoothness (1.0 = no flicker) |
 | Ground Truth Similarity | >= 0.65 | Distribution match to real footage |
 
-## Example Usage
+---
 
-### Creating an Explosion Asset
+## CRITICAL: Autonomous Workflow Instructions
 
-**User Request**: "Create a mushroom cloud explosion with orange/red fire"
-
-**Orchestrator Response**:
-```
-Starting asset generation: mushroom_explosion_v1
-
-**Configuration:**
-- Effect Type: pyro (explosion)
-- Description: Rising mushroom cloud with orange/red fire
-- Resolution: 96
-- Frame Range: 1-50
-
-**Iteration 1:**
-- Generated script using "rising_mushroom" technique
-- Executing Blender simulation...
-- Evaluating quality...
-  - VFX Score: 45/100 (TOO DARK, LOW STRUCTURE)
-  - Issues: Brightness mean 42, needs >100
-
-**Iteration 2:**
-- Adjusting parameters: +flame_max_temp, +turbulence
-- Executing...
-- VFX Score: 68/100 (PASSED)
-
-**Results:**
-- Best Score: 68/100
-- Total Iterations: 2
-- VDB Output: build/vdb_output/mushroom_explosion_v1/
-- Render: build/vdb_output/mushroom_explosion_v1/render_0025.png
-
-Quality gate PASSED. Asset ready for use.
-```
-
-### Using Reference Images
-
-**User Request**: "Create a sun surface effect that looks like this NASA footage"
-
-**Orchestrator Response**:
-```
-Starting asset generation: sun_surface_v1
-
-**Reference:** assets/reference_images/star/Eruptions_20241008/frame_00639.jpg
-
-**Iteration 1:**
-- VFX Score: 52/100
-- Ground Truth: 0.45 (target: 0.65)
-- Issues: Color too cool, lacks granulation
-
-**Iteration 2:**
-- Increased temperature, adjusted color profile
-- Ground Truth: 0.58
-- Still needs more surface texture
-
-**Iteration 3:**
-- Added noise for granulation effect
-- Ground Truth: 0.67 (PASSED)
-- VFX Score: 71/100
-
-**Results:**
-- Ground Truth Similarity: 0.67 (matches reference)
-- 3 iterations to pass
-- Asset ready for production use
-```
-
-### Resuming Sessions
-
-**User Request**: "Continue the sun_surface_v1 session"
-
-**Orchestrator Response**:
-```
-Resuming session: sun_surface_v1
-
-**Loaded State:**
-- Last Iteration: 3
-- Best Score: 67
-- Current Issue: Prominence shapes too regular
-
-**Iteration 4:**
-- Adjusted prominence turbulence
-- VFX Score: 74/100
-- Prominence quality improved
-
-Session continued. Ready for next iteration or completion.
-```
-
-## Architecture Details
-
-### Trust & Autonomy System
-The orchestrator uses a graduated autonomy model:
-
-| Level | Trust Score | Behavior |
-|-------|-------------|----------|
-| Supervised | 0.0 - 0.3 | Requires approval for each action |
-| Guided | 0.3 - 0.6 | Can execute, reports decisions |
-| Autonomous | 0.6 - 0.8 | Full autonomy within guardrails |
-| Trusted | 0.8 - 1.0 | Extended limits, minimal oversight |
-
-### Guardrails
-- **Token Limits**: Per-session (100K), per-iteration (20K), absolute max (150K)
-- **Cost Limits**: Per-session ($5), per-day ($20), per-week ($75)
-- **Quality Gates**: Must pass thresholds before completion
-
-### Session Persistence
-Sessions are saved to `build/orchestrator_state/<session_id>.json` with:
-- Current iteration and best score
-- Parameters and script versions
-- Evaluation history
-- Next action to take
-
-## Best Practices
-
-1. **Start with Description**: Detailed descriptions produce better initial scripts
-2. **Use References**: Ground truth comparison dramatically improves realism
-3. **Iterate Patiently**: Complex effects may need 5+ iterations
-4. **Review Diagnostics**: VFX quality issues are specific and actionable
-5. **Resume Don't Restart**: Use `resume_session` to continue from checkpoints
-6. **Trust the Scores**: ML evaluation correlates well with human perception
-
-## Output Locations
-
-| Asset | Path |
-|-------|------|
-| VDB Files | `build/vdb_output/<asset_name>/` |
-| Renders | `build/vdb_output/<asset_name>/render_*.png` |
-| Scripts | `assets/blender_scripts/generated/<asset_name>.py` |
-| Sessions | `build/orchestrator_state/<session_id>.json` |
-
-## Integration with PlasmaDX-Clean
-
-Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
-1. VDB files exported to `build/vdb_output/`
-2. NanoVDB system loads and renders volumetric data
-3. Integrates with existing RT lighting and particle systems
+**IMPORTANT:** When this skill is invoked, follow these stages in order. Execute MCP tools directly - do not describe what you would do, actually call the tools.
 
 ---
 
-## Autonomous Workflow Instructions
+## Iteration Tracking (MANDATORY)
 
-**IMPORTANT:** When this skill is invoked, follow these stages in order. Execute MCP tools directly - do not describe what you would do, actually call the tools.
+At the START of each iteration, you MUST:
+
+1. Increment iteration counter: `current_iteration += 1`
+2. Log: `"=== ITERATION {current_iteration} of 10 ==="`
+3. Check circuit breakers (see below) BEFORE proceeding
+
+**Track these variables throughout the session:**
+
+| Variable | Initial Value | Description |
+|----------|---------------|-------------|
+| `current_iteration` | 0 | Increments each loop |
+| `max_iterations` | 10 | Hard limit |
+| `best_score` | 0 | Highest VFX score achieved |
+| `best_iteration` | 0 | Which iteration achieved best_score |
+| `best_render_path` | "" | Path to best render |
+| `best_script_path` | "" | Path to best script |
+| `iterations_without_improvement` | 0 | Resets when score improves |
+| `consecutive_blender_failures` | 0 | Resets on successful execution |
+| `consecutive_low_scores` | 0 | Count of scores < 40 |
+| `session_start_time` | now() | Timestamp when session began |
+
+---
+
+## Circuit Breakers (HARD STOPS)
+
+**Before EVERY iteration, check these conditions. If ANY trigger, STOP immediately:**
+
+| Breaker | Condition | Action |
+|---------|-----------|--------|
+| MAX_ITERATIONS | `current_iteration >= 10` | STOP, report best result |
+| MAX_WALL_TIME | `elapsed > 30 minutes` | STOP, save state for resume |
+| NO_IMPROVEMENT | `iterations_without_improvement >= 3` | STOP, local optimum reached |
+| QUALITY_FLOOR | `consecutive_low_scores >= 2` (score < 40) | PAUSE, request human review |
+| BLENDER_FAILURES | `consecutive_blender_failures >= 2` | STOP, script has fundamental issue |
+
+**When a circuit breaker triggers:**
+
+1. Log: `"CIRCUIT BREAKER: {breaker_name} triggered"`
+2. Save session state:
+   ```
+   Call: mcp__iteration-controller__save_iteration_state(
+       session_id=<session_id>,
+       asset_name=<asset_name>,
+       effect_type=<effect_type>,
+       current_iteration=<current_iteration>,
+       best_score=<best_score>,
+       best_iteration=<best_iteration>,
+       parameters_current=<params_json>,
+       issues_current=<issues_json>,
+       next_action="circuit_breaker_stop",
+       status="stopped"
+   )
+   ```
+3. Report final status with best score and output paths
+4. **DO NOT continue iterating**
+
+---
+
+## Knowledge Base Consultation (MANDATORY)
+
+**Before EVERY parameter modification, you MUST consult the knowledge base:**
+
+### Step 1: Check for Warnings
+
+```
+Call: mcp__experiment-tracker__get_warnings_before_change(
+    parameter=<parameter_being_changed>,
+    change_type="increase" or "decrease"
+)
+```
+
+**If warnings returned with severity "critical":**
+- Apply the suggested mitigation, OR
+- Skip that parameter change entirely
+- Log: `"Skipped {param} due to warning: {reason}"`
+
+### Step 2: Get Suggestions for Current Issues
+
+```
+Call: mcp__experiment-tracker__suggest_experiments(
+    issue=<primary_issue_from_evaluation>,
+    current_params=<current_params_json>,
+    current_scores=<current_scores_json>
+)
+```
+
+**If suggestion confidence > 0.6:**
+- USE the knowledge base suggestion instead of heuristic fix
+- Log: `"Using KB suggestion: {suggestion} (confidence: {confidence})"`
+
+**If no high-confidence suggestions:**
+- Fall back to heuristic fixes from diagnosis
+- Consider research integration (see below)
+
+### Step 3: Record Learning After Each Iteration
+
+```
+Call: mcp__experiment-tracker__record_experiment_result(
+    hypothesis=<what we tried>,
+    issue_addressed=<what problem we targeted>,
+    result_params=<new_params_json>,
+    result_scores=<new_scores_json>,
+    result_render=<render_path>,
+    result_script=<script_path>,
+    success=<true/false based on score improvement>,
+    observed_effects='["<effect1>", "<effect2>"]',
+    learnings='["<learning1>", "<learning2>"]',
+    warnings='["<warning1>"]'
+)
+```
+
+**This is NOT optional. Skipping knowledge consultation wastes learned experience.**
+
+---
+
+## Research Integration (When Stuck)
+
+**If `iterations_without_improvement >= 2` AND no high-confidence suggestions from knowledge base:**
+
+### Step 1: Research in Blender Documentation
+
+```
+Call: mcp__blender-manual__search_tutorials(
+    topic=<effect_type>,
+    technique=<current_technique>
+)
+```
+
+### Step 2: Search for Alternative Approaches
+
+```
+Call: mcp__blender-manual__search_vdb_workflow(
+    query="<effect_type> <primary_issue> solution"
+)
+```
+
+### Step 3: Consider Technique Switch
+
+```
+Call: mcp__script-generator__list_techniques(effect_type=<effect_type>)
+```
+
+If a promising DIFFERENT technique is found:
+- Log: `"Switching technique from {old} to {new} due to stagnation"`
+- Restart from Stage 2 (Generate Script) with new technique
+- Reset `iterations_without_improvement` to 0
+
+---
+
+## Quality Evaluation Decision Tree
+
+**Follow this EXACT sequence when evaluating quality:**
+
+### Step 1: Always Run VFX Diagnostics First (no reference needed)
+
+```
+Call: mcp__asset-evaluator__evaluate_vfx_quality(
+    image_path="build/vdb_output/<asset_name>/render_0025.png",
+    effect_type=<effect_type>
+)
+```
+
+### Step 2: Apply Decision Based on VFX Score
+
+**If VFX score < 40:** REJECT immediately
+- Do NOT run LPIPS/CLIP (waste of time)
+- Increment `consecutive_low_scores`
+- Diagnose issues and iterate
+
+**If VFX score >= 40 but < 60:** Check secondary metrics
+- Reset `consecutive_low_scores` to 0
+- If `reference_path` provided: Run LPIPS
+- If `semantic_query` provided: Run CLIP
+- Use decision matrix below
+
+**If VFX score >= 60:** Quality gate passed
+- Reset `consecutive_low_scores` to 0
+- Still run LPIPS/CLIP for completeness
+- Note any warnings but ACCEPT
+
+### Decision Matrix
+
+| VFX | LPIPS | CLIP | Decision |
+|-----|-------|------|----------|
+| >=60 | <0.35 | >0.60 | ACCEPT |
+| >=60 | >=0.35 | * | ACCEPT (note: style differs from reference) |
+| >=60 | * | <=0.60 | ACCEPT (note: semantic drift) |
+| 40-59 | <0.35 | >0.60 | ITERATE (close, minor fixes needed) |
+| 40-59 | * | * | ITERATE (needs work) |
+| <40 | * | * | REJECT (fundamental issues) |
+
+---
+
+## Stage-by-Stage Workflow
 
 ### Stage 1: Initialize Session
 
@@ -258,17 +324,33 @@ Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
    - `effect_type`: pyro, explosion, fire, smoke, nebula, or sun
    - `description`: What the effect should look like
    - `reference_path`: (optional) Path to reference image
+   - `semantic_query`: (optional) Text description for CLIP
 
-2. Announce the session start with configuration summary
+2. Initialize tracking variables (see Iteration Tracking above)
+
+3. Check if resuming an existing session:
+   ```
+   Call: mcp__iteration-controller__load_iteration_state(session_id=<asset_name>)
+   ```
+   If found, restore variables and skip to appropriate stage.
+
+4. Preload relevant knowledge:
+   ```
+   Call: mcp__experiment-tracker__query_knowledge_base(query=<effect_type>)
+   ```
+
+5. Announce the session start with configuration summary
 
 ### Stage 2: Generate Script
 
-1. First, explore available techniques:
+1. **Check circuit breakers** (see above)
+
+2. First, explore available techniques:
    ```
-   Call: mcp__script-generator__list_techniques(effect_type="pyro")
+   Call: mcp__script-generator__list_techniques(effect_type=<effect_type>)
    ```
 
-2. Generate the initial script:
+3. Generate the initial script:
    ```
    Call: mcp__script-generator__generate_script(
        effect_type=<effect_type>,
@@ -279,16 +361,22 @@ Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
    )
    ```
 
-3. If generation fails, check for parameter issues:
+4. Validate the generated script:
    ```
-   Call: mcp__script-generator__validate_parameters(params={...})
+   Call: mcp__script-generator__validate_parameters(params=<extracted_params>)
    ```
 
-4. Extract the script path from the result (e.g., `assets/blender_scripts/generated/<name>.py`)
+5. If validation fails, fix parameters and regenerate
+
+6. Extract the script path from the result
 
 ### Stage 3: Execute Blender
 
-1. Run the Blender simulation:
+1. **Check circuit breakers** (see above)
+
+2. Log: `"=== ITERATION {current_iteration} of 10 ==="`
+
+3. Run the Blender simulation:
    ```
    Call: mcp__blender-executor__execute_blender_script(
        script_path=<script_path>,
@@ -296,57 +384,63 @@ Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
    )
    ```
 
-2. If execution fails, parse the error:
-   ```
-   Call: mcp__blender-executor__parse_blender_errors(stderr=<error_output>)
-   ```
+4. If execution fails:
+   - Increment `consecutive_blender_failures`
+   - Parse the error:
+     ```
+     Call: mcp__blender-executor__parse_blender_errors(stderr=<error_output>)
+     ```
+   - Apply suggested fixes and retry (max 3 attempts)
+   - If still failing after 3 attempts, check BLENDER_FAILURES circuit breaker
 
-3. Apply suggested fixes and retry (max 3 attempts per stage)
-
-4. Locate output files in `build/vdb_output/<asset_name>/`
+5. If execution succeeds:
+   - Reset `consecutive_blender_failures` to 0
+   - Locate output files in `build/vdb_output/<asset_name>/`
 
 ### Stage 4: Evaluate Quality
 
 1. Find the middle frame render (e.g., `render_0025.png`)
 
-2. Evaluate VFX quality (no reference needed):
-   ```
-   Call: mcp__asset-evaluator__evaluate_vfx_quality(
-       image_path="build/vdb_output/<asset_name>/render_0025.png",
-       effect_type=<effect_type>
-   )
+2. Follow the **Quality Evaluation Decision Tree** above
+
+3. Update tracking variables:
+   ```python
+   if new_score > best_score:
+       best_score = new_score
+       best_iteration = current_iteration
+       best_render_path = render_path
+       best_script_path = script_path
+       iterations_without_improvement = 0
+   else:
+       iterations_without_improvement += 1
    ```
 
-3. If reference image provided, also evaluate ground truth:
-   ```
-   Call: mcp__asset-evaluator__evaluate_ground_truth(
-       image_path="build/vdb_output/<asset_name>/render_0025.png",
-       effect_type="sun"
-   )
-   ```
-
-4. Extract scores and issues from results:
-   - `composite_score`: 0-100 (target: >= 60)
-   - `passed`: boolean
-   - `issues`: list of problems found
+4. Extract issues from evaluation result
 
 ### Stage 5: Decide Next Action
 
 **If quality passed (score >= 60 AND no critical issues):**
+- Log: `"Quality gate PASSED at iteration {current_iteration}"`
 - Report success with final score and output paths
+- Record final learning to knowledge base
 - Session complete
 
-**If quality failed AND iteration < 5:**
-1. Diagnose issues:
+**If quality failed AND circuit breakers not triggered:**
+
+1. Increment `current_iteration`
+
+2. **Consult knowledge base** (MANDATORY - see above)
+
+3. Diagnose issues:
    ```
    Call: mcp__iteration-controller__diagnose_vfx_issues(
        quality_json=<evaluation_result_json>
    )
    ```
 
-2. Get suggested parameter changes from diagnosis
+4. Apply fixes from knowledge base OR diagnosis
 
-3. Modify the script:
+5. Modify the script:
    ```
    Call: mcp__script-generator__modify_script(
        script_path=<current_script>,
@@ -358,22 +452,30 @@ Generated NanoVDB assets can be loaded into PlasmaDX-Clean renderer:
    )
    ```
 
-4. Return to Stage 3 (Execute Blender)
+6. **Return to Stage 3** (Execute Blender)
 
-**If max iterations reached (5):**
+**If max iterations reached OR circuit breaker triggered:**
 - Report best score achieved across all iterations
-- Provide the best iteration's output paths
+- Provide the best iteration's output paths (`best_render_path`, `best_script_path`)
 - Suggest manual refinements based on remaining issues
+- Save state for potential resume
 
-### Stage 6: Record Learning (Optional)
+### Stage 6: Record Learning
 
-After each iteration, record what was learned:
+After EVERY iteration (success or failure), record what was learned:
+
 ```
 Call: mcp__experiment-tracker__record_experiment_result(
     hypothesis="<what we tried>",
     issue_addressed="<what problem we targeted>",
-    success=<true/false>,
-    learnings='["<what we learned>"]'
+    result_params=<params_json>,
+    result_scores=<scores_json>,
+    result_render=<render_path>,
+    result_script=<script_path>,
+    success=<true if score improved>,
+    observed_effects='["<effect1>", "<effect2>"]',
+    learnings='["<what we learned>"]',
+    warnings='["<any gotchas discovered>"]'
 )
 ```
 
@@ -388,8 +490,46 @@ This builds a knowledge base for future sessions.
 | TOO DARK | Low flame temperature | Increase `flame_max_temp` by 500-1000K |
 | NO STRUCTURE | Low turbulence | Increase `turbulence` to 0.5-0.8 |
 | WRONG COLOR | Temperature mismatch | Adjust `flame_max_temp` for target color |
-| CLIPPING | Domain too small | Increase `domain_scale` and reposition |
+| CLIPPING | Domain too small | Increase `domain_scale` AND reposition emitter |
 | SPARSE | Low density | Increase `density_multiplier` |
+| FLAT | No depth variation | Increase `noise_scale` and `vorticity` |
+
+---
+
+## Trust & Autonomy System
+
+The orchestrator uses a graduated autonomy model:
+
+| Level | Trust Score | Behavior |
+|-------|-------------|----------|
+| Supervised | 0.0 - 0.3 | Requires approval for each action |
+| Guided | 0.3 - 0.6 | Can execute, reports decisions |
+| Autonomous | 0.6 - 0.8 | Full autonomy within guardrails |
+| Trusted | 0.8 - 1.0 | Extended limits, minimal oversight |
+
+---
+
+## Output Locations
+
+| Asset | Path |
+|-------|------|
+| VDB Files | `build/vdb_output/<asset_name>/` |
+| Renders | `build/vdb_output/<asset_name>/render_*.png` |
+| Scripts | `assets/blender_scripts/generated/<asset_name>.py` |
+| Sessions | `build/orchestrator_state/<session_id>.json` |
+
+---
+
+## Best Practices
+
+1. **Start with Description**: Detailed descriptions produce better initial scripts
+2. **Use References**: Ground truth comparison dramatically improves realism
+3. **Iterate Patiently**: Complex effects may need 5+ iterations
+4. **Review Diagnostics**: VFX quality issues are specific and actionable
+5. **Resume Don't Restart**: Use `resume_session` to continue from checkpoints
+6. **Trust the Scores**: ML evaluation correlates well with human perception
+7. **Consult Knowledge Base**: Past learnings accelerate current sessions
+8. **Research When Stuck**: Blender manual has solutions to common problems
 
 ---
 
@@ -408,4 +548,4 @@ Combine results and use worst score for quality gate.
 
 ---
 
-**Remember**: The orchestrator works autonomously but respects quality gates. It will iterate until the asset meets thresholds or max iterations are reached. For best results, provide detailed descriptions and reference images when available.
+**Remember**: The orchestrator works autonomously but respects circuit breakers and quality gates. It will iterate until the asset meets thresholds or a circuit breaker triggers. For best results, provide detailed descriptions and reference images when available.
