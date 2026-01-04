@@ -19,7 +19,7 @@
 | Phase 4: Knowledge Base | ✅ COMPLETE | knowledge_client.py, mandatory warnings, conflict resolution |
 | Phase 5: Evaluation Reliability | 🔄 PARTIAL | Task 5.4 JSON fix done, others pending |
 | Phase 6: Session Resumption | ⏳ PENDING | State versioning, file validation |
-| Phase 7: External Research | ⏳ PENDING | Blender manual integration when stuck |
+| Phase 7: External Research | 🔄 PARTIAL | Direct blender-manual lookups + optional Blender Librarian synthesis |
 
 ---
 
@@ -256,6 +256,10 @@ When stuck (2+ iterations without improvement):
 1. `search_tutorials(topic, technique)`
 2. `search_vdb_workflow(query)`
 3. `list_techniques(effect_type)` and try different technique
+
+**Update (2026-01-04):**
+- Orchestrator direct mode now loads `blender-manual` and performs lightweight doc pulls on plateaus / sun color issues.
+- Added `agents/blender-librarian` MCP server: combines `blender-manual` doc retrieval with optional GPT-5.2 (vision) synthesis to propose `script-generator.modify_script()`-compatible changes.
 
 ---
 

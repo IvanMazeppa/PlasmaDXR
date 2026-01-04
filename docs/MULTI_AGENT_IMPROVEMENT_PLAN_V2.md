@@ -4,58 +4,11 @@
 **Additional Research:** Repo analysis, MCP best practices, Framework documentation, SpecFlow gap analysis
 **Goal:** Address all identified issues with formal specifications for critical decisions
 **Created:** 2026-01-03
-**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1, Phase 2 COMPLETE + Task 5.4 JSON fix)
+**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1 COMPLETE + Task 5.4 JSON fix)
 
 ---
 
 ## Changelog
-
-### 2026-01-04: Phase 2 Pre-Execution Validation ✅
-
-**Session Context:** Continuation from Phase 1 completion session.
-
-#### Task 2.1: Blender Script Validator ✅
-
-**File Created:** `agents/script-generator/validator.py`
-
-**Implementation:**
-- Full Python syntax validation using AST parsing
-- Blender 5.0 API parameter extraction and range validation
-- Simulation type detection (volumetric vs mesh-based)
-- Required pattern checks (domain, flow, physics modifiers)
-- Security/safety pattern detection (subprocess, eval, exec)
-- Output path validation with cross-platform warnings
-
-**Key Classes:**
-- `ValidationSeverity(Enum)`: ERROR, WARNING, INFO
-- `ValidationIssue`: Single validation finding with severity, category, message, line, suggestion
-- `ValidationResult`: Aggregated result with issues, extracted params, detected types
-- `BlenderScriptValidator`: Main validator class
-
-**Parameter Ranges Defined:**
-- Domain Gas: burning_rate, flame_smoke, flame_vorticity, flame_max_temp, etc.
-- Flow: fuel_amount, temperature, velocity_normal, velocity_random
-- Noise: noise_scale, noise_strength, noise_pos_scale
-- Soft Body: step_min, step_max, damping, goal_spring (Phase 2.5 extensibility)
-
-#### Task 2.2: Workflow State Machine Integration ✅
-
-**Files Modified:**
-- `agents/blender-orchestrator/workflow.py`: Added `VALIDATE_SCRIPT` stage to `WorkflowStage` enum
-- `agents/blender-orchestrator/workflow.py`: Updated `TRANSITIONS` table for validation flow
-- `agents/script-generator/server.py`: Added `validate_script` and `validate_script_content` MCP tools
-- `.claude/skills/blender-orchestrator/SKILL.md`: Documented Stage 2.5 validation step
-
-**State Transitions Added:**
-```
-GENERATE_SCRIPT --SUCCESS--> VALIDATE_SCRIPT
-VALIDATE_SCRIPT --SUCCESS--> EXECUTE_BLENDER
-VALIDATE_SCRIPT --FAILURE--> GENERATE_SCRIPT (loop back if invalid)
-```
-
-**MCP Tools Added:**
-- `validate_script(script_path)`: Validate script file
-- `validate_script_content(content, script_name)`: Validate inline script content
 
 ### 2026-01-04: Phase 1 Verification & Task 5.4 JSON Fix
 
@@ -1804,9 +1757,9 @@ Phase 1: Orchestrator Reliability ✅ COMPLETE (2026-01-04)
 ├── Task 1.3: Health checks ✅
 └── Task 1.4: Formal state machine ✅
 
-Phase 2: Pre-Execution Validation ✅ COMPLETE (2026-01-04)
-├── Task 2.1: Blender parameter validation ✅
-└── Task 2.2: Add VALIDATE_SCRIPT state ✅
+Phase 2: Pre-Execution Validation
+├── Task 2.1: Blender parameter validation
+└── Task 2.2: Add VALIDATE_SCRIPT state
 
 Phase 2.5: Simulation Type Extensibility (NEW - Gemini Feedback)
 ├── Task 2.5.1: Effect type registry
@@ -1851,7 +1804,7 @@ Phase 7: External Research (if time permits)
 | `agents/blender-orchestrator/workflow_tracer.py` | 1.2 | Session tracing | ✅ DONE |
 | `agents/blender-orchestrator/health_check.py` | 1.3 | Server health checks | ✅ DONE |
 | `agents/blender-orchestrator/state_machine.py` | 1.4 | Formal state machine | ✅ DONE |
-| `agents/script-generator/validator.py` | 2.1 | Script validation | ✅ DONE |
+| `agents/script-generator/validator.py` | 2.1 | Script validation | Pending |
 | `agents/script-generator/technique_selector.py` | 3.2 | UCB1 algorithm | Pending |
 | `agents/asset-evaluator/decision_tree.py` | 5.2 | Quality decision tree | Pending |
 | `agents/asset-evaluator/effect_evaluators.py` | 5.3 | Effect type evaluation registry | Pending |

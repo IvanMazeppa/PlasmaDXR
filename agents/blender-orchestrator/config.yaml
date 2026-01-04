@@ -176,6 +176,12 @@ mcp_servers:
     cwd: "agents/blender-manual"
     timeout: 30
 
+  blender_librarian:
+    enabled: true
+    command: "./run_server.sh"
+    cwd: "agents/blender-librarian"
+    timeout: 60
+
   iteration_controller:
     enabled: true
     command: "./run_server.sh"

@@ -55,10 +55,67 @@ class ExperimentTracker:
     - Query knowledge base for guidance
     """
 
-    def __init__(self, db: Optional[ExperimentDatabase] = None):
+    def __init__(self, db: Optional[ExperimentDatabase] = None, auto_load_knowledge: bool = True):
         self.db = db or get_db()
         self._current_session: Optional[str] = None
         self._baseline_state: Optional[Dict] = None
+
+        # Load knowledge from JSON files on initialization
+        if auto_load_knowledge:
+            self._load_knowledge_files()
+
+    def _load_knowledge_files(self):
+        """Load knowledge from JSON files in knowledge_base directory."""
+        knowledge_dir = Path(__file__).parent / "knowledge_base"
+        if not knowledge_dir.exists():
+            return
+
+        for json_file in knowledge_dir.glob("*.json"):
+            try:
+                with open(json_file, 'r') as f:
+                    knowledge = json.load(f)
+
+                # Extract effect type or use filename
+                effect_type = knowledge.get("metadata", {}).get("effect_type", json_file.stem)
+
+                # Load rules as parameter knowledge
+                for rule in knowledge.get("rules", []):
+                    self.add_manual_learning(
+                        parameter=f"{effect_type}_general",
+                        rule=rule
+                    )
+
+                # Load warnings
+                for warning in knowledge.get("warnings", []):
+                    self.add_manual_learning(
+                        parameter=f"{effect_type}_general",
+                        warning=warning
+                    )
+
+                # Load recommended settings as parameter knowledge
+                for param_name, param_data in knowledge.get("recommended_settings", {}).items():
+                    if isinstance(param_data, dict):
+                        rule = f"Recommended value: {param_data.get('value')} (default: {param_data.get('default')})"
+                        if param_data.get("reason"):
+                            rule += f". Reason: {param_data['reason']}"
+                        self.add_manual_learning(
+                            parameter=f"{effect_type}_{param_name}",
+                            rule=rule,
+                            warning=param_data.get("warning")
+                        )
+
+                # Load common issues as warnings
+                for issue in knowledge.get("common_issues", []):
+                    if isinstance(issue, dict):
+                        warning = f"Issue: {issue.get('symptom')} | Cause: {issue.get('cause')} | Fix: {issue.get('fix')}"
+                        self.add_manual_learning(
+                            parameter=f"{effect_type}_issues",
+                            warning=warning
+                        )
+
+            except Exception as e:
+                # Don't fail initialization if a knowledge file is malformed
+                print(f"[tracker] Warning: Could not load {json_file}: {e}")
 
     # =========================================================================
     # Session Management

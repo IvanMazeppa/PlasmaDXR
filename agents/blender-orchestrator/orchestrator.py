@@ -204,10 +204,21 @@ class BlenderOrchestratorAgent:
         agents_dir = self.project_root / "agents"
 
         # Define servers to load: (name, path)
+        #
+        # IMPORTANT:
+        # - In "direct mode" the orchestrator imports server modules and calls their
+        #   tool functions directly. This is how we avoid relying on an LLM runtime
+        #   to execute tools (and avoids any Claude Agent SDK/API usage).
+        # - Some agents historically used a non-standard entrypoint filename.
+        #   Prefer `server.py` for consistency; see `agents/blender-manual/server.py`.
         servers = [
             ("script-generator", agents_dir / "script-generator" / "server.py"),
             ("blender-executor", agents_dir / "blender-executor" / "server.py"),
             ("asset-evaluator", agents_dir / "asset-evaluator" / "server.py"),
+            ("experiment-tracker", agents_dir / "experiment-tracker" / "server.py"),
+            ("iteration-controller", agents_dir / "iteration-controller" / "server.py"),
+            ("blender-manual", agents_dir / "blender-manual" / "server.py"),
+            ("blender-librarian", agents_dir / "blender-librarian" / "server.py"),
         ]
 
         for server_name, server_path in servers:
@@ -355,6 +366,7 @@ volumetric VFX assets using Blender Mantaflow simulation and the NanoVDB pipelin
 - experiment-tracker: record_experiment_result, suggest_experiments, query_knowledge_base
 - iteration-controller: diagnose_vfx_issues, get_next_iteration_params, save_iteration_state
 - blender-manual: search_python_api, search_nodes, search_vdb_workflow
+- blender-librarian: advise_next_modifications (optional GPT-5.2 + docs synthesis)
 
 **Decision Framework:**
 1. After each evaluation, check autonomy permissions for next action
@@ -484,6 +496,9 @@ Work efficiently but within your current permission level.
             "mcp__blender-manual__search_vdb_workflow",
             "mcp__blender-manual__search_tutorials",
             "mcp__blender-manual__read_page",
+
+            # Blender Librarian (optional)
+            "mcp__blender-librarian__advise_next_modifications",
         ]
 
     async def start(self) -> None:
@@ -951,6 +966,9 @@ Work efficiently but within your current permission level.
             elif stage == WorkflowStage.GENERATE_SCRIPT:
                 result = await self._stage_generate_script()
 
+            elif stage == WorkflowStage.VALIDATE_SCRIPT:
+                result = await self._stage_validate_script()
+
             elif stage == WorkflowStage.EXECUTE_BLENDER:
                 result = await self._stage_execute_blender()
 
@@ -988,6 +1006,60 @@ Work efficiently but within your current permission level.
                 duration_ms=(datetime.now() - start_time).total_seconds() * 1000
             )
 
+    async def _stage_validate_script(self) -> StageResult:
+        """Validate the current script before executing Blender (Phase 2)."""
+        logger.info("Stage: VALIDATE_SCRIPT")
+
+        script_path = self.session.current_script_path
+        if not script_path:
+            return StageResult(
+                stage=WorkflowStage.VALIDATE_SCRIPT,
+                outcome=WorkflowOutcome.FAILURE,
+                error="No script_path to validate",
+                data={"mode": "direct"},
+            )
+
+        # Prefer direct tool calls (no LLM runtime).
+        if self._direct_mode and "script-generator" in self._direct_tools:
+            result_json = await self._call_tool_direct(
+                "script-generator",
+                "validate_script",
+                {"script_path": str(script_path), "strict": False},
+            )
+            payload = json.loads(result_json) if isinstance(result_json, str) else result_json
+            valid = bool(payload.get("valid", False))
+
+            # Keep extracted params for later decision-making / logging
+            self.session.workflow_data["last_validation"] = payload
+            if payload.get("extracted_params"):
+                # Merge (best-effort) into current parameters
+                self.session.current_parameters.update(payload.get("extracted_params", {}))
+
+            return StageResult(
+                stage=WorkflowStage.VALIDATE_SCRIPT,
+                outcome=WorkflowOutcome.SUCCESS if valid else WorkflowOutcome.FAILURE,
+                data={"mode": "direct", "valid": valid, "validation": payload},
+                error=None if valid else "Script validation failed",
+            )
+
+        # Fallback: legacy LLM-driven behavior
+        prompt = f"""Validate Blender script before execution:
+
+Script: {script_path}
+
+Actions:
+1. Use script-generator.validate_script(script_path)
+2. If invalid, report the errors and request regeneration
+"""
+        response = await self._query_agent(prompt)
+        # Conservative: if we can't execute tools, treat as failure
+        return StageResult(
+            stage=WorkflowStage.VALIDATE_SCRIPT,
+            outcome=WorkflowOutcome.FAILURE,
+            data={"mode": "agent", "response": response},
+            error="Validation requires tool execution; agent mode unavailable",
+        )
+
     async def _stage_session_start(self) -> StageResult:
         """Initialize session with experiment tracker.
 
@@ -1009,7 +1081,11 @@ Work efficiently but within your current permission level.
             )
         logger.info("All critical MCP servers healthy")
 
-        # Build initialization prompt
+        # Prefer direct mode: no LLM runtime required.
+        if self._direct_mode and "experiment-tracker" in self._direct_tools:
+            return await self._stage_session_start_direct()
+
+        # Fallback: legacy agent prompt (requires LLM runtime)
         prompt = f"""Initialize asset generation session:
 
 Asset: {self.session.request.asset_name}
@@ -1026,13 +1102,68 @@ Actions:
 
 Do NOT generate the script yet - just initialize and report what techniques are available.
 """
-
         response = await self._query_agent(prompt)
+        return StageResult(
+            stage=WorkflowStage.SESSION_START,
+            outcome=WorkflowOutcome.SUCCESS,
+            data={"initialization_response": response, "mode": "agent"},
+        )
+
+    async def _stage_session_start_direct(self) -> StageResult:
+        """Initialize session using direct tool calls (no LLM runtime)."""
+        logger.info("[HYBRID] Initializing experiment session via direct tool calls")
+
+        # 1) Start experiment session
+        exp_json = await self._call_tool_direct(
+            "experiment-tracker",
+            "start_experiment_session",
+            {
+                "asset_name": self.session.request.asset_name,
+                "effect_type": self.session.request.effect_type,
+                "description": self.session.request.description,
+                "reference_path": self.session.request.reference_path or "",
+                "semantic_query": self.session.request.semantic_query or "",
+            },
+        )
+        exp = json.loads(exp_json) if isinstance(exp_json, str) else exp_json
+        self.session.workflow_data["experiment_tracker_session"] = exp
+
+        # 2) Preload knowledge for this effect
+        knowledge = None
+        try:
+            kb_json = await self._call_tool_direct(
+                "experiment-tracker",
+                "query_knowledge_base",
+                {"query": self.session.request.effect_type},
+            )
+            knowledge = json.loads(kb_json) if isinstance(kb_json, str) else kb_json
+            self.session.workflow_data["preloaded_knowledge"] = knowledge
+        except Exception as e:
+            logger.warning(f"[HYBRID] Knowledge preload failed (non-fatal): {e}")
+
+        # 3) List techniques for effect type (optional)
+        techniques = None
+        try:
+            if "script-generator" in self._direct_tools:
+                tech_json = await self._call_tool_direct(
+                    "script-generator",
+                    "list_techniques",
+                    {"effect_type": self.session.request.effect_type},
+                )
+                techniques = json.loads(tech_json) if isinstance(tech_json, str) else tech_json
+                self.session.workflow_data["available_techniques"] = techniques
+        except Exception as e:
+            logger.warning(f"[HYBRID] Technique list failed (non-fatal): {e}")
 
         return StageResult(
             stage=WorkflowStage.SESSION_START,
             outcome=WorkflowOutcome.SUCCESS,
-            data={"initialization_response": response}
+            data={
+                "mode": "direct",
+                "experiment_session": exp,
+                "knowledge": knowledge,
+                "techniques": techniques,
+            },
         )
 
     async def _stage_generate_script(self) -> StageResult:
@@ -1110,24 +1241,94 @@ Do NOT generate the script yet - just initialize and report what techniques are 
             logger.info(f"[HYBRID] Modifying script for iteration {self.workflow.iteration + 1}")
 
             prev_issues = self.session.iterations[-1].issues if self.session.iterations else []
+            last_quality = self.session.workflow_data.get("last_quality_result")
 
-            # Get adjusted parameters based on issues
-            # For now, use simple adjustments based on common issues
-            modifications = {}
-            if "TOO DARK" in str(prev_issues):
-                modifications["turbulence"] = min(
-                    self.session.current_parameters.get("turbulence", 0.3) + 0.2, 1.0
-                )
-            if "NO STRUCTURE" in str(prev_issues):
-                modifications["resolution"] = min(
-                    self.session.current_parameters.get("resolution", 96) + 32, 256
-                )
+            # Prefer iteration-controller suggestions when we have an evaluator result.
+            modifications: Dict[str, Any] = {}
+            if last_quality and "iteration-controller" in self._direct_tools:
+                try:
+                    next_json = await self._call_tool_direct(
+                        "iteration-controller",
+                        "get_next_iteration_params",
+                        {
+                            "current_params": json.dumps(self.session.current_parameters or {}),
+                            "quality_json": json.dumps(last_quality),
+                            "iteration": self.workflow.iteration,
+                        },
+                    )
+                    next_params_payload = json.loads(next_json) if isinstance(next_json, str) else next_json
+                    suggested = (next_params_payload or {}).get("next_params", {})
 
+                    # `script-generator.modify_script` only supports a subset of keys.
+                    for key in ("resolution", "frame_end", "frame_start", "turbulence", "vorticity", "temperature", "domain_scale", "custom_code"):
+                        if key in suggested:
+                            modifications[key] = suggested[key]
+                except Exception as e:
+                    logger.warning(f"[HYBRID] iteration-controller suggestions failed (fallback to heuristics): {e}")
+
+            # Fallback heuristics if no suggestions available
             if not modifications:
-                # Default: increase turbulence slightly
-                modifications["turbulence"] = min(
-                    self.session.current_parameters.get("turbulence", 0.3) + 0.1, 1.0
-                )
+                if "TOO DARK" in str(prev_issues):
+                    modifications["turbulence"] = min(
+                        self.session.current_parameters.get("turbulence", 0.3) + 0.2, 1.0
+                    )
+                if "NO STRUCTURE" in str(prev_issues):
+                    modifications["resolution"] = min(
+                        self.session.current_parameters.get("resolution", 96) + 32, 256
+                    )
+                if not modifications:
+                    modifications["turbulence"] = min(
+                        self.session.current_parameters.get("turbulence", 0.3) + 0.1, 1.0
+                    )
+
+            # Phase 7 hook (lightweight): when plateauing or on sun-related color issues,
+            # proactively pull Blender docs snippets to inform subsequent human/agent steps.
+            doc_research = None
+            try:
+                is_plateau = self.workflow.check_plateau()
+                is_sun = (self.session.request.effect_type or "").lower() == "sun"
+                has_color_issue = any("COLOR" in (i or "").upper() for i in prev_issues)
+                if "blender-manual" in self._direct_tools and (is_plateau or (is_sun and has_color_issue)):
+                    doc_research = {
+                        "nodes_principled_volume": await self._call_tool_direct(
+                            "blender-manual", "search_nodes", {"node_type": "Principled Volume", "category": "shader"}
+                        ),
+                        "manual_volume_rendering": await self._call_tool_direct(
+                            "blender-manual", "search_manual", {"query": "volume rendering emission blackbody temperature attribute"}
+                        ),
+                        "manual_color_management": await self._call_tool_direct(
+                            "blender-manual", "search_manual", {"query": "color management Filmic AgX exposure"}
+                        ),
+                    }
+                    self.session.workflow_data["last_doc_research"] = doc_research
+
+                # Optional: ask Blender Librarian to synthesize a targeted change list.
+                if "blender-librarian" in self._direct_tools and (is_plateau or (is_sun and has_color_issue)):
+                    try:
+                        librarian_json = await self._call_tool_direct(
+                            "blender-librarian",
+                            "advise_next_modifications",
+                            {
+                                "effect_type": self.session.request.effect_type,
+                                "problem": "; ".join(prev_issues) or "quality plateau / unclear next step",
+                                "current_params_json": json.dumps(self.session.current_parameters or {}),
+                                "evaluator_json": json.dumps(last_quality or {}),
+                                "render_path": str(self.session.workflow_data.get("last_quality_render_path") or ""),
+                                "reference_path": str(self.session.request.reference_path or ""),
+                                "script_path": str(self.session.current_script_path or ""),
+                                "max_doc_results": 5,
+                            },
+                        )
+                        librarian = json.loads(librarian_json) if isinstance(librarian_json, str) else librarian_json
+                        self.session.workflow_data["last_librarian_advice"] = librarian
+                        proposed = (librarian or {}).get("modifications", {})
+                        if isinstance(proposed, dict) and proposed:
+                            # Merge librarian modifications with current ones (librarian wins).
+                            modifications.update(proposed)
+                    except Exception as e:
+                        logger.warning(f"[HYBRID] blender-librarian advice failed (non-fatal): {e}")
+            except Exception as e:
+                logger.warning(f"[HYBRID] blender-manual research failed (non-fatal): {e}")
 
             # Call script-generator.modify_script directly
             result_json = await self._call_tool_direct(
@@ -1158,6 +1359,7 @@ Do NOT generate the script yet - just initialize and report what techniques are 
                 data={
                     "script_path": script_path,
                     "modifications": modifications,
+                    "doc_research": doc_research,
                     "result": result,
                     "mode": "direct"
                 },
@@ -1391,6 +1593,29 @@ Actions:
         logger.info(f"[HYBRID] VFX Quality Score: {score}")
         logger.info(f"[HYBRID] Issues: {issues}")
 
+        # Persist latest quality payload for the next iteration's decision engine.
+        # (Useful for iteration-controller and external "librarian" advice.)
+        self.session.workflow_data["last_quality_result"] = result
+        self.session.workflow_data["last_quality_score"] = score
+        self.session.workflow_data["last_quality_issues"] = issues
+        self.session.workflow_data["last_quality_render_path"] = str(render_path)
+
+        # Record iteration into session history (fixes missing iteration tracking in direct mode).
+        try:
+            self.session_manager.record_iteration(
+                state=self.session,
+                iteration=self.workflow.iteration,
+                score=score,
+                action="evaluate_quality",
+                technique=self.session.current_technique,
+                parameters=self.session.current_parameters,
+                script_path=str(self.session.current_script_path) if self.session.current_script_path else None,
+                render_path=str(render_path),
+                issues=issues,
+            )
+        except Exception as e:
+            logger.warning(f"[HYBRID] Failed to record iteration (non-fatal): {e}")
+
         # Update trust based on quality change
         if score is not None:
             if len(self.workflow.scores) > 0:
@@ -1417,6 +1642,74 @@ Actions:
                 "render_path": render_path,
                 "mode": "direct"
             }
+        )
+
+    async def _stage_record_learning(self) -> StageResult:
+        """Record learning to experiment tracker."""
+        logger.info("Stage: RECORD_LEARNING")
+
+        # Prefer direct tool calls (no LLM runtime).
+        if self._direct_mode and "experiment-tracker" in self._direct_tools:
+            return await self._stage_record_learning_direct()
+
+        # Fallback: legacy LLM-driven behavior
+        prompt = f"""Record experiment results for iteration {self.workflow.iteration}:
+
+Score: {self.workflow.scores[-1] if self.workflow.scores else 'N/A'}
+Technique: {self.session.current_technique}
+Parameters: {json.dumps(self.session.current_parameters, indent=2)}
+
+Actions:
+1. Use experiment-tracker.record_experiment_result() to save this iteration
+2. If quality improved, record the successful parameter changes
+3. If quality degraded, record what NOT to do
+4. Update knowledge base with any new learnings
+"""
+        response = await self._query_agent(prompt)
+        return StageResult(
+            stage=WorkflowStage.RECORD_LEARNING,
+            outcome=WorkflowOutcome.SUCCESS,
+            data={"response": response, "mode": "agent"},
+        )
+
+    async def _stage_record_learning_direct(self) -> StageResult:
+        """Record learning using experiment-tracker directly (best-effort, lightweight)."""
+        logger.info("[HYBRID] Recording experiment results via direct tool calls")
+
+        # Build minimal structured record
+        current_score = self.workflow.scores[-1] if self.workflow.scores else None
+        prev_score = self.workflow.scores[-2] if len(self.workflow.scores) >= 2 else None
+        improved = (current_score is not None and prev_score is not None and current_score > prev_score)
+
+        last_iter = self.session.iterations[-1] if self.session.iterations else None
+        issues = last_iter.issues if last_iter else (self.session.workflow_data.get("last_quality_issues") or [])
+        issue_addressed = issues[0] if issues else "quality_below_threshold"
+
+        payload = await self._call_tool_direct(
+            "experiment-tracker",
+            "record_experiment_result",
+            {
+                "hypothesis": "Adjust parameters to address evaluator issues and improve VFX score",
+                "issue_addressed": issue_addressed,
+                "result_params": json.dumps(self.session.current_parameters or {}),
+                "result_scores": json.dumps({"vfx": current_score}),
+                "result_render": str(self.session.workflow_data.get("last_quality_render_path") or self.session.best_render_path or ""),
+                "result_script": str(self.session.current_script_path or ""),
+                "success": bool(improved),
+                "observed_effects": json.dumps([f"issues={issues}"]),
+                "learnings": json.dumps([
+                    f"vfx_score={current_score}",
+                    f"prev_vfx_score={prev_score}",
+                ]),
+                "warnings": json.dumps([]),
+                "human_notes": "",
+            },
+        )
+
+        return StageResult(
+            stage=WorkflowStage.RECORD_LEARNING,
+            outcome=WorkflowOutcome.SUCCESS,
+            data={"mode": "direct", "tracker_result": payload},
         )
 
     async def _stage_evaluate_quality_agent(self) -> StageResult:
@@ -1636,6 +1929,34 @@ Actions:
         # Get last error from history
         last_result = self.workflow.history[-1] if self.workflow.history else None
         error = last_result.error if last_result else "Unknown error"
+
+        # Prefer direct mode: produce an actionable recovery hint without LLM runtime.
+        if self._direct_mode and "blender-manual" in self._direct_tools:
+            try:
+                # Query docs for likely causes (best-effort heuristic search)
+                doc_hits = await self._call_tool_direct(
+                    "blender-manual",
+                    "search_python_api",
+                    {"operation": error, "limit": 5, "compact": True, "api_only": False},
+                )
+                self.session.workflow_data["last_error_doc_hits"] = doc_hits
+            except Exception as e:
+                doc_hits = None
+                logger.warning(f"[HYBRID] Error recovery doc search failed (non-fatal): {e}")
+
+            # Record error event
+            self.autonomy.record_event(TrustEvent.EXECUTION_ERROR)
+
+            return StageResult(
+                stage=WorkflowStage.ERROR_RECOVERY,
+                outcome=WorkflowOutcome.SUCCESS,
+                data={
+                    "mode": "direct",
+                    "error": error,
+                    "doc_hits": doc_hits,
+                    "recommendation": "Retry after script regeneration/modification; see doc_hits for relevant API/manual pages.",
+                },
+            )
 
         if self.workflow.check_retry_limit():
             # Too many retries

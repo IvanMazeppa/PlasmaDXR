@@ -155,6 +155,12 @@ mcp__script-generator__generate_script(
 | `search_python_api` | API documentation | When writing scripts |
 | `search_semantic` | Concept search | When unsure of terminology |
 
+### blender-librarian (optional, GPT-5.2 + docs)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `advise_next_modifications` | Doc-grounded recommendations + (optional) vision-based diagnosis | When plateaued, or when you need Blender-specific guidance to match a ground-truth image |
+
 ---
 
 ## Complete Workflow
@@ -586,6 +592,17 @@ if iterations_without_improvement >= 3:
     Call: mcp__blender-manual__search_tutorials(topic=effect_type)
     # Or try different technique
     Call: mcp__script-generator__list_techniques(effect_type=effect_type)
+
+    # Optional: ask Blender Librarian to propose concrete script-generator.modify_script() changes
+    Call: mcp__blender-librarian__advise_next_modifications(
+        effect_type=effect_type,
+        problem="; ".join(current_issues),
+        current_params_json=json.dumps(current_params),
+        evaluator_json=json.dumps(last_evaluator_result),
+        render_path=render_path,
+        reference_path=reference_path,
+        script_path=script_path
+    )
 
 # Check consecutive failures
 if consecutive_blender_failures >= 3:

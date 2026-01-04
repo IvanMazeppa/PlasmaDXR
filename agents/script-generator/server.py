@@ -478,10 +478,12 @@ def create_domain():
     settings.resolution_max = Config.RESOLUTION
     settings.use_adaptive_domain = True
 
-    # Cache settings
+    # Cache settings - CRITICAL: explicitly set frame range to avoid 250 frame default
     settings.cache_type = 'ALL'
     settings.cache_directory = Config.OUTPUT_DIR
     settings.cache_data_format = 'OPENVDB'
+    settings.cache_frame_start = Config.FRAME_START
+    settings.cache_frame_end = Config.FRAME_END
 
     # Gas behavior
 {gas_settings}
@@ -768,10 +770,12 @@ def create_domain():
     settings.use_mesh = True
     settings.mesh_scale = 1.0
 
-    # Cache
+    # Cache - CRITICAL: explicitly set frame range to avoid 250 frame default
     settings.cache_type = 'ALL'
     settings.cache_directory = Config.OUTPUT_DIR
     settings.cache_data_format = 'OPENVDB'
+    settings.cache_frame_start = Config.FRAME_START
+    settings.cache_frame_end = Config.FRAME_END
 
 {liquid_settings}
 
@@ -1633,7 +1637,7 @@ async def generate_script(
     # Select appropriate template based on effect type
     effect_lower = effect_type.lower()
 
-    if effect_lower in ["pyro", "smoke", "fire", "explosion", "nebula", "gas"]:
+    if effect_lower in ["pyro", "smoke", "fire", "explosion", "nebula", "gas", "sun"]:
         domain_template = PYRO_DOMAIN_TEMPLATE
         domain_type = "GAS"
 
@@ -1642,7 +1646,7 @@ async def generate_script(
         # =====================================================================
         selected_technique = None
 
-        if technique_name and technique_name in PYRO_TECHNIQUES:
+        if technique_name and (technique_name in PYRO_TECHNIQUES or technique_name in list_all_techniques("pyro")):
             # Explicit technique requested
             selected_technique = get_technique_with_randomized_params(technique_name, "pyro")
             notes.append(f"Using requested technique: {technique_name}")
@@ -1832,6 +1836,7 @@ async def generate_script(
             "elevated": 2.0,
             "ceiling": 4.0,
             "surface": 0.0,
+            "center": 0.0,
         }
         z_coord = z_positions.get(emitter_z, 0.0)
 
