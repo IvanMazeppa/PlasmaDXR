@@ -21,7 +21,7 @@ Usage:
 import json
 import os
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
@@ -47,6 +47,41 @@ from validator import (
     ValidationIssue,
     validate_script as validate_script_file,
     validate_script_content,
+)
+
+# Import effect registry for simulation type extensibility (Phase 2.5)
+from effect_registry import (
+    EFFECT_TYPES,
+    get_effect_type,
+    get_category,
+    get_output_format,
+    get_execution_pattern,
+    is_volumetric,
+    is_mesh_physics,
+    requires_live_render,
+    get_evaluation_metrics,
+    get_recommended_settings,
+    get_blender_physics_type,
+    validate_effect_type,
+    SimulationCategory,
+    OutputFormat,
+    ExecutionPattern,
+)
+
+# Import technique selector for UCB1-based intelligent selection (Phase 3)
+from technique_selector import (
+    TechniquePerformanceStore,
+    TechniqueRecommendation,
+    recommend_technique as ucb1_recommend_technique,
+)
+
+# Import knowledge client for mandatory warning checks (Phase 4)
+from knowledge_client import (
+    KnowledgeClient,
+    WarningCheck,
+    check_before_modify as kb_check_before_modify,
+    preload_knowledge,
+    get_knowledge_client,
 )
 
 # =============================================================================
@@ -296,6 +331,10 @@ class ScriptModification:
     modified_path: str
     changes_made: List[str]
     parameters_changed: Dict[str, Any]
+    # Phase 4.1: Knowledge base integration
+    warnings: List[str] = field(default_factory=list)
+    mitigations: List[str] = field(default_factory=list)
+    has_critical_warnings: bool = False
 
 
 # =============================================================================
@@ -879,6 +918,428 @@ if __name__ == "__main__":
 
 
 # =============================================================================
+# MESH PHYSICS TEMPLATES (Phase 2.5 - Simulation Type Extensibility)
+# =============================================================================
+# These templates use live_render execution pattern (frame-by-frame physics)
+# instead of bake_export pattern used by volumetric simulations.
+# =============================================================================
+
+# Soft Body Template - Jelly, rubber, organic deformable objects
+SOFT_BODY_TEMPLATE = '''
+# =============================================================================
+# Scene Setup
+# =============================================================================
+
+def clear_scene():
+    """Remove all objects from scene."""
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+def setup_scene():
+    """Configure scene settings."""
+    scene = bpy.context.scene
+    scene.frame_start = Config.FRAME_START
+    scene.frame_end = Config.FRAME_END
+
+
+# =============================================================================
+# Soft Body Object
+# =============================================================================
+
+def create_soft_body_object():
+    """Create and configure soft body object."""
+{object_geometry}
+    obj = bpy.context.active_object
+    obj.name = "SoftBodyObject"
+
+    # Apply subdivision for smoother deformation
+    bpy.ops.object.modifier_add(type='SUBSURF')
+    obj.modifiers["Subdivision"].levels = 2
+    obj.modifiers["Subdivision"].render_levels = 2
+
+    # Add soft body physics
+    bpy.ops.object.modifier_add(type='SOFT_BODY')
+    settings = obj.modifiers["Soft Body"].settings
+
+    # CRITICAL: Stability settings (from Gemini 3 Pro discoveries)
+    # Default values cause jitter explosions for joined primitives
+    settings.step_min = {step_min}  # Default 5 - prevents jitter
+    settings.step_max = {step_max}  # Default 10 - adaptive stepping
+
+    # Damping prevents energy buildup
+    settings.ball_damp = {damping}  # Default 0.5
+
+    # Friction and goal settings
+    settings.friction = {friction}
+{soft_body_settings}
+
+    return obj
+
+
+def create_collision_ground():
+    """Create ground plane for soft body collision."""
+    bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, -2))
+    ground = bpy.context.active_object
+    ground.name = "CollisionGround"
+
+    # Add collision physics
+    bpy.ops.object.modifier_add(type='COLLISION')
+    ground.modifiers["Collision"].settings.thickness_outer = 0.1
+
+    return ground
+
+
+# =============================================================================
+# Live Render Pattern (frame-by-frame physics evaluation)
+# =============================================================================
+
+def setup_render_settings():
+    """Configure render settings for live physics capture."""
+    scene = bpy.context.scene
+
+    # Use Cycles for quality or Eevee for speed
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'GPU'
+    scene.cycles.samples = Config.RENDER_SAMPLES
+
+    scene.render.resolution_x = Config.RENDER_RESOLUTION_X
+    scene.render.resolution_y = Config.RENDER_RESOLUTION_Y
+    scene.render.resolution_percentage = 100
+
+
+def render_with_physics():
+    """
+    Live render with per-frame physics update.
+
+    CRITICAL: bpy.context.view_layer.update() forces physics solve each frame.
+    Without this, physics bake is unreliable in headless mode.
+    """
+    scene = bpy.context.scene
+    output_dir = Path(Config.OUTPUT_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[script] Live rendering frames {{Config.FRAME_START}}-{{Config.FRAME_END}}")
+
+    for frame in range(Config.FRAME_START, Config.FRAME_END + 1):
+        scene.frame_set(frame)
+
+        # CRITICAL: Force physics solve for this frame
+        bpy.context.view_layer.update()
+
+        if frame in Config.RENDER_FRAMES or frame == Config.FRAME_END:
+            render_path = output_dir / f"render_{{frame:04d}}.png"
+            scene.render.filepath = str(render_path)
+
+            print(f"[script] Rendering frame {{frame}} with physics...")
+            bpy.ops.render.render(write_still=True)
+            print(f"[script] Saved: {{render_path}}")
+
+    print("[script] Live render complete!")
+
+
+def main():
+    print("=" * 60)
+    print("{title}")
+    print("=" * 60)
+
+    clear_scene()
+    setup_scene()
+
+    obj = create_soft_body_object()
+    ground = create_collision_ground()
+
+    # Setup camera and lighting
+    bpy.ops.object.camera_add(location=(5, -5, 3))
+    camera = bpy.context.active_object
+    camera.rotation_euler = (1.1, 0, 0.8)
+    bpy.context.scene.camera = camera
+
+    bpy.ops.object.light_add(type='SUN', location=(3, -3, 5))
+    sun = bpy.context.active_object
+    sun.data.energy = 3.0
+
+    setup_render_settings()
+
+    if Config.RENDER:
+        render_with_physics()
+    else:
+        print("[script] Skipping render (--render 0)")
+
+    blend_path = Path(Config.OUTPUT_DIR) / "{filename_stem}.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+    print(f"[script] Saved: {{blend_path}}")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+# Cloth Template - Fabric, flags, curtains
+CLOTH_TEMPLATE = '''
+# =============================================================================
+# Scene Setup
+# =============================================================================
+
+def clear_scene():
+    """Remove all objects from scene."""
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+def setup_scene():
+    """Configure scene settings."""
+    scene = bpy.context.scene
+    scene.frame_start = Config.FRAME_START
+    scene.frame_end = Config.FRAME_END
+
+
+# =============================================================================
+# Cloth Object
+# =============================================================================
+
+def create_cloth_object():
+    """Create and configure cloth object."""
+{object_geometry}
+    cloth = bpy.context.active_object
+    cloth.name = "ClothObject"
+
+    # Subdivide for better draping
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=3)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Add cloth physics
+    bpy.ops.object.modifier_add(type='CLOTH')
+    settings = cloth.modifiers["Cloth"].settings
+
+    # Quality settings
+    settings.quality = {quality}
+    settings.vertex_group_mass = ""
+
+{cloth_settings}
+
+    # Collision settings
+    collision = cloth.modifiers["Cloth"].collision_settings
+    collision.collision_quality = {collision_quality}
+{collision_settings}
+
+    return cloth
+
+
+def create_collision_object():
+    """Create object for cloth to drape over/interact with."""
+{collision_geometry}
+    collider = bpy.context.active_object
+    collider.name = "ClothCollider"
+
+    bpy.ops.object.modifier_add(type='COLLISION')
+    collider.modifiers["Collision"].settings.thickness_outer = 0.02
+
+    return collider
+
+
+# =============================================================================
+# Live Render Pattern
+# =============================================================================
+
+def setup_render_settings():
+    """Configure render settings."""
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'GPU'
+    scene.cycles.samples = Config.RENDER_SAMPLES
+    scene.render.resolution_x = Config.RENDER_RESOLUTION_X
+    scene.render.resolution_y = Config.RENDER_RESOLUTION_Y
+
+
+def render_with_physics():
+    """Live render with per-frame physics."""
+    scene = bpy.context.scene
+    output_dir = Path(Config.OUTPUT_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[script] Live rendering frames {{Config.FRAME_START}}-{{Config.FRAME_END}}")
+
+    for frame in range(Config.FRAME_START, Config.FRAME_END + 1):
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()  # Force physics solve
+
+        if frame in Config.RENDER_FRAMES or frame == Config.FRAME_END:
+            render_path = output_dir / f"render_{{frame:04d}}.png"
+            scene.render.filepath = str(render_path)
+
+            print(f"[script] Rendering frame {{frame}}...")
+            bpy.ops.render.render(write_still=True)
+
+    print("[script] Complete!")
+
+
+def main():
+    print("=" * 60)
+    print("{title}")
+    print("=" * 60)
+
+    clear_scene()
+    setup_scene()
+
+    cloth = create_cloth_object()
+    collider = create_collision_object()
+
+    # Camera and lighting
+    bpy.ops.object.camera_add(location=(5, -5, 3))
+    camera = bpy.context.active_object
+    camera.rotation_euler = (1.1, 0, 0.8)
+    bpy.context.scene.camera = camera
+
+    bpy.ops.object.light_add(type='SUN', location=(3, -3, 5))
+
+    setup_render_settings()
+
+    if Config.RENDER:
+        render_with_physics()
+
+    blend_path = Path(Config.OUTPUT_DIR) / "{filename_stem}.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+    print(f"[script] Saved: {{blend_path}}")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+# Rigid Body Template - Destruction, dominos, shatter effects
+RIGID_BODY_TEMPLATE = '''
+# =============================================================================
+# Scene Setup
+# =============================================================================
+
+def clear_scene():
+    """Remove all objects from scene."""
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+def setup_scene():
+    """Configure scene settings and rigid body world."""
+    scene = bpy.context.scene
+    scene.frame_start = Config.FRAME_START
+    scene.frame_end = Config.FRAME_END
+
+    # Create rigid body world if not exists
+    if scene.rigidbody_world is None:
+        bpy.ops.rigidbody.world_add()
+
+    scene.rigidbody_world.time_scale = 1.0
+    scene.rigidbody_world.substeps_per_frame = 10
+    scene.rigidbody_world.solver_iterations = 10
+
+
+# =============================================================================
+# Rigid Body Objects
+# =============================================================================
+
+def create_active_rigid_body():
+    """Create active rigid body object(s)."""
+{object_geometry}
+    obj = bpy.context.active_object
+    obj.name = "RigidBodyActive"
+
+    bpy.ops.rigidbody.object_add()
+    obj.rigid_body.type = 'ACTIVE'
+    obj.rigid_body.collision_shape = '{collision_shape}'
+
+{rigid_body_settings}
+
+    return obj
+
+
+def create_passive_rigid_body():
+    """Create ground/static rigid body."""
+    bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, -2))
+    ground = bpy.context.active_object
+    ground.name = "RigidBodyGround"
+
+    bpy.ops.rigidbody.object_add()
+    ground.rigid_body.type = 'PASSIVE'
+    ground.rigid_body.collision_shape = 'MESH'
+
+    return ground
+
+
+{additional_objects}
+
+
+# =============================================================================
+# Live Render Pattern
+# =============================================================================
+
+def setup_render_settings():
+    """Configure render settings."""
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'GPU'
+    scene.cycles.samples = Config.RENDER_SAMPLES
+    scene.render.resolution_x = Config.RENDER_RESOLUTION_X
+    scene.render.resolution_y = Config.RENDER_RESOLUTION_Y
+
+
+def render_with_physics():
+    """Live render with per-frame physics."""
+    scene = bpy.context.scene
+    output_dir = Path(Config.OUTPUT_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[script] Live rendering frames {{Config.FRAME_START}}-{{Config.FRAME_END}}")
+
+    for frame in range(Config.FRAME_START, Config.FRAME_END + 1):
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+
+        if frame in Config.RENDER_FRAMES or frame == Config.FRAME_END:
+            render_path = output_dir / f"render_{{frame:04d}}.png"
+            scene.render.filepath = str(render_path)
+
+            print(f"[script] Rendering frame {{frame}}...")
+            bpy.ops.render.render(write_still=True)
+
+    print("[script] Complete!")
+
+
+def main():
+    print("=" * 60)
+    print("{title}")
+    print("=" * 60)
+
+    clear_scene()
+    setup_scene()
+
+    active = create_active_rigid_body()
+    ground = create_passive_rigid_body()
+
+    # Camera and lighting
+    bpy.ops.object.camera_add(location=(7, -7, 5))
+    camera = bpy.context.active_object
+    camera.rotation_euler = (1.1, 0, 0.8)
+    bpy.context.scene.camera = camera
+
+    bpy.ops.object.light_add(type='SUN', location=(3, -3, 5))
+
+    setup_render_settings()
+
+    if Config.RENDER:
+        render_with_physics()
+
+    blend_path = Path(Config.OUTPUT_DIR) / "{filename_stem}.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+    print(f"[script] Saved: {{blend_path}}")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -1432,6 +1893,84 @@ async def generate_script(
     flow.velocity_factor = 1.0"""
         domain_scale = 4.0
         effector_code = "    # No effectors for liquid simulation\n    pass"
+
+    # =========================================================================
+    # MESH PHYSICS (Phase 2.5 - Simulation Type Extensibility)
+    # =========================================================================
+    elif is_mesh_physics(effect_lower):
+        # Mesh-based physics (soft body, cloth, rigid body)
+        # Uses live_render execution pattern instead of bake_export
+        domain_type = "MESH"
+        notes.append(f"Mesh physics: {effect_lower} (live_render pattern)")
+
+        # Get recommended settings from effect registry
+        recommended = get_recommended_settings(effect_lower)
+
+        if effect_lower == "soft_body":
+            domain_template = SOFT_BODY_TEMPLATE
+            # Apply stability settings from registry
+            step_min = recommended.get("step_min", 20)
+            step_max = recommended.get("step_max", 100)
+            damping = recommended.get("damping", 2.0)
+            friction = recommended.get("friction", 0.5)
+            goal_spring = recommended.get("goal_spring", 0.5)
+            goal_friction = recommended.get("goal_friction", 0.5)
+
+            notes.append(f"Soft body: step_min={step_min}, damping={damping}")
+
+            # Placeholders for template formatting
+            gas_settings = ""
+            noise_settings = ""
+            emission_keyframes = ""
+            emitter_geometry = ""
+            flow_settings = ""
+            effector_code = ""
+            domain_scale = 4.0
+
+        elif effect_lower == "cloth":
+            domain_template = CLOTH_TEMPLATE
+            quality = recommended.get("quality", 10)
+            collision_quality = recommended.get("collision_quality", 5)
+            self_collision = recommended.get("self_collision", True)
+
+            notes.append(f"Cloth: quality={quality}, self_collision={self_collision}")
+
+            gas_settings = ""
+            noise_settings = ""
+            emission_keyframes = ""
+            emitter_geometry = ""
+            flow_settings = ""
+            effector_code = ""
+            domain_scale = 4.0
+
+        elif effect_lower == "rigid_body":
+            domain_template = RIGID_BODY_TEMPLATE
+            collision_shape = recommended.get("collision_shape", "CONVEX_HULL")
+            friction = recommended.get("friction", 0.5)
+            bounciness = recommended.get("bounciness", 0.5)
+
+            notes.append(f"Rigid body: collision_shape={collision_shape}")
+
+            gas_settings = ""
+            noise_settings = ""
+            emission_keyframes = ""
+            emitter_geometry = ""
+            flow_settings = ""
+            effector_code = ""
+            domain_scale = 6.0
+
+        else:
+            # Fallback for unknown mesh physics type
+            domain_template = SOFT_BODY_TEMPLATE
+            notes.append(f"Unknown mesh physics '{effect_lower}', using soft_body")
+            gas_settings = ""
+            noise_settings = ""
+            emission_keyframes = ""
+            emitter_geometry = ""
+            flow_settings = ""
+            effector_code = ""
+            domain_scale = 4.0
+
     else:
         # Default to pyro with random technique for variety
         domain_template = PYRO_DOMAIN_TEMPLATE
@@ -1453,9 +1992,17 @@ async def generate_script(
     sim_settings = f"""    # Effect: {effect_type}
     # {description[:50]}..."""
 
+    # Determine output directory based on simulation type
+    if domain_type == "MESH":
+        output_dir_path = str(PROJECT_ROOT / "build/mesh_output" / output_name)
+        title_suffix = "(Mesh Physics)"
+    else:
+        output_dir_path = str(PROJECT_ROOT / "build/vdb_output" / output_name)
+        title_suffix = "(OpenVDB)"
+
     # Format the header
     header = SCRIPT_HEADER.format(
-        title=f"GPT-5.2 — {output_name.replace('_', ' ').title()} (OpenVDB) - Blender 5.0+",
+        title=f"GPT-5.2 — {output_name.replace('_', ' ').title()} {title_suffix} - Blender 5.0+",
         date=datetime.now().strftime("%Y-%m-%d"),
         template=template_name or f"built-in {effect_type}",
         description=description,
@@ -1463,26 +2010,175 @@ async def generate_script(
         resolution=resolution,
         frame_start=frame_start,
         frame_end=frame_end,
-        output_dir=str(PROJECT_ROOT / "build/vdb_output" / output_name),
+        output_dir=output_dir_path,
         domain_scale=domain_scale,
         simulation_settings=sim_settings
     )
 
-    # Format the body
-    body = domain_template.format(
-        effect_type=effect_type,
-        title=f"{output_name.replace('_', ' ').title()}",
-        filename_stem=output_name,
-        gas_settings=gas_settings,
-        noise_settings=noise_settings,
-        emission_keyframes=emission_keyframes,
-        emitter_geometry=emitter_geometry,
-        flow_settings=flow_settings,
-        effector_code=effector_code,
-        liquid_settings=gas_settings,
-        inflow_geometry=emitter_geometry,
-        inflow_settings=flow_settings
-    )
+    # Format the body based on domain type
+    if domain_type == "MESH":
+        # =====================================================================
+        # MESH PHYSICS TEMPLATES - Different placeholder format
+        # =====================================================================
+        recommended = get_recommended_settings(effect_lower)
+
+        if effect_lower == "soft_body":
+            # Default object geometry - can be customized based on description
+            if "cube" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_cube_add(size=1.5, location=(0, 0, 2))"
+            elif "sphere" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, 2))"
+            elif "torus" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_torus_add(major_radius=1.0, minor_radius=0.3, location=(0, 0, 2))"
+            else:
+                object_geometry = "    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=1.0, location=(0, 0, 2))"
+
+            soft_body_settings = """    # Goal settings (shape retention)
+    settings.use_goal = True
+    settings.goal_spring = {goal_spring}
+    settings.goal_friction = {goal_friction}""".format(
+                goal_spring=recommended.get("goal_spring", 0.5),
+                goal_friction=recommended.get("goal_friction", 0.5)
+            )
+
+            body = domain_template.format(
+                object_geometry=object_geometry,
+                step_min=recommended.get("step_min", 20),
+                step_max=recommended.get("step_max", 100),
+                damping=recommended.get("damping", 2.0),
+                friction=recommended.get("friction", 0.5),
+                soft_body_settings=soft_body_settings
+            )
+
+        elif effect_lower == "cloth":
+            # Default cloth geometry
+            if "flag" in description.lower() or "banner" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_plane_add(size=2.0, location=(0, 0, 2))\n    bpy.ops.transform.resize(value=(0.5, 2.0, 1.0))"
+            elif "cape" in description.lower() or "cloak" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_plane_add(size=1.5, location=(0, 0, 2))"
+            else:
+                object_geometry = "    bpy.ops.mesh.primitive_plane_add(size=2.0, location=(0, 0, 2))"
+
+            # Collision object geometry
+            collision_geometry = "    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.5, location=(0, 0, 0.5))"
+
+            cloth_settings = """    # Cloth presets
+    settings.vertex_group_bending = ""
+    settings.bending_stiffness = 0.5"""
+
+            collision_settings = """    collision.use_self_collision = {self_collision}
+    collision.self_distance_min = 0.015""".format(
+                self_collision="True" if recommended.get("self_collision", True) else "False"
+            )
+
+            body = domain_template.format(
+                object_geometry=object_geometry,
+                quality=recommended.get("quality", 10),
+                collision_quality=recommended.get("collision_quality", 5),
+                cloth_settings=cloth_settings,
+                collision_settings=collision_settings,
+                collision_geometry=collision_geometry
+            )
+
+        elif effect_lower == "rigid_body":
+            # Default rigid body geometry based on description keywords
+            if "shatter" in description.lower() or "break" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 2))"
+                additional_objects = """    # Add ground plane for collision
+    bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))
+    ground = bpy.context.active_object
+    ground.name = "Ground"
+    bpy.ops.rigidbody.object_add(type='PASSIVE')"""
+            elif "domino" in description.lower():
+                object_geometry = """    # Create first domino
+    bpy.ops.mesh.primitive_cube_add(size=0.5, location=(0, 0, 0.5))
+    bpy.ops.transform.resize(value=(0.1, 0.3, 0.5))"""
+                additional_objects = """    # Create domino chain
+    for i in range(1, 10):
+        bpy.ops.mesh.primitive_cube_add(size=0.5, location=(i * 0.7, 0, 0.5))
+        bpy.ops.transform.resize(value=(0.1, 0.3, 0.5))
+        obj = bpy.context.active_object
+        obj.name = f"Domino_{i}"
+        bpy.ops.rigidbody.object_add(type='ACTIVE')
+
+    # Add ground plane
+    bpy.ops.mesh.primitive_plane_add(size=15, location=(0, 0, 0))
+    ground = bpy.context.active_object
+    ground.name = "Ground"
+    bpy.ops.rigidbody.object_add(type='PASSIVE')"""
+            elif "pile" in description.lower() or "stack" in description.lower():
+                object_geometry = "    bpy.ops.mesh.primitive_cube_add(size=0.5, location=(0, 0, 2))"
+                additional_objects = """    # Create additional objects for pile
+    import random
+    for i in range(20):
+        x = random.uniform(-1, 1)
+        y = random.uniform(-1, 1)
+        z = random.uniform(2.5, 5)
+        bpy.ops.mesh.primitive_cube_add(size=0.4, location=(x, y, z))
+        obj = bpy.context.active_object
+        obj.name = f"Block_{i}"
+        bpy.ops.rigidbody.object_add(type='ACTIVE')
+
+    # Add ground plane
+    bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))
+    ground = bpy.context.active_object
+    ground.name = "Ground"
+    bpy.ops.rigidbody.object_add(type='PASSIVE')"""
+            else:
+                object_geometry = "    bpy.ops.mesh.primitive_cube_add(size=1.5, location=(0, 0, 2))"
+                additional_objects = """    # Add ground plane for collision
+    bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))
+    ground = bpy.context.active_object
+    ground.name = "Ground"
+    bpy.ops.rigidbody.object_add(type='PASSIVE')"""
+
+            # Build rigid body settings string
+            rigid_body_settings = """    # Rigid body physical properties
+    rb = obj.rigid_body
+    rb.friction = {friction}
+    rb.restitution = {bounciness}  # Bounciness
+    rb.linear_damping = 0.04
+    rb.angular_damping = 0.1""".format(
+                friction=recommended.get("friction", 0.5),
+                bounciness=recommended.get("bounciness", 0.5)
+            )
+
+            body = domain_template.format(
+                object_geometry=object_geometry,
+                collision_shape=recommended.get("collision_shape", "CONVEX_HULL"),
+                rigid_body_settings=rigid_body_settings,
+                additional_objects=additional_objects
+            )
+
+        else:
+            # Fallback - use soft body template with defaults
+            body = domain_template.format(
+                object_geometry="    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=3, radius=1.0, location=(0, 0, 2))",
+                step_min=20,
+                step_max=100,
+                damping=2.0,
+                friction=0.5,
+                soft_body_settings="    # Default settings"
+            )
+
+    else:
+        # =====================================================================
+        # VOLUMETRIC TEMPLATES (VDB output)
+        # =====================================================================
+        body = domain_template.format(
+            effect_type=effect_type,
+            title=f"{output_name.replace('_', ' ').title()}",
+            filename_stem=output_name,
+            gas_settings=gas_settings,
+            noise_settings=noise_settings,
+            emission_keyframes=emission_keyframes,
+            emitter_geometry=emitter_geometry,
+            flow_settings=flow_settings,
+            effector_code=effector_code,
+            liquid_settings=gas_settings,
+            inflow_geometry=emitter_geometry,
+            inflow_settings=flow_settings
+        )
 
     # Combine
     script_content = header + body
@@ -1550,6 +2246,56 @@ async def modify_script(
 
     content = path.read_text()
     changes_made = []
+    warnings_collected = []
+    mitigations_applied = []
+
+    # Phase 4.1: Mandatory warning checks before any modification
+    # Check each parameter against the knowledge base
+    for param_name, new_value in modifications.items():
+        if param_name == "custom_code":
+            continue  # Skip custom code, check individual params
+
+        # Determine change type based on parameter name patterns
+        change_type = "modify"
+        if isinstance(new_value, (int, float)):
+            # Try to detect if this is an increase or decrease
+            # by checking current value in script
+            current_match = re.search(
+                rf'{param_name}\s*=\s*([\d.]+)',
+                content,
+                re.IGNORECASE
+            )
+            if current_match:
+                try:
+                    current_val = float(current_match.group(1))
+                    if new_value > current_val:
+                        change_type = "increase"
+                    elif new_value < current_val:
+                        change_type = "decrease"
+                except (ValueError, TypeError):
+                    pass
+
+        # Check knowledge base for warnings
+        warning_check = kb_check_before_modify(
+            parameter=param_name,
+            change_type=change_type,
+            new_value=new_value
+        )
+
+        # Collect warnings
+        if warning_check.warnings:
+            warnings_collected.extend([
+                f"[{param_name}] {w}" for w in warning_check.warnings
+            ])
+
+        # Handle critical warnings
+        if warning_check.has_critical_warnings:
+            # Add mitigation to response but still proceed
+            # (orchestrator can decide to abort based on warnings)
+            if warning_check.mitigation:
+                mitigations_applied.append(
+                    f"[{param_name}] {warning_check.mitigation}"
+                )
     params_changed = {}
 
     # Apply modifications
@@ -1641,12 +2387,18 @@ async def modify_script(
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content)
 
+    # Determine if there are critical warnings
+    has_critical = any("MUST" in w.upper() or "NEVER" in w.upper() for w in warnings_collected)
+
     result = ScriptModification(
         success=True,
         original_path=str(path.relative_to(PROJECT_ROOT)),
         modified_path=str(output_path.relative_to(PROJECT_ROOT)),
         changes_made=changes_made,
-        parameters_changed=params_changed
+        parameters_changed=params_changed,
+        warnings=warnings_collected,
+        mitigations=mitigations_applied,
+        has_critical_warnings=has_critical
     )
 
     return json.dumps(asdict(result), indent=2)
@@ -1700,6 +2452,211 @@ async def list_techniques(
         "error": f"Unknown effect type: {effect_type}",
         "supported": ["pyro"]
     })
+
+
+# =============================================================================
+# Intelligent Technique Selection Tool (Phase 3 - Task 3.3)
+# =============================================================================
+
+@mcp.tool()
+async def recommend_technique(
+    effect_type: str,
+    description: str,
+    keyword_weight: float = 0.3,
+    prefer_untried: bool = True
+) -> str:
+    """
+    Recommend a technique using UCB1 algorithm for exploration/exploitation balance.
+
+    Uses keyword filtering combined with Upper Confidence Bound (UCB1) algorithm
+    to select techniques. Untried techniques get exploration bonus to ensure
+    variety. Performance data is persisted across sessions for learning.
+
+    UCB1 Formula: avg_reward + sqrt(2 * ln(total_trials) / trials)
+
+    Args:
+        effect_type: Type of effect (pyro, explosion, fire, etc.)
+        description: Description of desired effect (used for keyword matching)
+        keyword_weight: How much to weight keyword matches (0-1, default 0.3)
+        prefer_untried: If True, untried techniques get exploration bonus (default True)
+
+    Returns:
+        JSON with:
+        - technique_name: Recommended technique
+        - confidence: 0-1 confidence in this recommendation
+        - selection_reason: Why this technique was selected
+        - ucb_score: Raw UCB1 score
+        - alternatives: Top 3 alternative techniques with stats
+        - keyword_matches: Number of keyword matches for selected technique
+        - exploration_mode: True if this is an untried technique
+
+    Example:
+        recommend_technique(
+            effect_type="pyro",
+            description="A rising mushroom cloud explosion with bright orange flames"
+        )
+    """
+    try:
+        # Get recommendation using UCB1 algorithm
+        recommendation = ucb1_recommend_technique(
+            effect_type=effect_type,
+            description=description,
+            keyword_weight=keyword_weight,
+            prefer_untried=prefer_untried
+        )
+
+        # Convert dataclass to dict for JSON serialization
+        return json.dumps({
+            "technique_name": recommendation.technique_name,
+            "confidence": recommendation.confidence,
+            "selection_reason": recommendation.selection_reason,
+            "ucb_score": recommendation.ucb_score,
+            "alternatives": recommendation.alternatives,
+            "keyword_matches": recommendation.keyword_matches,
+            "exploration_mode": recommendation.exploration_mode,
+            "effect_type": effect_type,
+            "description_preview": description[:100] + "..." if len(description) > 100 else description,
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "error": f"Technique recommendation failed: {str(e)}",
+            "technique_name": "",
+            "confidence": 0.0,
+            "selection_reason": f"Error: {str(e)}",
+            "ucb_score": 0.0,
+            "alternatives": [],
+            "keyword_matches": 0,
+            "exploration_mode": False,
+        }, indent=2)
+
+
+@mcp.tool()
+async def record_technique_outcome(
+    technique_name: str,
+    effect_type: str,
+    success: bool,
+    final_score: float,
+    iterations: int = 1
+) -> str:
+    """
+    Record the outcome of using a technique for learning.
+
+    Call this after an asset generation session completes to update
+    the technique performance statistics. This enables UCB1 to learn
+    which techniques work best for different effect types.
+
+    Args:
+        technique_name: Name of the technique that was used
+        effect_type: Type of effect (pyro, explosion, etc.)
+        success: True if the technique passed quality thresholds
+        final_score: Final quality score achieved (0-100)
+        iterations: Number of iterations to pass (only relevant if success=True)
+
+    Returns:
+        JSON confirmation with updated statistics
+
+    Example:
+        record_technique_outcome(
+            technique_name="rising_mushroom",
+            effect_type="pyro",
+            success=True,
+            final_score=85.0,
+            iterations=3
+        )
+    """
+    try:
+        store = TechniquePerformanceStore()
+
+        if success:
+            store.record_success(technique_name, effect_type, final_score, iterations)
+            action = "success"
+        else:
+            store.record_failure(technique_name, effect_type, final_score)
+            action = "failure"
+
+        # Get updated stats
+        perf = store.get(technique_name, effect_type)
+
+        return json.dumps({
+            "recorded": True,
+            "action": action,
+            "technique_name": technique_name,
+            "effect_type": effect_type,
+            "updated_stats": {
+                "trials": perf.trials,
+                "success_count": perf.success_count,
+                "failure_count": perf.failure_count,
+                "success_rate": round(perf.success_rate, 2),
+                "avg_score": round(perf.avg_score, 1),
+                "avg_iterations": round(perf.avg_iterations, 1) if perf.success_count > 0 else None,
+            }
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "recorded": False,
+            "error": f"Failed to record outcome: {str(e)}",
+        }, indent=2)
+
+
+@mcp.tool()
+async def get_technique_stats(
+    effect_type: str = "pyro"
+) -> str:
+    """
+    Get performance statistics for all techniques of an effect type.
+
+    Useful for understanding which techniques have been tried and
+    their success rates. Helps in debugging UCB1 selection behavior.
+
+    Args:
+        effect_type: Type of effect (pyro, explosion, etc.)
+
+    Returns:
+        JSON with performance stats for all techniques
+
+    Example:
+        get_technique_stats("pyro")
+    """
+    try:
+        store = TechniquePerformanceStore()
+        all_perfs = store.get_all_for_effect(effect_type)
+
+        techniques_stats = []
+        for perf in all_perfs:
+            techniques_stats.append({
+                "technique_name": perf.technique_name,
+                "trials": perf.trials,
+                "success_count": perf.success_count,
+                "failure_count": perf.failure_count,
+                "success_rate": round(perf.success_rate, 2),
+                "avg_score": round(perf.avg_score, 1),
+                "avg_iterations": round(perf.avg_iterations, 1) if perf.success_count > 0 else None,
+                "last_used": perf.last_used,
+            })
+
+        # Sort by trials (most used first)
+        techniques_stats.sort(key=lambda x: x["trials"], reverse=True)
+
+        return json.dumps({
+            "effect_type": effect_type,
+            "total_techniques_tried": len(techniques_stats),
+            "total_trials": sum(t["trials"] for t in techniques_stats),
+            "overall_success_rate": round(
+                sum(t["success_count"] for t in techniques_stats) /
+                max(sum(t["trials"] for t in techniques_stats), 1),
+                2
+            ),
+            "techniques": techniques_stats,
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "error": f"Failed to get stats: {str(e)}",
+            "effect_type": effect_type,
+            "techniques": [],
+        }, indent=2)
 
 
 @mcp.tool()

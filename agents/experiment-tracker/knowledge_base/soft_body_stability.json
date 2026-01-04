@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "created": "2026-01-04",
+    "source": "Gemini 3 Pro discoveries",
+    "effect_type": "soft_body",
+    "description": "Critical stability settings for Blender soft body physics to prevent simulation failures"
+  },
+
+  "recommended_settings": {
+    "step_min": {
+      "value": 20,
+      "default": 5,
+      "reason": "Prevents jitter explosions by ensuring adequate simulation substeps",
+      "warning": "Values below 10 can cause instability with complex meshes"
+    },
+    "step_max": {
+      "value": 100,
+      "default": 10,
+      "reason": "Enables adaptive stepping for large deformations",
+      "warning": "Very high values (>200) may slow simulation without benefit"
+    },
+    "damping": {
+      "value": 2.0,
+      "default": 0.5,
+      "reason": "Prevents energy buildup that causes mesh explosion",
+      "warning": "Too high (>5) makes the simulation overly stiff"
+    },
+    "friction": {
+      "value": 0.5,
+      "default": 0.0,
+      "reason": "Provides realistic surface interaction"
+    },
+    "goal_spring": {
+      "value": 0.5,
+      "default": 0.5,
+      "reason": "Balance between shape retention and deformation"
+    },
+    "goal_friction": {
+      "value": 0.5,
+      "default": 0.5,
+      "reason": "Damping for goal-based shape restoration"
+    }
+  },
+
+  "preprocessing_requirements": {
+    "voxel_remesh": {
+      "required_for": "Joined primitives (objects created from multiple bpy.ops.mesh.primitive_* calls)",
+      "reason": "Soft body requires manifold geometry with consistent vertex distribution",
+      "how": "Apply Remesh modifier with mode='VOXEL', voxel_size=0.1-0.2"
+    }
+  },
+
+  "common_issues": [
+    {
+      "symptom": "Mesh explodes or jitters violently",
+      "cause": "step_min too low, damping too low",
+      "fix": "Increase step_min to 20+, increase damping to 2.0+"
+    },
+    {
+      "symptom": "Mesh collapses or falls through collision objects",
+      "cause": "Insufficient collision quality or step settings",
+      "fix": "Increase step_min, enable edge collision"
+    },
+    {
+      "symptom": "Simulation runs very slowly",
+      "cause": "step_max too high, overly complex mesh",
+      "fix": "Reduce step_max, decimate mesh before simulation"
+    },
+    {
+      "symptom": "Mesh deforms unnaturally or stretches",
+      "cause": "Non-manifold geometry from joined primitives",
+      "fix": "Apply voxel remesh to create uniform mesh"
+    }
+  ],
+
+  "rules": [
+    "Always check mesh topology before applying soft body",
+    "Joined primitives MUST be voxel-remeshed for stable simulation",
+    "Use step_min >= 20 for any soft body simulation",
+    "Increase damping when seeing any oscillation or jitter",
+    "Test with simple mesh first before applying to complex geometry"
+  ],
+
+  "warnings": [
+    "Default step settings (5/10) are INSUFFICIENT for most use cases",
+    "bpy.ops.ptcache.bake_all() is unreliable in headless mode - use live_render pattern instead",
+    "Soft body simulation on joined primitives WITHOUT remesh will fail"
+  ],
+
+  "evaluation_notes": {
+    "expected_metrics": "surface_smoothness, silhouette_clarity, deformation_quality",
+    "not_applicable": "edge_density, noise_frequency (these are volumetric metrics)",
+    "warning": "VFX evaluator may penalize clean mesh geometry - use mesh-specific metrics"
+  }
+}

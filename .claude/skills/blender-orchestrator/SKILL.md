@@ -334,10 +334,29 @@ Call: mcp__asset-evaluator__evaluate_vfx_quality(
    ```
    If found, restore variables and skip to appropriate stage.
 
-4. Preload relevant knowledge:
+4. Preload relevant knowledge (MANDATORY - Phase 4.3):
    ```
    Call: mcp__experiment-tracker__query_knowledge_base(query=<effect_type>)
    ```
+
+   **Knowledge preloading retrieves:**
+   - Known parameter ranges and optimal values for this effect type
+   - Accumulated rules from past experiments (e.g., "Always adjust domain_location_z when scaling")
+   - Warnings specific to parameters commonly used for this effect
+   - Success rates for different parameter combinations
+
+   **Store the preloaded knowledge for reference during iteration:**
+   - Parameter-specific warnings will be checked automatically by modify_script()
+   - Critical warnings (severity="critical") will be flagged before any modification
+   - Rules and optimal values guide parameter selection
+
+   **Effect type → Parameters preloaded:**
+   - `pyro/explosion`: flame_smoke, vorticity, burning_rate, temperature, domain_scale
+   - `fire`: flame_max_temp, flame_smoke, burning_rate, vorticity
+   - `smoke`: vorticity, dissolve_speed, domain_scale
+   - `soft_body`: step_min, step_max, damping, goal_spring, friction
+   - `cloth`: quality, mass, air_damping, collision_quality
+   - `nebula/sun`: noise_scale, noise_strength, vorticity, temperature
 
 5. Announce the session start with configuration summary
 
@@ -472,7 +491,7 @@ Call: mcp__asset-evaluator__evaluate_vfx_quality(
 
 4. Apply fixes from knowledge base OR diagnosis
 
-5. Modify the script:
+5. Modify the script (AUTOMATIC WARNING CHECKS - Phase 4.1):
    ```
    Call: mcp__script-generator__modify_script(
        script_path=<current_script>,
@@ -483,6 +502,23 @@ Call: mcp__asset-evaluator__evaluate_vfx_quality(
        }
    )
    ```
+
+   **The result will include warning checks for each parameter:**
+   - `warnings`: List of warnings from knowledge base
+   - `mitigations`: Suggested mitigations for critical warnings
+   - `has_critical_warnings`: True if any parameter has critical issues
+
+   **If `has_critical_warnings` is True:**
+   - Review the warnings carefully before proceeding
+   - Apply suggested mitigations
+   - Consider alternative parameter values
+   - Critical patterns include: "MUST", "NEVER", "ALWAYS", "explosion", "crash", "fail"
+
+   **Severity levels:**
+   - `critical`: Should not proceed without mitigation
+   - `high`: Significant risk, proceed with caution
+   - `medium`: Caution advised
+   - `low`: Informational only
 
 6. **Return to Stage 3** (Execute Blender)
 
