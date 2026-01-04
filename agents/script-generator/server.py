@@ -39,6 +39,16 @@ from technique_catalog import (
     list_all_techniques,
 )
 
+# Import script validator for pre-execution validation
+from validator import (
+    BlenderScriptValidator,
+    ValidationResult,
+    ValidationSeverity,
+    ValidationIssue,
+    validate_script as validate_script_file,
+    validate_script_content,
+)
+
 # =============================================================================
 # Blender API Parameter Ranges (from Blender 5.0 Python API)
 # Source: bpy.types.FluidDomainSettings, bpy.types.FluidFlowSettings
@@ -1757,6 +1767,129 @@ async def get_parameter_ranges() -> str:
             "general": ["resolution_max"],
         }
     }, indent=2)
+
+
+# =============================================================================
+# Pre-Execution Validation Tool (Phase 2 - Task 2.1)
+# =============================================================================
+
+@mcp.tool()
+async def validate_script(
+    script_path: str,
+    strict: bool = False
+) -> str:
+    """
+    Validate a Blender script before execution.
+
+    Performs comprehensive pre-execution validation:
+    - Python syntax validation using AST
+    - Parameter extraction and range checking
+    - Required pattern detection (domain, flow, physics)
+    - Security/safety checks
+    - Output path validation
+
+    This tool should be called after generate_script() and before
+    blender-executor to catch issues early.
+
+    Args:
+        script_path: Path to the Blender Python script to validate
+        strict: If True, treat warnings as errors (default False)
+
+    Returns:
+        JSON with validation result:
+        - valid: True if script passes validation
+        - script_path: Path that was validated
+        - issues: List of validation issues found
+        - extracted_params: Parameters detected in script
+        - detected_effect_type: volumetric, mesh, or unknown
+        - detected_simulation_pattern: bake_export or live_render
+        - error_count: Number of errors
+        - warning_count: Number of warnings
+
+    Example:
+        validate_script("assets/blender_scripts/generated/explosion_v1.py")
+    """
+    try:
+        result = validate_script_file(script_path)
+
+        # In strict mode, warnings become errors
+        if strict and result.to_dict()["warning_count"] > 0:
+            result.valid = False
+            result.issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                category="strict_mode",
+                message=f"Strict mode: {result.to_dict()['warning_count']} warnings treated as errors",
+            ))
+
+        return json.dumps(result.to_dict(), indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "valid": False,
+            "script_path": script_path,
+            "issues": [{
+                "severity": "error",
+                "category": "validation_error",
+                "message": f"Validation failed: {str(e)}",
+            }],
+            "extracted_params": {},
+            "detected_effect_type": None,
+            "detected_simulation_pattern": None,
+            "error_count": 1,
+            "warning_count": 0,
+        }, indent=2)
+
+
+@mcp.tool()
+async def validate_script_inline(
+    script_content: str,
+    script_name: str = "<inline>",
+    strict: bool = False
+) -> str:
+    """
+    Validate Blender script content directly without a file.
+
+    Useful for validating scripts before writing them to disk,
+    or for validating script fragments.
+
+    Args:
+        script_content: The Python script content to validate
+        script_name: Name for error messages (default "<inline>")
+        strict: If True, treat warnings as errors (default False)
+
+    Returns:
+        JSON with validation result (same format as validate_script)
+
+    Example:
+        validate_script_inline('''
+            import bpy
+            bpy.ops.mesh.primitive_cube_add()
+        ''')
+    """
+    try:
+        result = validate_script_content(script_content, script_name)
+
+        # In strict mode, warnings become errors
+        if strict and result.to_dict()["warning_count"] > 0:
+            result.valid = False
+
+        return json.dumps(result.to_dict(), indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "valid": False,
+            "script_path": script_name,
+            "issues": [{
+                "severity": "error",
+                "category": "validation_error",
+                "message": f"Validation failed: {str(e)}",
+            }],
+            "extracted_params": {},
+            "detected_effect_type": None,
+            "detected_simulation_pattern": None,
+            "error_count": 1,
+            "warning_count": 0,
+        }, indent=2)
 
 
 # =============================================================================

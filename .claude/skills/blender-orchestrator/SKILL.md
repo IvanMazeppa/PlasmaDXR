@@ -361,14 +361,46 @@ Call: mcp__asset-evaluator__evaluate_vfx_quality(
    )
    ```
 
-4. Validate the generated script:
+4. Extract the script path from the result
+
+### Stage 2.5: Validate Script (MANDATORY - Phase 2)
+
+**This validation step prevents wasted Blender execution time by catching errors early.**
+
+1. Run comprehensive script validation:
    ```
-   Call: mcp__script-generator__validate_parameters(params=<extracted_params>)
+   Call: mcp__script-generator__validate_script(
+       script_path=<generated_script_path>,
+       strict=false
+   )
    ```
 
-5. If validation fails, fix parameters and regenerate
+2. **If validation fails (valid=false):**
+   - Log: `"Script validation FAILED: {error_count} errors"`
+   - Review the `issues` array for specific problems
+   - Common fixes:
+     - Syntax error → Regenerate script with corrected template
+     - Parameter out of range → Modify with clamped values
+     - Missing required patterns → Add domain/flow setup
+   - Return to Stage 2 (Generate Script) with adjustments
+   - **DO NOT proceed to execution with an invalid script**
 
-6. Extract the script path from the result
+3. **If validation passes with warnings:**
+   - Log: `"Script validation PASSED ({warning_count} warnings)"`
+   - Review warnings but proceed to execution
+   - Warnings may indicate:
+     - Absolute Windows paths (cross-platform issue)
+     - No explicit output path (will use defaults)
+     - Dangerous patterns (os.system, eval) - review carefully
+
+4. **If validation passes with no issues:**
+   - Log: `"Script validation PASSED (clean)"`
+   - Proceed to Stage 3 (Execute Blender)
+
+5. Record validation metadata for learning:
+   - `detected_effect_type`: What the validator detected (volumetric/mesh)
+   - `detected_simulation_pattern`: bake_export or live_render
+   - `extracted_params`: Parameters found in script
 
 ### Stage 3: Execute Blender
 

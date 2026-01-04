@@ -4,7 +4,231 @@
 **Additional Research:** Repo analysis, MCP best practices, Framework documentation, SpecFlow gap analysis
 **Goal:** Address all identified issues with formal specifications for critical decisions
 **Created:** 2026-01-03
-**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1 COMPLETE + Task 5.4 JSON fix)
+**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1, Phase 2 COMPLETE + Task 5.4 JSON fix)
+
+---
+
+## Changelog
+
+### 2026-01-04: Phase 2 Pre-Execution Validation ✅
+
+**Session Context:** Continuation from Phase 1 completion session.
+
+#### Task 2.1: Blender Script Validator ✅
+
+**File Created:** `agents/script-generator/validator.py`
+
+**Implementation:**
+- Full Python syntax validation using AST parsing
+- Blender 5.0 API parameter extraction and range validation
+- Simulation type detection (volumetric vs mesh-based)
+- Required pattern checks (domain, flow, physics modifiers)
+- Security/safety pattern detection (subprocess, eval, exec)
+- Output path validation with cross-platform warnings
+
+**Key Classes:**
+- `ValidationSeverity(Enum)`: ERROR, WARNING, INFO
+- `ValidationIssue`: Single validation finding with severity, category, message, line, suggestion
+- `ValidationResult`: Aggregated result with issues, extracted params, detected types
+- `BlenderScriptValidator`: Main validator class
+
+**Parameter Ranges Defined:**
+- Domain Gas: burning_rate, flame_smoke, flame_vorticity, flame_max_temp, etc.
+- Flow: fuel_amount, temperature, velocity_normal, velocity_random
+- Noise: noise_scale, noise_strength, noise_pos_scale
+- Soft Body: step_min, step_max, damping, goal_spring (Phase 2.5 extensibility)
+
+#### Task 2.2: Workflow State Machine Integration ✅
+
+**Files Modified:**
+- `agents/blender-orchestrator/workflow.py`: Added `VALIDATE_SCRIPT` stage to `WorkflowStage` enum
+- `agents/blender-orchestrator/workflow.py`: Updated `TRANSITIONS` table for validation flow
+- `agents/script-generator/server.py`: Added `validate_script` and `validate_script_content` MCP tools
+- `.claude/skills/blender-orchestrator/SKILL.md`: Documented Stage 2.5 validation step
+
+**State Transitions Added:**
+```
+GENERATE_SCRIPT --SUCCESS--> VALIDATE_SCRIPT
+VALIDATE_SCRIPT --SUCCESS--> EXECUTE_BLENDER
+VALIDATE_SCRIPT --FAILURE--> GENERATE_SCRIPT (loop back if invalid)
+```
+
+**MCP Tools Added:**
+- `validate_script(script_path)`: Validate script file
+- `validate_script_content(content, script_name)`: Validate inline script content
+
+### 2026-01-04: Phase 1 Verification & Task 5.4 JSON Fix
+
+**Session Context:** Continuation from previous session that applied Gemini 3 Pro feedback amendments.
+
+#### Task 5.4: JSON Serialization Bug Fix ✅
+
+**File Modified:** `agents/asset-evaluator/server.py`
+
+**Problem:** Gemini 3 Pro reported crash: `Object of type bool is not JSON serializable` when calling `extract_vfx_diagnostics`. Root cause was numpy types (`np.bool_`, `np.integer`, `np.floating`, `np.ndarray`) returned from VFX diagnostic functions being passed directly to `json.dumps()`.
+
+**Solution:** Created global utility functions and applied to all affected tool endpoints.
+
+**Code Added (lines 48-81):**
+```python
+# ============================================================================
+# JSON Serialization Utilities (Task 5.4: Handle numpy types)
+# ============================================================================
+
+def convert_numpy_types(obj):
+    """
+    Recursively convert numpy types to Python native types for JSON serialization.
+
+    Handles: np.bool_, np.integer, np.floating, np.ndarray, nested dicts/lists.
+    """
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(v) for v in obj]
+    return obj
+
+
+def safe_json_dumps(obj, **kwargs):
+    """
+    JSON dumps with automatic numpy type conversion.
+
+    Use this instead of json.dumps() when serializing evaluation results
+    that may contain numpy types.
+    """
+    return json.dumps(convert_numpy_types(obj), **kwargs)
+```
+
+**Endpoints Fixed:**
+
+| Function | Line | Change |
+|----------|------|--------|
+| `extract_vfx_diagnostics()` | 999 | `json.dumps(...)` → `safe_json_dumps(...)` |
+| `evaluate_vfx_quality()` | 1084 | `json.dumps(...)` → `safe_json_dumps(...)` |
+| `compare_vfx_iterations()` | 1186 | `json.dumps(...)` → `safe_json_dumps(...)` |
+
+**Note:** The file had 5 inline `convert_np()` definitions scattered at lines 1449, 1580, 2152, 2229, 2290. The global utility consolidates this pattern. Future cleanup could refactor those inline definitions to use `safe_json_dumps()`.
+
+**Validation:** `python3 -m py_compile server.py` passed.
+
+---
+
+#### Phase 1: Orchestrator Reliability - Verification ✅
+
+**Discovery:** All four Phase 1 files already existed with complete implementations from Phase 0 enhancement work. This session verified their completeness and integration.
+
+**Files Verified:**
+
+| File | Lines | Purpose | Integration Status |
+|------|-------|---------|-------------------|
+| `agents/blender-orchestrator/tool_executor.py` | 442 | MCP tool execution verification with pre/post hooks, schema validation, latency logging | Imported in `orchestrator.py:47,80` |
+| `agents/blender-orchestrator/workflow_tracer.py` | 595 | Workflow state transition tracing, iteration summaries, circuit breaker events | Imported in `orchestrator.py:48,81` |
+| `agents/blender-orchestrator/health_check.py` | 437 | MCP server health monitoring for 6 servers (script-generator, blender-executor, asset-evaluator, experiment-tracker, iteration-controller, blender-manual) | Imported in `orchestrator.py:49,82` |
+| `agents/blender-orchestrator/state_machine.py` | 446 | Formal state machine with 12 states (SESSION_START, GENERATE_SCRIPT, VALIDATE_SCRIPT, EXECUTE_BLENDER, EVALUATE_QUALITY, DECIDE_NEXT_ACTION, RECORD_LEARNING, CHECK_CONVERGENCE, SESSION_END, ERROR_RECOVERY, AWAITING_APPROVAL, PAUSED) and valid transitions | Imported in `orchestrator.py:50-57,83-90` |
+
+**Total:** 1,920 lines of Phase 1 implementation code.
+
+**Validation:** All four files pass `python3 -m py_compile`.
+
+**Key Classes Implemented:**
+
+1. **`ToolExecutionVerifier`** (`tool_executor.py`)
+   - `ToolStatus` enum: SUCCESS, FAILED, TIMEOUT, VALIDATION_ERROR
+   - `ToolExecutionRecord` dataclass for logging
+   - `ToolSchema` for result validation
+   - Pre-defined schemas for: generate_script, modify_script, validate_parameters, list_techniques, execute_blender_script, parse_blender_errors, evaluate_vfx_quality, compare_vfx_iterations, evaluate_ground_truth, etc.
+
+2. **`WorkflowTracer`** (`workflow_tracer.py`)
+   - `TraceEventType` enum: STATE_TRANSITION, TOOL_CALL, CIRCUIT_BREAKER, KNOWLEDGE_BASE, QUALITY_DECISION, ITERATION_START, ITERATION_END, ERROR, HUMAN_INTERVENTION
+   - `TraceEvent` and `IterationSummary` dataclasses
+   - Matches SKILL.md iteration tracking format
+
+3. **`HealthChecker`** (`health_check.py`)
+   - `HealthState` enum: HEALTHY, DEGRADED, UNHEALTHY, UNKNOWN
+   - `ServerConfig` for each MCP server with ping tools, timeouts, criticality flags
+   - Degraded threshold: 5000ms latency
+
+4. **`WorkflowState`** (`state_machine.py`)
+   - 12 states including new VALIDATE_SCRIPT and CHECK_CONVERGENCE
+   - `TRANSITIONS` dict defining valid state transitions
+   - Matches SKILL.md stage definitions
+
+---
+
+#### Plan Document Updates
+
+**Changes to `docs/MULTI_AGENT_IMPROVEMENT_PLAN_V2.md`:**
+
+1. **Header (line 7):** Updated date and completion status
+   - Before: `**Updated:** 2026-01-03 (Phase 0 + Phase 0.5 COMPLETE)`
+   - After: `**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1 COMPLETE + Task 5.4 JSON fix)`
+
+2. **Implementation Order (lines 1577-1581):** Marked Phase 1 complete
+   ```
+   Phase 1: Orchestrator Reliability ✅ COMPLETE (2026-01-04)
+   ├── Task 1.1: MCP tool execution verification ✅
+   ├── Task 1.2: Workflow tracing ✅
+   ├── Task 1.3: Health checks ✅
+   └── Task 1.4: Formal state machine ✅
+   ```
+
+3. **Implementation Order (line 1607):** Marked Task 5.4 complete
+   - Before: `└── Task 5.4: JSON serialization fix (NEW - Gemini Feedback)`
+   - After: `└── Task 5.4: JSON serialization fix ✅ (NEW - Gemini Feedback)`
+
+4. **Files to Create table (lines 1626-1629):** Updated Phase 1 file statuses
+   - All four files changed from "Pending" to "✅ DONE"
+
+---
+
+### 2026-01-03: Gemini 3 Pro Feedback Integration
+
+**Session Context:** Applied amendments based on Gemini 3 Pro's "Jelly Rabbit" soft body physics test.
+
+**Documents Created:**
+- `JELLY_RABBIT_TEST_REPORT.md` - Test results and manual success details
+- `ORCHESTRATOR_FEEDBACK_AND_SOFTBODY_GUIDE.md` - Soft body implementation patterns
+- `docs/GEMINI_FEEDBACK_ANALYSIS_AND_PLAN_AMENDMENTS.md` - Gap analysis and amendment specifications
+
+**Amendments Applied to Plan:**
+
+1. **Amendment 1:** Added execution model clarification (lines 35-50) explaining Skills vs Tool-driven execution
+2. **Amendment 2:** Added Phase 2.5 (Simulation Type Extensibility) with Tasks 2.5.1-2.5.4
+3. **Amendment 3:** Added Tasks 5.3 (Effect Type Evaluation Registry) and 5.4 (JSON Serialization Fix)
+4. **Amendment 4:** Added Issues 14-17 to Issue Summary table
+5. **Amendment 5:** Updated Implementation Order with Phase 2.5
+
+**New Issues Added:**
+| # | Issue | Priority |
+|---|-------|----------|
+| 14 | Volumetric-only effect types (no mesh physics) | HIGH |
+| 15 | Mesh physics evaluation fails | HIGH |
+| 16 | JSON serialization for numpy types | MEDIUM |
+| 17 | create_asset() non-blocking confusion | MEDIUM |
+
+---
+
+### 2026-01-03: Phase 0 + Phase 0.5 Complete
+
+**Phase 0 Tasks:**
+- Task 0.1: Created `tools.py`, `orchestrator.py`
+- Task 0.2: Removed claude_agent_sdk dependency
+- Task 0.3: Consolidated state persistence
+- Task 0.4: Added circuit breakers (`circuit_breakers.py`)
+
+**Phase 0.5 Tasks:**
+- Task 0.5.1: Added explicit loop control to SKILL.md
+- Task 0.5.2: Added circuit breakers to SKILL.md
+- Task 0.5.3: Added mandatory knowledge base consultation
+- Task 0.5.4: Added research integration
+- Task 0.5.5: Added quality decision tree
 
 ---
 
@@ -1580,9 +1804,9 @@ Phase 1: Orchestrator Reliability ✅ COMPLETE (2026-01-04)
 ├── Task 1.3: Health checks ✅
 └── Task 1.4: Formal state machine ✅
 
-Phase 2: Pre-Execution Validation
-├── Task 2.1: Blender parameter validation
-└── Task 2.2: Add VALIDATE_SCRIPT state
+Phase 2: Pre-Execution Validation ✅ COMPLETE (2026-01-04)
+├── Task 2.1: Blender parameter validation ✅
+└── Task 2.2: Add VALIDATE_SCRIPT state ✅
 
 Phase 2.5: Simulation Type Extensibility (NEW - Gemini Feedback)
 ├── Task 2.5.1: Effect type registry
@@ -1627,7 +1851,7 @@ Phase 7: External Research (if time permits)
 | `agents/blender-orchestrator/workflow_tracer.py` | 1.2 | Session tracing | ✅ DONE |
 | `agents/blender-orchestrator/health_check.py` | 1.3 | Server health checks | ✅ DONE |
 | `agents/blender-orchestrator/state_machine.py` | 1.4 | Formal state machine | ✅ DONE |
-| `agents/script-generator/validator.py` | 2.1 | Script validation | Pending |
+| `agents/script-generator/validator.py` | 2.1 | Script validation | ✅ DONE |
 | `agents/script-generator/technique_selector.py` | 3.2 | UCB1 algorithm | Pending |
 | `agents/asset-evaluator/decision_tree.py` | 5.2 | Quality decision tree | Pending |
 | `agents/asset-evaluator/effect_evaluators.py` | 5.3 | Effect type evaluation registry | Pending |

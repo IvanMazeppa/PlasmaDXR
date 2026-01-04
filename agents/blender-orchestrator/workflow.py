@@ -17,10 +17,12 @@ class WorkflowStage(Enum):
     """Stages in the asset generation workflow."""
     SESSION_START = "session_start"
     GENERATE_SCRIPT = "generate_script"
+    VALIDATE_SCRIPT = "validate_script"  # Phase 2: Pre-execution validation
     EXECUTE_BLENDER = "execute_blender"
     EVALUATE_QUALITY = "evaluate_quality"
     DECIDE_NEXT_ACTION = "decide_next_action"
     RECORD_LEARNING = "record_learning"
+    CHECK_CONVERGENCE = "check_convergence"  # Circuit breaker check
     SESSION_END = "session_end"
     ERROR_RECOVERY = "error_recovery"
     AWAITING_APPROVAL = "awaiting_approval"
@@ -131,15 +133,23 @@ class QualityConfig:
 
 
 # State transition table
+# Updated for Phase 2: Added VALIDATE_SCRIPT between GENERATE and EXECUTE
 TRANSITIONS = {
     WorkflowStage.SESSION_START: {
         WorkflowOutcome.SUCCESS: WorkflowStage.GENERATE_SCRIPT,
         WorkflowOutcome.FAILURE: WorkflowStage.SESSION_END,
     },
     WorkflowStage.GENERATE_SCRIPT: {
-        WorkflowOutcome.SUCCESS: WorkflowStage.EXECUTE_BLENDER,
+        # Phase 2: After generating, validate before executing
+        WorkflowOutcome.SUCCESS: WorkflowStage.VALIDATE_SCRIPT,
         WorkflowOutcome.FAILURE: WorkflowStage.ERROR_RECOVERY,
         WorkflowOutcome.RETRY: WorkflowStage.GENERATE_SCRIPT,
+    },
+    WorkflowStage.VALIDATE_SCRIPT: {
+        # Phase 2: Validation can pass (execute) or fail (regenerate)
+        WorkflowOutcome.SUCCESS: WorkflowStage.EXECUTE_BLENDER,
+        WorkflowOutcome.FAILURE: WorkflowStage.GENERATE_SCRIPT,  # Loop back if invalid
+        WorkflowOutcome.RETRY: WorkflowStage.GENERATE_SCRIPT,    # Also loop back on retry
     },
     WorkflowStage.EXECUTE_BLENDER: {
         WorkflowOutcome.SUCCESS: WorkflowStage.EVALUATE_QUALITY,
@@ -156,8 +166,12 @@ TRANSITIONS = {
         WorkflowOutcome.AWAITING_INPUT: WorkflowStage.AWAITING_APPROVAL,
     },
     WorkflowStage.RECORD_LEARNING: {
+        WorkflowOutcome.SUCCESS: WorkflowStage.CHECK_CONVERGENCE,
+        WorkflowOutcome.FAILURE: WorkflowStage.CHECK_CONVERGENCE,  # Continue anyway
+    },
+    WorkflowStage.CHECK_CONVERGENCE: {
         WorkflowOutcome.SUCCESS: WorkflowStage.GENERATE_SCRIPT,  # Continue iterating
-        WorkflowOutcome.FAILURE: WorkflowStage.GENERATE_SCRIPT,  # Continue anyway
+        WorkflowOutcome.FAILURE: WorkflowStage.SESSION_END,      # Circuit breaker triggered
     },
     WorkflowStage.ERROR_RECOVERY: {
         WorkflowOutcome.SUCCESS: WorkflowStage.GENERATE_SCRIPT,  # Retry from script
