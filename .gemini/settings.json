@@ -14,14 +14,13 @@
       "command": "bash",
       "args": [
         "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/dxr-image-quality-analyst && ./run_server.sh"
-        ],
-        "env": {
-          "PROJECT_ROOT": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean",
-          "PIX_PATH": "/mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean",
+        "PIX_PATH": "/mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
       }
-    },        
+    },
     "dxr-shadow-engineer": {
-      "type": "stdio",
       "command": "bash",
       "args": [
         "-c",
@@ -34,6 +33,69 @@
         "-c",
         "cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/agents/path-and-probe && ./run_server.sh"
       ]
+    },
+    "blender-orchestrator": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/blender-orchestrator/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "script-generator": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/script-generator/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "blender-executor": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/blender-executor/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "asset-evaluator": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/asset-evaluator/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "experiment-tracker": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/experiment-tracker/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "iteration-controller": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/iteration-controller/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    },
+    "blender-manual": {
+      "command": "bash",
+      "args": [
+        "/home/maz3ppa/projects/PlasmaDXR/agents/blender-manual/run_server.sh"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
     }
   }
 }

@@ -45,6 +45,41 @@ PROJECT_ROOT = Path(os.getenv(
 REFERENCE_DIR = PROJECT_ROOT / "assets/reference_images"
 RENDER_OUTPUT_DIR = PROJECT_ROOT / "build/renders"
 
+# ============================================================================
+# JSON Serialization Utilities (Task 5.4: Handle numpy types)
+# ============================================================================
+
+def convert_numpy_types(obj):
+    """
+    Recursively convert numpy types to Python native types for JSON serialization.
+
+    Handles: np.bool_, np.integer, np.floating, np.ndarray, nested dicts/lists.
+    """
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(v) for v in obj]
+    return obj
+
+
+def safe_json_dumps(obj, **kwargs):
+    """
+    JSON dumps with automatic numpy type conversion.
+
+    Use this instead of json.dumps() when serializing evaluation results
+    that may contain numpy types.
+    """
+    return json.dumps(convert_numpy_types(obj), **kwargs)
+
+
 # Create FastMCP server
 mcp = FastMCP("asset-evaluator")
 
@@ -961,7 +996,7 @@ async def extract_vfx_diagnostics(
 
     try:
         diagnostics = extract_vfx_diagnostics_impl(str(img_path))
-        return json.dumps({
+        return safe_json_dumps({
             "success": True,
             "image_path": str(img_path),
             "diagnostics": diagnostics
@@ -1046,7 +1081,7 @@ async def evaluate_vfx_quality(
             elif "CONTRAST" in issue:
                 recommendations.append("Increase temperature range or density variation")
 
-        return json.dumps({
+        return safe_json_dumps({
             "success": True,
             "image_path": str(img_path),
             "effect_type": effect_type,
@@ -1148,7 +1183,7 @@ async def compare_vfx_iterations(
         else:
             recommendation = "Both need significant improvement"
 
-        return json.dumps({
+        return safe_json_dumps({
             "winner": winner,
             "score_a": score_a,
             "score_b": score_b,

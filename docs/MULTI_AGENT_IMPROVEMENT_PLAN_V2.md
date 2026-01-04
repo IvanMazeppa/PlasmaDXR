@@ -4,7 +4,7 @@
 **Additional Research:** Repo analysis, MCP best practices, Framework documentation, SpecFlow gap analysis
 **Goal:** Address all identified issues with formal specifications for critical decisions
 **Created:** 2026-01-03
-**Updated:** 2026-01-03 (Phase 0 + Phase 0.5 COMPLETE)
+**Updated:** 2026-01-04 (Phase 0, Phase 0.5, Phase 1 COMPLETE + Task 5.4 JSON fix)
 
 ---
 
@@ -60,6 +60,27 @@ The original improvement plan identified 5 issues. This updated plan adds **8 ne
 
 **Conclusion:** For interactive VFX development, Skill + MCP is sufficient and cost-effective.
 
+### Important Clarification: Skill-Driven vs. Tool-Driven Execution
+
+The `blender-orchestrator` MCP server provides tools (`create_asset`, `get_status`, etc.) but these tools do **NOT** execute the full iteration loop autonomously. They:
+- Return workflow plans/recommendations
+- Provide session management
+- Offer status queries
+
+**The actual iteration loop is executed by Claude Code** interpreting the SKILL.md workflow definition. This means:
+- `create_asset()` returns immediately with a plan, not after N iterations
+- Claude Code must manually call `generate_script`, `execute_blender`, `evaluate_quality` in sequence
+- Session state is persisted via `iteration-controller` between conversation turns
+
+**User Expectation vs. Reality:**
+| Expectation | Reality |
+|-------------|---------|
+| Call `create_asset()`, wait 5 minutes, get result | `create_asset()` returns immediately with recommendations |
+| Autonomous headless execution | Claude Code session required as runtime |
+| Single blocking API call | Multi-turn conversation with tool calls |
+
+For headless/automated execution without Claude Code, consider the Claude Agent SDK (requires separate API billing).
+
 ### Issue Summary
 
 | # | Issue | Severity | Status |
@@ -77,6 +98,10 @@ The original improvement plan identified 5 issues. This updated plan adds **8 ne
 | 11 | LPIPS 528MB model timeout risk | MEDIUM | **NEW** |
 | 12 | No formal state machine definition | MEDIUM | **NEW** |
 | 13 | No convergence safety criteria | HIGH | ✅ **FIXED Phase 0.4/0.5** |
+| 14 | Volumetric-only effect types (no mesh physics) | HIGH | **NEW (Gemini Feedback)** |
+| 15 | Mesh physics evaluation fails (penalizes clean geometry) | HIGH | **NEW (Gemini Feedback)** |
+| 16 | JSON serialization crashes on numpy types | MEDIUM | **NEW (Gemini Feedback)** |
+| 17 | `create_asset()` non-blocking behavior causes confusion | MEDIUM | ✅ **CLARIFIED Above** |
 
 ---
 
@@ -803,6 +828,344 @@ GENERATE_SCRIPT → VALIDATE_SCRIPT → EXECUTE_BLENDER
 
 ---
 
+## Phase 2.5: Simulation Type Extensibility (NEW - Priority: HIGH)
+
+**Problem:** Pipeline is hard-coded for volumetric fluid simulations. Mesh-based physics (soft body, cloth, rigid body) are not supported. Discovered during Gemini 3 Pro's "Jelly Rabbit" test.
+
+**Context:** PlasmaDX is upgrading to support mesh physics simulations. The pipeline should be extensible without requiring a complete rewrite.
+
+### Task 2.5.1: Effect Type Registry
+
+**File:** `agents/script-generator/effect_registry.py` (new)
+
+**Implementation:**
+```python
+"""Effect Type Registry - Maps effect types to simulation categories and patterns."""
+
+EFFECT_TYPES = {
+    # Volumetric (VDB output) - Original scope
+    "pyro": {
+        "category": "volumetric",
+        "output": "vdb",
+        "templates": ["explosion", "fire", "smoke"],
+        "simulation_pattern": "bake_export"
+    },
+    "nebula": {
+        "category": "volumetric",
+        "output": "vdb",
+        "templates": ["emission_nebula", "dust_cloud", "hydrogen_cloud"],
+        "simulation_pattern": "bake_export"
+    },
+    "sun": {
+        "category": "volumetric",
+        "output": "vdb",
+        "templates": ["stellar_surface", "corona", "prominences"],
+        "simulation_pattern": "bake_export"
+    },
+    "supernova": {
+        "category": "volumetric",
+        "output": "vdb",
+        "templates": ["shockwave", "remnant"],
+        "simulation_pattern": "bake_export"
+    },
+
+    # Mesh-based (Blend/Alembic output) - NEW
+    "soft_body": {
+        "category": "mesh",
+        "output": "blend",
+        "templates": ["jelly", "bounce", "squish"],
+        "simulation_pattern": "live_render"
+    },
+    "cloth": {
+        "category": "mesh",
+        "output": "blend",
+        "templates": ["fabric", "flag", "curtain", "drape"],
+        "simulation_pattern": "live_render"
+    },
+    "rigid_body": {
+        "category": "mesh",
+        "output": "blend",
+        "templates": ["destruction", "dominos", "pile", "shatter"],
+        "simulation_pattern": "live_render"
+    },
+
+    # Generic (LLM-driven, no template) - NEW
+    "custom": {
+        "category": "custom",
+        "output": "auto",
+        "templates": [],
+        "simulation_pattern": "auto"
+    }
+}
+
+def get_effect_category(effect_type: str) -> str:
+    """Return the simulation category for an effect type."""
+    return EFFECT_TYPES.get(effect_type, {}).get("category", "volumetric")
+
+def get_simulation_pattern(effect_type: str) -> str:
+    """Return the appropriate simulation pattern for this effect."""
+    return EFFECT_TYPES.get(effect_type, {}).get("simulation_pattern", "bake_export")
+
+def get_output_format(effect_type: str) -> str:
+    """Return the expected output format for this effect."""
+    return EFFECT_TYPES.get(effect_type, {}).get("output", "vdb")
+
+def list_effect_types(category: str = None) -> list[str]:
+    """List all effect types, optionally filtered by category."""
+    if category:
+        return [k for k, v in EFFECT_TYPES.items() if v["category"] == category]
+    return list(EFFECT_TYPES.keys())
+```
+
+### Task 2.5.2: Live Render Execution Pattern
+
+**File:** `agents/blender-executor/execution_patterns.py` (new)
+
+**Problem:** Standard `bpy.ops.ptcache.bake_all()` is unreliable in headless Blender. Soft body, cloth, and rigid body simulations require frame-by-frame evaluation with explicit dependency graph updates.
+
+**Implementation:**
+```python
+"""Execution patterns for different simulation types."""
+
+LIVE_RENDER_TEMPLATE = '''
+def run_live_render_loop(output_dir: str, frame_start: int, frame_end: int):
+    """
+    Robust pattern for mesh physics simulations in headless Blender.
+
+    Why this works:
+    - Mimics viewport timeline playback behavior
+    - view_layer.update() forces physics solver to advance one timestep
+    - Rendering immediately captures valid state before next frame
+
+    This pattern is REQUIRED for:
+    - Soft Body
+    - Cloth
+    - Rigid Body (when not using baked cache)
+    """
+    import bpy
+    import os
+
+    scene = bpy.context.scene
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 1. Force Reset to start frame
+    scene.frame_set(frame_start)
+
+    # 2. Strict Linear Loop (NO frame skipping!)
+    for frame in range(frame_start, frame_end + 1):
+        scene.frame_set(frame)
+
+        # 3. CRITICAL: Force Dependency Graph Update
+        # This tells Blender's modifier stack to compute physics
+        # for the current frame based on previous frame's state.
+        bpy.context.view_layer.update()
+
+        # 4. Render immediately
+        scene.render.filepath = os.path.join(output_dir, f"render_{frame:04d}.png")
+        bpy.ops.render.render(write_still=True)
+
+        print(f"Frame {frame}/{frame_end} rendered")
+
+    print(f"Live render complete: {frame_end - frame_start + 1} frames")
+'''
+
+BAKE_EXPORT_TEMPLATE = '''
+def run_bake_export(output_dir: str, frame_start: int, frame_end: int):
+    """
+    Standard pattern for volumetric simulations (Fluid/MantaFlow).
+
+    Steps:
+    1. Bake simulation to cache
+    2. Export VDB files
+    3. Optionally render preview frames
+    """
+    import bpy
+    import os
+
+    scene = bpy.context.scene
+    scene.frame_start = frame_start
+    scene.frame_end = frame_end
+
+    # Find domain object
+    domain = None
+    for obj in bpy.data.objects:
+        if obj.type == 'MESH' and obj.modifiers:
+            for mod in obj.modifiers:
+                if mod.type == 'FLUID' and mod.fluid_type == 'DOMAIN':
+                    domain = obj
+                    break
+
+    if not domain:
+        raise RuntimeError("No fluid domain found")
+
+    # Bake simulation
+    bpy.context.view_layer.objects.active = domain
+    bpy.ops.fluid.bake_all(bake=True)
+
+    # VDB export handled by domain cache settings
+    print(f"Bake complete: {domain.modifiers['Fluid'].domain_settings.cache_directory}")
+'''
+
+def get_execution_pattern(pattern_name: str) -> str:
+    """Get the execution pattern template code."""
+    patterns = {
+        "live_render": LIVE_RENDER_TEMPLATE,
+        "bake_export": BAKE_EXPORT_TEMPLATE,
+    }
+    return patterns.get(pattern_name, BAKE_EXPORT_TEMPLATE)
+
+def inject_execution_pattern(script_content: str, pattern_name: str) -> str:
+    """Inject the appropriate execution pattern into a generated script."""
+    pattern_code = get_execution_pattern(pattern_name)
+    return script_content.replace("# EXECUTION_PATTERN_PLACEHOLDER", pattern_code)
+```
+
+### Task 2.5.3: Custom/Generic Effect Type Support
+
+**File:** `agents/script-generator/server.py`
+
+**Enhancement to `generate_script()` tool:**
+```python
+@mcp.tool
+async def generate_script(
+    effect_type: str,
+    description: str,
+    output_name: str,
+    resolution: int = 96,
+    frame_start: int = 1,
+    frame_end: int = 50,
+    template_name: str = None,
+    technique_name: str = None,
+    force_random_technique: bool = False
+) -> dict:
+    """Generate a Blender script with support for all effect types."""
+
+    # Import effect registry
+    from effect_registry import get_effect_category, get_simulation_pattern
+
+    category = get_effect_category(effect_type)
+
+    if effect_type == "custom" or category == "custom":
+        # Bypass template selection - use pure LLM generation
+        script = await generate_custom_script(
+            description=description,
+            output_name=output_name,
+            frame_start=frame_start,
+            frame_end=frame_end
+        )
+    elif category == "mesh":
+        # Use mesh physics templates with live render pattern
+        template = select_mesh_template(effect_type, technique_name)
+        script = await generate_from_template(
+            template=template,
+            description=description,
+            output_name=output_name,
+            resolution=resolution,
+            frame_start=frame_start,
+            frame_end=frame_end
+        )
+        # Inject live render execution pattern
+        script = inject_execution_pattern(script, "live_render")
+    else:
+        # Existing volumetric flow (unchanged)
+        template = select_template(effect_type, technique_name)
+        script = await generate_from_template(
+            template=template,
+            description=description,
+            output_name=output_name,
+            resolution=resolution,
+            frame_start=frame_start,
+            frame_end=frame_end
+        )
+
+    return {
+        "status": "success",
+        "script_path": f"assets/blender_scripts/generated/{output_name}.py",
+        "effect_type": effect_type,
+        "category": category,
+        "simulation_pattern": get_simulation_pattern(effect_type)
+    }
+
+
+async def generate_custom_script(description: str, output_name: str,
+                                  frame_start: int, frame_end: int) -> str:
+    """Generate a script purely from description without templates.
+
+    Uses LLM to write the entire Blender Python script based on
+    the natural language description. No template constraints.
+    """
+    # This would call out to an LLM or use advanced code generation
+    # For now, return a skeleton that requires manual completion
+    return f'''
+# Custom Blender Script: {output_name}
+# Description: {description}
+# Generated without template - requires manual verification
+
+import bpy
+
+# TODO: Implement based on description
+# Frame range: {frame_start} to {frame_end}
+
+print("Custom script placeholder - implement based on description")
+'''
+```
+
+### Task 2.5.4: Soft Body Stability Settings (Knowledge Base Entry)
+
+**File:** `agents/experiment-tracker/knowledge_base/soft_body_stability.json` (new)
+
+Based on Gemini 3 Pro's discoveries during the Jelly Rabbit task:
+
+```json
+{
+  "category": "soft_body",
+  "title": "Soft Body Stability Settings for Procedural Meshes",
+  "source": "Gemini 3 Pro - Jelly Rabbit Task (2026-01-03)",
+  "rules": [
+    {
+      "parameter": "step_min",
+      "recommended_value": 20,
+      "default_value": 5,
+      "rationale": "Low substeps cause jitter explosions in procedural meshes"
+    },
+    {
+      "parameter": "step_max",
+      "recommended_value": 100,
+      "default_value": 10,
+      "rationale": "Allow adaptive stepping for collision resolution"
+    },
+    {
+      "parameter": "damping",
+      "recommended_value": 2.0,
+      "default_value": 0.5,
+      "rationale": "High damping prevents energy buildup and NaN explosions"
+    },
+    {
+      "parameter": "goal_spring",
+      "recommended_value": 0.3,
+      "default_value": 0.7,
+      "rationale": "Lower goal spring allows more jelly-like deformation",
+      "note": "Blender 5.0+ uses 'goal_spring', earlier versions use 'stiffness'"
+    }
+  ],
+  "warnings": [
+    {
+      "condition": "Joined primitives (e.g., multiple spheres)",
+      "problem": "Internal geometry overlaps cause self-collision explosion",
+      "solution": "Apply Voxel Remesh modifier before soft body to create manifold skin",
+      "code": "bpy.ops.object.modifier_add(type='REMESH'); mod.mode='VOXEL'; mod.voxel_size=0.05"
+    },
+    {
+      "condition": "Using bpy.ops.ptcache.bake_all() headless",
+      "problem": "Often fails silently or produces empty cache",
+      "solution": "Use live_render pattern with view_layer.update() per frame"
+    }
+  ]
+}
+```
+
+---
+
 ## Phase 3: Intelligent Technique Selection (Priority: HIGH)
 
 **Enhanced from original plan with formal exploration/exploitation.**
@@ -981,6 +1344,154 @@ def compare_lpips(image1_path: str, image2_path: str) -> LPIPSResult:
 
 **File:** `agents/asset-evaluator/decision_tree.py` (new)
 
+### Task 5.3: Effect Type Evaluation Registry (NEW - Gemini Feedback)
+
+**Problem:** Evaluator penalizes clean mesh geometry because it expects high-frequency noise typical of volumetric effects. A perfectly rendered mesh scores "NO STRUCTURE" / "LOW CONTRAST".
+
+**File:** `agents/asset-evaluator/effect_evaluators.py` (new)
+
+**Implementation:**
+```python
+"""Effect Type Evaluation Registry - Different metrics for different effect categories."""
+
+EVALUATORS = {
+    "volumetric": {
+        "name": "Volumetric VFX Evaluator",
+        "metrics": [
+            "edge_density",        # High-frequency detail
+            "noise_frequency",     # Turbulent patterns
+            "density_variance",    # Volume variation
+            "warm_ratio",          # Fire/explosion warmth
+            "dynamic_range"        # Brightness variation
+        ],
+        "thresholds": {
+            "structure": 0.3,      # Expect visible texture
+            "dynamic_range": 0.4,  # Expect contrast
+            "edge_density": 0.2    # Expect detail edges
+        },
+        "pass_score": 60,
+        "floor_score": 40
+    },
+    "mesh": {
+        "name": "Mesh Physics Evaluator",
+        "metrics": [
+            "surface_smoothness",  # Clean geometry is GOOD
+            "silhouette_clarity",  # Clear object boundary
+            "specular_highlights", # Material response
+            "motion_blur_quality", # Animation smoothness
+            "shadow_definition"    # Contact shadows
+        ],
+        "thresholds": {
+            "smoothness": 0.7,     # Expect smooth surfaces
+            "clarity": 0.6,        # Clear edges
+            "shadow": 0.3          # Visible shadows
+        },
+        "pass_score": 60,
+        "floor_score": 40
+    },
+    "custom": {
+        "name": "Semantic-Only Evaluator",
+        "metrics": [
+            "clip_score"           # Only semantic matching
+        ],
+        "thresholds": {
+            "clip": 0.55
+        },
+        "pass_score": 55,          # Lower bar for custom
+        "floor_score": 30
+    }
+}
+
+def get_evaluator_for_effect(effect_type: str) -> dict:
+    """Get the appropriate evaluator configuration for an effect type."""
+    from effect_registry import get_effect_category
+    category = get_effect_category(effect_type)
+    return EVALUATORS.get(category, EVALUATORS["volumetric"])
+
+def evaluate_with_category_awareness(image_path: str, effect_type: str) -> dict:
+    """Evaluate using category-appropriate metrics."""
+    evaluator = get_evaluator_for_effect(effect_type)
+
+    if evaluator["name"] == "Mesh Physics Evaluator":
+        # Use mesh-appropriate metrics (smooth is good, not bad)
+        return evaluate_mesh_render(image_path, evaluator)
+    elif evaluator["name"] == "Semantic-Only Evaluator":
+        # Skip visual metrics, use CLIP only
+        return evaluate_semantic_only(image_path)
+    else:
+        # Default volumetric evaluation
+        return evaluate_volumetric_render(image_path, evaluator)
+```
+
+### Task 5.4: JSON Serialization Fix (NEW - Gemini Feedback)
+
+**Problem:** `extract_vfx_diagnostics` crashes with `Object of type bool is not JSON serializable` because numpy types aren't handled.
+
+**File:** `agents/asset-evaluator/server.py`
+
+**Implementation:**
+```python
+import json
+import numpy as np
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types."""
+
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.void):
+            return None
+        return super().default(obj)
+
+
+def safe_json_dumps(obj: any) -> str:
+    """Safely serialize any object to JSON, handling numpy types."""
+    return json.dumps(obj, cls=NumpyJSONEncoder)
+
+
+# Apply to all MCP tool returns that use JSON:
+
+@mcp.tool
+def extract_vfx_diagnostics(image_path: str) -> str:
+    """Extract VFX-specific quality diagnostics from an image."""
+    result = _compute_diagnostics(image_path)
+    return safe_json_dumps(result)  # Use safe encoder
+
+
+@mcp.tool
+def evaluate_vfx_quality(image_path: str, effect_type: str = "explosion") -> str:
+    """Compute VFX quality score with actionable issues."""
+    result = _evaluate_quality(image_path, effect_type)
+    return safe_json_dumps(result)  # Use safe encoder
+```
+
+**Testing:**
+```python
+# Test cases for numpy serialization
+import numpy as np
+
+test_obj = {
+    "bool_value": np.bool_(True),
+    "int_value": np.int64(42),
+    "float_value": np.float32(3.14),
+    "array_value": np.array([1, 2, 3]),
+    "nested": {
+        "np_bool": np.bool_(False)
+    }
+}
+
+result = safe_json_dumps(test_obj)
+# Should not raise "Object of type bool is not JSON serializable"
+assert '"bool_value": true' in result
+```
+
 ---
 
 ## Phase 6: Session Resumption (Priority: LOW)
@@ -1063,15 +1574,21 @@ Phase 0.5: Skill Enhancement ✅ COMPLETE (2026-01-03)
 ├── Task 0.5.4: Add research integration ✅
 └── Task 0.5.5: Add quality decision tree ✅
 
-Phase 1: Orchestrator Reliability
-├── Task 1.1: MCP tool execution verification
-├── Task 1.2: Workflow tracing
-├── Task 1.3: Health checks
-└── Task 1.4: Formal state machine
+Phase 1: Orchestrator Reliability ✅ COMPLETE (2026-01-04)
+├── Task 1.1: MCP tool execution verification ✅
+├── Task 1.2: Workflow tracing ✅
+├── Task 1.3: Health checks ✅
+└── Task 1.4: Formal state machine ✅
 
 Phase 2: Pre-Execution Validation
 ├── Task 2.1: Blender parameter validation
 └── Task 2.2: Add VALIDATE_SCRIPT state
+
+Phase 2.5: Simulation Type Extensibility (NEW - Gemini Feedback)
+├── Task 2.5.1: Effect type registry
+├── Task 2.5.2: Live render execution pattern
+├── Task 2.5.3: Custom/generic effect type support
+└── Task 2.5.4: Soft body stability knowledge base entry
 
 Phase 3: Intelligent Technique Selection
 ├── Task 3.1: Technique performance table
@@ -1085,7 +1602,9 @@ Phase 4: Knowledge Base Integration
 
 Phase 5: Evaluation Reliability
 ├── Task 5.1: LPIPS lazy loading guarantee
-└── Task 5.2: Quality decision tree
+├── Task 5.2: Quality decision tree
+├── Task 5.3: Effect type evaluation registry (NEW - Gemini Feedback)
+└── Task 5.4: JSON serialization fix ✅ (NEW - Gemini Feedback)
 
 Phase 6: Session Resumption
 ├── Task 6.1: State schema versioning
@@ -1104,13 +1623,17 @@ Phase 7: External Research (if time permits)
 | `agents/blender-orchestrator/tools.py` | 0.1 | MCP tool wrappers | ✅ DONE |
 | `agents/blender-orchestrator/circuit_breakers.py` | 0.4 | Circuit breaker classes | ✅ DONE |
 | `agents/blender-orchestrator/orchestrator.py` | 0.1 | Main orchestration class | ✅ EXISTS (enhanced) |
-| `agents/blender-orchestrator/tool_executor.py` | 1.1 | Execution verification | Pending |
-| `agents/blender-orchestrator/workflow_tracer.py` | 1.2 | Session tracing | Pending |
-| `agents/blender-orchestrator/health_check.py` | 1.3 | Server health checks | Pending |
-| `agents/blender-orchestrator/state_machine.py` | 1.4 | Formal state machine | Pending |
+| `agents/blender-orchestrator/tool_executor.py` | 1.1 | Execution verification | ✅ DONE |
+| `agents/blender-orchestrator/workflow_tracer.py` | 1.2 | Session tracing | ✅ DONE |
+| `agents/blender-orchestrator/health_check.py` | 1.3 | Server health checks | ✅ DONE |
+| `agents/blender-orchestrator/state_machine.py` | 1.4 | Formal state machine | ✅ DONE |
 | `agents/script-generator/validator.py` | 2.1 | Script validation | Pending |
 | `agents/script-generator/technique_selector.py` | 3.2 | UCB1 algorithm | Pending |
 | `agents/asset-evaluator/decision_tree.py` | 5.2 | Quality decision tree | Pending |
+| `agents/asset-evaluator/effect_evaluators.py` | 5.3 | Effect type evaluation registry | Pending |
+| `agents/script-generator/effect_registry.py` | 2.5.1 | Effect type registry | Pending |
+| `agents/blender-executor/execution_patterns.py` | 2.5.2 | Live render pattern | Pending |
+| `agents/experiment-tracker/knowledge_base/soft_body_stability.json` | 2.5.4 | Soft body knowledge | Pending |
 | `agents/iteration-controller/state_schema.py` | 6.1 | Schema versioning | Pending |
 
 ### Modify (Existing Files):
