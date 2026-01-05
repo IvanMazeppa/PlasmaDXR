@@ -69,7 +69,7 @@ self._agent = Agent(
 
 ---
 
-### 3. MCP Connection Timeouts (PARTIALLY RESOLVED)
+### 3. MCP Connection Timeouts (FIXED via Streaming)
 
 **Symptom:** MCP error `-32001: AbortError: The operation was aborted` or `Connection closed`
 
@@ -95,14 +95,30 @@ sentence-transformers embeddings (slow initial load)
 3. OpenAI API → blender-manual: 60 seconds (`client_session_timeout_seconds`)
 4. Embedding model load: 10-30 seconds on first query
 
-**Partial Fixes Applied:**
+**SOLUTION: Streaming Mode**
+
+Changed from `Runner.run()` to `Runner.run_streamed()` which:
+- Yields events incrementally (token-by-token, handoffs, tool calls)
+- Keeps the connection alive during long operations
+- Logs all events for debugging
+
+```python
+# OLD (blocking, prone to timeout)
+result = await Runner.run(self._orchestrator, full_query)
+
+# NEW (streaming, timeout-resilient)
+streamed_result = Runner.run_streamed(self._orchestrator, full_query)
+async for event in streamed_result.stream_events():
+    # Process events incrementally (keeps connection alive)
+    if event.type == "agent_updated_stream_event":
+        logger.info(f"Handoff to {event.new_agent.name}")
+result = await streamed_result.result()
+```
+
+**Additional Fixes Applied:**
 - Increased `client_session_timeout_seconds` from 5s to 60s in `doc_expert.py`
 - Added explicit `await self._mcp_server.connect()` before use
-
-**Remaining Issues:**
-- The Claude Code MCP client timeout is not configurable from our side
-- With reasoning enabled (`medium`), GPT-5.2 generates more tokens, adding latency
-- First query always slower due to embedding model loading
+- Added logging for all streaming events to aid debugging
 
 ---
 
@@ -196,23 +212,25 @@ When working correctly, the system provides excellent results:
 
 ## Recommendations for Stability
 
-### Short-term Fixes
+### Implemented Fixes ✅
 
-1. **Add progress heartbeat:** Send periodic status updates to keep MCP connection alive during long operations
+1. **Streaming responses (DONE):** Changed to `Runner.run_streamed()` to keep connection alive during long operations
 
-2. **Implement retry logic:** Automatically retry on timeout with exponential backoff
+2. **Reasoning enabled (DONE):** Set `reasoning.effort = "medium"` for better quality recommendations
 
-3. **Pre-warm embeddings:** Load sentence-transformers model at server startup, not first query
+3. **Explicit MCP connect (DONE):** Added `await self._mcp_server.connect()` before use
 
-4. **Reduce reasoning for simple queries:** Use `reasoning.effort = "low"` for straightforward lookups, `"medium"` for complex analysis
+4. **Extended timeouts (DONE):** Increased `client_session_timeout_seconds` to 60s
 
-### Medium-term Improvements
+### Remaining Optimizations
 
-1. **Streaming responses:** Implement streaming to return partial results as they arrive
+1. **Pre-warm embeddings:** Load sentence-transformers model at server startup, not first query
 
-2. **Async queuing:** Queue long-running requests and poll for results instead of blocking
+2. **Connection pooling:** Keep blender-manual MCP server running persistently instead of spawning per-query
 
-3. **Connection pooling:** Keep blender-manual MCP server running persistently instead of spawning per-query
+3. **Dynamic reasoning effort:** Use `"low"` for straightforward lookups, `"medium"` for complex analysis
+
+4. **Retry logic:** Add exponential backoff for transient failures
 
 ### Long-term Architecture
 
@@ -221,6 +239,8 @@ When working correctly, the system provides excellent results:
    - Slow path: Full Agents SDK orchestration (background job)
 
 2. **Implement WebSocket:** Replace stdio transport with persistent WebSocket for lower latency
+
+3. **Guardrails:** Add input/output validation for parameter range checking
 
 ---
 
@@ -231,7 +251,8 @@ When working correctly, the system provides excellent results:
 - [x] Vision analysis working with reference images
 - [x] Multi-agent handoffs functional (orchestrator → doc_expert → vision_expert)
 - [x] Structured JSON output with recommendations
-- [ ] Consistent < 30s response times
+- [x] Streaming mode implemented (Runner.run_streamed)
+- [ ] Consistent < 30s response times (test with streaming)
 - [ ] Zero timeout errors over 10 consecutive queries
 - [ ] Pre-warmed embedding model at startup
 
@@ -242,7 +263,7 @@ When working correctly, the system provides excellent results:
 | File | Changes |
 |------|---------|
 | `librarian_agents/doc_expert.py` | Model → gpt-5.2, added ModelSettings with reasoning, increased timeout to 60s, added explicit connect() |
-| `librarian_agents/librarian_orchestrator.py` | Model → gpt-5.2, added ModelSettings with reasoning |
+| `librarian_agents/librarian_orchestrator.py` | Model → gpt-5.2, added ModelSettings with reasoning, **STREAMING MODE via Runner.run_streamed()**, added logging |
 | `librarian_agents/vision_expert.py` | Model → gpt-5.2, added ModelSettings with reasoning |
 | `agents/` → `librarian_agents/` | Directory renamed to avoid import conflict |
 

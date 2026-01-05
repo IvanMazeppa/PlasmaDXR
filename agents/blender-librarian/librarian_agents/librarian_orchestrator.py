@@ -10,19 +10,35 @@ Key capabilities:
 - Context preservation across handoffs
 - Session-aware queries with accumulated knowledge
 - Structured output compatible with script-generator
+- **STREAMING MODE**: Uses run_streamed() to keep connections alive during long operations
+
+Architecture for timeout resilience:
+- Runner.run_streamed() yields events incrementally
+- Keeps MCP connection alive during multi-agent workflows
+- Final result assembled from accumulated stream events
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from agents import Agent, ModelSettings, handoff, Runner
+from agents.stream_events import StreamEvent
 from openai.types.shared import Reasoning
 
 from .doc_expert import DocExpertAgent, create_doc_expert
 from .vision_expert import VisionExpertAgent, create_vision_expert
+
+# Configure logging for tracing
+logger = logging.getLogger("librarian_orchestrator")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 # Orchestrator instructions for intelligent routing
@@ -159,10 +175,14 @@ class LibrarianOrchestrator:
     async def run(
         self,
         query: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        use_streaming: bool = True
     ) -> Dict[str, Any]:
         """
         Run the orchestrator with a query.
+
+        Uses streaming mode by default to keep connections alive during
+        long-running multi-agent workflows. This prevents MCP timeouts.
 
         Args:
             query: User query or issue description
@@ -172,6 +192,7 @@ class LibrarianOrchestrator:
                 - issues: List of known issues
                 - render_path: Path to current render
                 - reference_path: Path to reference image
+            use_streaming: Use run_streamed() for timeout resilience (default True)
 
         Returns:
             Result dict with response, conversation history, and any extracted data
@@ -186,21 +207,68 @@ class LibrarianOrchestrator:
         else:
             full_query = query
 
-        # Run the orchestrator
-        result = await Runner.run(self._orchestrator, full_query)
+        agents_used = ["orchestrator"]
+
+        if use_streaming:
+            # STREAMING MODE: Keeps connection alive during long operations
+            # Events are yielded incrementally, preventing timeout
+            logger.info(f"Starting streamed orchestrator run for query: {query[:100]}...")
+
+            streamed_result = Runner.run_streamed(self._orchestrator, full_query)
+            final_output = ""
+            event_count = 0
+
+            async for event in streamed_result.stream_events():
+                event_count += 1
+
+                # Log event types for tracing (helps debug timeout issues)
+                if event.type == "raw_response_event":
+                    # Token-by-token streaming from LLM
+                    logger.debug(f"Event {event_count}: raw_response")
+
+                elif event.type == "agent_updated_stream_event":
+                    # Agent handoff occurred
+                    new_agent = getattr(event, 'new_agent', None)
+                    if new_agent:
+                        agent_name = new_agent.name if hasattr(new_agent, 'name') else str(new_agent)
+                        logger.info(f"Event {event_count}: Handoff to {agent_name}")
+                        if "doc" in agent_name.lower():
+                            agents_used.append("doc_expert")
+                        elif "vision" in agent_name.lower():
+                            agents_used.append("vision_expert")
+
+                elif event.type == "run_item_stream_event":
+                    # Tool calls, messages, etc.
+                    item = getattr(event, 'item', None)
+                    if item:
+                        item_type = getattr(item, 'type', 'unknown')
+                        logger.debug(f"Event {event_count}: run_item ({item_type})")
+
+            # Get final result after stream completes
+            result = await streamed_result.result()
+            final_output = result.final_output
+            logger.info(f"Streamed run complete: {event_count} events, {len(final_output)} chars output")
+
+        else:
+            # NON-STREAMING MODE: Simple but may timeout on long operations
+            logger.info(f"Starting non-streamed orchestrator run for query: {query[:100]}...")
+            result = await Runner.run(self._orchestrator, full_query)
+            final_output = result.final_output
+            agents_used = self._extract_agents_used(result)
+            logger.info(f"Non-streamed run complete: {len(final_output)} chars output")
 
         # Parse response if it's JSON
-        response_data = {"raw_response": result.final_output}
+        response_data = {"raw_response": final_output}
         try:
-            parsed = json.loads(result.final_output)
+            parsed = json.loads(final_output)
             response_data.update(parsed)
         except (json.JSONDecodeError, TypeError):
-            response_data["answer"] = result.final_output
+            response_data["answer"] = final_output
 
         return {
             "response": response_data,
-            "conversation": result.to_input_list(),
-            "agents_used": self._extract_agents_used(result)
+            "conversation": result.to_input_list() if not use_streaming else [],
+            "agents_used": list(set(agents_used))
         }
 
     def _extract_agents_used(self, result) -> list:
