@@ -244,10 +244,10 @@ class LibrarianOrchestrator:
                         item_type = getattr(item, 'type', 'unknown')
                         logger.debug(f"Event {event_count}: run_item ({item_type})")
 
-            # Get final result after stream completes
-            result = await streamed_result.result()
-            final_output = result.final_output
-            logger.info(f"Streamed run complete: {event_count} events, {len(final_output)} chars output")
+            # FIXED: Access final_output directly after stream completes
+            # DO NOT call await streamed_result.result() - it hangs waiting for already-complete stream
+            final_output = streamed_result.final_output
+            logger.info(f"Streamed run complete: {event_count} events, {len(final_output) if final_output else 0} chars output")
 
         else:
             # NON-STREAMING MODE: Simple but may timeout on long operations
