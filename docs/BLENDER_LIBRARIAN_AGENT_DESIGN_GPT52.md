@@ -1,7 +1,5 @@
 ### Blender Librarian Agent (Blender 5.0.1 + Vision) — Design Position & Implementation Plan
 
-**Document purpose**: Provide a cohesive, highly detailed position on how to build a “Blender Librarian” agent with **vision** capabilities that is **trained on Blender 5.0.1 documentation**, and can translate render/evaluation feedback into **actionable Blender changes** (shader nodes, render settings, simulation params, bpy API code edits) for your VFX VDB pipeline.
-
 **Audience**: You (and other agent analyses you’ll collate) — intended as a practical engineering plan, not a marketing overview.
 
 **Key constraint**: Limited budget (~$20 OpenAI). This pushes us toward **local retrieval + selective GPT-5.2 calls** only when needed.
@@ -79,6 +77,32 @@ At minimum, it must:
   Source: Blender 5.0.1 manual + Python API HTML.  
   Function: given a query, return top-k doc hits + minimal snippets + paths.  
   Implementation: your existing `blender-manual` MCP server is already this.
+
+- **Project Artifact RAG (local, optional but recommended)**  
+  Source: *your* project’s text artifacts: orchestrator traces, Blender stdout/stderr, `docs/` writeups, experiment-tracker exports, PIX/CSV summaries, and any “known issues” runbooks.  
+  Implementation candidate: `agents/log-analysis-rag` (BM25 + FAISS hybrid retrieval + self-correcting workflow).  
+  Purpose: answer “have we seen this before?” and “what fixes worked in this repo?” — *separately* from Blender’s official docs.
+
+  **Why this is worth adding**: Blender’s manual tells you what knobs exist; your project artifacts tell you which knobs actually worked *in PlasmaDXR*, with your scripts/templates, your export path, your renderer expectations, and your evaluation metrics.
+
+  **Important constraints (current state of `log-analysis-rag`)**:
+
+  - It is currently optimized for **log-like text ingestion** and (in the current implementation) primarily loads `*.txt` line chunks.
+  - Its semantic retrieval path uses **NVIDIA embeddings** (`langchain_nvidia_ai_endpoints.NVIDIAEmbeddings`) and thus requires `NVIDIA_API_KEY`.
+  - Therefore, to repurpose it as a “general project vector store”, you likely want a small extension:
+    - ingest `*.log`, `*.md`, `*.json` (optionally `*.py`, `*.hlsl`) in addition to `*.txt`
+    - chunk docs by **paragraph/section** (not line-by-line) for long-form markdown
+    - (optional) swap embeddings backend to **local sentence-transformers** or **OpenAI embeddings** if you don’t want NVIDIA dependency
+
+  **How the Blender Librarian should use it** (recommended pattern):
+
+  - Use `blender-manual` for **authoritative Blender 5.0.1 facts** (nodes, settings, API types).
+  - Use `log-analysis-rag.query_logs()` for **project memory**:
+    - “blackbody blowout”, “temperature attribute”, “Filmic vs AgX”, “Principled Volume”
+    - “viewport vs F12 mismatch”
+    - “NanoVDB export scaling”, “VDB attribute ranges”
+    - specific error strings from Blender stdout/stderr
+  - Feed the top retrieved snippets (compact) into the GPT-5.2 synthesis step as “local evidence”.
 
 - **Vision Diagnoser (GPT-5.2 vision)**  
   Inputs: `render.png`, optional `reference.png`, optional ML metrics JSON.  

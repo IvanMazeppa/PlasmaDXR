@@ -19,7 +19,7 @@
 | Phase 4: Knowledge Base | ✅ COMPLETE | knowledge_client.py, mandatory warnings, conflict resolution |
 | Phase 5: Evaluation Reliability | 🔄 PARTIAL | Task 5.4 JSON fix done, others pending |
 | Phase 6: Session Resumption | ⏳ PENDING | State versioning, file validation |
-| Phase 7: External Research | 🔄 PARTIAL | Direct blender-manual lookups + optional Blender Librarian synthesis |
+| Phase 7: External Research | ✅ DESIGNED | Blender Librarian MCP server with GPT-5.2 vision + local doc retrieval |
 
 ---
 
@@ -48,7 +48,7 @@ SKILL.md (Workflow) → Claude Code Session → MCP Servers → State Layer
 | 1 | Orchestrator describes tools but may not execute | Original - mitigated by tool_executor.py |
 | 2 | Technique selection too random | ✅ FIXED Phase 3 |
 | 3 | Knowledge base not consulted | ✅ FIXED Phase 4 |
-| 4 | External research missing | Pending Phase 7 |
+| 4 | External research missing | ✅ DESIGNED Phase 7 |
 | 5 | Session resumption unreliable | Pending Phase 6 |
 | 6 | Missing core files | ✅ FIXED Phase 0.1 |
 | 7 | Dual state persistence | ✅ FIXED Phase 0.3 |
@@ -250,16 +250,49 @@ Check that script_path and render_path exist before resuming.
 
 ---
 
-### Phase 7: External Research
+### Phase 7: External Research ✅ DESIGNED
 
-When stuck (2+ iterations without improvement):
-1. `search_tutorials(topic, technique)`
-2. `search_vdb_workflow(query)`
-3. `list_techniques(effect_type)` and try different technique
+**Status:** Final plan complete, ready for implementation
 
-**Update (2026-01-04):**
-- Orchestrator direct mode now loads `blender-manual` and performs lightweight doc pulls on plateaus / sun color issues.
-- Added `agents/blender-librarian` MCP server: combines `blender-manual` doc retrieval with optional GPT-5.2 (vision) synthesis to propose `script-generator.modify_script()`-compatible changes.
+**Implementation:** `plans/feat-blender-librarian-FINAL.md`
+
+**Architecture (corrected Jan 2026 - Gemini 3 Pro's "corrections" were WRONG):**
+- **Model:** GPT-5.2 (released December 11, 2025 - current SOTA)
+- **API:** Responses API (recommended modern API, NOT legacy Chat Completions)
+- **Doc Retrieval:** Local `blender-manual` MCP tool (NOT OpenAI Vector Store)
+- **Images:** Resized to 512×512 before vision calls
+
+**Note:** Gemini 3 Pro incorrectly claimed GPT-5.2 doesn't exist. Web research confirmed
+GPT-5.2 was released December 11, 2025 with variants: gpt-5.2 (Thinking), gpt-5.2-pro,
+gpt-5.2-chat-latest (Instant). The Responses API (`client.responses.create()`) is
+OpenAI's recommended API since August 2025.
+
+**Components:**
+1. **Playbook System** (FREE) - Known fixes for common issues
+2. **Ground Truth Cache** (FREE) - Cache reference image analysis
+3. **Local Doc Retrieval** (FREE) - Uses existing `blender-manual` MCP server
+4. **GPT-5.2 Vision** (PAID) - Only on escalation when stuck
+5. **GPT-5.2 Synthesis** (PAID) - Combine docs + issues → safe modifications
+
+**Budget:** $20/month split: $14 docs, $6 vision
+
+**MCP Tools:**
+- `diagnose_render_issue(render_path, reference_path, effect_type, current_issues)`
+- `get_modification_advice(issues, effect_type, current_params)`
+- `get_budget_status()`
+- `add_to_playbook(effect_type, symptom, fix, confidence)`
+
+**Escalation Trigger:** 2+ iterations without improvement, or repeated same issue category
+
+**User Setup Required:**
+1. OpenAI API key in `~/.plasmadxr_secrets`
+2. Python venv with `openai`, `tenacity`, `pillow`, `mcp`
+3. MCP server registration in Claude Code settings
+
+**Files to Create:**
+- `agents/blender-librarian/server.py` - Main MCP server
+- `agents/blender-librarian/budget_tracker.json` - Cost tracking
+- `agents/blender-librarian/playbooks/solar_playbook.json` - Known fixes
 
 ---
 
@@ -288,6 +321,8 @@ When stuck (2+ iterations without improvement):
 |------|-------|
 | `agents/asset-evaluator/effect_evaluators.py` | 5.3 |
 | `agents/iteration-controller/state_schema.py` | 6.1 |
+| `agents/blender-librarian/server.py` | 7.1 |
+| `agents/blender-librarian/playbooks/solar_playbook.json` | 7.2 |
 
 ### Modified
 | File | Changes |
@@ -323,3 +358,6 @@ When stuck (2+ iterations without improvement):
 - `docs/MULTI_AGENT_PIPELINE_ANALYSIS.md` - System documentation
 - `.claude/skills/blender-orchestrator/SKILL.md` - Skill definition
 - `docs/GEMINI_FEEDBACK_ANALYSIS_AND_PLAN_AMENDMENTS.md` - Gemini 3 Pro feedback
+- `plans/feat-blender-librarian-FINAL.md` - **Phase 7 implementation plan**
+- `docs/GPT52_BLENDER_LIBRARIAN_MERGED_DESIGN.md` - Full architectural design
+- `docs/FEEDBACK_AND_CORRECTIONS_LIBRARIAN_AGENT.md` - Gemini corrections to original plan

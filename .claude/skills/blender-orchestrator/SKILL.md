@@ -104,6 +104,13 @@ The orchestrator coordinates these specialized agents:
 - Finds tutorials and techniques
 - Provides API reference
 
+**7. blender-librarian** (GPT-5.2 powered)
+- Uses GPT-5.2 vision to diagnose what metrics miss
+- Grounds recommendations in Blender documentation
+- Tracks budget to stay within $20/month
+- Learns successful fixes for future FREE lookups
+- Tools: `diagnose_render_issue`, `get_modification_advice`, `get_budget_status`, `add_to_playbook`
+
 ## Quality Thresholds
 
 | Metric | Threshold | Description |
@@ -527,6 +534,106 @@ Call: mcp__asset-evaluator__evaluate_vfx_quality(
 - Provide the best iteration's output paths (`best_render_path`, `best_script_path`)
 - Suggest manual refinements based on remaining issues
 - Save state for potential resume
+
+### Stage 5.5: Escalate to Blender Librarian (GPT-5.2 Vision)
+
+**Trigger Conditions:**
+- `iterations_without_improvement >= 2` AND
+- Research from blender-manual hasn't resolved the issue AND
+- Knowledge base suggestions haven't helped
+
+**Why This Stage Exists:**
+Local tools can get stuck changing the same few parameters without approaching ground truth.
+GPT-5.2 vision can identify visual problems that metrics miss (e.g., "the prominences look like cat ears, not natural loops").
+
+**Workflow:**
+
+1. **Check budget first:**
+   ```
+   Call: mcp__blender-librarian__get_budget_status()
+   ```
+   If `vision.can_afford = false`, skip to Stage 6 with note "Budget exhausted - manual review needed"
+
+2. **Diagnose with vision:**
+   ```
+   Call: mcp__blender-librarian__diagnose_render_issue(
+       render_path=<current_render>,
+       reference_path=<reference_image>,  # Ground truth
+       effect_type=<effect_type>,
+       current_issues=<issues_json>,
+       current_score=<vfx_score>
+   )
+   ```
+
+   **Parse the response:**
+   - `primary_issue`: The single most important thing to fix
+   - `diagnosis`: What's actually wrong (not what metrics say)
+   - `severity`: critical|high|medium|low
+   - `what_reference_has`: What we're missing vs ground truth
+
+3. **Get parameter modifications:**
+   ```
+   Call: mcp__blender-librarian__get_modification_advice(
+       effect_type=<effect_type>,
+       issues='["<primary_issue>", "<secondary_issues>"]',
+       current_params=<current_params_json>,
+       evaluator_scores=<scores_json>
+   )
+   ```
+
+   **Response priority (cost order):**
+   1. **Playbook match** (`source: "playbook"`, cost: $0.00) - Use immediately
+   2. **Doc synthesis** (`source: "gpt52_synthesis"`, cost: ~$0.02) - Use if playbook miss
+   3. **Budget exhausted** - Fall back to heuristic fixes
+
+4. **Apply the modifications:**
+   ```
+   Call: mcp__script-generator__modify_script(
+       script_path=<current_script>,
+       modifications=<librarian_modifications>
+   )
+   ```
+
+5. **If the fix works (score improves significantly):**
+   ```
+   Call: mcp__blender-librarian__add_to_playbook(
+       effect_type=<effect_type>,
+       symptom=<primary_issue>,
+       fix=<modifications_json>,
+       confidence=0.8
+   )
+   ```
+   This makes the fix FREE for future sessions.
+
+6. **Return to Stage 3** (Execute Blender) with librarian-suggested modifications
+
+**Budget Guardrails:**
+- Vision calls: Max $10/month (~200 diagnoses at $0.05 each)
+- Doc synthesis: Max $8/month (~400 calls at $0.02 each)
+- Playbook lookups: Unlimited (FREE)
+- If budget exhausted mid-session: Continue with local tools only
+
+**Escalation Decision Tree:**
+
+```
+iterations_without_improvement >= 2?
+  │
+  ├─ NO → Continue normal Stage 5 flow
+  │
+  └─ YES → Research tried?
+            │
+            ├─ NO → Try Research Integration first (Stage 5 research)
+            │
+            └─ YES → Budget available?
+                      │
+                      ├─ NO → Log "Budget exhausted" → Stage 6
+                      │
+                      └─ YES → ESCALATE TO BLENDER LIBRARIAN
+                                1. diagnose_render_issue()
+                                2. get_modification_advice()
+                                3. Apply & iterate
+                                4. Learn to playbook if success
+```
 
 ### Stage 6: Record Learning
 

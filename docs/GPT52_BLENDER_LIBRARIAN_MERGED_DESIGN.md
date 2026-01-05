@@ -36,7 +36,7 @@ This is NOT a fine-tuned model. It's a **tool-driven, doc-grounded, vision-assis
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐     │
 │  │  Local Doc RAG  │    │  Vision API     │    │  Playbook JSON      │     │
 │  │  (blender-manual│    │  (Render Critic)│    │  (Known Fixes)      │     │
-│  │   + OpenAI VS)  │    └─────────────────┘    └─────────────────────┘     │
+│  │   + optional VS)│    └─────────────────┘    └─────────────────────┘     │
 │  └─────────────────┘                                                        │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -52,10 +52,47 @@ This is NOT a fine-tuned model. It's a **tool-driven, doc-grounded, vision-assis
 ### Key Design Decisions
 
 1. **Local-first retrieval** - Use existing blender-manual MCP server (free)
+   - **Project Artifact RAG (repurpose existing)** - Use `agents/log-analysis-rag` as a local “project memory” retriever for PIX/logs/blender stdout/docs (see section below)
 2. **Selective GPT-5.2** - Only call OpenAI at escalation points
 3. **Constrained outputs** - Only modifications pipeline can safely apply
 4. **Cached ground truth reports** - Vision analysis of reference images cached for reuse
 5. **Documentation gets majority of budget** - Per user preference
+
+---
+
+## Repurposing `log-analysis-rag` as Project RAG (recommended)
+
+You already have a local hybrid retrieval agent (`agents/log-analysis-rag`) designed for PIX + log diagnostics (BM25 + FAISS + vector store). Even if it’s been unused, it’s a strong fit as the **project-specific RAG layer** for the Blender Librarian.
+
+### Why this helps the Blender Librarian
+
+`blender-manual` answers “what does Blender do?” but not “what worked in PlasmaDXR?”.  
+Project RAG answers:
+- prior successful parameter sets + code snippets (from `docs/`, session summaries, experiment-tracker outputs)
+- known failure modes you already hit (viewport vs F12, temperature attribute blowout, warm_ratio drift)
+- Blender execution errors and their fixes (from captured stdout/stderr logs)
+
+### Recommended division of responsibility
+
+- **`blender-manual`**: authoritative Blender docs + bpy API reference lookup (Blender 5.0.x)
+- **`log-analysis-rag`**: repo-local evidence + prior experiments + engineering notes (your “memory”)
+
+### Current constraints (important)
+
+As implemented today, `log-analysis-rag` is optimized for log-like corpora and (in code) primarily ingests `*.txt` line chunks, and its semantic embeddings default to NVIDIA endpoints (requires `NVIDIA_API_KEY`).
+
+To repurpose it for broader “project docs”, plan a small extension:
+- Ingest: `*.log`, `*.md`, `*.json` (optionally `*.py`, `*.hlsl`) in addition to `*.txt`
+- Chunk docs by section/paragraph (not line-by-line) for markdown + design docs
+- Optionally swap embeddings backend to local sentence-transformers or OpenAI embeddings if you want to remove NVIDIA dependency
+
+### How the Librarian should use it
+
+At escalation points, fetch:
+- Top-k project snippets via `mcp__log-analysis-rag__query_logs(semantic_query="...")`
+- Top-k Blender doc hits via `mcp__blender-manual__search_*`
+
+Then include both in the GPT-5.2 synthesis prompt as grounded evidence.
 
 ---
 
