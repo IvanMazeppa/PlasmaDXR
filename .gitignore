@@ -113,6 +113,9 @@ logs/
 *.temp
 *.cache
 
+# Local dev logs (do not commit)
+OPENAI_DASHBOARD_LOG.md
+
 # ============================================================
 # Large Binary Assets (use Git LFS or external storage)
 # ============================================================
@@ -127,6 +130,10 @@ vdb_cache/
 
 # Image sequences (use external storage)
 images/NanoVDB/
+images/evaluation_outputs/
+
+# Local agent runtime state (do not commit)
+agents/blender-librarian/agents/
 
 # ============================================================
 # PIX / GPU Debugging
