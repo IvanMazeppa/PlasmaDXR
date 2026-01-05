@@ -17,5 +17,56 @@
         "_WINDOWS",
         "NOMINMAX",
         "USE_PIX"
-    ]
+    ],
+
+    // Prevent Cursor/VSCode from file-watching and indexing massive generated/cache trees
+    // (especially VDB caches under build/). This reduces WSL remote disconnects when opening
+    // Explorer/Source Control panes.
+    "files.watcherExclude": {
+        "**/.git/**": true,
+        "**/build/**": true,
+        "**/build-*/**": true,
+        "**/build-vs2022/**": true,
+        "**/cmake-build-*/**": true,
+        "**/logs/**": true,
+        "**/PIX/**": true,
+        "**/screenshots/**": true,
+        "**/VDBs/**": true,
+        "**/*.vdb": true,
+        "**/*.nvdb": true,
+
+        // Large source asset packs (still openable manually, just not watched/indexed)
+        "assets/volumes/**": true,
+        "assets/VDB_packs/**": true,
+
+        // Large agent datasets/caches
+        "agents/blender-manual/**": true
+    },
+    "search.exclude": {
+        "**/build/**": true,
+        "**/build-*/**": true,
+        "**/build-vs2022/**": true,
+        "**/cmake-build-*/**": true,
+        "**/logs/**": true,
+        "**/PIX/**": true,
+        "**/screenshots/**": true,
+        "**/VDBs/**": true,
+        "**/*.vdb": true,
+        "**/*.nvdb": true,
+        "assets/volumes/**": true,
+        "assets/VDB_packs/**": true,
+        "agents/blender-manual/**": true
+    },
+    "files.exclude": {
+        "**/build": true,
+        "**/build-*": true,
+        "**/build-vs2022": true,
+        "**/cmake-build-*": true,
+        "**/VDBs": true,
+        "**/*.vdb": true,
+        "**/*.nvdb": true
+    },
+
+    // Optional: reduce Git extension background work in huge repos (you can still refresh manually)
+    "git.autorefresh": false
 }

@@ -1,0 +1,21 @@
+# Prevent Cursor from indexing massive generated/cache trees (especially VDB caches).
+# These are still accessible if you open files directly; this just keeps the workspace stable.
+
+**/build/**
+**/build-*/**
+**/build-vs2022/**
+**/cmake-build-*/**
+**/logs/**
+**/PIX/**
+**/screenshots/**
+**/VDBs/**
+**/*.vdb
+**/*.nvdb
+
+# Large source asset packs
+assets/volumes/**
+assets/VDB_packs/**
+
+# Large agent datasets/caches
+agents/blender-manual/**
+

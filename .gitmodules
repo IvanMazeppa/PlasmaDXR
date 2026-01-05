@@ -1,0 +1,12 @@
+[submodule "DLSS"]
+	path = DLSS
+	url = https://github.com/NVIDIA/DLSS.git
+
+[submodule "external/RTXDI-Runtime"]
+	path = external/RTXDI-Runtime
+	url = https://github.com/NVIDIA-RTX/RTXDI-Library.git
+
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui.git
+
