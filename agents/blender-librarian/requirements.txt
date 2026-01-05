@@ -1,6 +1,15 @@
+# Core MCP dependencies
 mcp>=1.0.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 Pillow>=10.0.0  # Image resizing for vision API
 nest_asyncio>=1.5.0  # For async/sync bridging in MCP tool context
+
+# Phase 8: Tool Calling (existing)
+openai>=1.50.0
+httpx>=0.27.0
+tenacity>=8.2.0
+
+# Phase 9: OpenAI Agents SDK
+openai-agents>=0.0.1  # Multi-agent orchestration with native MCP support
 

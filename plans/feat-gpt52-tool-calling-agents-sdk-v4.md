@@ -4,7 +4,7 @@
 **Focus:** GPT-5.2 Integration with Blender Documentation via Tool Calling & Agents SDK
 **Priority:** OpenAI work highest priority per user request
 **Created:** 2026-01-05
-**Status:** PLANNING
+**Status:** IN PROGRESS
 
 ---
 
@@ -27,8 +27,8 @@ Both approaches enable GPT-5.2 to intelligently search Blender documentation and
 | Phase 5 | 🔄 PARTIAL | Evaluation reliability (Task 5.4 done) |
 | Phase 6 | ⏳ PENDING | Session resumption |
 | Phase 7 | ✅ COMPLETE | Blender Librarian MCP server with GPT-5.2 vision |
-| **Phase 8** | 🆕 NEW | Tool Calling integration with blender-manual |
-| **Phase 9** | 🆕 NEW | OpenAI Agents SDK multi-agent framework |
+| **Phase 8** | ✅ COMPLETE | Tool Calling integration with blender-manual |
+| **Phase 9** | 🔄 IN PROGRESS | OpenAI Agents SDK multi-agent framework (automation + persistence) |
 
 ---
 
@@ -1123,6 +1123,300 @@ async def search_docs_with_agents_sdk(
     return json.dumps(result, indent=2)
 ```
 
+### Task 9.6: Cross-Session Learning with Sessions Primitive
+
+**File:** `agents/blender-librarian/agents/session_manager.py`
+
+The OpenAI Agents SDK provides a Sessions primitive for automatic conversation state management. This enables cross-session learning where knowledge accumulates across runs.
+
+```python
+"""
+Session Manager for Cross-Session Learning
+
+Uses OpenAI Agents SDK Sessions to:
+1. Persist conversation history across agent runs
+2. Accumulate learned parameter patterns
+3. Remember successful fixes for similar issues
+4. Provide context from previous sessions
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+
+from agents import Agent, RunResult
+from openai.types.beta.threads import Run
+
+
+@dataclass
+class SessionContext:
+    """Persistent context that survives across sessions."""
+    session_id: str
+    created_at: str
+    last_active: str
+    effect_type: str = ""
+    successful_fixes: List[Dict[str, Any]] = field(default_factory=list)
+    failed_experiments: List[Dict[str, Any]] = field(default_factory=list)
+    parameter_history: Dict[str, List[float]] = field(default_factory=dict)
+    quality_trajectory: List[float] = field(default_factory=list)
+
+
+class SessionManager:
+    """
+    Manages persistent sessions for cross-session learning.
+
+    Key capabilities:
+    - Automatic session restoration on agent start
+    - Persistent storage of successful parameter patterns
+    - Cross-session knowledge accumulation
+    - Session context injection into agent prompts
+    """
+
+    SESSIONS_DIR = Path("agents/blender-librarian/sessions")
+
+    def __init__(self, effect_type: str = ""):
+        """Initialize session manager."""
+        self.effect_type = effect_type
+        self.sessions_dir = self.SESSIONS_DIR
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self.current_session: Optional[SessionContext] = None
+
+    def get_or_create_session(self, session_id: Optional[str] = None) -> SessionContext:
+        """
+        Get existing session or create new one.
+
+        Args:
+            session_id: Optional session ID to restore. If None, creates new session.
+
+        Returns:
+            SessionContext with accumulated learning
+        """
+        if session_id:
+            session_path = self.sessions_dir / f"{session_id}.json"
+            if session_path.exists():
+                with open(session_path, 'r') as f:
+                    data = json.load(f)
+                self.current_session = SessionContext(**data)
+                self.current_session.last_active = datetime.now().isoformat()
+                return self.current_session
+
+        # Create new session
+        new_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.current_session = SessionContext(
+            session_id=new_id,
+            created_at=datetime.now().isoformat(),
+            last_active=datetime.now().isoformat(),
+            effect_type=self.effect_type
+        )
+        return self.current_session
+
+    def record_successful_fix(
+        self,
+        issue: str,
+        modifications: Dict[str, Any],
+        score_improvement: float,
+        doc_sources: List[str]
+    ):
+        """
+        Record a successful fix for cross-session learning.
+
+        Args:
+            issue: The issue that was fixed
+            modifications: Parameter changes that worked
+            score_improvement: How much the quality score improved
+            doc_sources: Documentation sources used
+        """
+        if not self.current_session:
+            return
+
+        self.current_session.successful_fixes.append({
+            "timestamp": datetime.now().isoformat(),
+            "issue": issue,
+            "modifications": modifications,
+            "score_improvement": score_improvement,
+            "doc_sources": doc_sources
+        })
+        self._save_session()
+
+    def record_failed_experiment(
+        self,
+        issue: str,
+        modifications: Dict[str, Any],
+        reason: str
+    ):
+        """
+        Record a failed experiment to avoid repeating.
+
+        Args:
+            issue: The issue we tried to fix
+            modifications: Parameter changes that didn't work
+            reason: Why it failed
+        """
+        if not self.current_session:
+            return
+
+        self.current_session.failed_experiments.append({
+            "timestamp": datetime.now().isoformat(),
+            "issue": issue,
+            "modifications": modifications,
+            "reason": reason
+        })
+        self._save_session()
+
+    def get_relevant_history(self, current_issue: str) -> Dict[str, Any]:
+        """
+        Get relevant history for the current issue.
+
+        Args:
+            current_issue: Description of current issue
+
+        Returns:
+            Dict with relevant past fixes and failures
+        """
+        if not self.current_session:
+            return {"fixes": [], "failures": []}
+
+        # Simple keyword matching (could be enhanced with embeddings)
+        keywords = current_issue.lower().split()
+
+        relevant_fixes = []
+        for fix in self.current_session.successful_fixes:
+            if any(kw in fix["issue"].lower() for kw in keywords):
+                relevant_fixes.append(fix)
+
+        relevant_failures = []
+        for fail in self.current_session.failed_experiments:
+            if any(kw in fail["issue"].lower() for kw in keywords):
+                relevant_failures.append(fail)
+
+        return {
+            "fixes": relevant_fixes[-5:],  # Last 5 relevant
+            "failures": relevant_failures[-3:]  # Last 3 relevant
+        }
+
+    def inject_session_context(self, base_instructions: str) -> str:
+        """
+        Inject session context into agent instructions.
+
+        Args:
+            base_instructions: Original agent instructions
+
+        Returns:
+            Instructions with session context appended
+        """
+        if not self.current_session or not self.current_session.successful_fixes:
+            return base_instructions
+
+        context_section = "\n\n## CROSS-SESSION LEARNING CONTEXT\n\n"
+        context_section += "You have accumulated knowledge from previous sessions:\n\n"
+
+        # Add successful patterns
+        if self.current_session.successful_fixes:
+            context_section += "### Successful Fixes (PROVEN TO WORK):\n"
+            for fix in self.current_session.successful_fixes[-5:]:
+                context_section += f"- Issue: {fix['issue']}\n"
+                context_section += f"  Fix: {json.dumps(fix['modifications'])}\n"
+                context_section += f"  Improvement: +{fix['score_improvement']:.1f} points\n\n"
+
+        # Add failures to avoid
+        if self.current_session.failed_experiments:
+            context_section += "### Failed Experiments (AVOID THESE):\n"
+            for fail in self.current_session.failed_experiments[-3:]:
+                context_section += f"- Issue: {fail['issue']}\n"
+                context_section += f"  Attempted: {json.dumps(fail['modifications'])}\n"
+                context_section += f"  Reason: {fail['reason']}\n\n"
+
+        return base_instructions + context_section
+
+    def _save_session(self):
+        """Save current session to disk."""
+        if not self.current_session:
+            return
+
+        session_path = self.sessions_dir / f"{self.current_session.session_id}.json"
+        with open(session_path, 'w') as f:
+            json.dump({
+                "session_id": self.current_session.session_id,
+                "created_at": self.current_session.created_at,
+                "last_active": self.current_session.last_active,
+                "effect_type": self.current_session.effect_type,
+                "successful_fixes": self.current_session.successful_fixes,
+                "failed_experiments": self.current_session.failed_experiments,
+                "parameter_history": self.current_session.parameter_history,
+                "quality_trajectory": self.current_session.quality_trajectory
+            }, f, indent=2)
+
+    def list_sessions(self) -> List[Dict[str, Any]]:
+        """List all available sessions."""
+        sessions = []
+        for session_file in self.sessions_dir.glob("*.json"):
+            with open(session_file, 'r') as f:
+                data = json.load(f)
+                sessions.append({
+                    "session_id": data["session_id"],
+                    "created_at": data["created_at"],
+                    "effect_type": data.get("effect_type", ""),
+                    "num_fixes": len(data.get("successful_fixes", [])),
+                    "num_failures": len(data.get("failed_experiments", []))
+                })
+        return sorted(sessions, key=lambda x: x["created_at"], reverse=True)
+```
+
+**Integration with Orchestrator:**
+
+Update `LibrarianOrchestrator` to use session management:
+
+```python
+# In librarian_orchestrator.py
+
+from .session_manager import SessionManager
+
+class LibrarianOrchestrator:
+    def __init__(self, session_id: Optional[str] = None):
+        self.session_manager = SessionManager()
+        self.session = self.session_manager.get_or_create_session(session_id)
+
+        # Inject session context into agent instructions
+        self.doc_expert = Agent(
+            name="doc_expert",
+            instructions=self.session_manager.inject_session_context(DOC_EXPERT_INSTRUCTIONS),
+            # ... rest of config
+        )
+
+    async def run(self, query: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        # Get relevant history for this issue
+        history = self.session_manager.get_relevant_history(query)
+
+        # Add history to context
+        context["session_history"] = history
+
+        # Run the agent
+        result = await Runner.run(self.orchestrator, query)
+
+        # After successful run, record the outcome
+        if result.success and result.modifications:
+            self.session_manager.record_successful_fix(
+                issue=query,
+                modifications=result.modifications,
+                score_improvement=context.get("score_improvement", 0),
+                doc_sources=result.doc_paths_used
+            )
+
+        return result
+```
+
+**Benefits:**
+- **Accumulated Wisdom**: Each session builds on previous successes
+- **Avoid Repeating Failures**: Don't try things that already failed
+- **Context Injection**: Agents get relevant history automatically
+- **Persistent Storage**: Knowledge survives across Claude Code windows
+- **Session Resumption**: Can continue from previous session by ID
+
 ---
 
 ## Data Contracts (Critical)
@@ -1294,8 +1588,9 @@ From asset-evaluator tools:
 3. [ ] Task 9.3: Vision expert agent
 4. [ ] Task 9.4: Orchestrator with handoffs
 5. [ ] Task 9.5: Integration with server.py
-6. [ ] Unit tests for Phase 9
-7. [ ] Comparison testing (tool calling vs SDK)
+6. [ ] Task 9.6: Cross-session learning (persistence)
+7. [ ] Unit tests for Phase 9
+8. [ ] Comparison testing (tool calling vs SDK)
 
 ---
 

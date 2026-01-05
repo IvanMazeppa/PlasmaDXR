@@ -730,6 +730,242 @@ def add_to_playbook(
     }, indent=2)
 
 
+# =============================================================================
+# OPENAI AGENTS SDK INTEGRATION (Phase 9)
+# =============================================================================
+
+_librarian_orchestrator = None
+
+def get_orchestrator():
+    """Lazy load the librarian orchestrator."""
+    global _librarian_orchestrator
+    if _librarian_orchestrator is None:
+        from librarian_agents.librarian_orchestrator import LibrarianOrchestrator
+        _librarian_orchestrator = LibrarianOrchestrator()
+    return _librarian_orchestrator
+
+
+@mcp.tool()
+async def search_docs_with_agents_sdk(
+    query: str,
+    effect_type: str = "general",
+    current_params: str = "{}",
+    issues: str = "[]",
+    include_vision: bool = False,
+    render_path: str = "",
+    reference_path: str = "",
+    session_id: str = ""
+) -> str:
+    """
+    Intelligent documentation search using OpenAI Agents SDK with multi-agent orchestration.
+
+    This tool uses the Agents SDK for autonomous agent handoffs:
+    - Documentation Expert: Searches blender-manual via native MCP support
+    - Vision Expert: Analyzes renders for visual issues (if include_vision=True)
+
+    The orchestrator automatically routes to the appropriate specialist based on your query.
+    Sessions persist learning across runs for improved recommendations over time.
+
+    Args:
+        query: Natural language question or request
+        effect_type: Type of effect (sun, star, explosion, fire, nebula, general)
+        current_params: JSON of current Blender parameters
+        issues: JSON array of current issues from evaluator
+        include_vision: Whether to enable vision analysis (requires render_path)
+        render_path: Path to current render (for vision analysis)
+        reference_path: Path to reference image (for comparison)
+        session_id: Optional session ID to resume cross-session learning
+
+    Returns:
+        JSON with answer, modifications, rationale, citations, and diagnosis (if vision used)
+
+    Cost: ~$0.02-0.08 per query depending on agent routing
+    """
+    # Check budget
+    estimated_cost = 0.05 if not include_vision else 0.10
+    if include_vision and not can_afford_vision(estimated_cost / 2):
+        budget = load_budget()
+        return json.dumps({
+            "error": "Vision budget exhausted for Agents SDK",
+            "vision_spent": budget.vision_spent,
+            "vision_budget": VISION_BUDGET,
+            "suggestion": "Set include_vision=False to use doc-only mode"
+        }, indent=2)
+
+    if not can_afford_docs(estimated_cost / 2):
+        budget = load_budget()
+        return json.dumps({
+            "error": "Doc budget exhausted for Agents SDK",
+            "doc_spent": budget.doc_spent,
+            "doc_budget": DOC_BUDGET,
+            "suggestion": "Use get_modification_advice with playbook lookup"
+        }, indent=2)
+
+    # Parse inputs
+    try:
+        params_dict = json.loads(current_params) if current_params and current_params != "{}" else {}
+        issues_list = json.loads(issues) if issues and issues != "[]" else []
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Invalid JSON input: {e}"}, indent=2)
+
+    # Build context
+    context = {
+        "effect_type": effect_type,
+        "current_params": params_dict,
+        "issues": issues_list,
+    }
+    if include_vision and render_path:
+        context["render_path"] = render_path
+        if reference_path:
+            context["reference_path"] = reference_path
+
+    # Get or initialize orchestrator
+    orchestrator = get_orchestrator()
+
+    try:
+        # Initialize with optional session
+        session_context = ""
+        if session_id:
+            from librarian_agents.session_manager import SessionManager
+            sm = SessionManager(effect_type=effect_type, backend="sqlite")
+            session = sm.get_or_create_session(session_id)
+            session_context = sm.inject_session_context("")
+
+        await orchestrator.initialize(session_context=session_context)
+
+        # Run the orchestrator
+        result = await orchestrator.run(query, context)
+
+        # Extract cost estimate from response
+        cost = estimated_cost  # Default estimate
+        response = result.get("response", {})
+
+        # Record spend
+        if include_vision:
+            record_spend("vision", cost / 2)
+        record_spend("doc", cost / 2)
+
+        # Format output
+        output = {
+            "source": "agents_sdk_orchestrator",
+            "agents_used": result.get("agents_used", ["orchestrator"]),
+            "cost": cost,
+            "success": True
+        }
+
+        # Merge response data
+        if isinstance(response, dict):
+            output.update(response)
+        else:
+            output["answer"] = str(response)
+
+        return json.dumps(output, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": f"Agents SDK error: {str(e)}",
+            "traceback": traceback.format_exc(),
+            "source": "agents_sdk_orchestrator"
+        }, indent=2)
+
+
+@mcp.tool()
+def get_session_info(session_id: str = "") -> str:
+    """
+    Get information about a learning session.
+
+    Sessions accumulate knowledge across agent runs:
+    - Successful fixes that can be reused
+    - Failed experiments to avoid
+    - Parameter change history
+    - Quality score trajectory
+
+    Args:
+        session_id: Session ID to query. If empty, lists all sessions.
+
+    Returns:
+        JSON with session info or list of available sessions
+    """
+    try:
+        from librarian_agents.session_manager import SessionManager
+
+        sm = SessionManager(backend="sqlite")
+
+        if session_id:
+            session = sm.get_or_create_session(session_id)
+            return json.dumps(sm.get_session_summary(), indent=2)
+        else:
+            sessions = sm.list_sessions()
+            return json.dumps({
+                "available_sessions": sessions,
+                "total_count": len(sessions),
+                "storage_backend": "sqlite"
+            }, indent=2)
+
+    except Exception as e:
+        return json.dumps({"error": str(e)}, indent=2)
+
+
+@mcp.tool()
+def record_fix_outcome(
+    session_id: str,
+    issue: str,
+    modifications: str,
+    success: bool,
+    score_improvement: float = 0.0,
+    reason: str = ""
+) -> str:
+    """
+    Record the outcome of a fix for cross-session learning.
+
+    Call this after applying modifications to track what works and what doesn't.
+    This enables the system to learn from experience and improve recommendations.
+
+    Args:
+        session_id: Session ID to record to
+        issue: The issue that was addressed
+        modifications: JSON of parameter changes that were applied
+        success: Whether the fix improved quality
+        score_improvement: How much the score improved (positive = better)
+        reason: Explanation of why it succeeded/failed
+
+    Returns:
+        Confirmation JSON
+    """
+    try:
+        from librarian_agents.session_manager import SessionManager
+
+        sm = SessionManager(backend="sqlite")
+        sm.get_or_create_session(session_id)
+
+        mods = json.loads(modifications) if isinstance(modifications, str) else modifications
+
+        if success:
+            sm.record_successful_fix(
+                issue=issue,
+                modifications=mods,
+                score_improvement=score_improvement,
+                doc_sources=[]  # Could be enhanced to track sources
+            )
+        else:
+            sm.record_failed_experiment(
+                issue=issue,
+                modifications=mods,
+                reason=reason
+            )
+
+        return json.dumps({
+            "status": "recorded",
+            "session_id": session_id,
+            "type": "success" if success else "failure",
+            "issue": issue
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({"error": str(e)}, indent=2)
+
+
 @mcp.tool()
 def search_docs_intelligent(
     query: str,
