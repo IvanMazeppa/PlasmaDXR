@@ -25,7 +25,9 @@ except ImportError:
 # Optional: Semantic search support (lazy-loaded to avoid MCP timeout)
 # The import is deferred to first use because sentence_transformers loads
 # PyTorch (~30s) which would cause MCP connection timeout
+# Set BLENDER_MCP_PREWARM_EMBEDDINGS=1 to load embeddings at startup (eliminates cold start)
 SEMANTIC_AVAILABLE = None  # Will be set on first check
+PREWARM_EMBEDDINGS = os.environ.get("BLENDER_MCP_PREWARM_EMBEDDINGS", "0") == "1"
 _numpy = None
 _SentenceTransformer = None
 
@@ -340,6 +342,57 @@ def load_embeddings() -> bool:
         logger.error(f"Failed to load embeddings: {e}")
         embeddings = None
         return False
+
+
+def prewarm_embeddings() -> bool:
+    """
+    Pre-warm embeddings at server startup to eliminate cold start latency.
+
+    Call this after build_index()/load_cache() but before mcp.run().
+    Loading happens in background-friendly chunks:
+    1. Import sentence_transformers + PyTorch (~10-15s)
+    2. Load embedding model weights (~5-10s)
+    3. Load embeddings from disk (~2-5s)
+
+    Total: 15-30s at startup instead of on first query (which causes timeout).
+
+    Enable via: BLENDER_MCP_PREWARM_EMBEDDINGS=1
+    """
+    import time
+    start_time = time.time()
+
+    logger.warning("Pre-warming embeddings (15-30s)...")
+
+    # Step 1: Import dependencies
+    logger.warning("  [1/3] Loading sentence-transformers...")
+    if not _check_semantic_available():
+        logger.warning("  Semantic search not available (sentence-transformers not installed)")
+        return False
+    import_time = time.time() - start_time
+    logger.warning(f"  [1/3] Dependencies loaded ({import_time:.1f}s)")
+
+    # Step 2: Load embedding model
+    logger.warning("  [2/3] Loading embedding model...")
+    if not load_embedding_model():
+        logger.warning("  Failed to load embedding model")
+        return False
+    model_time = time.time() - start_time - import_time
+    logger.warning(f"  [2/3] Model loaded ({model_time:.1f}s)")
+
+    # Step 3: Load embeddings from disk (or generate if missing)
+    logger.warning("  [3/3] Loading embeddings from disk...")
+    if not load_embeddings():
+        logger.warning("  No embeddings file found, generating...")
+        generate_embeddings()
+        if embeddings is None:
+            logger.warning("  Failed to generate embeddings")
+            return False
+    embed_time = time.time() - start_time - import_time - model_time
+    logger.warning(f"  [3/3] Embeddings ready ({embed_time:.1f}s)")
+
+    total_time = time.time() - start_time
+    logger.warning(f"Pre-warm complete: {len(embeddings) if embeddings is not None else 0} embeddings loaded ({total_time:.1f}s total)")
+    return True
 
 
 def semantic_search(query: str, top_k: int = 10) -> List[Dict]:
@@ -1553,6 +1606,17 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed to initialize: {e}")
         sys.exit(1)
+
+    # Pre-warm embeddings if enabled (eliminates cold start latency for semantic search)
+    # Enable via: BLENDER_MCP_PREWARM_EMBEDDINGS=1
+    if PREWARM_EMBEDDINGS:
+        logger.warning("BLENDER_MCP_PREWARM_EMBEDDINGS=1 detected, pre-warming...")
+        if prewarm_embeddings():
+            logger.warning("Semantic search ready (pre-warmed)")
+        else:
+            logger.warning("Semantic search unavailable (pre-warm failed)")
+    else:
+        logger.warning("Embeddings lazy-loaded (set BLENDER_MCP_PREWARM_EMBEDDINGS=1 to pre-warm)")
 
     logger.warning("Server ready - 12 tools available")
 

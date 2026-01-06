@@ -23,14 +23,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 from PIL import Image
 import io
 
@@ -39,7 +41,55 @@ from dotenv import load_dotenv
 _env_path = Path(__file__).parent / ".env"
 load_dotenv(_env_path)
 
-mcp = FastMCP("blender-librarian")
+# Configure logging
+_logger = logging.getLogger("blender-librarian")
+
+# =============================================================================
+# LIFESPAN HANDLER: Pre-initialize MCP connections at startup
+# =============================================================================
+# This fixes the "cancel scope in different task" error that occurs when
+# MCPServerStdio is spawned inside an MCP tool's async context.
+# By pre-warming the connection pool at server startup, the subprocess
+# is created in the main task context before any tools are called.
+
+@asynccontextmanager
+async def _lifespan(server: FastMCP):
+    """
+    FastMCP lifespan handler for startup/shutdown.
+
+    Startup: Pre-warms the blender-manual MCP connection pool to avoid
+    spawning subprocesses inside tool async contexts (which causes
+    anyio cancel scope issues).
+
+    Shutdown: Closes the connection pool cleanly.
+    """
+    _logger.info("blender-librarian startup: pre-warming MCP connection pool...")
+
+    try:
+        # Import and pre-warm the connection pool
+        # This spawns the blender-manual MCPServerStdio subprocess NOW,
+        # in the main server task, not inside a tool call
+        from librarian_agents.doc_expert import get_connection_pool
+        pool = get_connection_pool()
+        await pool.get_server()  # This spawns the subprocess
+        _logger.info("MCP connection pool pre-warmed successfully")
+    except Exception as e:
+        _logger.warning(f"Failed to pre-warm MCP pool (will retry on first use): {e}")
+
+    yield  # Server runs here, handling tool calls
+
+    # Shutdown: clean up the connection pool
+    _logger.info("blender-librarian shutdown: closing MCP connection pool...")
+    try:
+        from librarian_agents.doc_expert import get_connection_pool
+        pool = get_connection_pool()
+        await pool.close()
+        _logger.info("MCP connection pool closed")
+    except Exception as e:
+        _logger.warning(f"Error closing MCP pool: {e}")
+
+# Create FastMCP server with lifespan handler
+mcp = FastMCP("blender-librarian", lifespan=_lifespan)
 
 # Paths
 PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", Path(__file__).resolve().parents[2]))
@@ -754,7 +804,8 @@ async def search_docs_with_agents_sdk(
     include_vision: bool = False,
     render_path: str = "",
     reference_path: str = "",
-    session_id: str = ""
+    session_id: str = "",
+    ctx: Context = None
 ) -> str:
     """
     Intelligent documentation search using OpenAI Agents SDK with multi-agent orchestration.
@@ -781,7 +832,16 @@ async def search_docs_with_agents_sdk(
 
     Cost: ~$0.02-0.08 per query depending on agent routing
     """
-    # Check budget
+    # Progress helper - sends notifications to keep MCP connection alive
+    async def report_progress(step: int, total: int, message: str):
+        if ctx:
+            try:
+                await ctx.report_progress(step, total, message)
+            except Exception:
+                pass  # Ignore progress notification failures
+
+    # Step 1/6: Check budget
+    await report_progress(1, 6, "Checking budget...")
     estimated_cost = 0.05 if not include_vision else 0.10
     if include_vision and not can_afford_vision(estimated_cost / 2):
         budget = load_budget()
@@ -801,14 +861,16 @@ async def search_docs_with_agents_sdk(
             "suggestion": "Use get_modification_advice with playbook lookup"
         }, indent=2)
 
-    # Parse inputs
+    # Step 2/6: Parse inputs
+    await report_progress(2, 6, "Parsing inputs...")
     try:
         params_dict = json.loads(current_params) if current_params and current_params != "{}" else {}
         issues_list = json.loads(issues) if issues and issues != "[]" else []
     except json.JSONDecodeError as e:
         return json.dumps({"error": f"Invalid JSON input: {e}"}, indent=2)
 
-    # Build context
+    # Step 3/6: Build context
+    await report_progress(3, 6, "Building context...")
     context = {
         "effect_type": effect_type,
         "current_params": params_dict,
@@ -823,7 +885,8 @@ async def search_docs_with_agents_sdk(
     orchestrator = get_orchestrator()
 
     try:
-        # Initialize with optional session
+        # Step 4/6: Initialize with optional session
+        await report_progress(4, 6, "Initializing orchestrator...")
         session_context = ""
         if session_id:
             from librarian_agents.session_manager import SessionManager
@@ -833,14 +896,16 @@ async def search_docs_with_agents_sdk(
 
         await orchestrator.initialize(session_context=session_context)
 
-        # Run the orchestrator
+        # Step 5/6: Run the orchestrator (longest step)
+        await report_progress(5, 6, "Running agent orchestrator...")
         result = await orchestrator.run(query, context)
 
         # Extract cost estimate from response
         cost = estimated_cost  # Default estimate
         response = result.get("response", {})
 
-        # Record spend
+        # Step 6/6: Record spend and format output
+        await report_progress(6, 6, "Formatting response...")
         if include_vision:
             record_spend("vision", cost / 2)
         record_spend("doc", cost / 2)

@@ -1,8 +1,8 @@
 # OpenAI Agents SDK Integration Issues Report
 
-**Date:** 2025-01-05
+**Date:** 2025-01-05 (Updated)
 **Phase:** 9 - OpenAI Agents SDK Integration
-**Status:** Functional but unstable
+**Status:** Functional with all optimizations implemented
 
 ---
 
@@ -222,15 +222,28 @@ When working correctly, the system provides excellent results:
 
 4. **Extended timeouts (DONE):** Increased `client_session_timeout_seconds` to 60s
 
-### Remaining Optimizations
+### Remaining Optimizations ✅ ALL IMPLEMENTED
 
-1. **Pre-warm embeddings:** Load sentence-transformers model at server startup, not first query
+1. **Pre-warm embeddings (DONE):** Environment variable `BLENDER_MCP_PREWARM_EMBEDDINGS=1` triggers startup loading
+   - `blender_server.py`: Added `prewarm_embeddings()` function that loads model + embeddings at startup
+   - `doc_expert.py`: Passes environment variable when spawning blender-manual subprocess
+   - Eliminates 10-30s cold start on first semantic search
 
-2. **Connection pooling:** Keep blender-manual MCP server running persistently instead of spawning per-query
+2. **Connection pooling (DONE):** `MCPConnectionPool` singleton in `doc_expert.py`
+   - `create_doc_expert_pooled()` factory reuses persistent MCP server connection
+   - `librarian_orchestrator.py` now uses pooled version by default
+   - Eliminates subprocess spawn overhead per query
 
-3. **Dynamic reasoning effort:** Use `"low"` for straightforward lookups, `"medium"` for complex analysis
+3. **Dynamic reasoning effort (DONE):** Query complexity analysis in `librarian_orchestrator.py`
+   - `estimate_query_complexity()` analyzes query keywords, length, context
+   - Simple queries → `reasoning.effort="low"` (faster, cheaper)
+   - Complex queries → `reasoning.effort="medium"` or `"high"`
+   - Result includes `reasoning_effort` field for observability
 
-4. **Retry logic:** Add exponential backoff for transient failures
+4. **Retry logic (DONE):** Exponential backoff in `librarian_orchestrator.py`
+   - `retry_with_backoff()` helper wraps Runner.run() and Runner.run_streamed()
+   - Retries on `TimeoutError`, `ConnectionError`, `OSError`
+   - Max 3 retries with 2s → 4s → 8s backoff (capped at 30s)
 
 ### Long-term Architecture
 
@@ -247,14 +260,17 @@ When working correctly, the system provides excellent results:
 ## Testing Checklist
 
 - [x] GPT-5.2 model confirmed in OpenAI dashboard
-- [x] Reasoning effort set to "medium"
+- [x] Reasoning effort set to "medium" (now dynamic based on query complexity)
 - [x] Vision analysis working with reference images
 - [x] Multi-agent handoffs functional (orchestrator → doc_expert → vision_expert)
 - [x] Structured JSON output with recommendations
 - [x] Streaming mode implemented (Runner.run_streamed)
-- [ ] Consistent < 30s response times (test with streaming)
+- [x] Pre-warmed embedding model at startup (BLENDER_MCP_PREWARM_EMBEDDINGS=1)
+- [x] Connection pooling for blender-manual MCP server
+- [x] Retry logic with exponential backoff
+- [x] Dynamic reasoning effort based on query complexity
+- [ ] Consistent < 30s response times (test with all optimizations)
 - [ ] Zero timeout errors over 10 consecutive queries
-- [ ] Pre-warmed embedding model at startup
 
 ---
 
@@ -262,9 +278,10 @@ When working correctly, the system provides excellent results:
 
 | File | Changes |
 |------|---------|
-| `librarian_agents/doc_expert.py` | Model → gpt-5.2, added ModelSettings with reasoning, increased timeout to 60s, added explicit connect() |
-| `librarian_agents/librarian_orchestrator.py` | Model → gpt-5.2, added ModelSettings with reasoning, **STREAMING MODE via Runner.run_streamed()**, added logging |
+| `librarian_agents/doc_expert.py` | Model → gpt-5.2, added ModelSettings with reasoning, increased timeout to 120s, added explicit connect(), **MCPConnectionPool singleton**, `create_doc_expert_pooled()` factory, environment variable passing for pre-warm |
+| `librarian_agents/librarian_orchestrator.py` | Model → gpt-5.2, **dynamic reasoning via `estimate_query_complexity()`**, **STREAMING MODE via Runner.run_streamed()**, **retry logic with exponential backoff**, uses pooled connection, added logging |
 | `librarian_agents/vision_expert.py` | Model → gpt-5.2, added ModelSettings with reasoning |
+| `agents/blender-manual/blender_server.py` | **Pre-warm embeddings** via `BLENDER_MCP_PREWARM_EMBEDDINGS=1` env var, `prewarm_embeddings()` function loads model + embeddings at startup |
 | `agents/` → `librarian_agents/` | Directory renamed to avoid import conflict |
 
 ---
@@ -277,5 +294,5 @@ When working correctly, the system provides excellent results:
 
 ---
 
-**Last Updated:** 2025-01-05
+**Last Updated:** 2025-01-05 (All optimizations implemented)
 **Author:** Claude Code Session

@@ -526,6 +526,8 @@ async def compare_lpips(
     generate_heatmap: bool = False
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead.
+
     Compare two images using LPIPS perceptual similarity.
 
     LPIPS (Learned Perceptual Image Patch Similarity) correlates ~92% with
@@ -607,6 +609,8 @@ async def compare_clip(
     query_is_image: bool = False
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() or evaluate_render_v2() instead.
+
     Compare image to text description or another image using CLIP.
 
     CLIP measures semantic similarity - does the image match the concept?
@@ -711,6 +715,8 @@ async def evaluate_render(
     require_both: bool = False
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead for better metrics (SigLIP 2, TOPIQ).
+
     Comprehensive evaluation of a render against quality thresholds.
 
     Can use reference image (LPIPS), semantic query (CLIP), or both.
@@ -845,6 +851,8 @@ async def find_reference_images(
     limit: int = 10
 ) -> str:
     """
+    [DEPRECATED] Use list_renders_v2() instead.
+
     Search for reference images in the project by keyword.
 
     Searches in assets/reference_images/ directory.
@@ -906,6 +914,8 @@ async def list_recent_renders(
     pattern: Optional[str] = None
 ) -> str:
     """
+    [DEPRECATED] Use list_renders_v2() instead.
+
     List recent renders from the build output directory.
 
     Args:
@@ -964,6 +974,8 @@ async def extract_vfx_diagnostics(
     image_path: str
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for Moondream-powered diagnostics.
+
     Extract VFX-specific quality diagnostics from an image (NO REFERENCE NEEDED).
 
     Unlike LPIPS/CLIP which require reference images or plateau on VFX content,
@@ -1011,6 +1023,8 @@ async def evaluate_vfx_quality(
     effect_type: str = "explosion"
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead for unified metrics.
+
     Compute VFX quality score (0-100) with actionable issues (NO REFERENCE NEEDED).
 
     This is the PRIMARY evaluation tool for VFX. Unlike LPIPS which:
@@ -1106,6 +1120,8 @@ async def compare_vfx_iterations(
     effect_type: str = "explosion"
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead.
+
     Compare two VFX iterations and determine which is BETTER.
 
     Unlike LPIPS which compares to a reference, this compares two
@@ -1209,6 +1225,8 @@ async def enhanced_evaluate(
     aesthetic_threshold: float = 5.5
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead for unified metrics.
+
     Comprehensive VFX evaluation with multi-modal metrics and actionable diagnostics.
 
     Addresses all ML evaluation challenges:
@@ -1330,6 +1348,8 @@ async def get_alternative_approaches(
     scores_history: str
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered suggestions.
+
     Suggest alternative approaches when stuck in local optima.
 
     Detects score plateaus and suggests fundamentally different
@@ -1380,6 +1400,8 @@ async def multi_prompt_clip_analysis(
     effect_type: str = "explosion"
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead - uses SigLIP 2.
+
     Fine-grained CLIP analysis using graduated quality prompts.
 
     Unlike standard CLIP which plateaus at "is this an explosion?",
@@ -1437,6 +1459,8 @@ def evaluate_ground_truth(
     pass_threshold: float = 0.65
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead for unified evaluation.
+
     Evaluate render against REAL reference footage distribution.
 
     This is the PRIMARY evaluation tool for realism. Unlike LPIPS/CLIP which
@@ -1513,6 +1537,8 @@ def compare_to_reference_distribution(
     effect_type: str = "sun"
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead.
+
     Compare render features directly against reference dataset distributions.
 
     Lower-level tool than evaluate_ground_truth - shows exactly how each
@@ -1559,6 +1585,8 @@ def compare_to_reference_distribution(
 @mcp.tool()
 def evaluate_solar_features(image_path: str) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2(effect_type="sun") instead.
+
     Evaluate sun/star-specific visual features that make a render realistic.
 
     Detects domain-specific features that generic VFX metrics miss:
@@ -1638,6 +1666,8 @@ def evaluate_solar_features(image_path: str) -> str:
 @mcp.tool()
 def get_reference_statistics(effect_type: str = "sun", sample_size: int = 100) -> str:
     """
+    [DEPRECATED] Use get_reference_stats_v2() instead.
+
     Get computed statistics from the reference image dataset.
 
     Shows what "real" looks like for a given effect type by computing
@@ -1679,6 +1709,8 @@ def get_reference_statistics(effect_type: str = "sun", sample_size: int = 100) -
 @mcp.tool()
 def extract_image_features(image_path: str) -> str:
     """
+    [DEPRECATED] Use get_reference_stats_v2() instead.
+
     Extract comprehensive features from a single image.
 
     Lower-level diagnostic tool that shows exactly what features are
@@ -1729,6 +1761,8 @@ def evaluate_with_suggestions(
     pass_threshold: float = 0.65
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2(include_suggestions=True) instead.
+
     Evaluate render AND get learned fix suggestions from experiment-tracker.
 
     This is the RECOMMENDED evaluation tool for the iteration loop.
@@ -1804,6 +1838,8 @@ def analyze_prominence(
     reference_path: str
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for Moondream-powered analysis.
+
     Specialized analysis for solar prominence renders.
 
     Compares a prominence render against real solar prominence footage,
@@ -1863,6 +1899,8 @@ def get_fix_suggestions(
     issues_json: str
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered suggestions.
+
     Get fix suggestions from experiment-tracker for diagnosed issues.
 
     Takes issue diagnoses (from evaluate_ground_truth or spatial_diagnostics)
@@ -1946,6 +1984,8 @@ def evaluate_structural_quality(
     include_heatmap: bool = True
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead - includes DINOv2 structural metrics.
+
     Evaluate structural similarity using DINOv2 self-supervised features.
 
     This tool addresses the critical flaw where aggregate statistics miss
@@ -2016,6 +2056,8 @@ def evaluate_structural_against_dataset(
     sample_size: int = 10
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead - includes structural metrics.
+
     Evaluate render against multiple reference images from a dataset.
 
     Useful when you have a dataset of reference images (like the 840 NASA
@@ -2069,6 +2111,8 @@ def save_structural_heatmap(
     output_path: str
 ) -> str:
     """
+    [DEPRECATED] Use evaluate_render_v2() instead - can generate heatmaps.
+
     Generate and save a visual structural similarity heatmap.
 
     Creates a side-by-side visualization showing:
@@ -2132,6 +2176,8 @@ def analyze_texture_procedural(
     reference_path: str = ""
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered texture analysis.
+
     Comprehensive procedural texture detection using multiple methods.
 
     This tool detects whether a render has PROCEDURAL (synthetic/generated)
@@ -2221,6 +2267,8 @@ def analyze_feature_size_distribution(
     content_threshold: int = 30
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for texture analysis.
+
     Analyze feature size distribution to detect procedural textures.
 
     This is the SINGLE MOST DISCRIMINATING metric discovered for detecting
@@ -2291,6 +2339,8 @@ def compare_texture_quality(
     reference_path: str
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead for texture comparison.
+
     Compare texture quality between render and reference.
 
     Computes procedural scores for both images and determines which
@@ -2397,6 +2447,8 @@ def predict_real_or_synthetic(
     gradcam_output: str = ""
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered analysis.
+
     Predict whether an image is real solar footage or a synthetic render.
 
     Uses a trained EfficientNetV2 discriminator that achieved 100% validation
@@ -2480,6 +2532,8 @@ def train_discriminator(
     synthetic_dir: str = "build/vdb_output"
 ) -> str:
     """
+    [DEPRECATED] Use train_model_v2() instead for unified model training.
+
     Train the real/synthetic solar discriminator.
 
     Uses EfficientNetV2-S with transfer learning. Automatically handles
@@ -2538,6 +2592,8 @@ def compare_real_synthetic_batch(
     reference_path: str = ""
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead for batch comparison.
+
     Batch analysis of multiple images for real/synthetic classification.
 
     Useful for evaluating an entire animation or comparing iterations.
@@ -2646,6 +2702,8 @@ def analyze_prominence_shapes(
     output_path: str = ""
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered prominence analysis.
+
     Analyze prominence morphology to detect synthetic artifacts.
 
     Detects:
@@ -2705,6 +2763,8 @@ def compare_prominence_quality(
     reference_path: str
 ) -> str:
     """
+    [DEPRECATED] Use compare_renders_v2() instead for prominence comparison.
+
     Compare prominence quality between synthetic render and real reference.
 
     Provides side-by-side comparison highlighting the morphological differences
@@ -2823,6 +2883,8 @@ def detect_cat_ear_artifacts(
     sensitivity: str = "medium"
 ) -> str:
     """
+    [DEPRECATED] Use diagnose_issues_v2() instead for VLM-powered artifact detection.
+
     Specifically detect "cat ear" triangular prominence artifacts.
 
     Cat ears are symmetric triangular protrusions that are a hallmark of
@@ -2918,6 +2980,351 @@ def detect_cat_ear_artifacts(
             "recommendation": recommendation,
             "fixes": fixes if fixes else ["No fixes needed"]
         }, indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+# =============================================================================
+# CONSOLIDATED TOOLS (January 2026)
+# These 6 tools replace 32+ specific tools for a cleaner API.
+# See: docs/ASSET_EVALUATOR_UPGRADE_PROPOSAL_JAN2026.md
+# =============================================================================
+
+@mcp.tool()
+def evaluate_render_v2(
+    render_path: str,
+    reference_path: str = "",
+    effect_type: str = "auto",
+    profile: str = "standard",
+    include_diagnostics: bool = True,
+    include_suggestions: bool = True
+) -> str:
+    """
+    [CONSOLIDATED] Unified render evaluation - replaces 15+ specific evaluation tools.
+
+    Profiles:
+    - quick: LPIPS + SigLIP only (~2 seconds)
+    - standard: + TOPIQ, feature_cv (~10 seconds)
+    - comprehensive: + DINOv2, VLM diagnosis (~30 seconds)
+
+    Args:
+        render_path: Path to rendered image to evaluate
+        reference_path: Optional reference image for comparison metrics
+        effect_type: Effect category (auto, sun, explosion, nebula, fire, smoke)
+        profile: Evaluation depth (quick, standard, comprehensive)
+        include_diagnostics: Include VLM-based issue detection (comprehensive only)
+        include_suggestions: Include parameter change suggestions
+
+    Returns:
+        JSON with:
+        - overall_score: 0-100
+        - passed: True if score >= 60
+        - metric_scores: {lpips, siglip, topiq, qualiclip, structural_dino, feature_cv}
+        - diagnostics: VLM-identified issues (if comprehensive + include_diagnostics)
+        - suggestions: Parameter changes to try
+        - profile_used: Which profile was run
+        - evaluation_time_seconds: How long it took
+    """
+    try:
+        from consolidated_evaluation import (
+            evaluate_render_unified,
+            result_to_json
+        )
+
+        ref_path = reference_path if reference_path else None
+        result = evaluate_render_unified(
+            render_path=render_path,
+            reference_path=ref_path,
+            effect_type=effect_type,
+            profile=profile,
+            include_diagnostics=include_diagnostics,
+            include_suggestions=include_suggestions
+        )
+        return result_to_json(result)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def compare_renders_v2(
+    render_a: str,
+    render_b: str,
+    reference_path: str = "",
+    comparison_type: str = "quality"
+) -> str:
+    """
+    [CONSOLIDATED] Compare two renders - replaces compare_vfx_iterations, compare_texture_quality, etc.
+
+    Args:
+        render_a: Path to first render (e.g., iteration v9)
+        render_b: Path to second render (e.g., iteration v10)
+        reference_path: Optional reference image
+        comparison_type: Type of comparison:
+            - quality: Which is better overall?
+            - iteration: Did changes improve the render?
+
+    Returns:
+        JSON with:
+        - winner: "A", "B", or "similar"
+        - score_a, score_b: Individual quality scores
+        - improvements: What got better in the winner
+        - regressions: What got worse
+        - recommendation: What to do next
+    """
+    try:
+        from consolidated_evaluation import (
+            compare_renders_unified,
+            result_to_json
+        )
+
+        ref_path = reference_path if reference_path else None
+        result = compare_renders_unified(
+            render_a=render_a,
+            render_b=render_b,
+            reference_path=ref_path,
+            comparison_type=comparison_type
+        )
+        return result_to_json(result)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def diagnose_issues_v2(
+    render_path: str,
+    reference_path: str = "",
+    effect_type: str = "auto",
+    known_issues: str = ""
+) -> str:
+    """
+    [CONSOLIDATED] VLM-powered issue diagnosis - replaces ALL specific artifact detectors.
+
+    Instead of hardcoded "cat ear" or "prominence shape" detection, the VLM (Moondream 2)
+    analyzes the image and identifies ANY visual issues, including ones we haven't seen before.
+
+    This tool replaces:
+    - detect_cat_ear_artifacts
+    - analyze_prominence_shapes
+    - compare_prominence_quality
+    - analyze_texture_procedural
+    - evaluate_solar_features
+    - ... and many more specific detectors
+
+    Args:
+        render_path: Path to render to diagnose
+        reference_path: Optional reference image for comparison
+        effect_type: Effect category (auto, sun, explosion, etc.)
+        known_issues: Optional comma-separated hints (e.g., "too dark, wrong color")
+
+    Returns:
+        JSON with:
+        - issues: List of identified problems with severity
+        - primary_issue: Most critical issue to address
+        - overall_assessment: Summary of quality
+        - vlm_used: Whether VLM was used
+    """
+    try:
+        from consolidated_evaluation import (
+            diagnose_with_moondream,
+            detect_effect_type,
+            result_to_json,
+            DiagnosisResult
+        )
+
+        ref_path = reference_path if reference_path else None
+        eff_type = effect_type
+        if eff_type == "auto":
+            eff_type = detect_effect_type(render_path)
+
+        result = diagnose_with_moondream(
+            render_path=render_path,
+            reference_path=ref_path,
+            effect_type=eff_type
+        )
+
+        return result_to_json(result)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def get_reference_stats_v2(
+    effect_type: str,
+    sample_size: int = 100
+) -> str:
+    """
+    [CONSOLIDATED] Get reference dataset statistics - consolidates multiple reference tools.
+
+    Args:
+        effect_type: Effect category (sun, star, explosion, nebula)
+        sample_size: Number of reference images to sample
+
+    Returns:
+        JSON with:
+        - effect_type: The effect type analyzed
+        - sample_count: Number of images sampled
+        - brightness_mean, brightness_std: Brightness statistics
+        - warm_ratio_mean, warm_ratio_std: Color warmth statistics
+        - edge_density_mean, edge_density_std: Texture statistics
+        - feature_cv_mean, feature_cv_std: Feature size distribution
+    """
+    try:
+        # Import existing ground truth evaluation for cached stats
+        from ground_truth_evaluation import get_or_compute_reference_stats
+
+        stats = get_or_compute_reference_stats(effect_type, sample_size)
+        return json.dumps(convert_numpy_types(stats), indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def list_renders_v2(
+    pattern: str = "",
+    limit: int = 20
+) -> str:
+    """
+    [CONSOLIDATED] List available renders with metadata.
+
+    Args:
+        pattern: Optional filename pattern to filter (e.g., "nebula", "sun")
+        limit: Maximum number of results (default 20)
+
+    Returns:
+        JSON array of render info:
+        - path: Full path to render
+        - filename: Just the filename
+        - size_bytes: File size
+        - modified_time: When it was last modified
+    """
+    try:
+        from PIL import Image
+
+        # Check multiple output directories
+        output_dirs = [
+            PROJECT_ROOT / "build/renders",
+            PROJECT_ROOT / "build/vdb_output",
+            PROJECT_ROOT / "evaluation_outputs",
+        ]
+
+        renders = []
+        for output_dir in output_dirs:
+            if not output_dir.exists():
+                continue
+
+            for ext in ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.exr"]:
+                for path in output_dir.rglob(ext):
+                    if pattern and pattern.lower() not in path.name.lower():
+                        continue
+
+                    stat = path.stat()
+                    render_info = {
+                        "path": str(path),
+                        "filename": path.name,
+                        "size_bytes": stat.st_size,
+                        "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    }
+
+                    # Try to get dimensions
+                    try:
+                        with Image.open(path) as img:
+                            render_info["dimensions"] = img.size
+                    except:
+                        pass
+
+                    renders.append(render_info)
+
+        # Sort by modification time (newest first)
+        renders.sort(key=lambda x: x["modified_time"], reverse=True)
+
+        return json.dumps(renders[:limit], indent=2)
+
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, indent=2)
+
+
+@mcp.tool()
+def train_model_v2(
+    model_type: str = "discriminator",
+    epochs: int = 10,
+    batch_size: int = 4,
+    real_dir: str = "",
+    synthetic_dir: str = ""
+) -> str:
+    """
+    [CONSOLIDATED] Train evaluation models. Rarely used.
+
+    Args:
+        model_type: Model to train (discriminator, quality_predictor)
+        epochs: Number of training epochs
+        batch_size: Training batch size
+        real_dir: Directory with real reference images
+        synthetic_dir: Directory with synthetic renders
+
+    Returns:
+        JSON with:
+        - success: Whether training completed
+        - model_path: Where the model was saved
+        - epochs_completed: How many epochs ran
+        - final_accuracy: Final validation accuracy
+    """
+    try:
+        if model_type == "discriminator":
+            # Use existing discriminator training
+            from solar_discriminator import SolarDiscriminator
+
+            real_path = real_dir or str(REFERENCE_DIR / "star/Eruptions_20241008_Activity_2048p30")
+            synth_path = synthetic_dir or str(PROJECT_ROOT / "build/vdb_output")
+
+            discriminator = SolarDiscriminator()
+            history = discriminator.train(
+                real_dir=real_path,
+                synthetic_dir=synth_path,
+                epochs=epochs,
+                batch_size=batch_size
+            )
+
+            return json.dumps({
+                "success": True,
+                "model_path": str(discriminator.model_path),
+                "epochs_completed": epochs,
+                "final_accuracy": history.get("final_accuracy", None),
+                "training_history": convert_numpy_types(history)
+            }, indent=2)
+
+        else:
+            return json.dumps({
+                "error": f"Unknown model_type: {model_type}. Supported: discriminator"
+            }, indent=2)
 
     except Exception as e:
         import traceback

@@ -13,6 +13,7 @@ Key capabilities:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any, Dict, Optional
@@ -213,15 +214,21 @@ class DocExpertAgent:
         venv_python = self.blender_manual_path / "venv" / "bin" / "python"
         server_script = self.blender_manual_path / "blender_server.py"
 
+        # Prepare environment with pre-warm flag for embeddings
+        # This eliminates the 10-30s cold start on first semantic search query
+        env = os.environ.copy()
+        env["BLENDER_MCP_PREWARM_EMBEDDINGS"] = "1"
+
         self._mcp_server = MCPServerStdio(
             name="blender-manual",
             params={
                 "command": str(venv_python),
                 "args": [str(server_script)],
-                "cwd": str(self.blender_manual_path)
+                "cwd": str(self.blender_manual_path),
+                "env": env  # Pass environment with pre-warm flag
             },
             cache_tools_list=self.cache_tools,
-            client_session_timeout_seconds=60.0  # Increased from 5s - embeddings load is slow
+            client_session_timeout_seconds=120.0  # Increased to allow for embedding pre-warm (was 60s)
         )
 
         # IMPORTANT: Explicitly connect to the MCP server before using it
@@ -262,6 +269,154 @@ class DocExpertAgent:
                 pass  # Ignore cleanup errors
             self._mcp_server = None
         self._agent = None
+
+
+# =============================================================================
+# CONNECTION POOLING
+# =============================================================================
+
+class MCPConnectionPool:
+    """
+    Singleton connection pool for blender-manual MCP server.
+
+    Instead of spawning a new MCP server subprocess for each query,
+    this pool maintains a persistent connection that can be reused.
+
+    Benefits:
+    - Eliminates 15-30s startup time for each query
+    - Keeps embeddings warm in the server process
+    - Reduces resource usage from repeated subprocess spawning
+    """
+
+    _instance: Optional['MCPConnectionPool'] = None
+    _lock: Optional['asyncio.Lock'] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        import asyncio
+        self._lock = asyncio.Lock()
+        self._mcp_server: Optional[MCPServerStdio] = None
+        self._connected = False
+        self._blender_manual_path = DocExpertAgent.DEFAULT_BLENDER_MANUAL_PATH
+        self._initialized = True
+
+    async def get_server(self) -> MCPServerStdio:
+        """
+        Get the pooled MCP server connection, creating it if necessary.
+
+        Returns:
+            Connected MCPServerStdio instance
+
+        Thread-safe via asyncio.Lock.
+        """
+        import asyncio
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        async with self._lock:
+            if self._mcp_server is not None and self._connected:
+                return self._mcp_server
+
+            # Create new connection
+            venv_python = self._blender_manual_path / "venv" / "bin" / "python"
+            server_script = self._blender_manual_path / "blender_server.py"
+
+            # Prepare environment with pre-warm flag
+            env = os.environ.copy()
+            env["BLENDER_MCP_PREWARM_EMBEDDINGS"] = "1"
+
+            self._mcp_server = MCPServerStdio(
+                name="blender-manual-pooled",
+                params={
+                    "command": str(venv_python),
+                    "args": [str(server_script)],
+                    "cwd": str(self._blender_manual_path),
+                    "env": env
+                },
+                cache_tools_list=True,
+                client_session_timeout_seconds=120.0
+            )
+
+            await self._mcp_server.connect()
+            self._connected = True
+            return self._mcp_server
+
+    async def close(self) -> None:
+        """Close the pooled connection."""
+        import asyncio
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        async with self._lock:
+            if self._mcp_server:
+                try:
+                    await self._mcp_server.cleanup()
+                except Exception:
+                    pass
+                self._mcp_server = None
+                self._connected = False
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if the pool has an active connection."""
+        return self._connected and self._mcp_server is not None
+
+
+# Module-level singleton for connection pooling
+_connection_pool: Optional[MCPConnectionPool] = None
+
+
+def get_connection_pool() -> MCPConnectionPool:
+    """Get the global MCP connection pool singleton."""
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = MCPConnectionPool()
+    return _connection_pool
+
+
+async def create_doc_expert_pooled(
+    custom_instructions: str = ""
+) -> Agent:
+    """
+    Factory function to create a doc expert using the pooled MCP connection.
+
+    This version reuses the persistent MCP server connection instead of
+    spawning a new subprocess for each agent instance.
+
+    Args:
+        custom_instructions: Additional instructions to append
+
+    Returns:
+        Initialized Agent instance ready for use
+    """
+    pool = get_connection_pool()
+    mcp_server = await pool.get_server()
+
+    instructions = DOC_EXPERT_INSTRUCTIONS
+    if custom_instructions:
+        instructions = instructions + "\n\n" + custom_instructions
+
+    agent = Agent(
+        name="Documentation Expert (Pooled)",
+        instructions=instructions,
+        model=os.getenv("OPENAI_MODEL", "gpt-5.2"),
+        model_settings=ModelSettings(
+            reasoning=Reasoning(effort="medium"),
+            verbosity="low"
+        ),
+        mcp_servers=[mcp_server],
+        tools=[validate_parameter_range, get_parameter_defaults]
+    )
+
+    return agent
 
 
 async def create_doc_expert(

@@ -20,17 +20,186 @@ Architecture for timeout resilience:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from agents import Agent, ModelSettings, handoff, Runner
 from agents.stream_events import StreamEvent
 from openai.types.shared import Reasoning
 
-from .doc_expert import DocExpertAgent, create_doc_expert
+# Type variable for generic retry function
+T = TypeVar('T')
+
+# Retry configuration
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BACKOFF_BASE = 2.0  # seconds
+DEFAULT_BACKOFF_MAX = 30.0  # max wait between retries
+
+
+async def retry_with_backoff(
+    func: Callable[[], T],
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    backoff_base: float = DEFAULT_BACKOFF_BASE,
+    backoff_max: float = DEFAULT_BACKOFF_MAX,
+    retryable_exceptions: tuple = (Exception,),
+    operation_name: str = "operation"
+) -> T:
+    """
+    Retry an async operation with exponential backoff.
+
+    Args:
+        func: Async callable to retry
+        max_retries: Maximum number of retry attempts
+        backoff_base: Base for exponential backoff (seconds)
+        backoff_max: Maximum backoff wait time (seconds)
+        retryable_exceptions: Tuple of exception types to retry on
+        operation_name: Name for logging purposes
+
+    Returns:
+        Result of successful func() call
+
+    Raises:
+        Last exception if all retries exhausted
+    """
+    logger = logging.getLogger("librarian_orchestrator")
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await func()
+        except retryable_exceptions as e:
+            last_exception = e
+
+            if attempt == max_retries:
+                logger.error(f"{operation_name} failed after {max_retries + 1} attempts: {e}")
+                raise
+
+            # Calculate backoff with exponential increase
+            backoff = min(backoff_base * (2 ** attempt), backoff_max)
+            logger.warning(
+                f"{operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                f"Retrying in {backoff:.1f}s..."
+            )
+            await asyncio.sleep(backoff)
+
+    # Should never reach here, but just in case
+    raise last_exception if last_exception else RuntimeError("Unexpected retry state")
+
+from .doc_expert import DocExpertAgent, create_doc_expert, create_doc_expert_pooled, get_connection_pool
 from .vision_expert import VisionExpertAgent, create_vision_expert
+
+
+# =============================================================================
+# DYNAMIC REASONING EFFORT
+# =============================================================================
+
+# Complexity indicators for query analysis
+COMPLEXITY_INDICATORS = {
+    # High complexity - need deep reasoning
+    "high": [
+        "why does", "why is", "debug", "diagnose", "analyze", "compare",
+        "investigate", "root cause", "broken", "not working", "failing",
+        "optimize", "improve", "refactor", "architecture", "design",
+        "multiple", "several", "combination", "together with",
+        "tradeoff", "trade-off", "best approach", "recommend",
+    ],
+    # Medium complexity - moderate reasoning
+    "medium": [
+        "how do i", "how to", "what is the", "explain", "difference between",
+        "parameter for", "configure", "setup", "integrate", "implement",
+        "example", "tutorial", "guide", "workflow",
+    ],
+    # Low complexity - quick lookup
+    "low": [
+        "what is", "where is", "list", "show", "get", "find",
+        "default", "range", "value", "path", "location",
+    ],
+}
+
+
+def estimate_query_complexity(query: str, context: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Estimate the complexity of a query to determine reasoning effort.
+
+    Args:
+        query: The user's query string
+        context: Optional context dict (presence of certain keys increases complexity)
+
+    Returns:
+        Reasoning effort level: "low", "medium", or "high"
+    """
+    query_lower = query.lower()
+    query_length = len(query.split())
+
+    # Start with base score
+    score = 0
+
+    # Check complexity indicators
+    for indicator in COMPLEXITY_INDICATORS["high"]:
+        if indicator in query_lower:
+            score += 3
+
+    for indicator in COMPLEXITY_INDICATORS["medium"]:
+        if indicator in query_lower:
+            score += 2
+
+    for indicator in COMPLEXITY_INDICATORS["low"]:
+        if indicator in query_lower:
+            score += 1
+
+    # Query length factor
+    if query_length > 50:
+        score += 3
+    elif query_length > 25:
+        score += 2
+    elif query_length > 10:
+        score += 1
+
+    # Context complexity factors
+    if context:
+        # Multiple issues = more complex
+        issues = context.get("known_issues", context.get("issues", []))
+        if isinstance(issues, list) and len(issues) > 2:
+            score += 3
+        elif isinstance(issues, list) and len(issues) > 0:
+            score += 1
+
+        # Vision analysis needed = more complex
+        if context.get("render_path") or context.get("reference_path"):
+            score += 2
+
+        # Multiple parameters = more complex
+        params = context.get("current_params", {})
+        if isinstance(params, dict) and len(params) > 5:
+            score += 2
+
+    # Map score to effort level
+    if score >= 8:
+        return "high"
+    elif score >= 4:
+        return "medium"
+    else:
+        return "low"
+
+
+def get_reasoning_settings(effort: str) -> ModelSettings:
+    """
+    Get ModelSettings with appropriate reasoning effort.
+
+    Args:
+        effort: "low", "medium", or "high"
+
+    Returns:
+        ModelSettings configured for the effort level
+    """
+    return ModelSettings(
+        reasoning=Reasoning(effort=effort),
+        verbosity="low"
+    )
 
 # Configure logging for tracing
 logger = logging.getLogger("librarian_orchestrator")
@@ -118,9 +287,9 @@ class LibrarianOrchestrator:
         if self._initialized:
             return
 
-        # Create specialized agents (doc expert spawns blender-manual MCP server via stdio)
-        self._doc_expert = await create_doc_expert(
-            blender_manual_path=self.blender_manual_path,
+        # Create specialized agents using pooled MCP connection (eliminates subprocess spawn per query)
+        # The pooled version reuses a persistent connection to blender-manual MCP server
+        self._doc_expert = await create_doc_expert_pooled(
             custom_instructions=session_context
         )
 
@@ -200,6 +369,14 @@ class LibrarianOrchestrator:
         if not self._initialized:
             await self.initialize()
 
+        # Estimate query complexity for dynamic reasoning effort
+        complexity = estimate_query_complexity(query, context)
+        logger.info(f"Query complexity estimated as '{complexity}' for: {query[:80]}...")
+
+        # Update orchestrator's reasoning effort based on complexity
+        # This allows simple queries to run faster with less reasoning overhead
+        self._orchestrator.model_settings = get_reasoning_settings(complexity)
+
         # Build input with context
         if context:
             context_str = json.dumps(context, indent=2)
@@ -208,54 +385,132 @@ class LibrarianOrchestrator:
             full_query = query
 
         agents_used = ["orchestrator"]
+        result = None  # For non-streaming mode
 
         if use_streaming:
             # STREAMING MODE: Keeps connection alive during long operations
             # Events are yielded incrementally, preventing timeout
-            logger.info(f"Starting streamed orchestrator run for query: {query[:100]}...")
+            # Wrapped with retry logic for transient failures
+            #
+            # IMPORTANT: MCP has ~30s timeout, so we impose 25s internal limit
+            # to return partial results rather than hang
+            MCP_TIMEOUT_BUFFER = 25.0  # Return before MCP times out
 
-            streamed_result = Runner.run_streamed(self._orchestrator, full_query)
-            final_output = ""
-            event_count = 0
+            # Track partial state for timeout handling
+            partial_state = {
+                "agents_used": ["orchestrator"],
+                "event_count": 0,
+                "tool_calls": [],
+                "last_output": "",
+                "timed_out": False,
+            }
 
-            async for event in streamed_result.stream_events():
-                event_count += 1
+            async def _run_streamed():
+                nonlocal agents_used
+                _agents_used = ["orchestrator"]
 
-                # Log event types for tracing (helps debug timeout issues)
-                if event.type == "raw_response_event":
-                    # Token-by-token streaming from LLM
-                    logger.debug(f"Event {event_count}: raw_response")
+                logger.info(f"Starting streamed orchestrator run for query: {query[:100]}...")
 
-                elif event.type == "agent_updated_stream_event":
-                    # Agent handoff occurred
-                    new_agent = getattr(event, 'new_agent', None)
-                    if new_agent:
-                        agent_name = new_agent.name if hasattr(new_agent, 'name') else str(new_agent)
-                        logger.info(f"Event {event_count}: Handoff to {agent_name}")
-                        if "doc" in agent_name.lower():
-                            agents_used.append("doc_expert")
-                        elif "vision" in agent_name.lower():
-                            agents_used.append("vision_expert")
+                streamed_result = Runner.run_streamed(self._orchestrator, full_query)
+                _final_output = ""
+                event_count = 0
 
-                elif event.type == "run_item_stream_event":
-                    # Tool calls, messages, etc.
-                    item = getattr(event, 'item', None)
-                    if item:
-                        item_type = getattr(item, 'type', 'unknown')
-                        logger.debug(f"Event {event_count}: run_item ({item_type})")
+                async for event in streamed_result.stream_events():
+                    event_count += 1
+                    partial_state["event_count"] = event_count
 
-            # FIXED: Access final_output directly after stream completes
-            # DO NOT call await streamed_result.result() - it hangs waiting for already-complete stream
-            final_output = streamed_result.final_output
-            logger.info(f"Streamed run complete: {event_count} events, {len(final_output) if final_output else 0} chars output")
+                    # Log event types for tracing (helps debug timeout issues)
+                    if event.type == "raw_response_event":
+                        # Token-by-token streaming from LLM
+                        logger.debug(f"Event {event_count}: raw_response")
+
+                    elif event.type == "agent_updated_stream_event":
+                        # Agent handoff occurred
+                        new_agent = getattr(event, 'new_agent', None)
+                        if new_agent:
+                            agent_name = new_agent.name if hasattr(new_agent, 'name') else str(new_agent)
+                            logger.info(f"Event {event_count}: Handoff to {agent_name}")
+                            if "doc" in agent_name.lower():
+                                _agents_used.append("doc_expert")
+                            elif "vision" in agent_name.lower():
+                                _agents_used.append("vision_expert")
+
+                    elif event.type == "run_item_stream_event":
+                        # Tool calls, messages, etc.
+                        item = getattr(event, 'item', None)
+                        if item:
+                            item_type = getattr(item, 'type', 'unknown')
+                            logger.debug(f"Event {event_count}: run_item ({item_type})")
+                            # Track tool calls for partial results
+                            if item_type == "tool_call":
+                                tool_name = getattr(item, 'name', 'unknown')
+                                partial_state["tool_calls"].append(tool_name)
+
+                # Update partial state
+                partial_state["agents_used"] = _agents_used
+
+                # FIXED: Access final_output directly after stream completes
+                # DO NOT call await streamed_result.result() - it hangs waiting for already-complete stream
+                _final_output = streamed_result.final_output
+                partial_state["last_output"] = _final_output
+                logger.info(f"Streamed run complete: {event_count} events, {len(_final_output) if _final_output else 0} chars output")
+
+                agents_used = _agents_used
+                return _final_output
+
+            async def _run_with_timeout():
+                try:
+                    return await asyncio.wait_for(
+                        retry_with_backoff(
+                            _run_streamed,
+                            max_retries=DEFAULT_MAX_RETRIES,
+                            backoff_base=DEFAULT_BACKOFF_BASE,
+                            retryable_exceptions=(TimeoutError, ConnectionError, OSError),
+                            operation_name="streamed_orchestrator_run"
+                        ),
+                        timeout=MCP_TIMEOUT_BUFFER
+                    )
+                except asyncio.TimeoutError:
+                    partial_state["timed_out"] = True
+                    logger.warning(f"MCP timeout reached after {MCP_TIMEOUT_BUFFER}s, returning partial results")
+                    # Return partial result if we have any
+                    if partial_state["last_output"]:
+                        return partial_state["last_output"]
+                    # Otherwise return a timeout message with progress info
+                    return json.dumps({
+                        "timeout": True,
+                        "message": f"Query took too long (>{MCP_TIMEOUT_BUFFER}s). Partial progress: {partial_state['event_count']} events, {len(partial_state['tool_calls'])} tool calls.",
+                        "tool_calls_made": partial_state["tool_calls"],
+                        "suggestion": "Try using search_docs_intelligent for faster responses, or simplify your query."
+                    })
+
+            final_output = await _run_with_timeout()
+
+            # Update agents_used from partial state if we timed out
+            if partial_state["timed_out"]:
+                agents_used = partial_state["agents_used"]
 
         else:
             # NON-STREAMING MODE: Simple but may timeout on long operations
-            logger.info(f"Starting non-streamed orchestrator run for query: {query[:100]}...")
-            result = await Runner.run(self._orchestrator, full_query)
-            final_output = result.final_output
+            # Wrapped with retry logic for transient failures
+
+            async def _run_non_streamed():
+                nonlocal result
+                logger.info(f"Starting non-streamed orchestrator run for query: {query[:100]}...")
+                result = await Runner.run(self._orchestrator, full_query)
+                logger.info(f"Non-streamed run complete: {len(result.final_output)} chars output")
+                return result.final_output
+
+            # Retry transient failures with exponential backoff
+            final_output = await retry_with_backoff(
+                _run_non_streamed,
+                max_retries=DEFAULT_MAX_RETRIES,
+                backoff_base=DEFAULT_BACKOFF_BASE,
+                retryable_exceptions=(TimeoutError, ConnectionError, OSError),
+                operation_name="non_streamed_orchestrator_run"
+            )
+
             agents_used = self._extract_agents_used(result)
-            logger.info(f"Non-streamed run complete: {len(final_output)} chars output")
 
         # Parse response if it's JSON
         response_data = {"raw_response": final_output}
@@ -268,7 +523,8 @@ class LibrarianOrchestrator:
         return {
             "response": response_data,
             "conversation": result.to_input_list() if not use_streaming else [],
-            "agents_used": list(set(agents_used))
+            "agents_used": list(set(agents_used)),
+            "reasoning_effort": complexity  # Dynamic reasoning effort used for this query
         }
 
     def _extract_agents_used(self, result) -> list:
