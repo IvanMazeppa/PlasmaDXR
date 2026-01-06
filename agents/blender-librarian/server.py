@@ -34,7 +34,17 @@ from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP, Context
 from PIL import Image
+from pydantic import BaseModel
 import io
+
+# Import Pydantic models for structured outputs
+from librarian_agents.models import (
+    ModificationAdvice,
+    RenderDiagnosis,
+    AgentSearchResult,
+    BudgetStatus,
+    PlaybookEntry
+)
 
 # Load environment from explicit path (MCP runs from different cwd)
 from dotenv import load_dotenv

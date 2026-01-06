@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional
 from agents import Agent, ModelSettings, function_tool
 from openai.types.shared import Reasoning
 
+from .models import RenderDiagnosis
+
 
 # Effect-specific quality criteria for structured analysis
 EFFECT_QUALITY_CRITERIA: Dict[str, List[str]] = {
@@ -190,7 +192,7 @@ ANALYSIS APPROACH:
 1. First, understand the effect type using get_quality_criteria()
 2. Load images using load_image_as_base64()
 3. Analyze each criterion systematically
-4. Use format_diagnosis_output() to structure your response
+4. Provide your structured diagnosis
 
 WHEN ANALYZING RENDERS, LOOK FOR:
 - **Color issues:** Temperature (too warm/cool), saturation, color banding
@@ -198,20 +200,19 @@ WHEN ANALYZING RENDERS, LOOK FOR:
 - **Structural issues:** Procedural artifacts, lack of organic variation, uniform patterns
 - **Effect-specific features:** Missing limb darkening (sun), missing prominences, flat explosions
 
-SEVERITY RATINGS:
+SEVERITY RATINGS (must be one of these exact values):
 - **critical:** Render is unusable or fundamentally broken
 - **high:** Major visual issue that needs immediate attention
 - **medium:** Noticeable issue that affects quality
 - **low:** Minor issue or polish item
 
-OUTPUT FORMAT (ALWAYS use format_diagnosis_output tool):
-{
-    "diagnosis": "The render shows insufficient limb darkening, causing the sun to appear flat and unrealistic.",
-    "primary_issue": "missing_limb_darkening",
-    "severity": "high",
-    "secondary_issues": ["color_too_uniform", "lacks_surface_texture"],
-    "recommendations": ["Increase limb darkening factor", "Add granulation texture", "Adjust color temperature gradient"]
-}
+Your response will be automatically validated as a RenderDiagnosis object with these fields:
+- diagnosis: Primary issue description (1-2 sentences)
+- primary_issue: Issue category name (e.g., "color_too_cool", "missing_limb_darkening")
+- severity: Must be exactly one of: critical, high, medium, low
+- secondary_issues: List of additional issues found
+- recommendations: List of actionable fix recommendations
+- confidence: 0.0-1.0
 
 IMPORTANT:
 - Be specific and actionable in recommendations
@@ -256,6 +257,8 @@ class VisionExpertAgent:
             instructions = instructions + "\n\n" + custom_instructions
 
         # Use medium reasoning for visual analysis tasks
+        # output_type enables automatic Pydantic validation of responses
+        # Note: format_diagnosis_output tool kept for backward compatibility
         self._agent = Agent(
             name="Vision Expert",
             instructions=instructions,
@@ -267,8 +270,9 @@ class VisionExpertAgent:
             tools=[
                 load_image_as_base64,
                 get_quality_criteria,
-                format_diagnosis_output
-            ]
+                format_diagnosis_output  # Kept for backward compatibility
+            ],
+            output_type=RenderDiagnosis
         )
 
     @property

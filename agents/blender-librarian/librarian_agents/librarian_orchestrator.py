@@ -30,6 +30,9 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 from agents import Agent, ModelSettings, handoff, Runner
 from agents.stream_events import StreamEvent
 from openai.types.shared import Reasoning
+from pydantic import BaseModel
+
+from .models import ModificationAdvice, RenderDiagnosis, AgentSearchResult
 
 # Type variable for generic retry function
 T = TypeVar('T')
@@ -91,6 +94,7 @@ async def retry_with_backoff(
 
 from .doc_expert import DocExpertAgent, create_doc_expert, create_doc_expert_pooled, get_connection_pool
 from .vision_expert import VisionExpertAgent, create_vision_expert
+from .models import ModificationAdvice, RenderDiagnosis, AgentSearchResult
 
 
 # =============================================================================
@@ -512,13 +516,19 @@ class LibrarianOrchestrator:
 
             agents_used = self._extract_agents_used(result)
 
-        # Parse response if it's JSON
+        # Parse response - handle Pydantic models, JSON strings, or raw text
         response_data = {"raw_response": final_output}
-        try:
-            parsed = json.loads(final_output)
-            response_data.update(parsed)
-        except (json.JSONDecodeError, TypeError):
-            response_data["answer"] = final_output
+        if isinstance(final_output, BaseModel):
+            # Pydantic model output (from agents with output_type)
+            response_data.update(final_output.model_dump())
+        elif isinstance(final_output, str):
+            try:
+                parsed = json.loads(final_output)
+                response_data.update(parsed)
+            except (json.JSONDecodeError, TypeError):
+                response_data["answer"] = final_output
+        elif isinstance(final_output, dict):
+            response_data.update(final_output)
 
         return {
             "response": response_data,

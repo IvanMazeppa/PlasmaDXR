@@ -23,6 +23,8 @@ from agents import Agent, ModelSettings, function_tool
 from agents.mcp import MCPServerStdio
 from openai.types.shared import Reasoning
 
+from .models import ModificationAdvice
+
 
 # Blender 5.0 API parameter ranges (from script-generator)
 BLENDER_PARAMETER_RANGES: Dict[str, Dict[str, Any]] = {
@@ -157,19 +159,14 @@ WHEN RECOMMENDING PARAMETERS:
 - Prefer conservative changes (small increments)
 - Maximum 2-3 parameter changes per recommendation
 
-OUTPUT FORMAT (always respond with valid JSON):
-{
-    "answer": "1-2 sentence summary of what was found",
-    "modifications": {
-        "parameter_name": value,
-        ...
-    },
-    "rationale": "Why these changes should help based on documentation",
-    "confidence": 0.0-1.0,
-    "citations": ["path/to/doc1.html", "path/to/doc2.html"]
-}
+Your response will be automatically validated as a ModificationAdvice object with these fields:
+- answer: 1-2 sentence summary of what was found
+- modifications: dict of parameter_name -> value
+- rationale: Why these changes should help based on documentation
+- confidence: 0.0-1.0 (set to 0.3 or lower if docs not found)
+- citations: list of documentation paths used
 
-If you cannot find relevant documentation, set confidence to 0.3 or lower and note that the recommendation is based on general knowledge rather than official docs."""
+If you cannot find relevant documentation, set confidence to 0.3 or lower and note in the rationale that the recommendation is based on general knowledge rather than official docs."""
 
 
 class DocExpertAgent:
@@ -241,6 +238,7 @@ class DocExpertAgent:
 
         # Create the agent with MCP tools and local function tools
         # Use medium reasoning effort for agentic documentation search tasks
+        # output_type enables automatic Pydantic validation of responses
         self._agent = Agent(
             name="Documentation Expert",
             instructions=instructions,
@@ -250,7 +248,8 @@ class DocExpertAgent:
                 verbosity="low"
             ),
             mcp_servers=[self._mcp_server],
-            tools=[validate_parameter_range, get_parameter_defaults]
+            tools=[validate_parameter_range, get_parameter_defaults],
+            output_type=ModificationAdvice
         )
 
     @property
@@ -413,7 +412,8 @@ async def create_doc_expert_pooled(
             verbosity="low"
         ),
         mcp_servers=[mcp_server],
-        tools=[validate_parameter_range, get_parameter_defaults]
+        tools=[validate_parameter_range, get_parameter_defaults],
+        output_type=ModificationAdvice
     )
 
     return agent
