@@ -27,6 +27,44 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 import hashlib
 
+# =============================================================================
+# MCP Protocol Safety - MUST be set before any HuggingFace imports
+# =============================================================================
+# Progress bars from transformers/tqdm can leak to stdout and break MCP JSON-RPC
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TQDM_DISABLE"] = "1"  # Global tqdm disable - critical for checkpoint shards
+
+# =============================================================================
+# AGGRESSIVE tqdm Fix - Monkey-patch tqdm to always use stderr
+# =============================================================================
+# Some transformers code ignores TQDM_DISABLE and environment variables.
+# This monkey-patches tqdm BEFORE any imports to force file=stderr.
+try:
+    import tqdm
+    import tqdm.auto
+    import tqdm.std
+
+    # Save original classes
+    _original_tqdm = tqdm.tqdm
+    _original_tqdm_auto = tqdm.auto.tqdm
+    _original_tqdm_std = tqdm.std.tqdm
+
+    class SafeTqdm(_original_tqdm):
+        """tqdm wrapper that always writes to stderr."""
+        def __init__(self, *args, **kwargs):
+            kwargs['file'] = sys.stderr
+            super().__init__(*args, **kwargs)
+
+    # Monkey-patch all tqdm entry points
+    tqdm.tqdm = SafeTqdm
+    tqdm.auto.tqdm = SafeTqdm
+    tqdm.std.tqdm = SafeTqdm
+    print("[MCP Safety] tqdm monkey-patched to use stderr", file=sys.stderr)
+except ImportError:
+    pass  # tqdm not installed yet, that's fine
+
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 import numpy as np

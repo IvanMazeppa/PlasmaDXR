@@ -27,9 +27,9 @@ class ModificationAdvice(BaseModel):
     answer: str = Field(
         description="1-2 sentence summary of what was found in documentation"
     )
-    modifications: Dict[str, float] = Field(
-        default_factory=dict,
-        description="Parameter changes to apply (parameter_name -> value)"
+    modifications_json: str = Field(
+        default="{}",
+        description="JSON string of parameter changes, e.g. '{\"flame_smoke\": 2.5, \"turbulence\": 0.4}'"
     )
     rationale: str = Field(
         description="Why these changes should help based on documentation"
@@ -44,11 +44,20 @@ class ModificationAdvice(BaseModel):
         description="Documentation paths used as sources"
     )
 
+    @property
+    def modifications(self) -> Dict[str, float]:
+        """Parse modifications_json to dict for backward compatibility."""
+        import json
+        try:
+            return json.loads(self.modifications_json)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
     class Config:
         json_schema_extra = {
             "example": {
                 "answer": "Increasing flame_smoke ratio adds more smoke to the simulation.",
-                "modifications": {"flame_smoke": 2.5, "turbulence": 0.4},
+                "modifications_json": "{\"flame_smoke\": 2.5, \"turbulence\": 0.4}",
                 "rationale": "Higher flame_smoke creates denser smoke trails which improves solar prominence appearance.",
                 "confidence": 0.85,
                 "citations": ["physics/fluid/type/flow.html", "physics/fluid/settings.html"]
@@ -114,9 +123,9 @@ class AgentSearchResult(BaseModel):
     answer: str = Field(
         description="Synthesized answer from documentation search"
     )
-    modifications: Dict[str, float] = Field(
-        default_factory=dict,
-        description="Recommended parameter modifications"
+    modifications_json: str = Field(
+        default="{}",
+        description="JSON string of parameter modifications, e.g. '{\"domain_scale_z\": 1.5}'"
     )
     rationale: str = Field(
         description="Why these modifications should help"
@@ -138,11 +147,20 @@ class AgentSearchResult(BaseModel):
         description="Estimated API cost for this query"
     )
 
+    @property
+    def modifications(self) -> Dict[str, float]:
+        """Parse modifications_json to dict for backward compatibility."""
+        import json
+        try:
+            return json.loads(self.modifications_json)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
     class Config:
         json_schema_extra = {
             "example": {
                 "answer": "To fix the missing prominences, increase domain height and add more turbulence.",
-                "modifications": {"domain_scale_z": 1.5, "turbulence": 0.6},
+                "modifications_json": "{\"domain_scale_z\": 1.5, \"turbulence\": 0.6}",
                 "rationale": "Prominences need vertical space and chaotic motion to form properly.",
                 "citations": ["physics/fluid/type/domain.html"],
                 "diagnosis": None,

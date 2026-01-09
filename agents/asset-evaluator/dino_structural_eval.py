@@ -25,11 +25,41 @@ Usage:
 """
 
 import json
+import os
+import sys
 import numpy as np
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 import warnings
+
+# =============================================================================
+# MCP Protocol Safety - Suppress all stdout pollution
+# =============================================================================
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TQDM_DISABLE"] = "1"  # Global tqdm disable
+
+import contextlib
+
+@contextlib.contextmanager
+def suppress_stdout_to_stderr():
+    """
+    Redirect stdout to stderr at the OS file descriptor level.
+    Uses os.dup2() to catch ALL stdout output including C-level writes.
+    """
+    original_stdout_fd = sys.stdout.fileno()
+    saved_stdout_fd = os.dup(original_stdout_fd)
+
+    try:
+        os.dup2(sys.stderr.fileno(), original_stdout_fd)
+        sys.stdout = sys.stderr
+        yield
+    finally:
+        os.dup2(saved_stdout_fd, original_stdout_fd)
+        os.close(saved_stdout_fd)
+        sys.stdout = sys.__stdout__
 
 # Lazy-loaded models
 _dino_model = None
@@ -94,20 +124,26 @@ def get_dino_model():
             import torch
             from transformers import AutoModel, AutoImageProcessor
 
-            print("Loading DINOv2 model (first time may take a minute)...")
+            print("Loading DINOv2 model (first time may take a minute)...", file=sys.stderr)
 
             # Use base model for speed, large for quality
             model_name = "facebook/dinov2-base"
 
-            _dino_processor = AutoImageProcessor.from_pretrained(model_name)
-            _dino_model = AutoModel.from_pretrained(model_name)
+            # Wrap from_pretrained to suppress any progress bars
+            with suppress_stdout_to_stderr():
+                _dino_processor = AutoImageProcessor.from_pretrained(model_name)
+                _dino_model = AutoModel.from_pretrained(model_name)
 
-            # Move to GPU if available
+                # Move to GPU if available
+                if torch.cuda.is_available():
+                    _dino_model = _dino_model.cuda()
+                else:
+                    pass  # CPU mode
+
             if torch.cuda.is_available():
-                _dino_model = _dino_model.cuda()
-                print("DINOv2 loaded on GPU")
+                print("DINOv2 loaded on GPU", file=sys.stderr)
             else:
-                print("DINOv2 loaded on CPU (slower)")
+                print("DINOv2 loaded on CPU (slower)", file=sys.stderr)
 
             _dino_model.eval()
 

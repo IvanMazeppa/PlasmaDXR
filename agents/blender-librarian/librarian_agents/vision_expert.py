@@ -272,7 +272,8 @@ class VisionExpertAgent:
                 get_quality_criteria,
                 format_diagnosis_output  # Kept for backward compatibility
             ],
-            output_type=RenderDiagnosis
+            # NOTE: output_type removed to avoid strict JSON schema issues
+            # Response parsing handled in orchestrator
         )
 
     @property

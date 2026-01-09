@@ -17,12 +17,85 @@ Key design decisions:
 
 import json
 import os
+import sys
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 import numpy as np
 
+# =============================================================================
+# MCP Protocol Safety - Suppress all stdout pollution
+# =============================================================================
+# HuggingFace/transformers progress bars can leak to stdout and break MCP
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Suppress tokenizer warnings
+os.environ["TQDM_DISABLE"] = "1"  # Global tqdm disable - critical for checkpoint shards
+
+# =============================================================================
+# AGGRESSIVE tqdm Fix - Monkey-patch tqdm to always use stderr
+# =============================================================================
+# Some transformers code ignores TQDM_DISABLE and environment variables.
+# This monkey-patches tqdm BEFORE transformers imports to force file=stderr.
+try:
+    import tqdm
+    import tqdm.auto
+    import tqdm.std
+
+    _original_tqdm = tqdm.tqdm
+
+    class SafeTqdm(_original_tqdm):
+        """tqdm wrapper that always writes to stderr."""
+        def __init__(self, *args, **kwargs):
+            kwargs['file'] = sys.stderr
+            super().__init__(*args, **kwargs)
+
+    # Monkey-patch all tqdm entry points
+    tqdm.tqdm = SafeTqdm
+    tqdm.auto.tqdm = SafeTqdm
+    tqdm.std.tqdm = SafeTqdm
+except ImportError:
+    pass  # tqdm not installed yet
+
+# =============================================================================
+# Stdout Suppression Context Manager - Critical for MCP Protocol Safety
+# =============================================================================
+# Some deep transformers/tqdm code ignores environment variables and still
+# writes progress bars to stdout. This context manager forcibly redirects
+# stdout at the OS file descriptor level, which catches ALL stdout output
+# including C-level writes that bypass Python's sys.stdout.
+
+import contextlib
+import io
+
+@contextlib.contextmanager
+def suppress_stdout_to_stderr():
+    """
+    Redirect stdout to stderr at the OS file descriptor level.
+
+    Critical for MCP servers: The JSON-RPC protocol requires stdout to contain
+    ONLY valid JSON messages. Progress bars like "Loading checkpoint shards: 0%"
+    from transformers will corrupt the protocol and crash the connection.
+
+    This uses os.dup2() to redirect at the file descriptor level, which catches
+    ALL stdout output including C-level writes that bypass Python's sys.stdout.
+    """
+    # Save the original stdout file descriptor
+    original_stdout_fd = sys.stdout.fileno()
+    saved_stdout_fd = os.dup(original_stdout_fd)
+
+    try:
+        # Redirect stdout fd to stderr fd (fd 2)
+        os.dup2(sys.stderr.fileno(), original_stdout_fd)
+        # Also redirect Python-level stdout
+        sys.stdout = sys.stderr
+        yield
+    finally:
+        # Restore original stdout
+        os.dup2(saved_stdout_fd, original_stdout_fd)
+        os.close(saved_stdout_fd)
+        sys.stdout = sys.__stdout__
 
 # =============================================================================
 # Data Classes
@@ -164,14 +237,16 @@ def get_siglip_model():
             model_name = "google/siglip-so400m-patch14-384"
             device = get_device()
 
-            _siglip_processor = AutoProcessor.from_pretrained(model_name)
-            _siglip_model = AutoModel.from_pretrained(model_name)
-            _siglip_model = _siglip_model.to(device)
-            _siglip_model.eval()
+            # Wrap from_pretrained to suppress any progress bars
+            with suppress_stdout_to_stderr():
+                _siglip_processor = AutoProcessor.from_pretrained(model_name)
+                _siglip_model = AutoModel.from_pretrained(model_name)
+                _siglip_model = _siglip_model.to(device)
+                _siglip_model.eval()
 
-            print(f"[SigLIP 2] Loaded {model_name} on {device}")
+            print(f"[SigLIP 2] Loaded {model_name} on {device}", file=sys.stderr)
         except Exception as e:
-            print(f"[SigLIP 2] Failed to load: {e}")
+            print(f"[SigLIP 2] Failed to load: {e}", file=sys.stderr)
             raise RuntimeError(f"SigLIP 2 not available: {e}")
     return _siglip_model, _siglip_processor
 
@@ -193,9 +268,9 @@ def get_topiq_model():
 
             # TOPIQ-FR for full-reference, TOPIQ-NR for no-reference
             _topiq_model = pyiqa.create_metric('topiq_fr', device=device)
-            print(f"[TOPIQ] Loaded on {device}")
+            print(f"[TOPIQ] Loaded on {device}", file=sys.stderr)
         except Exception as e:
-            print(f"[TOPIQ] Failed to load: {e}")
+            print(f"[TOPIQ] Failed to load: {e}", file=sys.stderr)
             return None
     return _topiq_model
 
@@ -216,16 +291,16 @@ def get_qualiclip_model():
             device = get_device()
 
             _qualiclip_model = pyiqa.create_metric('qalign', device=device)
-            print(f"[QualiCLIP] Loaded on {device}")
+            print(f"[QualiCLIP] Loaded on {device}", file=sys.stderr)
         except Exception as e:
             # QualiCLIP might not be available, try alternatives
-            print(f"[QualiCLIP] Failed to load: {e}, trying qalign")
+            print(f"[QualiCLIP] Failed to load: {e}, trying qalign", file=sys.stderr)
             try:
                 import pyiqa
                 _qualiclip_model = pyiqa.create_metric('niqe', device=device)
-                print(f"[QualiCLIP fallback] Using NIQE on {device}")
+                print(f"[QualiCLIP fallback] Using NIQE on {device}", file=sys.stderr)
             except Exception as e2:
-                print(f"[QualiCLIP] No fallback available: {e2}")
+                print(f"[QualiCLIP] No fallback available: {e2}", file=sys.stderr)
                 return None
     return _qualiclip_model
 
@@ -249,24 +324,27 @@ def get_moondream_model():
             revision = "2025-01-09"
             device = get_device()
 
-            _moondream_tokenizer = AutoTokenizer.from_pretrained(
-                model_id,
-                revision=revision
-            )
-            _moondream_model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                revision=revision,
-                trust_remote_code=True,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                device_map="auto" if device == "cuda" else None
-            )
+            # CRITICAL: Wrap from_pretrained calls to suppress checkpoint loading
+            # progress bars that would corrupt MCP stdout
+            with suppress_stdout_to_stderr():
+                _moondream_tokenizer = AutoTokenizer.from_pretrained(
+                    model_id,
+                    revision=revision
+                )
+                _moondream_model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    revision=revision,
+                    trust_remote_code=True,
+                    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                    device_map="auto" if device == "cuda" else None
+                )
 
-            if device != "cuda":
-                _moondream_model = _moondream_model.to(device)
+                if device != "cuda":
+                    _moondream_model = _moondream_model.to(device)
 
-            print(f"[Moondream 2] Loaded on {device}")
+            print(f"[Moondream 2] Loaded on {device}", file=sys.stderr)
         except Exception as e:
-            print(f"[Moondream 2] Failed to load: {e}")
+            print(f"[Moondream 2] Failed to load: {e}", file=sys.stderr)
             return None, None
     return _moondream_model, _moondream_tokenizer
 
@@ -280,9 +358,9 @@ def get_lpips_model():
             import lpips
             device = get_device()
             _lpips_model = lpips.LPIPS(net='alex').to(device)
-            print(f"[LPIPS] Loaded on {device}")
+            print(f"[LPIPS] Loaded on {device}", file=sys.stderr)
         except Exception as e:
-            print(f"[LPIPS] Failed to load: {e}")
+            print(f"[LPIPS] Failed to load: {e}", file=sys.stderr)
             raise RuntimeError(f"LPIPS not available: {e}")
     return _lpips_model
 
@@ -297,9 +375,9 @@ def get_dino_model():
             _dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
             _dino_model = _dino_model.to(device)
             _dino_model.eval()
-            print(f"[DINOv2] Loaded on {device}")
+            print(f"[DINOv2] Loaded on {device}", file=sys.stderr)
         except Exception as e:
-            print(f"[DINOv2] Failed to load: {e}")
+            print(f"[DINOv2] Failed to load: {e}", file=sys.stderr)
             return None
     return _dino_model
 
@@ -455,7 +533,7 @@ def compute_topiq(render_path: str, reference_path: str = None) -> Optional[floa
             score = model(render_path).item()
         return score
     except Exception as e:
-        print(f"[TOPIQ] Computation failed: {e}")
+        print(f"[TOPIQ] Computation failed: {e}", file=sys.stderr)
         return None
 
 
@@ -473,7 +551,7 @@ def compute_qualiclip(image_path: str) -> Optional[float]:
         score = model(image_path).item()
         return score
     except Exception as e:
-        print(f"[QualiCLIP] Computation failed: {e}")
+        print(f"[QualiCLIP] Computation failed: {e}", file=sys.stderr)
         return None
 
 
@@ -559,7 +637,7 @@ def compute_dino_structural_similarity(
 
         return similarity
     except Exception as e:
-        print(f"[DINOv2] Computation failed: {e}")
+        print(f"[DINOv2] Computation failed: {e}", file=sys.stderr)
         return None
 
 
@@ -646,7 +724,7 @@ Be concise and focus on actionable issues."""
         )
 
     except Exception as e:
-        print(f"[Moondream] Diagnosis failed: {e}")
+        print(f"[Moondream] Diagnosis failed: {e}", file=sys.stderr)
         return DiagnosisResult(
             issues=[DiagnosedIssue(
                 description=f"VLM analysis failed: {str(e)}",
@@ -838,7 +916,7 @@ def evaluate_render_unified(
             try:
                 metrics.lpips = compute_lpips(render_path, reference_path)
             except Exception as e:
-                print(f"LPIPS failed: {e}")
+                print(f"LPIPS failed: {e}", file=sys.stderr)
 
         # SigLIP semantic similarity
         try:
@@ -853,7 +931,7 @@ def evaluate_render_unified(
             query = effect_queries.get(effect_type, effect_queries["unknown"])
             metrics.siglip = compute_siglip_similarity(render_path, query)
         except Exception as e:
-            print(f"SigLIP failed: {e}")
+            print(f"SigLIP failed: {e}", file=sys.stderr)
 
     # Profile: standard - add quality metrics
     if profile in ["standard", "comprehensive"]:
@@ -861,19 +939,19 @@ def evaluate_render_unified(
         try:
             metrics.topiq = compute_topiq(render_path, reference_path)
         except Exception as e:
-            print(f"TOPIQ failed: {e}")
+            print(f"TOPIQ failed: {e}", file=sys.stderr)
 
         # QualiCLIP (no-reference)
         try:
             metrics.qualiclip = compute_qualiclip(render_path)
         except Exception as e:
-            print(f"QualiCLIP failed: {e}")
+            print(f"QualiCLIP failed: {e}", file=sys.stderr)
 
         # Feature CV for texture analysis
         try:
             metrics.feature_cv = compute_feature_cv(render_path)
         except Exception as e:
-            print(f"Feature CV failed: {e}")
+            print(f"Feature CV failed: {e}", file=sys.stderr)
 
     # Profile: comprehensive - add structural and VLM
     if profile == "comprehensive":
@@ -884,7 +962,7 @@ def evaluate_render_unified(
                     render_path, reference_path
                 )
             except Exception as e:
-                print(f"DINOv2 failed: {e}")
+                print(f"DINOv2 failed: {e}", file=sys.stderr)
 
         # VLM diagnostics
         if include_diagnostics:
@@ -900,7 +978,7 @@ def evaluate_render_unified(
                         if issue.suggested_fix:
                             suggestions.append(issue.suggested_fix)
             except Exception as e:
-                print(f"VLM diagnosis failed: {e}")
+                print(f"VLM diagnosis failed: {e}", file=sys.stderr)
 
     # Compute overall score (weighted combination)
     score_components = []
