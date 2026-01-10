@@ -36,10 +36,9 @@ from specialized_agents import (
     create_quality_analyst,
     create_learning_agent,
 )
-# NOTE: DocsExpert uses MCP client connections which CANNOT be spawned from
-# within an MCP tool handler (causes anyio task group conflicts).
-# We defer initialization and make it optional for now.
-# from specialized_agents.docs_expert import create_docs_expert_pooled, get_docs_connection_pool
+# DocsExpert now uses in-process function_tools instead of MCP client connections.
+# This fixes the anyio TaskGroup conflict that previously blocked MCP tool handlers.
+from specialized_agents.docs_expert import create_docs_expert
 from utils import (
     BudgetTracker,
     get_budget_tracker,
@@ -49,10 +48,6 @@ from utils import (
     create_session_from_request,
     resume_or_create_session,
 )
-
-# Flag to enable/disable docs expert (disabled by default for MCP compatibility)
-ENABLE_DOCS_EXPERT = os.environ.get("ENABLE_DOCS_EXPERT", "0") == "1"
-
 
 # =============================================================================
 # ORCHESTRATOR INSTRUCTIONS
@@ -178,23 +173,23 @@ class BlenderVFXOrchestrator:
 
         Must be called before create_asset().
 
-        NOTE: DocsExpert is disabled by default when running as MCP server
-        because spawning child MCP clients from within an MCP tool handler
-        causes anyio task group conflicts. Set ENABLE_DOCS_EXPERT=1 to enable
-        (only when running standalone, not as MCP server).
+        All 5 specialized agents are initialized synchronously. DocsExpert uses
+        in-process function_tools (extracted from blender-manual MCP server),
+        which avoids the anyio TaskGroup conflicts that blocked MCP tool handlers.
         """
         if self._initialized:
             return
 
-        print(f"[Orchestrator] Initializing (docs_expert={ENABLE_DOCS_EXPERT})...", file=sys.stderr)
+        print("[Orchestrator] Initializing all 5 specialized agents...", file=sys.stderr)
 
-        # Create specialized agents (synchronous agents first)
+        # Create all 5 specialized agents (all synchronous - no await needed!)
         self._script_writer = create_script_writer()
         self._executor = create_executor()
         self._quality_analyst = create_quality_analyst()
         self._learning_agent = create_learning_agent()
+        self._docs_expert = create_docs_expert()  # Now synchronous!
 
-        # Build handoffs list (core 4 agents)
+        # Build handoffs list with all 5 agents
         handoffs_list = [
             handoff(
                 self._script_writer,
@@ -216,29 +211,14 @@ class BlenderVFXOrchestrator:
                 tool_name_override="delegate_to_learning_agent",
                 tool_description_override="Delegate to Learning Agent for fix suggestions and experiment recording"
             ),
+            handoff(
+                self._docs_expert,
+                tool_name_override="delegate_to_docs_expert",
+                tool_description_override="Delegate to Docs Expert for searching Blender documentation (use when stuck)"
+            ),
         ]
 
-        # Conditionally add docs expert (disabled by default for MCP compatibility)
-        if ENABLE_DOCS_EXPERT:
-            try:
-                from specialized_agents.docs_expert import create_docs_expert_pooled
-                self._docs_expert = await create_docs_expert_pooled()
-                handoffs_list.append(
-                    handoff(
-                        self._docs_expert,
-                        tool_name_override="delegate_to_docs_expert",
-                        tool_description_override="Delegate to Docs Expert for searching Blender documentation (use when stuck)"
-                    )
-                )
-                print("[Orchestrator] DocsExpert enabled", file=sys.stderr)
-            except Exception as e:
-                print(f"[Orchestrator] DocsExpert initialization failed: {e}", file=sys.stderr)
-                self._docs_expert = None
-        else:
-            print("[Orchestrator] DocsExpert disabled (MCP compatibility mode)", file=sys.stderr)
-            self._docs_expert = None
-
-        # Create main orchestrator with handoffs to all agents
+        # Create main orchestrator with handoffs to all 5 agents
         self._orchestrator = Agent(
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
@@ -251,7 +231,7 @@ class BlenderVFXOrchestrator:
         )
 
         self._initialized = True
-        print("[Orchestrator] Initialization complete", file=sys.stderr)
+        print("[Orchestrator] Initialization complete (5 agents ready)", file=sys.stderr)
 
     async def create_asset(self, request: AssetRequest) -> SessionState:
         """
@@ -455,15 +435,11 @@ Resume the asset generation process."""
         return session
 
     async def close(self) -> None:
-        """Clean up resources."""
-        # Close docs expert MCP connection if it was initialized
-        if ENABLE_DOCS_EXPERT and self._docs_expert is not None:
-            try:
-                from specialized_agents.docs_expert import get_docs_connection_pool
-                pool = get_docs_connection_pool()
-                await pool.close()
-            except Exception:
-                pass
+        """Clean up resources.
+
+        Note: With the function_tool-based DocsExpert, there are no MCP
+        connections to close. All tools run in-process.
+        """
         self._initialized = False
 
     @property

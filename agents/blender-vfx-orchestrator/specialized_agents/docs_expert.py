@@ -1,28 +1,45 @@
 """
 Documentation Expert Agent using OpenAI Agents SDK.
 
-Specialized agent for searching and synthesizing Blender 5.0 documentation.
-Uses native MCP support to connect to the blender-manual server.
+Uses direct function_tool imports instead of MCP transport
+to avoid task group conflicts (MCP nesting architectural issue).
 
-Key capabilities:
-- Native MCP integration with blender-manual (12 tools)
-- Parameter validation against Blender API ranges
-- Structured output for script-generator compatibility
-- Automatic tool caching for reduced latency
+Key changes from previous MCP-based implementation:
+- Removed DocsExpertAgent class (used MCPServerStdio)
+- Removed DocsExpertConnectionPool class
+- Uses function_tool imports from shared.blender_docs_tools
+- create_docs_expert() is now synchronous (no await needed!)
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from agents import Agent, ModelSettings, function_tool
-from agents.mcp import MCPServerStdio
 from openai.types.shared import Reasoning
 
+# Import the 12 function_tools from shared module (in-process, no MCP)
+from ..shared import (
+    search_manual,
+    search_tutorials,
+    browse_hierarchy,
+    search_vdb_workflow,
+    search_python_api,
+    search_nodes,
+    search_modifiers,
+    read_page,
+    list_api_modules,
+    search_bpy_operators,
+    search_bpy_types,
+    search_semantic,
+)
+
+
+# =============================================================================
+# PARAMETER VALIDATION TOOLS
+# =============================================================================
 
 # Blender 5.0 API parameter ranges (from script-generator)
 BLENDER_PARAMETER_RANGES: Dict[str, Dict[str, Any]] = {
@@ -120,6 +137,13 @@ def get_parameter_defaults(effect_type: str) -> str:
             "emission_intensity": 0.5,
             "turbulence": 0.2,
         },
+        "pyro": {
+            "flame_max_temp": 3000.0,
+            "emission_intensity": 4.0,
+            "turbulence": 0.6,
+            "vorticity": 0.5,
+            "burning_rate": 1.0,
+        },
     }
 
     if effect_type not in defaults:
@@ -134,7 +158,10 @@ def get_parameter_defaults(effect_type: str) -> str:
     })
 
 
-# Agent instructions for documentation search and synthesis
+# =============================================================================
+# AGENT INSTRUCTIONS
+# =============================================================================
+
 DOC_EXPERT_INSTRUCTIONS = """You are a Blender 5.0 documentation expert.
 
 Your role:
@@ -143,13 +170,27 @@ Your role:
 3. Provide accurate, cited answers with documentation paths
 4. Validate parameter values against API ranges before recommending
 
-SEARCH STRATEGY (use these MCP tools in order of preference):
+SEARCH STRATEGY (use these tools in order of preference):
 1. search_semantic - For natural language questions
 2. search_vdb_workflow - For VDB/volume/caching topics
 3. search_python_api - For bpy.ops, bpy.types questions
 4. search_bpy_types - For specific type properties (FluidDomainSettings, etc.)
 5. search_nodes - For shader/material/geometry node questions
 6. read_page - To get full content of promising search results
+
+AVAILABLE SEARCH TOOLS (12 total):
+- search_manual: General keyword search across all Blender docs
+- search_tutorials: Tutorial and learning resources
+- browse_hierarchy: Directory tree navigation
+- search_vdb_workflow: VDB/NanoVDB specialized search
+- search_python_api: bpy.ops/types documentation
+- search_nodes: Shader/compositor/geometry nodes
+- search_modifiers: Modifier documentation
+- read_page: Full page content retrieval
+- list_api_modules: API module listing
+- search_bpy_operators: bpy.ops.* search
+- search_bpy_types: bpy.types.* search
+- search_semantic: AI embedding-based semantic search
 
 WHEN RECOMMENDING PARAMETERS:
 - Always use validate_parameter_range() to check values
@@ -171,260 +212,93 @@ knowledge rather than official docs.
 """
 
 
-class DocsExpertAgent:
+# =============================================================================
+# AGENT FACTORY
+# =============================================================================
+
+def create_docs_expert(custom_instructions: str = "") -> Agent:
     """
-    Documentation Expert using OpenAI Agents SDK with native MCP support.
+    Create a documentation expert agent with direct function tools.
 
-    Spawns the blender-manual MCP server via stdio and uses GPT-5.2
-    to intelligently search and synthesize documentation.
-    """
-
-    # Default path to blender-manual server
-    DEFAULT_BLENDER_MANUAL_PATH = Path(__file__).parent.parent.parent / "blender-manual"
-
-    def __init__(
-        self,
-        blender_manual_path: Optional[str] = None,
-        model: str = "gpt-5.2",
-        cache_tools: bool = True
-    ):
-        """
-        Initialize the documentation expert.
-
-        Args:
-            blender_manual_path: Path to blender-manual server directory
-            model: OpenAI model to use (default: gpt-5.2)
-            cache_tools: Whether to cache MCP tool definitions
-        """
-        self.blender_manual_path = Path(blender_manual_path) if blender_manual_path else self.DEFAULT_BLENDER_MANUAL_PATH
-        self.model = os.getenv("DOC_EXPERT_MODEL", model)
-        self.cache_tools = cache_tools
-        self._agent: Optional[Agent] = None
-        self._mcp_server: Optional[MCPServerStdio] = None
-
-    async def initialize(self, custom_instructions: str = "") -> None:
-        """
-        Initialize the agent with MCP server connection.
-
-        Args:
-            custom_instructions: Additional instructions to append (e.g., session context)
-        """
-        # Create MCP server connection via stdio (spawns server subprocess)
-        venv_python = self.blender_manual_path / "venv" / "bin" / "python"
-        server_script = self.blender_manual_path / "blender_server.py"
-
-        # Prepare environment with pre-warm flag for embeddings
-        env = os.environ.copy()
-        env["BLENDER_MCP_PREWARM_EMBEDDINGS"] = "1"
-
-        self._mcp_server = MCPServerStdio(
-            name="blender-manual",
-            params={
-                "command": str(venv_python),
-                "args": [str(server_script)],
-                "cwd": str(self.blender_manual_path),
-                "env": env
-            },
-            cache_tools_list=self.cache_tools,
-            client_session_timeout_seconds=120.0
-        )
-
-        # Explicitly connect to the MCP server before using it
-        await self._mcp_server.connect()
-
-        # Combine base instructions with any custom context
-        instructions = DOC_EXPERT_INSTRUCTIONS
-        if custom_instructions:
-            instructions = instructions + "\n\n" + custom_instructions
-
-        # Create the agent with MCP tools and local function tools
-        self._agent = Agent(
-            name="Documentation Expert",
-            instructions=instructions,
-            model=self.model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="medium"),
-                verbosity="low"
-            ),
-            mcp_servers=[self._mcp_server],
-            tools=[validate_parameter_range, get_parameter_defaults],
-        )
-
-    @property
-    def agent(self) -> Agent:
-        """Get the underlying Agent instance for handoffs."""
-        if not self._agent:
-            raise RuntimeError("DocsExpertAgent not initialized. Call initialize() first.")
-        return self._agent
-
-    async def close(self) -> None:
-        """Clean up MCP server connection."""
-        if self._mcp_server:
-            try:
-                await self._mcp_server.cleanup()
-            except Exception:
-                pass
-            self._mcp_server = None
-        self._agent = None
-
-
-class DocsExpertConnectionPool:
-    """
-    Singleton connection pool for blender-manual MCP server.
-
-    Instead of spawning a new MCP server subprocess for each query,
-    this pool maintains a persistent connection that can be reused.
-    """
-
-    _instance: Optional['DocsExpertConnectionPool'] = None
-    _lock: Optional[asyncio.Lock] = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self):
-        if self._initialized:
-            return
-
-        self._lock = asyncio.Lock()
-        self._mcp_server: Optional[MCPServerStdio] = None
-        self._connected = False
-        self._blender_manual_path = DocsExpertAgent.DEFAULT_BLENDER_MANUAL_PATH
-        self._initialized = True
-
-    async def get_server(self) -> MCPServerStdio:
-        """Get the pooled MCP server connection, creating it if necessary."""
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-
-        async with self._lock:
-            if self._mcp_server is not None and self._connected:
-                return self._mcp_server
-
-            # Create new connection
-            venv_python = self._blender_manual_path / "venv" / "bin" / "python"
-            server_script = self._blender_manual_path / "blender_server.py"
-
-            env = os.environ.copy()
-            env["BLENDER_MCP_PREWARM_EMBEDDINGS"] = "1"
-
-            self._mcp_server = MCPServerStdio(
-                name="blender-manual-pooled",
-                params={
-                    "command": str(venv_python),
-                    "args": [str(server_script)],
-                    "cwd": str(self._blender_manual_path),
-                    "env": env
-                },
-                cache_tools_list=True,
-                client_session_timeout_seconds=120.0
-            )
-
-            await self._mcp_server.connect()
-            self._connected = True
-            return self._mcp_server
-
-    async def close(self) -> None:
-        """Close the pooled connection."""
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-
-        async with self._lock:
-            if self._mcp_server:
-                try:
-                    await self._mcp_server.cleanup()
-                except Exception:
-                    pass
-                self._mcp_server = None
-                self._connected = False
-
-    @property
-    def is_connected(self) -> bool:
-        """Check if the pool has an active connection."""
-        return self._connected and self._mcp_server is not None
-
-
-# Module-level singleton
-_docs_connection_pool: Optional[DocsExpertConnectionPool] = None
-
-
-def get_docs_connection_pool() -> DocsExpertConnectionPool:
-    """Get the global docs MCP connection pool singleton."""
-    global _docs_connection_pool
-    if _docs_connection_pool is None:
-        _docs_connection_pool = DocsExpertConnectionPool()
-    return _docs_connection_pool
-
-
-async def create_docs_expert_pooled(custom_instructions: str = "") -> Agent:
-    """
-    Factory function to create a doc expert using the pooled MCP connection.
+    This is the main factory function. Unlike the previous MCP-based
+    implementation, this function is SYNCHRONOUS (no await needed)
+    because all tools are in-process function_tool wrappers.
 
     Args:
-        custom_instructions: Additional instructions to append
+        custom_instructions: Additional instructions to append (e.g., session context)
 
     Returns:
-        Initialized Agent instance ready for use
+        Agent instance ready for use (no initialization needed)
     """
-    pool = get_docs_connection_pool()
-    mcp_server = await pool.get_server()
-
     instructions = DOC_EXPERT_INSTRUCTIONS
     if custom_instructions:
         instructions = instructions + "\n\n" + custom_instructions
 
-    agent = Agent(
-        name="Documentation Expert (Pooled)",
+    return Agent(
+        name="Documentation Expert",
         instructions=instructions,
-        model=os.getenv("DOC_EXPERT_MODEL", "gpt-5.2"),
+        model=os.getenv("DOC_EXPERT_MODEL", "gpt-4o"),  # Cost-effective default
         model_settings=ModelSettings(
             reasoning=Reasoning(effort="medium"),
-            verbosity="low"
         ),
-        mcp_servers=[mcp_server],
-        tools=[validate_parameter_range, get_parameter_defaults],
+        tools=[
+            # Blender documentation search (12 tools from shared module)
+            search_manual,
+            search_tutorials,
+            browse_hierarchy,
+            search_vdb_workflow,
+            search_python_api,
+            search_nodes,
+            search_modifiers,
+            read_page,
+            list_api_modules,
+            search_bpy_operators,
+            search_bpy_types,
+            search_semantic,
+            # Parameter validation (2 local tools)
+            validate_parameter_range,
+            get_parameter_defaults,
+        ],
     )
 
-    return agent
 
+# =============================================================================
+# TESTING
+# =============================================================================
 
-async def create_docs_expert(
-    blender_manual_path: Optional[str] = None,
-    custom_instructions: str = ""
-) -> Agent:
-    """
-    Factory function to create and initialize a documentation expert agent.
-
-    Args:
-        blender_manual_path: Path to blender-manual server directory
-        custom_instructions: Additional instructions to append
-
-    Returns:
-        Initialized Agent instance ready for use
-    """
-    expert = DocsExpertAgent(blender_manual_path=blender_manual_path)
-    await expert.initialize(custom_instructions=custom_instructions)
-    return expert.agent
-
-
-# For testing
 if __name__ == "__main__":
     from agents import Runner
+    import asyncio
 
     async def test():
-        print("Testing DocsExpertAgent...")
+        print("Testing DocsExpert Agent (function_tool mode)...")
         print("-" * 60)
 
-        agent = await create_docs_expert()
+        # Note: create_docs_expert() is now synchronous!
+        agent = create_docs_expert()
+        print(f"Created agent: {agent.name}")
+        print(f"Tools: {len(agent.tools)} total")
 
-        result = await Runner.run(
-            agent,
-            "How do I increase smoke density in a Mantaflow simulation?"
-        )
+        # Quick test without LLM call
+        print("\nTesting direct tool calls:")
+        result = validate_parameter_range("turbulence", 0.5)
+        print(f"  validate_parameter_range('turbulence', 0.5): {result}")
 
-        print(f"Response: {result.final_output}")
+        result = get_parameter_defaults("explosion")
+        print(f"  get_parameter_defaults('explosion'): {result[:100]}...")
+
+        # Full agent test (requires OPENAI_API_KEY)
+        if os.getenv("OPENAI_API_KEY"):
+            print("\nTesting agent with LLM...")
+            result = await Runner.run(
+                agent,
+                "How do I increase smoke density in a Mantaflow simulation?"
+            )
+            print(f"Response: {result.final_output}")
+        else:
+            print("\nSkipping LLM test (OPENAI_API_KEY not set)")
+
+        print("-" * 60)
+        print("Test complete!")
 
     asyncio.run(test())

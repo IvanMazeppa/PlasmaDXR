@@ -46,8 +46,6 @@ from utils import (
     SessionPersistence,
     get_persistence,
 )
-# DocsExpert is optional (disabled by default for MCP compatibility)
-from orchestrator import ENABLE_DOCS_EXPERT
 
 
 # =============================================================================
@@ -67,29 +65,16 @@ async def _lifespan(server: FastMCP):
     """
     Lifespan handler for MCP server startup/shutdown.
 
-    NOTE: DocsExpert MCP connection is lazily initialized when first used
-    (during create_asset). Pre-warming during lifespan causes TaskGroup
-    conflicts because spawning child MCP processes during parent MCP startup
-    is not supported.
+    With the function_tool-based DocsExpert (instead of MCP client connections),
+    there are no external processes to manage during startup/shutdown.
     """
     startup_time = datetime.now()
     print(f"[blender-vfx-orchestrator] Server started at {startup_time.isoformat()}", file=sys.stderr)
 
     yield
 
-    # Shutdown: close MCP connections if they were initialized
-    if ENABLE_DOCS_EXPERT:
-        try:
-            from specialized_agents.docs_expert import get_docs_connection_pool
-            pool = get_docs_connection_pool()
-            if pool.is_connected:
-                await pool.close()
-                print("[blender-vfx-orchestrator] DocsExpert MCP connection closed", file=sys.stderr)
-        except Exception:
-            pass
-
     # Close orchestrator if it was initialized
-    # Note: get_orchestrator() would create one if not exists, so we just try/except
+    # Note: With function_tool-based DocsExpert, close() is lightweight
     try:
         from orchestrator import _orchestrator
         if _orchestrator is not None:
@@ -403,26 +388,13 @@ async def get_status(ctx: Context = None) -> str:
         - orchestrator_version: Server version
         - initialized: Whether orchestrator is ready
         - budget: Monthly budget status (spent, remaining, limits)
-        - docs_expert_enabled: Whether DocsExpert is enabled
-        - docs_expert_connected: Whether DocsExpert MCP is connected (if enabled)
+        - docs_expert_enabled: Always True (uses in-process function_tools)
     """
     try:
         budget = get_budget_tracker()
         budget_status = budget.get_status()
 
-        # Check DocsExpert connection (only if enabled)
-        docs_connected = False
-        if ENABLE_DOCS_EXPERT:
-            try:
-                from specialized_agents.docs_expert import get_docs_connection_pool
-                pool = get_docs_connection_pool()
-                docs_connected = pool.is_connected
-            except Exception:
-                pass
-
         # Check orchestrator initialization WITHOUT triggering it
-        # Calling get_orchestrator() would create MCP client connections,
-        # which causes asyncio TaskGroup conflicts inside MCP tool handlers
         initialized = is_orchestrator_initialized()
 
         # Extract category spending from nested structure
@@ -443,8 +415,8 @@ async def get_status(ctx: Context = None) -> str:
                 "at_80_percent": budget_status["total_spent"] >= monthly_limit * 0.8,
                 "exhausted": budget_status["total_spent"] >= monthly_limit,
             },
-            "docs_expert_enabled": ENABLE_DOCS_EXPERT,
-            "docs_expert_connected": docs_connected,
+            # DocsExpert now uses in-process function_tools (always available)
+            "docs_expert_enabled": True,
             "project_root": str(PROJECT_ROOT),
         }
 
