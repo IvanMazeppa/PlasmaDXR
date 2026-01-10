@@ -6,7 +6,7 @@ Each agent is an OpenAI Agent with specific tools and capabilities:
 - ExecutorAgent: Blender execution and output capture
 - QualityAnalystAgent: ML-powered quality evaluation
 - LearningAgent: Experiment tracking and learning
-- DocsExpertAgent: Documentation search via MCP
+- DocsExpert: Documentation search (uses function_tools, not MCP)
 
 NOTE: This package is named 'specialized_agents' to avoid conflict with
 the 'agents' package from openai-agents-python SDK.
@@ -16,14 +16,13 @@ from .script_writer import ScriptWriterAgent, create_script_writer
 from .executor import ExecutorAgent, create_executor
 from .quality_analyst import QualityAnalystAgent, create_quality_analyst
 from .learning_agent import LearningAgent, create_learning_agent
-from .docs_expert import DocsExpertAgent, create_docs_expert
+from .docs_expert import create_docs_expert  # No class, just factory function
 
 __all__ = [
     "ScriptWriterAgent",
     "ExecutorAgent",
     "QualityAnalystAgent",
     "LearningAgent",
-    "DocsExpertAgent",
     "create_script_writer",
     "create_executor",
     "create_quality_analyst",

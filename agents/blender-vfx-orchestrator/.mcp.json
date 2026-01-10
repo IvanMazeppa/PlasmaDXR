@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blender-vfx-orchestrator": {
+      "command": "./run_server.sh",
+      "args": [],
+      "cwd": "agents/blender-vfx-orchestrator",
+      "env": {
+        "PROJECT_ROOT": "/home/maz3ppa/projects/PlasmaDXR"
+      }
+    }
+  }
+}

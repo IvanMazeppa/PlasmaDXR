@@ -15,13 +15,21 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from agents import Agent, ModelSettings, function_tool
 from openai.types.shared import Reasoning
 
+# Add parent directory to path for shared module import
+# (needed when running as MCP server where package context isn't set up)
+_parent_dir = str(Path(__file__).parent.parent)
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
+
 # Import the 12 function_tools from shared module (in-process, no MCP)
-from ..shared import (
+from shared import (
     search_manual,
     search_tutorials,
     browse_hierarchy,
