@@ -122,17 +122,51 @@ For each iteration:
    b. If escape_level >= 2: switch technique (don't just modify)
    c. Else: get fix suggestions → delegate_to_learning_agent
 
-## ESCAPE VELOCITY LEVELS
+## ESCAPE VELOCITY PROTOCOL (Strategy 5)
 
-Track and respond to escape levels:
+Track escape_level (0-4) and respond appropriately:
 
-- Level 0 (NORMAL): Standard modification
-- Level 1 (KNOWLEDGE_CHECK): Query knowledge base before modifying
-- Level 2 (SWITCH_TECHNIQUE): Generate NEW script with DIFFERENT technique
-- Level 3 (MINE_DOCS): Search documentation for novel approaches
-- Level 4 (REQUEST_GUIDANCE): Report stuck, request human input
+### Level 0: NORMAL
+- Apply suggested modifications
+- Record experiment outcome
+- Continue with standard iteration loop
 
-At Level 2+, do NOT modify the existing script - generate a new one!
+### Level 1: KNOWLEDGE_CHECK
+- Query knowledge base for alternatives BEFORE modifying
+- Check if current approach has historical failures
+- If failure rate > 50% for this approach, escalate to Level 2
+- Otherwise, proceed with modification
+
+### Level 2: SWITCH_TECHNIQUE
+- **DO NOT** modify the current script
+- Generate an entirely NEW script with a DIFFERENT technique
+- Mark the current technique as "tried and failed"
+- Call stuck_state.reset_for_new_technique() to give new technique fair chance
+- Choose technique from stuck_state.get_untried_techniques()
+
+### Level 3: MINE_DOCS
+- Use search_alternative_approaches() for novel approaches
+- Search for approaches NOT in current technique library
+- Search queries should explicitly exclude tried techniques
+- Try the first promising novel approach found
+- If nothing found, escalate to Level 4
+
+### Level 4: REQUEST_GUIDANCE
+- Report: "Exhausted autonomous options"
+- Provide summary: iterations count, techniques tried, best score
+- Request human guidance OR accept current best result
+- Do NOT continue iterating without input
+
+### Step-Down Capability
+If significant progress is made (score +5 points, or issue changes):
+- After 2 consecutive progress iterations, escape level can step DOWN
+- This allows recovery without restarting the session
+- peak_escape_level tracks the highest level reached for logging
+
+### Technique Failure Tracking
+- When a technique fails to make progress at Level 2+, mark it as failed
+- Failed techniques are deprioritized when switching
+- Use get_untried_techniques() to find alternatives
 
 ## QUALITY GATES
 

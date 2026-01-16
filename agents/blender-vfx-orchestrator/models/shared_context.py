@@ -73,10 +73,17 @@ class EscapeLevel(int, Enum):
 
 class StuckDetectionState(BaseModel):
     """
-    Track stuck indicators for escape velocity mechanism.
+    Track stuck indicators for escape velocity mechanism (Strategy 5).
 
     Monitors iteration history to detect when the agent is stuck
-    and determines the appropriate escape action.
+    and determines the appropriate escape action. Supports step-down
+    capability when progress resumes.
+
+    Key features:
+    - Tracks same-issue persistence and score plateaus
+    - Distinguishes between "tried" and "failed" techniques
+    - Allows escape level to step down when progress resumes
+    - Records documentation queries to avoid duplicates
     """
     same_issue_count: int = Field(
         default=0,
@@ -104,9 +111,22 @@ class StuckDetectionState(BaseModel):
         default_factory=list,
         description="Techniques already attempted this session"
     )
+    techniques_failed: List[str] = Field(
+        default_factory=list,
+        description="Techniques that failed to make progress (avoid retrying)"
+    )
     research_queries_used: List[str] = Field(
         default_factory=list,
         description="Documentation queries already executed"
+    )
+    progress_count: int = Field(
+        default=0,
+        ge=0,
+        description="Consecutive iterations with significant progress (for step-down)"
+    )
+    peak_escape_level: EscapeLevel = Field(
+        default=EscapeLevel.NORMAL,
+        description="Highest escape level reached this session"
     )
 
     def update_from_iteration(
@@ -117,6 +137,9 @@ class StuckDetectionState(BaseModel):
     ) -> EscapeLevel:
         """
         Update state from iteration result and compute new escape level.
+
+        Supports step-down: if significant progress is made (score +5 or new issue),
+        the escape level can step down after 2 consecutive progress iterations.
 
         Args:
             score: Quality score from this iteration
@@ -131,22 +154,45 @@ class StuckDetectionState(BaseModel):
             self.techniques_tried.append(technique_used)
 
         # Check same issue persisting
-        if primary_issue and primary_issue == self.last_primary_issue:
+        issue_changed = primary_issue != self.last_primary_issue
+        if primary_issue and not issue_changed:
             self.same_issue_count += 1
         else:
             self.same_issue_count = 1 if primary_issue else 0
             self.last_primary_issue = primary_issue
 
         # Check score plateau (< 3 point change)
-        score_delta = abs(score - self.last_score)
-        if self.last_score > 0 and score_delta < 3.0:
+        score_delta = score - self.last_score  # Signed delta
+        significant_progress = score_delta >= 5.0  # Positive progress of 5+ points
+
+        if self.last_score > 0 and abs(score_delta) < 3.0:
             self.plateau_count += 1
+            self.progress_count = 0
         else:
             self.plateau_count = 0
+            # Track progress for step-down
+            if significant_progress or issue_changed:
+                self.progress_count += 1
+            else:
+                self.progress_count = 0
+
         self.last_score = score
 
-        # Determine escape level based on stuck indicators
-        self.escape_level = self._compute_escape_level()
+        # Compute new escape level
+        new_level = self._compute_escape_level()
+
+        # Step-down logic: if we have consecutive progress, allow level to decrease
+        if self.progress_count >= 2 and new_level < self.escape_level:
+            # Allow step-down, but record peak for logging
+            if self.escape_level > self.peak_escape_level:
+                self.peak_escape_level = self.escape_level
+            self.escape_level = new_level
+        else:
+            # Only escalate, never step down without progress
+            if new_level > self.escape_level:
+                self.escape_level = new_level
+                if self.escape_level > self.peak_escape_level:
+                    self.peak_escape_level = self.escape_level
 
         return self.escape_level
 
@@ -169,6 +215,50 @@ class StuckDetectionState(BaseModel):
             return EscapeLevel.KNOWLEDGE_CHECK
 
         return EscapeLevel.NORMAL
+
+    def mark_technique_failed(self, technique: str) -> None:
+        """
+        Mark a technique as failed (did not make progress).
+
+        Failed techniques should be avoided when switching techniques.
+
+        Args:
+            technique: Name of the technique that failed
+        """
+        if technique and technique not in self.techniques_failed:
+            self.techniques_failed.append(technique)
+
+    def get_untried_techniques(self, available: List[str]) -> List[str]:
+        """
+        Get techniques that haven't been tried or have failed.
+
+        Prioritizes untried techniques, excludes failed ones.
+
+        Args:
+            available: List of available technique names
+
+        Returns:
+            List of techniques to try, prioritizing untried over failed
+        """
+        untried = [t for t in available if t not in self.techniques_tried]
+        if untried:
+            return untried
+
+        # All tried - return any that didn't explicitly fail
+        non_failed = [t for t in available if t not in self.techniques_failed]
+        return non_failed
+
+    def reset_for_new_technique(self) -> None:
+        """
+        Reset stuck counters when switching to a new technique.
+
+        Call this when switching techniques at Level 2+ to give the
+        new technique a fair chance before escalating further.
+        """
+        self.same_issue_count = 0
+        self.plateau_count = 0
+        self.progress_count = 0
+        # Note: Don't reset escape_level - let it naturally step down if progress is made
 
     def should_research_before_iteration(self) -> bool:
         """Check if proactive research is recommended."""
