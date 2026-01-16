@@ -16,7 +16,7 @@ from .blender_docs_tools import (
     ensure_index_loaded,
     get_index_stats,
 
-    # Search tools (function_tools)
+    # Search tools (function_tools for agents)
     search_manual,
     search_tutorials,
     browse_hierarchy,
@@ -29,6 +29,9 @@ from .blender_docs_tools import (
     search_bpy_operators,
     search_bpy_types,
     search_semantic,
+
+    # Direct callable implementations (for non-agent code)
+    search_semantic_impl,
 )
 
 __all__ = [
@@ -36,7 +39,7 @@ __all__ = [
     "ensure_index_loaded",
     "get_index_stats",
 
-    # Search tools
+    # Search tools (function_tools for agents)
     "search_manual",
     "search_tutorials",
     "browse_hierarchy",
@@ -49,4 +52,7 @@ __all__ = [
     "search_bpy_operators",
     "search_bpy_types",
     "search_semantic",
+
+    # Direct callable implementations (for non-agent code)
+    "search_semantic_impl",
 ]

@@ -54,6 +54,144 @@ class IssueSeverity(str, Enum):
     LOW = "low"
 
 
+class EscapeLevel(int, Enum):
+    """
+    Escape velocity levels for stuck detection.
+
+    Higher levels indicate more aggressive exploration strategies.
+    """
+    NORMAL = 0           # Standard modification
+    KNOWLEDGE_CHECK = 1  # Query knowledge base for alternatives
+    SWITCH_TECHNIQUE = 2 # Force different technique entirely
+    MINE_DOCS = 3        # Search documentation for novel approaches
+    REQUEST_GUIDANCE = 4 # Admit defeat, request human help
+
+
+# =============================================================================
+# STUCK DETECTION STATE
+# =============================================================================
+
+class StuckDetectionState(BaseModel):
+    """
+    Track stuck indicators for escape velocity mechanism.
+
+    Monitors iteration history to detect when the agent is stuck
+    and determines the appropriate escape action.
+    """
+    same_issue_count: int = Field(
+        default=0,
+        ge=0,
+        description="Consecutive iterations with same primary issue"
+    )
+    last_primary_issue: str = Field(
+        default="",
+        description="Primary issue from last iteration"
+    )
+    plateau_count: int = Field(
+        default=0,
+        ge=0,
+        description="Consecutive iterations with <3 point score change"
+    )
+    last_score: float = Field(
+        default=0.0,
+        description="Score from last iteration"
+    )
+    escape_level: EscapeLevel = Field(
+        default=EscapeLevel.NORMAL,
+        description="Current escape velocity level"
+    )
+    techniques_tried: List[str] = Field(
+        default_factory=list,
+        description="Techniques already attempted this session"
+    )
+    research_queries_used: List[str] = Field(
+        default_factory=list,
+        description="Documentation queries already executed"
+    )
+
+    def update_from_iteration(
+        self,
+        score: float,
+        primary_issue: str,
+        technique_used: str = ""
+    ) -> EscapeLevel:
+        """
+        Update state from iteration result and compute new escape level.
+
+        Args:
+            score: Quality score from this iteration
+            primary_issue: Primary issue identified (empty if passed)
+            technique_used: Technique name if available
+
+        Returns:
+            New escape level after update
+        """
+        # Track technique
+        if technique_used and technique_used not in self.techniques_tried:
+            self.techniques_tried.append(technique_used)
+
+        # Check same issue persisting
+        if primary_issue and primary_issue == self.last_primary_issue:
+            self.same_issue_count += 1
+        else:
+            self.same_issue_count = 1 if primary_issue else 0
+            self.last_primary_issue = primary_issue
+
+        # Check score plateau (< 3 point change)
+        score_delta = abs(score - self.last_score)
+        if self.last_score > 0 and score_delta < 3.0:
+            self.plateau_count += 1
+        else:
+            self.plateau_count = 0
+        self.last_score = score
+
+        # Determine escape level based on stuck indicators
+        self.escape_level = self._compute_escape_level()
+
+        return self.escape_level
+
+    def _compute_escape_level(self) -> EscapeLevel:
+        """Compute escape level from current stuck indicators."""
+        # Level 4: Exhausted all options
+        if self.same_issue_count >= 4 or self.plateau_count >= 4:
+            return EscapeLevel.REQUEST_GUIDANCE
+
+        # Level 3: Need novel approaches
+        if self.same_issue_count >= 3 or self.plateau_count >= 3:
+            return EscapeLevel.MINE_DOCS
+
+        # Level 2: Current technique exhausted
+        if self.same_issue_count >= 2:
+            return EscapeLevel.SWITCH_TECHNIQUE
+
+        # Level 1: Early warning, check knowledge
+        if self.plateau_count >= 2:
+            return EscapeLevel.KNOWLEDGE_CHECK
+
+        return EscapeLevel.NORMAL
+
+    def should_research_before_iteration(self) -> bool:
+        """Check if proactive research is recommended."""
+        return self.escape_level >= EscapeLevel.KNOWLEDGE_CHECK
+
+    def get_escape_action(self) -> str:
+        """Get recommended action for current escape level."""
+        actions = {
+            EscapeLevel.NORMAL: "proceed_with_modification",
+            EscapeLevel.KNOWLEDGE_CHECK: "query_knowledge_base",
+            EscapeLevel.SWITCH_TECHNIQUE: "generate_new_script_different_technique",
+            EscapeLevel.MINE_DOCS: "search_documentation_for_alternatives",
+            EscapeLevel.REQUEST_GUIDANCE: "report_stuck_request_guidance",
+        }
+        return actions[self.escape_level]
+
+    def reset(self) -> None:
+        """Reset stuck detection state (e.g., after technique switch)."""
+        self.same_issue_count = 0
+        self.plateau_count = 0
+        # Keep techniques_tried and research_queries_used for session history
+
+
 # =============================================================================
 # QUALITY METRICS
 # =============================================================================
@@ -415,6 +553,12 @@ class SessionState(BaseModel):
         description="Issues identified in last iteration"
     )
 
+    # Stuck detection for escape velocity
+    stuck_state: StuckDetectionState = Field(
+        default_factory=StuckDetectionState,
+        description="Stuck detection state for escape velocity"
+    )
+
     # Final outputs
     final_render_path: Optional[str] = Field(
         default=None,
@@ -429,8 +573,15 @@ class SessionState(BaseModel):
         """Update the last modified timestamp."""
         self.updated_at = datetime.now().isoformat()
 
-    def record_iteration(self, result: IterationResult) -> None:
-        """Record a completed iteration and update best score."""
+    def record_iteration(self, result: IterationResult) -> EscapeLevel:
+        """
+        Record a completed iteration and update best score.
+
+        Also updates stuck detection state and returns the new escape level.
+
+        Returns:
+            Current escape level after this iteration
+        """
         self.iterations.append(result)
         self.current_iteration = result.iteration
 
@@ -444,7 +595,17 @@ class SessionState(BaseModel):
             if result.execution.vdb_files:
                 self.final_vdb_dir = str(result.execution.run_dir)
 
+        # Update stuck detection state
+        primary_issue = result.quality.primary_issue or ""
+        technique = result.script.technique_name or ""
+        escape_level = self.stuck_state.update_from_iteration(
+            score=result.score,
+            primary_issue=primary_issue,
+            technique_used=technique
+        )
+
         self.update_timestamp()
+        return escape_level
 
 
 # =============================================================================

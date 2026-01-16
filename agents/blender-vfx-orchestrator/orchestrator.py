@@ -29,6 +29,14 @@ from models.shared_context import (
     SessionStatus,
     SharedContext,
     IterationResult,
+    EscapeLevel,
+)
+
+# Proactive research tools for Strategy 3: Early warning detection
+from tools.proactive_research_tools import (
+    pre_iteration_research,
+    evaluate_escape_velocity,
+    search_alternative_approaches,
 )
 from specialized_agents import (
     create_script_writer,
@@ -77,20 +85,54 @@ generation through quality evaluation.
 5. **Docs Expert** - Searches Blender documentation
    - delegate_to_docs_expert for: finding new approaches when stuck
 
-## ITERATION LOOP
+## PROACTIVE RESEARCH (CRITICAL - DO THIS FIRST!)
+
+BEFORE each modification iteration (after iteration 1), you MUST:
+
+1. Call pre_iteration_research() with:
+   - current_issue: The primary issue from last iteration
+   - current_approach: What you were going to try
+   - iteration_history: JSON of past iterations
+   - effect_type: The effect type
+
+2. Check the warning_level in the response:
+   - "none": Proceed with planned modification
+   - "early": Check knowledge base before modifying (2+ same issue)
+   - "stuck": Switch technique or mine docs (3+ same issue)
+
+3. Follow the escape_action:
+   - "continue": Proceed normally
+   - "check_knowledge_then_modify": Query learning agent first
+   - "switch_technique_or_mine_docs": Do NOT modify - try something new
+
+This prevents wasting iterations on failing approaches!
+
+## ITERATION LOOP (UPDATED)
 
 For each iteration:
-1. Generate/modify script → delegate_to_script_writer
-2. Execute script → delegate_to_executor
-3. If execution failed → parse error and modify script, retry
-4. Evaluate quality → delegate_to_quality_analyst
-5. If PASSED (score >= 60, no critical issues) → complete session
-6. If FAILED:
-   a. Get fix suggestions → delegate_to_learning_agent
-   b. Apply fixes and repeat
-7. If STUCK (3+ iterations with <5% improvement):
-   a. Consult documentation → delegate_to_docs_expert
-   b. Try fundamentally different approach
+1. **IF iteration > 1**: Call pre_iteration_research() FIRST
+   - If warning_level != "none", follow escape action before proceeding
+2. Generate/modify script → delegate_to_script_writer
+3. Execute script → delegate_to_executor
+4. If execution failed → parse error and modify script, retry
+5. Evaluate quality → delegate_to_quality_analyst
+6. If PASSED (score >= 60, no critical issues) → complete session
+7. If FAILED:
+   a. Check escape_level from session state
+   b. If escape_level >= 2: switch technique (don't just modify)
+   c. Else: get fix suggestions → delegate_to_learning_agent
+
+## ESCAPE VELOCITY LEVELS
+
+Track and respond to escape levels:
+
+- Level 0 (NORMAL): Standard modification
+- Level 1 (KNOWLEDGE_CHECK): Query knowledge base before modifying
+- Level 2 (SWITCH_TECHNIQUE): Generate NEW script with DIFFERENT technique
+- Level 3 (MINE_DOCS): Search documentation for novel approaches
+- Level 4 (REQUEST_GUIDANCE): Report stuck, request human input
+
+At Level 2+, do NOT modify the existing script - generate a new one!
 
 ## QUALITY GATES
 
@@ -99,17 +141,20 @@ Pass when ALL conditions met:
 - No critical issues (ZERO LIGHTS, BLACK SCREEN, etc.)
 - If reference provided: acceptable LPIPS similarity
 
-## STUCK DETECTION
+## EARLY WARNING DETECTION (Updated thresholds)
 
-You are STUCK if:
-- 3+ consecutive iterations with <5 point improvement
-- Same primary issue persists for 3+ iterations
-- Quality score plateaued (< 2 point change for 3 iterations)
+EARLY WARNING (escape_level = 1-2) if:
+- Same primary issue for 2+ iterations
+- Score plateau (< 3 point change) for 2+ iterations
 
-When STUCK:
-1. First: consult Learning Agent for alternative fixes
-2. Second: consult Docs Expert for new approaches
-3. Third: switch technique entirely (generate new script)
+STUCK (escape_level = 3-4) if:
+- Same primary issue for 3+ iterations
+- Score plateau for 3+ iterations
+
+When early warning detected:
+1. STOP and research alternatives before trying same approach
+2. Query knowledge base for different fixes
+3. Consider switching technique early
 
 ## BUDGET LIMITS
 
@@ -124,6 +169,7 @@ At 100% budget: stop and return best result
 ## SESSION PERSISTENCE
 
 After each iteration, the session state is automatically saved.
+The stuck_state tracks escape level and techniques tried.
 If context limit is reached, the session can be resumed.
 
 ## OUTPUT FORMAT
@@ -132,11 +178,13 @@ After each iteration, report:
 - Iteration number and status
 - Quality score and improvement
 - Primary issue (if failed)
+- Escape level and warning status
 - Next action to take
 
 When complete, report:
 - Final score and iteration count
 - Paths to final outputs (render, VDBs)
+- Techniques tried (from stuck_state)
 - Total session cost
 """
 
@@ -219,6 +267,7 @@ class BlenderVFXOrchestrator:
         ]
 
         # Create main orchestrator with handoffs to all 5 agents
+        # Also include proactive research tools for early warning detection (Strategy 3)
         self._orchestrator = Agent(
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
@@ -228,6 +277,13 @@ class BlenderVFXOrchestrator:
                 verbosity="low"
             ),
             handoffs=handoffs_list,
+            tools=[
+                # Proactive research tools (Strategy 3)
+                # These run directly in the orchestrator for early warning detection
+                pre_iteration_research,
+                evaluate_escape_velocity,
+                search_alternative_approaches,
+            ],
         )
 
         self._initialized = True

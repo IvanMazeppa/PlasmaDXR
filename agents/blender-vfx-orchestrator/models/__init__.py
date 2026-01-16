@@ -6,6 +6,7 @@ Provides type-safe data structures for:
 - IterationResult: Result of a single iteration
 - AssetRequest: User request for asset generation
 - SessionState: Persistent session state
+- StuckDetectionState: Escape velocity tracking (Strategy 3)
 """
 
 from .shared_context import (
@@ -17,6 +18,13 @@ from .shared_context import (
     ScriptModification,
     BlenderExecution,
     ExperimentOutcome,
+    # Enums
+    EffectType,
+    SessionStatus,
+    IssueSeverity,
+    EscapeLevel,
+    # Strategy 3: Stuck detection
+    StuckDetectionState,
 )
 
 __all__ = [
@@ -28,4 +36,11 @@ __all__ = [
     "ScriptModification",
     "BlenderExecution",
     "ExperimentOutcome",
+    # Enums
+    "EffectType",
+    "SessionStatus",
+    "IssueSeverity",
+    "EscapeLevel",
+    # Strategy 3: Stuck detection
+    "StuckDetectionState",
 ]

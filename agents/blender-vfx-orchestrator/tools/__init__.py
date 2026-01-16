@@ -9,6 +9,7 @@ Tool Categories:
 - blender_executor: Blender script execution
 - asset_evaluator: Quality evaluation (v2 consolidated API)
 - experiment_tracker: Experiment tracking and learning
+- proactive_research: Early warning detection and alternative discovery (Strategy 3)
 """
 
 from .script_generator_tools import (
@@ -50,6 +51,12 @@ from .experiment_tracker_tools import (
     get_experiment_statistics,
 )
 
+from .proactive_research_tools import (
+    pre_iteration_research,
+    evaluate_escape_velocity,
+    search_alternative_approaches,
+)
+
 __all__ = [
     # Script Generator
     "generate_script",
@@ -82,4 +89,8 @@ __all__ = [
     "get_parameter_knowledge",
     "add_manual_learning",
     "get_experiment_statistics",
+    # Proactive Research (Strategy 3)
+    "pre_iteration_research",
+    "evaluate_escape_velocity",
+    "search_alternative_approaches",
 ]

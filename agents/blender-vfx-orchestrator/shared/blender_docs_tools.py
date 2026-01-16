@@ -1547,32 +1547,19 @@ def search_bpy_types(
     return output
 
 
-@function_tool
-def search_semantic(
+# =============================================================================
+# SEMANTIC SEARCH - Split into impl (callable) and function_tool (for agents)
+# =============================================================================
+
+def search_semantic_impl(
     query: str,
     limit: int = DEFAULT_LIMIT,
     compact: bool = False
 ) -> str:
     """
-    Semantic similarity search using AI embeddings.
-    Finds conceptually related content even without exact keyword matches.
+    Internal implementation of semantic search - callable directly.
 
-    Args:
-        query: Natural language query describing what you're looking for
-        limit: Maximum number of results (default: 5)
-        compact: If True, returns minimal output
-
-    Returns:
-        Results ranked by semantic similarity to the query.
-
-    Examples:
-        - "how to make realistic smoke effects"
-        - "rendering transparent volumetric clouds"
-        - "baking fluid simulations for game engines"
-        - "python script to automate VDB export"
-
-    Note: Requires sentence-transformers package for semantic search.
-    Falls back to keyword search if embeddings are not available.
+    Use this for direct Python calls. For agent tools, use search_semantic.
     """
     if not ensure_index_loaded():
         return "Error: Failed to load documentation index"
@@ -1627,3 +1614,33 @@ def search_semantic(
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return fallback_msg + format_results(results, query, limit, 0, compact)
+
+
+@function_tool
+def search_semantic(
+    query: str,
+    limit: int = DEFAULT_LIMIT,
+    compact: bool = False
+) -> str:
+    """
+    Semantic similarity search using AI embeddings.
+    Finds conceptually related content even without exact keyword matches.
+
+    Args:
+        query: Natural language query describing what you're looking for
+        limit: Maximum number of results (default: 5)
+        compact: If True, returns minimal output
+
+    Returns:
+        Results ranked by semantic similarity to the query.
+
+    Examples:
+        - "how to make realistic smoke effects"
+        - "rendering transparent volumetric clouds"
+        - "baking fluid simulations for game engines"
+        - "python script to automate VDB export"
+
+    Note: Requires sentence-transformers package for semantic search.
+    Falls back to keyword search if embeddings are not available.
+    """
+    return search_semantic_impl(query, limit, compact)
