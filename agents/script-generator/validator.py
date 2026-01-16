@@ -160,6 +160,9 @@ class BlenderScriptValidator:
     5. Output path validation
     """
 
+    # PROJECT_ROOT for resolving relative paths (matches server.py)
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+
     def __init__(self, param_ranges: Optional[Dict[str, Dict]] = None):
         """
         Initialize validator.
@@ -169,31 +172,58 @@ class BlenderScriptValidator:
         """
         self.param_ranges = param_ranges or BLENDER_PARAM_RANGES
 
+    def _resolve_path(self, script_path: str) -> Optional[Path]:
+        """
+        Resolve script path, trying both absolute and PROJECT_ROOT-relative.
+
+        Args:
+            script_path: Path to the script (absolute or relative)
+
+        Returns:
+            Resolved Path if found, None otherwise
+        """
+        # Try as-is first (handles absolute paths)
+        path = Path(script_path)
+        if path.is_absolute() and path.exists():
+            return path
+
+        # Try relative to PROJECT_ROOT (matches how generate_script returns paths)
+        project_relative = self.PROJECT_ROOT / script_path
+        if project_relative.exists():
+            return project_relative
+
+        # Try relative to current working directory
+        if path.exists():
+            return path.resolve()
+
+        return None
+
     def validate_script(self, script_path: str) -> ValidationResult:
         """
         Validate a Blender script file.
 
         Args:
-            script_path: Path to the Python script
+            script_path: Path to the Python script (absolute or relative to PROJECT_ROOT)
 
         Returns:
             ValidationResult with issues and extracted parameters
         """
         result = ValidationResult(valid=True, script_path=script_path)
 
-        # Check file exists
-        if not os.path.exists(script_path):
+        # Resolve path (handles both absolute and PROJECT_ROOT-relative paths)
+        resolved_path = self._resolve_path(script_path)
+        if resolved_path is None:
             result.valid = False
             result.issues.append(ValidationIssue(
                 severity=ValidationSeverity.ERROR,
                 category="file",
-                message=f"Script file not found: {script_path}",
+                message=f"Script file not found: {script_path} (also checked: {self.PROJECT_ROOT / script_path})",
             ))
             return result
 
         # Read script content
         try:
-            with open(script_path, 'r', encoding='utf-8') as f:
+            with open(resolved_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except Exception as e:
             result.valid = False

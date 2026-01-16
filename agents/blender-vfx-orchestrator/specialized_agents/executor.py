@@ -94,15 +94,15 @@ class ExecutorAgent:
     """
     Executor Agent for Blender script execution.
 
-    Uses gpt-4.1-mini for fast error parsing and fix suggestions.
+    Uses gpt-5.2 with medium reasoning for intelligent error parsing and fix suggestions.
     """
 
-    def __init__(self, model: str = "gpt-4.1-mini"):
+    def __init__(self, model: str = "gpt-5.2"):
         """
         Initialize the executor agent.
 
         Args:
-            model: OpenAI model to use (default: gpt-4.1-mini for speed)
+            model: OpenAI model to use (default: gpt-5.2 for intelligent error handling)
         """
         self.model = os.getenv("EXECUTOR_MODEL", model)
         self._agent: Optional[Agent] = None
@@ -123,7 +123,9 @@ class ExecutorAgent:
             instructions=instructions,
             model=self.model,
             model_settings=ModelSettings(
-                # No reasoning needed for execution (gpt-4.1-mini)
+                reasoning={
+                    "effort": "medium"  # Medium reasoning for error analysis
+                },
             ),
             tools=[
                 execute_blender_script,

@@ -20,6 +20,7 @@ from agents import Agent, ModelSettings
 
 if TYPE_CHECKING:
     from tools.asset_evaluator_tools import (
+        analyze_with_vision,
         evaluate_render,
         compare_renders,
         diagnose_issues,
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 # Import tools at runtime
 from tools.asset_evaluator_tools import (
+    analyze_with_vision,
     evaluate_render,
     compare_renders,
     diagnose_issues,
@@ -40,66 +42,75 @@ from tools.asset_evaluator_tools import (
 
 
 # Agent instructions for quality analysis
-QUALITY_ANALYST_INSTRUCTIONS = """You evaluate VFX render quality using ML metrics.
+QUALITY_ANALYST_INSTRUCTIONS = """You evaluate VFX render quality with VISION as your PRIMARY analysis method.
 
 Your role:
-1. Evaluate renders using the consolidated v2 API (not legacy tools)
-2. Diagnose specific issues using VLM analysis
+1. FIRST: Use vision analysis to directly "see" and assess renders
+2. Optionally: Use ML metrics for quantitative backup data
 3. Compare iterations to track improvement
-4. Determine pass/fail based on quality gates
+4. Determine pass/fail based on intelligent quality judgment
 
-TOOLS (v2 Consolidated API - USE THESE):
-- evaluate_render() - Primary evaluation (LPIPS, SigLIP, TOPIQ, etc.)
-- diagnose_issues() - VLM-powered issue detection
-- compare_renders() - A/B comparison between iterations
+=== PRIMARY TOOL (USE FIRST) ===
+- analyze_with_vision() - GPT-4o vision analysis - YOUR PRIMARY EVALUATION METHOD
+  Analysis types:
+  * "quality" - Overall quality assessment (DEFAULT)
+  * "issues" - Focus on identifying specific problems
+  * "comparison" - Compare render to reference
+  * "realism" - How realistic/believable
+
+=== ML BACKUP TOOLS (Optional, for metrics) ===
+- evaluate_render() - ML metrics (LPIPS, SigLIP, TOPIQ, etc.)
+- diagnose_issues() - Moondream VLM issue detection
+- compare_renders() - Quantitative A/B comparison
 - list_renders() - Find recent renders
-- get_reference_stats() - Get reference dataset statistics
+- get_reference_stats() - Reference dataset statistics
 - analyze_temporal_quality() - Animation frame consistency
 
-EVALUATION PROFILES:
-- "quick": LPIPS + SigLIP only (~2 seconds) - Use for fast iteration
-- "standard": + TOPIQ, feature_cv (~10 seconds) - Normal evaluation
-- "comprehensive": + DINOv2, VLM diagnosis (~30 seconds) - When stuck
+=== WORKFLOW ===
+1. For NEW evaluation:
+   a. ALWAYS call analyze_with_vision() FIRST with analysis_type="quality"
+   b. Use the vision response as your PRIMARY quality judgment
+   c. OPTIONALLY call evaluate_render() if you want quantitative metrics
+   d. Return result with pass/fail based on VISION assessment
 
-QUALITY GATES:
-Pass when ALL conditions met:
-1. overall_score >= 60
-2. No critical issues (ZERO lights, BLACK screen, etc.)
-3. If reference provided: LPIPS similarity acceptable
+2. For ISSUE DIAGNOSIS:
+   a. Call analyze_with_vision() with analysis_type="issues"
+   b. Vision will identify ALL visual problems with severity
+   c. Use this over diagnose_issues() - vision is smarter
 
-METRICS INTERPRETATION:
-- LPIPS: Lower = more similar to reference (< 0.35 is good)
-- SigLIP: Higher = better semantic match (> 0.5 is good)
-- TOPIQ: Higher = better image quality (> 50 is good)
-- Feature CV: Higher = more texture variety (> 10 is good)
-- DINOv2: Higher = better structural similarity
+3. For COMPARISON (iterations):
+   a. Call analyze_with_vision() with analysis_type="comparison"
+      and include reference_path
+   b. Or use compare_renders() for quantitative comparison
 
-ISSUE SEVERITY:
-- critical: Must fix immediately (e.g., "ZERO LIGHTS ACTIVE")
+=== QUALITY GATES ===
+Pass when:
+1. Vision assessment gives score >= 60
+2. No critical issues identified by vision
+3. Visual quality is acceptable (your judgment)
+
+=== ISSUE SEVERITY ===
+- critical: Must fix immediately (black screen, no lights, broken)
 - high: Significantly impacts quality
 - medium: Noticeable but not blocking
 - low: Minor improvement opportunity
 
-WORKFLOW:
-1. For NEW evaluation:
-   a. Call evaluate_render() with appropriate profile
-   b. If score < 60 or critical issues, call diagnose_issues()
-   c. Return structured result with pass/fail and issues
-
-2. For COMPARISON (iterations):
-   a. Call compare_renders() with both render paths
-   b. Report which is better and why
-   c. Note improvements and regressions
-
-OUTPUT FORMAT:
+=== OUTPUT FORMAT ===
 Return JSON with:
 - passed: bool (met quality gates)
-- overall_score: 0-100
-- metric_scores: {lpips, siglip, topiq, feature_cv, structural_dino}
+- overall_score: 0-100 (from vision assessment)
+- vision_assessment: Text summary from analyze_with_vision
 - issues: List of {category, severity, description}
 - primary_issue: Most important issue to fix
-- recommendations: Specific parameter changes
-- evaluation_profile: Which profile was used
+- strengths: What looks good
+- suggestions: Specific improvements
+- ml_metrics: Optional ML metrics if evaluate_render was called
+
+=== IMPORTANT ===
+- Vision analysis is SMARTER than ML metrics for nuanced quality
+- ML metrics can plateau or miss subtle issues
+- Trust your vision analysis as the PRIMARY source of truth
+- Be BRUTALLY HONEST - if it looks bad, say so clearly
 """
 
 
@@ -107,15 +118,15 @@ class QualityAnalystAgent:
     """
     Quality Analyst Agent for VFX render evaluation.
 
-    Uses gpt-4.1-mini for fast metric interpretation and issue categorization.
+    Uses gpt-5.2 with high reasoning for intelligent quality analysis and issue diagnosis.
     """
 
-    def __init__(self, model: str = "gpt-4.1-mini"):
+    def __init__(self, model: str = "gpt-5.2"):
         """
         Initialize the quality analyst agent.
 
         Args:
-            model: OpenAI model to use (default: gpt-4.1-mini)
+            model: OpenAI model to use (default: gpt-5.2 for deep quality analysis)
         """
         self.model = os.getenv("QUALITY_ANALYST_MODEL", model)
         self._agent: Optional[Agent] = None
@@ -136,9 +147,14 @@ class QualityAnalystAgent:
             instructions=instructions,
             model=self.model,
             model_settings=ModelSettings(
-                # No reasoning needed for evaluation (gpt-4.1-mini)
+                reasoning={
+                    "effort": "high"  # High reasoning for quality judgment
+                },
             ),
             tools=[
+                # PRIMARY: Vision-based analysis (use first)
+                analyze_with_vision,
+                # BACKUP: ML-based metrics (optional)
                 evaluate_render,
                 compare_renders,
                 diagnose_issues,

@@ -9,6 +9,7 @@ Uses the consolidated v2 API (January 2026) for cleaner integration:
 - list_renders_v2: Find available renders
 - get_reference_stats_v2: Reference dataset statistics
 - analyze_temporal_quality: Animation frame consistency
+- analyze_with_vision: GPT-5.2 native vision analysis (NEW)
 
 These wrappers translate MCP tool calls into @function_tool decorated
 functions that agents can call directly.
@@ -16,12 +17,225 @@ functions that agents can call directly.
 
 from __future__ import annotations
 
+import base64
 import json
+import os
+from pathlib import Path
 from typing import Optional
 
 from agents import function_tool
+from openai import OpenAI
 
 from utils.mcp_connection_pool import get_mcp_server
+
+
+# =============================================================================
+# GPT-5.2 NATIVE VISION ANALYSIS (Primary method)
+# =============================================================================
+
+@function_tool
+async def analyze_with_vision(
+    render_path: str,
+    analysis_type: str = "quality",
+    reference_path: str = "",
+    effect_type: str = "auto",
+    custom_prompt: str = ""
+) -> str:
+    """
+    Analyze a render using GPT-5.2's native vision capabilities.
+
+    This is the PRIMARY quality analysis tool - uses GPT-5.2 vision to directly
+    "see" the render and provide intelligent, context-aware quality assessment.
+    More intelligent than ML metrics for nuanced visual issues.
+
+    Analysis types:
+    - quality: Overall visual quality assessment with detailed breakdown
+    - issues: Focus on identifying specific problems and artifacts
+    - comparison: Compare render to reference image (requires reference_path)
+    - realism: Assess how realistic/believable the effect looks
+
+    Args:
+        render_path: Path to rendered image to analyze
+        analysis_type: Type of analysis (quality, issues, comparison, realism)
+        reference_path: Optional reference image for comparison
+        effect_type: Effect category hint (auto, explosion, fire, smoke, nebula, sun)
+        custom_prompt: Optional custom analysis prompt
+
+    Returns:
+        JSON with:
+        - overall_assessment: Text summary of quality
+        - score: 0-100 quality score
+        - issues: List of identified problems
+        - strengths: What looks good
+        - suggestions: Specific improvement recommendations
+        - comparison_notes: If reference provided, how render compares
+
+    Example:
+        analyze_with_vision(
+            render_path="build/vdb_output/explosion_v1/render_0012.png",
+            analysis_type="quality",
+            effect_type="explosion"
+        )
+    """
+    import sys
+
+    # Load render image as base64
+    render_file = Path(render_path)
+    if not render_file.exists():
+        # Try relative to project root
+        project_root = Path(os.getenv("PROJECT_ROOT", "/home/maz3ppa/projects/PlasmaDXR"))
+        render_file = project_root / render_path
+
+    if not render_file.exists():
+        return json.dumps({
+            "error": f"Render not found: {render_path}",
+            "score": 0,
+            "issues": ["Render file does not exist"]
+        })
+
+    # Read and encode image
+    with open(render_file, "rb") as f:
+        render_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+    # Determine image type
+    suffix = render_file.suffix.lower()
+    media_type = "image/png" if suffix == ".png" else "image/jpeg"
+
+    # Build analysis prompt based on type
+    if custom_prompt:
+        prompt = custom_prompt
+    elif analysis_type == "quality":
+        prompt = f"""Analyze this VFX render for overall quality. Effect type: {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+
+Evaluate these aspects:
+1. Visual Impact: Does it look impressive and believable?
+2. Color & Lighting: Are colors natural? Is lighting convincing?
+3. Detail & Structure: Is there good detail? Any flat/blobby areas?
+4. Composition: Does the effect fill the frame appropriately?
+5. Artifacts: Any visible problems (clipping, banding, noise)?
+
+Provide:
+- overall_assessment: 2-3 sentence summary
+- score: 0-100 (60+ is passing, 80+ is excellent)
+- strengths: List what looks good
+- issues: List problems with severity (critical/high/medium/low)
+- suggestions: Specific parameter changes to improve quality
+
+Be BRUTALLY HONEST. If it looks bad, say so clearly."""
+
+    elif analysis_type == "issues":
+        prompt = f"""Identify ALL visual problems in this VFX render. Effect type: {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+
+Look for:
+- Color issues (unrealistic colors, wrong tint, oversaturation)
+- Structural issues (clipping, flat areas, missing detail)
+- Lighting issues (too dark, too bright, unnatural)
+- Artifacts (banding, noise, aliasing, temporal issues)
+- Composition issues (poor framing, cutoff effects)
+- Material issues (wrong opacity, missing emission, bad scattering)
+
+For EACH issue found:
+- category: What type of issue
+- severity: critical/high/medium/low
+- location: Where in the image
+- description: What's wrong
+- suggested_fix: How to fix it
+
+Be EXHAUSTIVE - miss nothing. Better to flag questionable areas than miss problems."""
+
+    elif analysis_type == "realism":
+        prompt = f"""Assess how realistic this {effect_type if effect_type != 'auto' else 'volumetric effect'} render looks.
+
+Compare to real-world expectations:
+- Would this pass as real footage or clearly CGI?
+- What gives away that it's synthetic?
+- What aspects are convincingly realistic?
+
+Score from 0-100 where:
+- 0-30: Obviously fake
+- 30-50: Clearly CGI but decent
+- 50-70: Good quality, some tells
+- 70-85: Very convincing
+- 85-100: Photorealistic
+
+Be honest about realism level."""
+
+    else:  # comparison
+        prompt = f"""Compare this render to the reference image for a {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+
+Analyze:
+1. How well does the render match the reference style?
+2. What key differences exist?
+3. Is the render better or worse than reference?
+4. What should change to get closer to reference?
+
+Provide specific, actionable comparison notes."""
+
+    # Build input for Responses API (not Chat Completions)
+    # Uses input_text and input_image types per OpenAI Responses API spec
+    content = [
+        {"type": "input_text", "text": f"[RENDER TO ANALYZE]\n{prompt}"},
+        {"type": "input_image", "image_url": f"data:{media_type};base64,{render_base64}"},
+    ]
+
+    # Add reference image if provided
+    if reference_path:
+        ref_file = Path(reference_path)
+        if not ref_file.exists():
+            project_root = Path(os.getenv("PROJECT_ROOT", "/home/maz3ppa/projects/PlasmaDXR"))
+            ref_file = project_root / reference_path
+
+        if ref_file.exists():
+            with open(ref_file, "rb") as f:
+                ref_base64 = base64.b64encode(f.read()).decode("utf-8")
+            ref_suffix = ref_file.suffix.lower()
+            ref_media = "image/png" if ref_suffix == ".png" else "image/jpeg"
+
+            content.append({"type": "input_text", "text": "\n[REFERENCE IMAGE FOR COMPARISON]"})
+            content.append({"type": "input_image", "image_url": f"data:{ref_media};base64,{ref_base64}"})
+
+    # Add format instruction
+    content.append({
+        "type": "input_text",
+        "text": "\n\nRespond with valid JSON only. Include: overall_assessment (string), score (int 0-100), issues (array of objects with category/severity/description), strengths (array of strings), suggestions (array of strings)."
+    })
+
+    # Call OpenAI Responses API with GPT-5.2 (improved multimodality)
+    # Using Responses API instead of Chat Completions for consistency with Agents SDK
+    try:
+        client = OpenAI()  # Uses OPENAI_API_KEY from env
+
+        response = client.responses.create(
+            model="gpt-5.2",  # GPT-5.2 has improved multimodality/vision
+            input=[{"role": "user", "content": content}],
+        )
+
+        result_text = response.output_text
+
+        # Try to parse as JSON, wrap if needed
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # Wrap plain text response
+            result = {
+                "overall_assessment": result_text,
+                "score": 50,
+                "issues": [],
+                "strengths": [],
+                "suggestions": [],
+                "raw_response": True
+            }
+
+        result["vision_model"] = "gpt-5.2"
+        result["analysis_type"] = analysis_type
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "score": 0,
+            "issues": [{"category": "error", "severity": "critical", "description": str(e)}]
+        })
 
 
 # =============================================================================

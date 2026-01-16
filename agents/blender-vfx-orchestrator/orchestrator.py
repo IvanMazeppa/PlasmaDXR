@@ -260,11 +260,13 @@ class BlenderVFXOrchestrator:
         prompt = self._build_generation_prompt(request, context)
 
         # Run orchestrator (autonomous iteration loop)
+        # gpt-5.2 with high reasoning effort needs more turns than default 10
         try:
             result = await Runner.run(
                 self._orchestrator,
                 prompt,
-                context={"shared_context": context.model_dump()}
+                context={"shared_context": context.model_dump()},
+                max_turns=25  # Increased for gpt-5.2 reasoning
             )
 
             # Parse and update session state from result
@@ -309,11 +311,13 @@ class BlenderVFXOrchestrator:
         prompt = self._build_resumption_prompt(context)
 
         # Run orchestrator
+        # gpt-5.2 with high reasoning effort needs more turns than default 10
         try:
             result = await Runner.run(
                 self._orchestrator,
                 prompt,
-                context={"shared_context": context.model_dump()}
+                context={"shared_context": context.model_dump()},
+                max_turns=25  # Increased for gpt-5.2 reasoning
             )
 
             session = self._parse_result(result, context)

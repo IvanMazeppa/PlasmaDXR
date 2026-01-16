@@ -115,15 +115,15 @@ class LearningAgent:
     """
     Learning Agent for experiment tracking and knowledge accumulation.
 
-    Uses gpt-4.1-mini for efficient knowledge management.
+    Uses gpt-5.2 with high reasoning for intelligent learning and pattern recognition.
     """
 
-    def __init__(self, model: str = "gpt-4.1-mini"):
+    def __init__(self, model: str = "gpt-5.2"):
         """
         Initialize the learning agent.
 
         Args:
-            model: OpenAI model to use (default: gpt-4.1-mini)
+            model: OpenAI model to use (default: gpt-5.2 for deep learning insights)
         """
         self.model = os.getenv("LEARNING_AGENT_MODEL", model)
         self._agent: Optional[Agent] = None
@@ -144,7 +144,9 @@ class LearningAgent:
             instructions=instructions,
             model=self.model,
             model_settings=ModelSettings(
-                # No reasoning needed (gpt-4.1-mini)
+                reasoning={
+                    "effort": "high"  # High reasoning for pattern recognition and learning
+                },
             ),
             tools=[
                 start_experiment_session,

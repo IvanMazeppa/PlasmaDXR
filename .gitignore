@@ -82,6 +82,7 @@ venv/
 env/
 ENV/
 .env
+.env.example
 
 # Python cache
 __pycache__/
@@ -147,7 +148,7 @@ screenshots/
 # Note: external/ is NOT ignored - contains required deps
 # But specific large SDKs may be excluded:
 external/RTXDI/
-
+branch-backups/
 # ============================================================
 # Credentials / Secrets
 # ============================================================
