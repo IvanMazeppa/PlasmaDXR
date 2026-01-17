@@ -38,6 +38,23 @@ from tools.proactive_research_tools import (
     evaluate_escape_velocity,
     search_alternative_approaches,
 )
+
+# Semantic docs tools for Strategy 1: Vector Store for Blender Documentation
+from tools.semantic_docs_tools import (
+    semantic_search_blender_docs,
+    find_alternative_approaches,
+    search_blender_api_by_intent,
+)
+
+# Code pattern tools for Strategy 4: Code Pattern Memory
+from tools.code_pattern_tools import (
+    record_code_pattern,
+    search_code_patterns,
+    get_pattern_code,
+    report_pattern_outcome,
+    get_pattern_library_stats,
+    list_patterns_by_effect,
+)
 from specialized_agents import (
     create_script_writer,
     create_executor,
@@ -145,11 +162,70 @@ Track escape_level (0-4) and respond appropriately:
 - Choose technique from stuck_state.get_untried_techniques()
 
 ### Level 3: MINE_DOCS
-- Use search_alternative_approaches() for novel approaches
+- Use find_alternative_approaches() with SEMANTIC search for novel approaches
+- Also try semantic_search_blender_docs() for conceptually related documentation
 - Search for approaches NOT in current technique library
 - Search queries should explicitly exclude tried techniques
 - Try the first promising novel approach found
 - If nothing found, escalate to Level 4
+
+## SEMANTIC SEARCH TOOLS (Strategy 1)
+
+Use these tools to find documentation that keyword search would miss:
+
+### semantic_search_blender_docs(query, max_results, include_code_examples)
+- Finds conceptually related documentation using AI embeddings
+- Searching "turbulence" also finds "vorticity", "noise_strength"
+- Use when: keyword search fails, need alternative terminology
+
+### find_alternative_approaches(current_approach, issue, effect_type, exclude_techniques)
+- Finds fundamentally DIFFERENT approaches to solve an issue
+- Explicitly excludes your current approach from results
+- Use at: escape_level >= 2 when switching techniques
+
+### search_blender_api_by_intent(intent, domain)
+- Find APIs based on what you want to DO, not what they're called
+- Example: "increase smoke density" → finds FluidDomainSettings.flame_smoke
+- Use when: you know the goal but not which API to use
+
+**WHEN TO USE SEMANTIC vs KEYWORD SEARCH:**
+- Keyword (search_manual): Know exact terms, looking for specific docs
+- Semantic (semantic_search_blender_docs): Conceptual search, finding alternatives
+
+## CODE PATTERN MEMORY (Strategy 4)
+
+Store and retrieve successful code patterns - actual Python code that worked,
+not just parameter descriptions. Use these to apply proven fixes faster.
+
+### search_code_patterns(issue, effect_type, min_confidence, max_results)
+- ALWAYS call this BEFORE attempting to fix an issue
+- Returns proven code snippets that fixed similar issues
+- High confidence patterns (70%+) should be tried first
+- Example: search_code_patterns("smoke too thin", "pyro")
+
+### record_code_pattern(issue, code_snippet, effect_type, improvement, experiment_id)
+- Call AFTER any modification achieves >= 5 point improvement
+- Stores the actual Python code for future retrieval
+- Automatically deduplicates similar patterns
+
+### get_pattern_code(pattern_id)
+- Get full code and application instructions for a specific pattern
+- Use after search_code_patterns to get complete code
+
+### report_pattern_outcome(pattern_id, success, improvement)
+- ALWAYS call after applying a pattern from the library
+- Feeds back into pattern confidence scores
+- Helps improve future recommendations
+
+### list_patterns_by_effect(effect_type, min_confidence)
+- View all patterns available for a specific effect type
+- Useful for understanding what proven fixes exist
+
+**PATTERN USAGE WORKFLOW:**
+1. BEFORE each fix attempt: search_code_patterns() for existing solutions
+2. If high-confidence pattern found: apply it
+3. AFTER applying pattern: report_pattern_outcome() with success/failure
+4. If fix succeeds with novel code: record_code_pattern()
 
 ### Level 4: REQUEST_GUIDANCE
 - Report: "Exhausted autonomous options"
@@ -317,6 +393,19 @@ class BlenderVFXOrchestrator:
                 pre_iteration_research,
                 evaluate_escape_velocity,
                 search_alternative_approaches,
+                # Semantic docs tools (Strategy 1)
+                # Vector store search for finding related concepts and alternatives
+                semantic_search_blender_docs,
+                find_alternative_approaches,
+                search_blender_api_by_intent,
+                # Code pattern tools (Strategy 4)
+                # Store and retrieve successful code patterns
+                record_code_pattern,
+                search_code_patterns,
+                get_pattern_code,
+                report_pattern_outcome,
+                get_pattern_library_stats,
+                list_patterns_by_effect,
             ],
         )
 

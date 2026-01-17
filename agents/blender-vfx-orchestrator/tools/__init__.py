@@ -10,6 +10,8 @@ Tool Categories:
 - asset_evaluator: Quality evaluation (v2 consolidated API)
 - experiment_tracker: Experiment tracking and learning
 - proactive_research: Early warning detection and alternative discovery (Strategy 3)
+- semantic_docs: Semantic search over Blender documentation (Strategy 1)
+- code_patterns: Successful code pattern storage and retrieval (Strategy 4)
 """
 
 from .script_generator_tools import (
@@ -57,6 +59,27 @@ from .proactive_research_tools import (
     search_alternative_approaches,
 )
 
+from .semantic_docs_tools import (
+    semantic_search_blender_docs,
+    find_alternative_approaches,
+    search_blender_api_by_intent,
+    # Direct callable versions
+    semantic_search_impl,
+    find_alternatives_impl,
+)
+
+from .code_pattern_tools import (
+    record_code_pattern,
+    search_code_patterns,
+    get_pattern_code,
+    report_pattern_outcome,
+    get_pattern_library_stats,
+    list_patterns_by_effect,
+    # Direct callable versions
+    record_pattern_impl,
+    search_patterns_impl,
+)
+
 __all__ = [
     # Script Generator
     "generate_script",
@@ -93,4 +116,19 @@ __all__ = [
     "pre_iteration_research",
     "evaluate_escape_velocity",
     "search_alternative_approaches",
+    # Semantic Docs (Strategy 1)
+    "semantic_search_blender_docs",
+    "find_alternative_approaches",
+    "search_blender_api_by_intent",
+    "semantic_search_impl",
+    "find_alternatives_impl",
+    # Code Patterns (Strategy 4)
+    "record_code_pattern",
+    "search_code_patterns",
+    "get_pattern_code",
+    "report_pattern_outcome",
+    "get_pattern_library_stats",
+    "list_patterns_by_effect",
+    "record_pattern_impl",
+    "search_patterns_impl",
 ]
