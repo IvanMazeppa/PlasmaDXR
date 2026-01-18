@@ -1,6 +1,26 @@
 """
 Blender Documentation Search Tools - OpenAI Agents SDK Function Tools.
 
+==============================================================================
+DEPRECATED: This module is deprecated in favor of vector store-based tools.
+==============================================================================
+
+Use the new vector store semantic search tools instead:
+    from tools.semantic_docs_tools import (
+        semantic_search_blender_docs,  # Replaces search_manual, search_semantic
+        search_blender_api_by_intent,  # Replaces search_python_api, search_bpy_*
+        find_alternative_approaches,   # New: finds different techniques when stuck
+    )
+
+The new vector store tools provide:
+- AI embedding-based semantic search (finds conceptually related docs)
+- Much better search results without exact keyword matches
+- Code snippet extraction and API reference discovery
+- Integration with self-learning strategies
+
+This deprecated module will be removed in a future version.
+==============================================================================
+
 This module contains the search logic extracted from blender-manual/blender_server.py
 as standalone functions wrapped with @function_tool decorator.
 
@@ -31,9 +51,18 @@ import logging
 import os
 import re
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Emit deprecation warning on import
+warnings.warn(
+    "shared.blender_docs_tools is deprecated. "
+    "Use tools.semantic_docs_tools (vector store) instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 # OpenAI Agents SDK
 try:

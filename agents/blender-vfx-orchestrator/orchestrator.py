@@ -20,7 +20,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from agents import Agent, ModelSettings, Runner, handoff
+from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper
 from openai.types.shared import Reasoning
 
 from models.shared_context import (
@@ -419,7 +419,8 @@ class BlenderVFXOrchestrator:
 
         # Create main orchestrator with handoffs to all 5 agents
         # Also include proactive research tools for early warning detection (Strategy 3)
-        self._orchestrator = Agent(
+        # Using typed Agent[SharedContext] for type-safe context access in tools
+        self._orchestrator = Agent[SharedContext](
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
             model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
@@ -487,13 +488,15 @@ class BlenderVFXOrchestrator:
 
         # Run orchestrator (autonomous iteration loop)
         # gpt-5.2 with high reasoning effort needs more turns than default 10
+        # Using trace() for end-to-end observability across iterations
         try:
-            result = await Runner.run(
-                self._orchestrator,
-                prompt,
-                context={"shared_context": context.model_dump()},
-                max_turns=25  # Increased for gpt-5.2 reasoning
-            )
+            with trace(f"VFX Asset: {request.asset_name}"):
+                result = await Runner.run(
+                    self._orchestrator,
+                    prompt,
+                    context=context,  # Typed SharedContext for RunContextWrapper access
+                    max_turns=25  # Increased for gpt-5.2 reasoning
+                )
 
             # Parse and update session state from result
             session = self._parse_result(result, context)
@@ -538,13 +541,15 @@ class BlenderVFXOrchestrator:
 
         # Run orchestrator
         # gpt-5.2 with high reasoning effort needs more turns than default 10
+        # Using trace() for end-to-end observability across resumed iterations
         try:
-            result = await Runner.run(
-                self._orchestrator,
-                prompt,
-                context={"shared_context": context.model_dump()},
-                max_turns=25  # Increased for gpt-5.2 reasoning
-            )
+            with trace(f"VFX Resume: {session.session_id}"):
+                result = await Runner.run(
+                    self._orchestrator,
+                    prompt,
+                    context=context,  # Typed SharedContext for RunContextWrapper access
+                    max_turns=25  # Increased for gpt-5.2 reasoning
+                )
 
             session = self._parse_result(result, context)
 

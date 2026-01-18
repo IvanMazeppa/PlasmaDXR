@@ -1,14 +1,15 @@
 """
 Documentation Expert Agent using OpenAI Agents SDK.
 
-Uses direct function_tool imports instead of MCP transport
-to avoid task group conflicts (MCP nesting architectural issue).
+UPDATED: Now uses vector store-based semantic search tools instead of
+deprecated local file-based tools. This provides much better search
+results through AI embeddings.
 
-Key changes from previous MCP-based implementation:
-- Removed DocsExpertAgent class (used MCPServerStdio)
-- Removed DocsExpertConnectionPool class
-- Uses function_tool imports from shared.blender_docs_tools
-- create_docs_expert() is now synchronous (no await needed!)
+Key changes:
+- Replaced 12 local blender_docs_tools with 3 vector store tools
+- Uses semantic_search_blender_docs for natural language queries
+- Uses search_blender_api_by_intent for API discovery
+- Uses find_alternative_approaches when stuck
 """
 
 from __future__ import annotations
@@ -22,31 +23,22 @@ from typing import Any, Dict, Optional
 from agents import Agent, ModelSettings, function_tool
 from openai.types.shared import Reasoning
 
-# Add parent directory to path for shared module import
-# (needed when running as MCP server where package context isn't set up)
+# Add parent directory to path for imports
 _parent_dir = str(Path(__file__).parent.parent)
 if _parent_dir not in sys.path:
     sys.path.insert(0, _parent_dir)
 
-# Import the 12 function_tools from shared module (in-process, no MCP)
-from shared import (
-    search_manual,
-    search_tutorials,
-    browse_hierarchy,
-    search_vdb_workflow,
-    search_python_api,
-    search_nodes,
-    search_modifiers,
-    read_page,
-    list_api_modules,
-    search_bpy_operators,
-    search_bpy_types,
-    search_semantic,
+# NEW: Import vector store-based semantic search tools (Strategy 1)
+# These replace the deprecated local blender_docs_tools
+from tools.semantic_docs_tools import (
+    semantic_search_blender_docs,
+    find_alternative_approaches,
+    search_blender_api_by_intent,
 )
 
 
 # =============================================================================
-# PARAMETER VALIDATION TOOLS
+# PARAMETER VALIDATION TOOLS (kept - still useful)
 # =============================================================================
 
 # Blender 5.0 API parameter ranges (from script-generator)
@@ -167,52 +159,55 @@ def get_parameter_defaults(effect_type: str) -> str:
 
 
 # =============================================================================
-# AGENT INSTRUCTIONS
+# AGENT INSTRUCTIONS (UPDATED for vector store tools)
 # =============================================================================
 
 DOC_EXPERT_INSTRUCTIONS = """You are a Blender 5.0 documentation expert.
 
 Your role:
-1. Search the official Blender documentation for relevant information
-2. Read specific pages when more detail is needed
-3. Provide accurate, cited answers with documentation paths
+1. Search Blender documentation semantically for relevant information
+2. Find alternative approaches when current methods aren't working
+3. Discover relevant Blender Python APIs based on intent
 4. Validate parameter values against API ranges before recommending
 
-SEARCH STRATEGY (use these tools in order of preference):
-1. search_semantic - For natural language questions
-2. search_vdb_workflow - For VDB/volume/caching topics
-3. search_python_api - For bpy.ops, bpy.types questions
-4. search_bpy_types - For specific type properties (FluidDomainSettings, etc.)
-5. search_nodes - For shader/material/geometry node questions
-6. read_page - To get full content of promising search results
+## AVAILABLE SEARCH TOOLS (Vector Store Based)
 
-AVAILABLE SEARCH TOOLS (12 total):
-- search_manual: General keyword search across all Blender docs
-- search_tutorials: Tutorial and learning resources
-- browse_hierarchy: Directory tree navigation
-- search_vdb_workflow: VDB/NanoVDB specialized search
-- search_python_api: bpy.ops/types documentation
-- search_nodes: Shader/compositor/geometry nodes
-- search_modifiers: Modifier documentation
-- read_page: Full page content retrieval
-- list_api_modules: API module listing
-- search_bpy_operators: bpy.ops.* search
-- search_bpy_types: bpy.types.* search
-- search_semantic: AI embedding-based semantic search
+1. **semantic_search_blender_docs** - PRIMARY TOOL
+   - Uses AI embeddings to find conceptually related documentation
+   - Finds results even without exact keyword matches
+   - Example: searching "turbulence" also finds "vorticity", "noise_strength"
+   - Returns code snippets and API references when available
 
-WHEN RECOMMENDING PARAMETERS:
-- Always use validate_parameter_range() to check values
-- Use get_parameter_defaults() for baseline values
-- Prefer conservative changes (small increments)
-- Maximum 2-3 parameter changes per recommendation
+2. **search_blender_api_by_intent** - API DISCOVERY
+   - Use when you know WHAT you want but not WHICH API
+   - Example: "increase smoke density over time" → finds relevant bpy.types
+   - Returns full API paths with properties and usage hints
 
-OUTPUT FORMAT:
+3. **find_alternative_approaches** - WHEN STUCK
+   - Searches for fundamentally DIFFERENT approaches
+   - Explicitly excludes current approach and failed techniques
+   - Use when same issue persists for 2+ iterations
+
+## PARAMETER TOOLS
+
+4. **validate_parameter_range** - Check values against Blender 5.0 limits
+5. **get_parameter_defaults** - Get recommended defaults per effect type
+
+## SEARCH STRATEGY
+
+1. For general questions: Use semantic_search_blender_docs first
+2. For API discovery: Use search_blender_api_by_intent
+3. When stuck: Use find_alternative_approaches
+4. Always validate parameter values before recommending
+
+## OUTPUT FORMAT
+
 Return JSON with:
 - answer: 1-2 sentence summary of what was found
 - modifications: dict of parameter_name -> value
 - rationale: Why these changes should help based on documentation
-- confidence: 0.0-1.0 (set to 0.3 or lower if docs not found)
-- citations: list of documentation paths used
+- confidence: 0.0-1.0 (higher if docs found, 0.3 or lower if not)
+- citations: list of sources used (from search results)
 
 If you cannot find relevant documentation, set confidence to 0.3 or lower
 and note in the rationale that the recommendation is based on general
@@ -226,11 +221,10 @@ knowledge rather than official docs.
 
 def create_docs_expert(custom_instructions: str = "") -> Agent:
     """
-    Create a documentation expert agent with direct function tools.
+    Create a documentation expert agent with vector store search tools.
 
-    This is the main factory function. Unlike the previous MCP-based
-    implementation, this function is SYNCHRONOUS (no await needed)
-    because all tools are in-process function_tool wrappers.
+    This function is SYNCHRONOUS (no await needed) because all tools
+    are in-process function wrappers.
 
     Args:
         custom_instructions: Additional instructions to append (e.g., session context)
@@ -245,25 +239,16 @@ def create_docs_expert(custom_instructions: str = "") -> Agent:
     return Agent(
         name="Documentation Expert",
         instructions=instructions,
-        model=os.getenv("DOC_EXPERT_MODEL", "gpt-4o"),  # Cost-effective default
+        model=os.getenv("DOC_EXPERT_MODEL", "gpt-5.2"),  # Full reasoning capabilities
         model_settings=ModelSettings(
             reasoning=Reasoning(effort="medium"),
         ),
         tools=[
-            # Blender documentation search (12 tools from shared module)
-            search_manual,
-            search_tutorials,
-            browse_hierarchy,
-            search_vdb_workflow,
-            search_python_api,
-            search_nodes,
-            search_modifiers,
-            read_page,
-            list_api_modules,
-            search_bpy_operators,
-            search_bpy_types,
-            search_semantic,
-            # Parameter validation (2 local tools)
+            # Vector store semantic search tools (NEW - replaces deprecated local tools)
+            semantic_search_blender_docs,
+            search_blender_api_by_intent,
+            find_alternative_approaches,
+            # Parameter validation (kept - still useful)
             validate_parameter_range,
             get_parameter_defaults,
         ],
@@ -279,30 +264,29 @@ if __name__ == "__main__":
     import asyncio
 
     async def test():
-        print("Testing DocsExpert Agent (function_tool mode)...")
+        print("Testing DocsExpert Agent (vector store mode)...")
         print("-" * 60)
 
-        # Note: create_docs_expert() is now synchronous!
+        # Note: create_docs_expert() is synchronous!
         agent = create_docs_expert()
         print(f"Created agent: {agent.name}")
         print(f"Tools: {len(agent.tools)} total")
+        tool_names = [t.name for t in agent.tools if hasattr(t, 'name')]
+        print(f"Tool names: {tool_names}")
 
-        # Quick test without LLM call
-        print("\nTesting direct tool calls:")
-        result = validate_parameter_range("turbulence", 0.5)
-        print(f"  validate_parameter_range('turbulence', 0.5): {result}")
-
-        result = get_parameter_defaults("explosion")
-        print(f"  get_parameter_defaults('explosion'): {result[:100]}...")
+        # Note: FunctionTool objects are not directly callable
+        # They must be used through the agent
+        print("\nVector store tools ready for agent use")
 
         # Full agent test (requires OPENAI_API_KEY)
         if os.getenv("OPENAI_API_KEY"):
-            print("\nTesting agent with LLM...")
+            print("\nTesting agent with LLM (semantic search)...")
             result = await Runner.run(
                 agent,
-                "How do I increase smoke density in a Mantaflow simulation?"
+                "How do I increase smoke density in a Mantaflow simulation?",
+                max_turns=15
             )
-            print(f"Response: {result.final_output}")
+            print(f"Response: {str(result.final_output)[:500]}...")
         else:
             print("\nSkipping LLM test (OPENAI_API_KEY not set)")
 

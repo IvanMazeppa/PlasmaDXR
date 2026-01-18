@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import os
 import json
+import sys
 from typing import List, Optional
 
-from agents import function_tool
+from agents import function_tool, RunContextWrapper
+
+# Import SharedContext directly (not under TYPE_CHECKING) because
+# @function_tool decorator evaluates type hints at runtime
+from models.shared_context import SharedContext
 
 try:
     from openai import OpenAI
@@ -72,7 +77,7 @@ def _search_vector_store(
         # Use the file search tool with the vector store
         # Note: This uses the Responses API with file_search tool
         response = client.responses.create(
-            model="gpt-4.1-mini",  # Fast model for search
+            model="gpt-5.2",  # Full reasoning capabilities
             input=query,
             tools=[{
                 "type": "file_search",
@@ -231,9 +236,10 @@ def semantic_search_blender_docs(
 
 @function_tool
 def find_alternative_approaches(
+    wrapper: RunContextWrapper[SharedContext],
     current_approach: str,
     issue: str,
-    effect_type: str,
+    effect_type: str = "",
     exclude_techniques: str = "[]"
 ) -> str:
     """
@@ -250,14 +256,16 @@ def find_alternative_approaches(
     The search explicitly excludes the current approach and any
     techniques you've already tried.
 
+    NOTE: With RunContextWrapper, effect_type and exclude_techniques are auto-populated from context.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         current_approach: What you're currently doing (will be excluded)
                          Example: "increasing flame_smoke parameter"
         issue: The problem you're trying to solve
                Example: "smoke lacks density"
-        effect_type: Type of effect (pyro, explosion, fire, nebula, etc.)
-        exclude_techniques: JSON array of technique names to exclude
-                           Example: '["turbulence_boost", "density_multiply"]'
+        effect_type: Type of effect (auto-populated from context if empty)
+        exclude_techniques: JSON array of techniques to exclude (auto-populated from context)
 
     Returns:
         JSON with:
@@ -269,6 +277,26 @@ def find_alternative_approaches(
             - confidence: Estimated likelihood of helping (0-100)
             - trade_offs: Pros/cons vs current approach
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not effect_type and session.request:
+            effect_type = session.request.effect_type.value
+        if exclude_techniques == "[]" and session.stuck_state:
+            exclude = list(session.stuck_state.techniques_tried)
+        else:
+            try:
+                exclude = json.loads(exclude_techniques) if exclude_techniques else []
+            except json.JSONDecodeError:
+                exclude = []
+        print(f"[find_alternative_approaches] Using context: effect_type={effect_type}, exclude={exclude}", file=sys.stderr)
+    else:
+        try:
+            exclude = json.loads(exclude_techniques) if exclude_techniques else []
+        except json.JSONDecodeError:
+            exclude = []
+
     if not OPENAI_AVAILABLE:
         return json.dumps({
             "error": "OpenAI package not available",
@@ -276,11 +304,6 @@ def find_alternative_approaches(
             "alternatives": [],
             "fallback": "Use search_alternative_approaches() from proactive_research_tools"
         })
-
-    try:
-        exclude = json.loads(exclude_techniques) if exclude_techniques else []
-    except json.JSONDecodeError:
-        exclude = []
 
     # Build a query that explicitly seeks alternatives
     exclusion_text = f"NOT {current_approach}"

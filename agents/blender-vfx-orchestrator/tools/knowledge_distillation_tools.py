@@ -20,10 +20,15 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
-from agents import function_tool
+from agents import function_tool, RunContextWrapper
+
+# Import SharedContext directly (not under TYPE_CHECKING) because
+# @function_tool decorator evaluates type hints at runtime
+from models.shared_context import SharedContext
 
 from utils.code_pattern_memory import get_pattern_memory, CodePattern
 
@@ -229,12 +234,13 @@ def _find_insertion_point(script: str, pattern_code: str) -> Optional[int]:
 
 @function_tool
 def extract_successful_pattern(
+    wrapper: RunContextWrapper[SharedContext],
     original_script_path: str,
     modified_script_path: str,
     issue_fixed: str,
     improvement_delta: float,
-    effect_type: str,
-    experiment_id: str
+    effect_type: str = "",
+    experiment_id: str = ""
 ) -> str:
     """
     Extract a reusable pattern from a successful script modification.
@@ -252,14 +258,17 @@ def extract_successful_pattern(
     the pattern from the file diff rather than requiring you to
     specify the code manually.
 
+    NOTE: With RunContextWrapper, effect_type and experiment_id are auto-populated from context.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         original_script_path: Path to script BEFORE modification
         modified_script_path: Path to script AFTER successful modification
         issue_fixed: Description of issue that was fixed
                     Example: "smoke too thin and transparent"
         improvement_delta: Score improvement (e.g., 15.0 for +15 points)
-        effect_type: Type of effect (pyro, explosion, fire, smoke, nebula, sun)
-        experiment_id: ID of the experiment this came from
+        effect_type: Type of effect (auto-populated from context if empty)
+        experiment_id: ID of the experiment (auto-populated from session_id if empty)
 
     Returns:
         JSON with:
@@ -272,6 +281,16 @@ def extract_successful_pattern(
         - parameters: Extracted parameters with defaults
         - confidence: Initial confidence score
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not effect_type and session.request:
+            effect_type = session.request.effect_type.value
+        if not experiment_id:
+            experiment_id = session.session_id
+        print(f"[extract_successful_pattern] Using context: effect_type={effect_type}, experiment_id={experiment_id}", file=sys.stderr)
+
     memory = get_pattern_memory()
 
     try:
@@ -508,6 +527,7 @@ def apply_pattern_to_script(
 
 @function_tool
 def analyze_script_for_patterns(
+    wrapper: RunContextWrapper[SharedContext],
     script_path: str,
     effect_type: str = ""
 ) -> str:
@@ -522,9 +542,12 @@ def analyze_script_for_patterns(
     - When reviewing a script before execution
     - To understand what optimizations are available
 
+    NOTE: With RunContextWrapper, effect_type is auto-populated from context if not provided.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         script_path: Path to script to analyze
-        effect_type: Optional filter by effect type
+        effect_type: Optional filter by effect type (auto-populated from context)
 
     Returns:
         JSON with:
@@ -533,6 +556,14 @@ def analyze_script_for_patterns(
         - applicable_patterns: Patterns that could be applied
         - recommendations: Suggested improvements
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if not effect_type and context and hasattr(context, 'session'):
+        session = context.session
+        if session.request:
+            effect_type = session.request.effect_type.value
+            print(f"[analyze_script_for_patterns] Auto-populated effect_type={effect_type} from context", file=sys.stderr)
+
     memory = get_pattern_memory()
 
     try:

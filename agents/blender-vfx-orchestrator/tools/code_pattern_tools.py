@@ -16,20 +16,26 @@ with actual Python code that can be retrieved and applied.
 from __future__ import annotations
 
 import json
+import sys
 from typing import Optional, List
 
-from agents import function_tool
+from agents import function_tool, RunContextWrapper
+
+# Import SharedContext directly (not under TYPE_CHECKING) because
+# @function_tool decorator evaluates type hints at runtime
+from models.shared_context import SharedContext
 
 from utils.code_pattern_memory import get_pattern_memory, CodePattern
 
 
 @function_tool
 def record_code_pattern(
+    wrapper: RunContextWrapper[SharedContext],
     issue: str,
     code_snippet: str,
-    effect_type: str,
     improvement: float,
-    experiment_id: str,
+    effect_type: str = "",
+    experiment_id: str = "",
     pattern_name: str = "",
     context_before: str = "",
     context_after: str = ""
@@ -45,14 +51,17 @@ def record_code_pattern(
     - When you discover a novel fix that might help future scripts
     - After successfully resolving a persistent issue
 
+    NOTE: With RunContextWrapper, effect_type and experiment_id are auto-populated from context.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         issue: Description of the issue this pattern fixes
                Example: "smoke dissipates too quickly"
         code_snippet: The actual Python code that fixed the issue
                      Example: "domain.dissolve_speed = 5\\ndomain.flame_smoke = 3.0"
-        effect_type: Type of effect (pyro, explosion, fire, smoke, nebula, sun)
         improvement: Score improvement achieved (e.g., 12.5 for +12.5 points)
-        experiment_id: ID of the experiment this came from
+        effect_type: Type of effect (auto-populated from context if empty)
+        experiment_id: ID of the experiment (auto-populated from session_id if empty)
         pattern_name: Optional human-readable name (auto-generated if empty)
         context_before: Code context before the change (for understanding)
         context_after: Code context after the change (for understanding)
@@ -64,6 +73,16 @@ def record_code_pattern(
         - is_update: Whether this updated an existing similar pattern
         - message: Description of what happened
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not effect_type and session.request:
+            effect_type = session.request.effect_type.value
+        if not experiment_id:
+            experiment_id = session.session_id
+        print(f"[record_code_pattern] Using context: effect_type={effect_type}, experiment_id={experiment_id}", file=sys.stderr)
+
     memory = get_pattern_memory()
 
     try:
@@ -104,6 +123,7 @@ def record_code_pattern(
 
 @function_tool
 def search_code_patterns(
+    wrapper: RunContextWrapper[SharedContext],
     issue: str,
     effect_type: str = "",
     min_confidence: float = 30.0,
@@ -120,10 +140,13 @@ def search_code_patterns(
     - When stuck on a persistent issue
     - Before trying a novel approach (check if it's already been tried)
 
+    NOTE: With RunContextWrapper, effect_type is auto-populated from context if not provided.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         issue: Description of the issue to fix
                Example: "smoke lacks density", "explosion too dim"
-        effect_type: Optional filter by effect type (pyro, explosion, etc.)
+        effect_type: Optional filter by effect type (auto-populated from context)
         min_confidence: Minimum confidence threshold (0-100, default 30)
         max_results: Maximum patterns to return (default 5)
 
@@ -140,6 +163,14 @@ def search_code_patterns(
             - success_rate: Historical success rate (0-1)
         - recommendation: Which pattern to try first (if any)
     """
+    # Auto-populate effect_type from context if not provided
+    context = wrapper.context
+    if not effect_type and context and hasattr(context, 'session'):
+        session = context.session
+        if session.request:
+            effect_type = session.request.effect_type.value
+            print(f"[search_code_patterns] Auto-populated effect_type={effect_type} from context", file=sys.stderr)
+
     memory = get_pattern_memory()
 
     try:
@@ -341,7 +372,8 @@ def get_pattern_library_stats() -> str:
 
 @function_tool
 def list_patterns_by_effect(
-    effect_type: str,
+    wrapper: RunContextWrapper[SharedContext],
+    effect_type: str = "",
     min_confidence: float = 0.0
 ) -> str:
     """
@@ -349,8 +381,11 @@ def list_patterns_by_effect(
 
     Use to see what proven fixes exist for a type of effect.
 
+    NOTE: With RunContextWrapper, effect_type is auto-populated from context if not provided.
+
     Args:
-        effect_type: Effect type to filter by (pyro, explosion, fire, smoke, nebula, sun)
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
+        effect_type: Effect type to filter by (auto-populated from context if empty)
         min_confidence: Minimum confidence threshold (default 0)
 
     Returns:
@@ -359,6 +394,14 @@ def list_patterns_by_effect(
         - pattern_count: Number of patterns found
         - patterns: List of pattern summaries with id, name, issue, confidence
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if not effect_type and context and hasattr(context, 'session'):
+        session = context.session
+        if session.request:
+            effect_type = session.request.effect_type.value
+            print(f"[list_patterns_by_effect] Auto-populated effect_type={effect_type} from context", file=sys.stderr)
+
     memory = get_pattern_memory()
 
     try:

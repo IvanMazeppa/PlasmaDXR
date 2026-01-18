@@ -1563,3 +1563,5 @@ assets/reference_images/glass_shatter+explosion/20260104_0238_Explosive Window S
 assets/reference_images/glass_shatter+explosion/20260104_0238_Explosive Window Shatter_simple_compose_01ke3dwch0etgsqvx5za6vkf97.png:Zone.Identifier
 assets/reference_images/glass_shatter+explosion/20260104_0238_Explosive Window Shatter_simple_compose_01ke3dwch1f3q9rwk7cj769v6t.png
 assets/reference_images/glass_shatter+explosion/20260104_0238_Explosive Window Shatter_simple_compose_01ke3dwch1f3q9rwk7cj769v6t.png:Zone.Identifier
+agents/blender-vfx-orchestrator/.env.example
+agents/blender-vfx-orchestrator/.env.example

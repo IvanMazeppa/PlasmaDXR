@@ -17,9 +17,14 @@ Key capabilities:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+import sys
+from typing import Any, Dict, List, Optional
 
-from agents import function_tool
+from agents import function_tool, RunContextWrapper
+
+# Import SharedContext directly (not under TYPE_CHECKING) because
+# @function_tool decorator evaluates type hints at runtime
+from models.shared_context import SharedContext
 
 # Use in-process function implementations instead of MCP subprocess
 # This avoids the anyio TaskGroup conflicts with nested MCP calls
@@ -122,10 +127,11 @@ def _generate_analysis_text(
 
 @function_tool
 async def pre_iteration_research(
+    wrapper: RunContextWrapper[SharedContext],
     current_issue: str,
     current_approach: str,
-    iteration_history: str,
-    effect_type: str
+    iteration_history: str = "",
+    effect_type: str = ""
 ) -> str:
     """
     Proactively research alternatives BEFORE attempting another iteration.
@@ -139,14 +145,15 @@ async def pre_iteration_research(
     - If warning_level is "early" or "stuck", follow the recommendations
     - If warning_level is "none", proceed with normal modification
 
+    NOTE: With RunContextWrapper, iteration_history and effect_type can be
+    auto-populated from context.session if not provided explicitly.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         current_issue: The primary issue being addressed (e.g., "smoke too thin")
         current_approach: Description of current approach (e.g., "increasing flame_smoke parameter")
-        iteration_history: JSON array of iteration results, each with:
-            - score: Quality score (0-100)
-            - issue or primary_issue: The primary issue
-            - technique or technique_name: Technique used (optional)
-        effect_type: Type of effect (pyro, explosion, fire, etc.)
+        iteration_history: JSON array of iteration results (optional - auto-populated from context)
+        effect_type: Type of effect (optional - auto-populated from context)
 
     Returns:
         JSON with:
@@ -162,15 +169,40 @@ async def pre_iteration_research(
     Example:
         pre_iteration_research(
             current_issue="smoke lacks density",
-            current_approach="increasing flame_smoke parameter",
-            iteration_history='[{"score": 45, "issue": "smoke lacks density"}, {"score": 47, "issue": "smoke lacks density"}]',
-            effect_type="pyro"
+            current_approach="increasing flame_smoke parameter"
         )
+        # iteration_history and effect_type auto-populated from context
     """
-    try:
-        iterations = json.loads(iteration_history) if iteration_history else []
-    except json.JSONDecodeError:
-        iterations = []
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not iteration_history and session.iterations:
+            # Build iteration history from session state
+            iterations = [
+                {
+                    "score": it.score,
+                    "issue": it.primary_issue,
+                    "technique": it.technique_used
+                }
+                for it in session.iterations
+            ]
+        else:
+            try:
+                iterations = json.loads(iteration_history) if iteration_history else []
+            except json.JSONDecodeError:
+                iterations = []
+
+        if not effect_type and session.request:
+            effect_type = session.request.effect_type.value
+
+        # Log context usage for debugging
+        print(f"[pre_iteration_research] Using context: session={session.session_id}, iterations={len(iterations)}", file=sys.stderr)
+    else:
+        try:
+            iterations = json.loads(iteration_history) if iteration_history else []
+        except json.JSONDecodeError:
+            iterations = []
 
     # Analyze history for warning signs
     analysis = analyze_iteration_history(iterations, current_issue)
@@ -247,10 +279,11 @@ def _generate_search_queries(
 
 @function_tool
 async def evaluate_escape_velocity(
+    wrapper: RunContextWrapper[SharedContext],
     current_issue: str,
-    current_score: float,
-    iteration_history: str,
-    techniques_available: str
+    current_score: float = 0.0,
+    iteration_history: str = "",
+    techniques_available: str = ""
 ) -> str:
     """
     Evaluate current stuck state and determine escape action.
@@ -265,11 +298,14 @@ async def evaluate_escape_velocity(
     - Level 3 (MINE_DOCS): Search Blender documentation for novel approaches
     - Level 4 (REQUEST_GUIDANCE): Report stuck status, request human input
 
+    NOTE: With RunContextWrapper, most args can be auto-populated from context.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         current_issue: Current primary issue being addressed
-        current_score: Current quality score (0-100)
-        iteration_history: JSON array of {score, issue, technique} objects
-        techniques_available: JSON array of available technique names
+        current_score: Current quality score (optional - auto-populated from context)
+        iteration_history: JSON array of {score, issue, technique} (optional - auto-populated)
+        techniques_available: JSON array of available technique names (optional)
 
     Returns:
         JSON with:
@@ -280,11 +316,39 @@ async def evaluate_escape_velocity(
         - technique_suggestion: If switching, which technique to try
         - search_queries: If mining docs, what to search for
     """
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not iteration_history and session.iterations:
+            history = [
+                {
+                    "score": it.score,
+                    "issue": it.primary_issue,
+                    "technique": it.technique_used
+                }
+                for it in session.iterations
+            ]
+        else:
+            try:
+                history = json.loads(iteration_history) if iteration_history else []
+            except json.JSONDecodeError:
+                history = []
+
+        if current_score == 0.0:
+            current_score = session.best_score
+
+        # Log context usage
+        print(f"[evaluate_escape_velocity] Using context: escape_level={session.stuck_state.escape_level if session.stuck_state else 'N/A'}", file=sys.stderr)
+    else:
+        try:
+            history = json.loads(iteration_history) if iteration_history else []
+        except json.JSONDecodeError:
+            history = []
+
     try:
-        history = json.loads(iteration_history) if iteration_history else []
         techniques = json.loads(techniques_available) if techniques_available else []
     except json.JSONDecodeError:
-        history = []
         techniques = []
 
     # Analyze history
@@ -385,9 +449,10 @@ async def evaluate_escape_velocity(
 
 @function_tool
 async def search_alternative_approaches(
+    wrapper: RunContextWrapper[SharedContext],
     issue: str,
     current_approach: str,
-    effect_type: str,
+    effect_type: str = "",
     exclude_techniques: str = "[]"
 ) -> str:
     """
@@ -396,11 +461,15 @@ async def search_alternative_approaches(
     Use when escape level >= 2 (SWITCH_TECHNIQUE) to find genuinely
     different approaches rather than parameter variations.
 
+    NOTE: With RunContextWrapper, effect_type and exclude_techniques can be
+    auto-populated from context.session.stuck_state.
+
     Args:
+        wrapper: RunContextWrapper with SharedContext (auto-injected by SDK)
         issue: The problem to solve (e.g., "smoke lacks density")
         current_approach: What you've been trying (to exclude from results)
-        effect_type: Type of effect (pyro, explosion, etc.)
-        exclude_techniques: JSON array of technique names to exclude
+        effect_type: Type of effect (optional - auto-populated from context)
+        exclude_techniques: JSON array of technique names to exclude (optional)
 
     Returns:
         JSON with:
@@ -412,10 +481,27 @@ async def search_alternative_approaches(
             - trade_offs: Pros/cons vs current approach
             - confidence: Estimated likelihood of helping (0-100)
     """
-    try:
-        exclude = json.loads(exclude_techniques) if exclude_techniques else []
-    except json.JSONDecodeError:
-        exclude = []
+    # Auto-populate from context if not provided
+    context = wrapper.context
+    if context and hasattr(context, 'session'):
+        session = context.session
+        if not effect_type and session.request:
+            effect_type = session.request.effect_type.value
+
+        if exclude_techniques == "[]" and session.stuck_state:
+            exclude = list(session.stuck_state.techniques_tried)
+        else:
+            try:
+                exclude = json.loads(exclude_techniques) if exclude_techniques else []
+            except json.JSONDecodeError:
+                exclude = []
+
+        print(f"[search_alternative_approaches] Using context: effect_type={effect_type}, exclude={exclude}", file=sys.stderr)
+    else:
+        try:
+            exclude = json.loads(exclude_techniques) if exclude_techniques else []
+        except json.JSONDecodeError:
+            exclude = []
 
     # Build search query that excludes current approach
     exclude_text = " NOT " + " NOT ".join(exclude) if exclude else ""
