@@ -55,6 +55,14 @@ from tools.code_pattern_tools import (
     get_pattern_library_stats,
     list_patterns_by_effect,
 )
+
+# Knowledge distillation tools for Strategy 2: Pattern Extraction
+from tools.knowledge_distillation_tools import (
+    extract_successful_pattern,
+    apply_pattern_to_script,
+    analyze_script_for_patterns,
+    compare_scripts,
+)
 from specialized_agents import (
     create_script_writer,
     create_executor,
@@ -226,6 +234,39 @@ not just parameter descriptions. Use these to apply proven fixes faster.
 2. If high-confidence pattern found: apply it
 3. AFTER applying pattern: report_pattern_outcome() with success/failure
 4. If fix succeeds with novel code: record_code_pattern()
+
+## KNOWLEDGE DISTILLATION (Strategy 2)
+
+Automatically extract patterns from script modifications. More automated
+than manual pattern recording - analyzes diffs to find what changed.
+
+### extract_successful_pattern(original_path, modified_path, issue, improvement, effect_type, experiment_id)
+- ALWAYS call after achieving >= 5 point improvement
+- Automatically extracts the code diff and stores it as a pattern
+- Generates parameterized templates from hardcoded values
+- Example: After improving "smoke_v2.py" from "smoke_v1.py"
+
+### apply_pattern_to_script(script_path, pattern_id, output_path, parameter_overrides)
+- Apply a stored pattern to a new script automatically
+- Finds the right insertion point based on code context
+- Can override parameters: '{"flame_smoke": 4.0}'
+- Creates new file with "_patched" suffix by default
+
+### analyze_script_for_patterns(script_path, effect_type)
+- Analyze a script to see which patterns could improve it
+- Call at start of iteration to see available optimizations
+- Returns recommendations ranked by confidence
+
+### compare_scripts(script_a_path, script_b_path)
+- Compare two scripts to understand differences
+- Useful for reviewing what changed between iterations
+- Shows settings changed, lines added/removed
+
+**DISTILLATION WORKFLOW:**
+1. After successful iteration: extract_successful_pattern() to auto-store
+2. Before new iteration: analyze_script_for_patterns() for recommendations
+3. If high-confidence pattern found: apply_pattern_to_script()
+4. After multiple iterations: compare_scripts() to understand evolution
 
 ### Level 4: REQUEST_GUIDANCE
 - Report: "Exhausted autonomous options"
@@ -406,6 +447,12 @@ class BlenderVFXOrchestrator:
                 report_pattern_outcome,
                 get_pattern_library_stats,
                 list_patterns_by_effect,
+                # Knowledge distillation tools (Strategy 2)
+                # Extract patterns from script diffs automatically
+                extract_successful_pattern,
+                apply_pattern_to_script,
+                analyze_script_for_patterns,
+                compare_scripts,
             ],
         )
 

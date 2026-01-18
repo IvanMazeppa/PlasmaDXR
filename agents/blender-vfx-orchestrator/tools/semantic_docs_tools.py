@@ -89,17 +89,22 @@ def _search_vector_store(
             if hasattr(output, 'type') and output.type == 'file_search_call':
                 if hasattr(output, 'results'):
                     for result in output.results:
+                        # Result is a Pydantic model with attributes: text, score, file_id, filename
+                        content = getattr(result, 'text', '') or ''
+                        score = getattr(result, 'score', 0) or 0
+                        file_id = getattr(result, 'file_id', '') or ''
+                        filename = getattr(result, 'filename', 'unknown') or 'unknown'
+
                         # Apply category filter if specified
                         if filter_category:
-                            content = result.get('content', '').lower()
-                            if filter_category.lower() not in content:
+                            if filter_category.lower() not in content.lower():
                                 continue
 
                         results.append({
-                            'content': result.get('content', '')[:2000],  # Limit content size
-                            'score': result.get('score', 0),
-                            'file_id': result.get('file_id', ''),
-                            'filename': result.get('filename', 'unknown'),
+                            'content': content[:2000],  # Limit content size
+                            'score': score,
+                            'file_id': file_id,
+                            'filename': filename,
                         })
 
                         if len(results) >= max_results:

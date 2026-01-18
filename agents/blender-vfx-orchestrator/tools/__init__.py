@@ -12,6 +12,7 @@ Tool Categories:
 - proactive_research: Early warning detection and alternative discovery (Strategy 3)
 - semantic_docs: Semantic search over Blender documentation (Strategy 1)
 - code_patterns: Successful code pattern storage and retrieval (Strategy 4)
+- knowledge_distillation: Pattern extraction from script diffs (Strategy 2)
 """
 
 from .script_generator_tools import (
@@ -80,6 +81,16 @@ from .code_pattern_tools import (
     search_patterns_impl,
 )
 
+from .knowledge_distillation_tools import (
+    extract_successful_pattern,
+    apply_pattern_to_script,
+    analyze_script_for_patterns,
+    compare_scripts,
+    # Direct callable versions
+    extract_pattern_from_diff,
+    find_applicable_patterns,
+)
+
 __all__ = [
     # Script Generator
     "generate_script",
@@ -131,4 +142,11 @@ __all__ = [
     "list_patterns_by_effect",
     "record_pattern_impl",
     "search_patterns_impl",
+    # Knowledge Distillation (Strategy 2)
+    "extract_successful_pattern",
+    "apply_pattern_to_script",
+    "analyze_script_for_patterns",
+    "compare_scripts",
+    "extract_pattern_from_diff",
+    "find_applicable_patterns",
 ]
