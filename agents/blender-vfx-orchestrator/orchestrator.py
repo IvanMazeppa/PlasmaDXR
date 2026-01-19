@@ -220,11 +220,37 @@ BEFORE each modification iteration, check for warning signs:
 - Execute script → delegate_to_executor
 - If execution failed → parse error and modify script, retry
 
-### PHASE 4: EVALUATE
+### PHASE 4: EVALUATE (WITH REFERENCE COMPARISON)
 
-- Evaluate quality → delegate_to_quality_analyst
-- Get vision analysis AND ML metrics
-- Identify primary issue if quality < 60
+Quality Analyst now compares renders against REFERENCE IMAGES for objective benchmarking.
+
+**Handoff to Quality Analyst:**
+```
+delegate_to_quality_analyst:
+"Evaluate the render quality and compare to reference images.
+
+Render path: {render_path}
+Effect type: {effect_type}
+Iteration: {iteration}
+
+WORKFLOW:
+1. analyze_with_vision() for visual quality assessment
+2. find_reference_images('{effect_type}') to locate reference images
+3. If references exist, compare_to_reference() for objective comparison
+4. Return overall assessment with reference gap analysis"
+```
+
+**CRITICAL: Include effect_type in the handoff so Quality Analyst can find matching references.**
+
+The Quality Analyst will return:
+- vision_assessment: Rich visual description of current quality
+- reference_comparison: (if references available)
+  - similarity_score: How close to reference quality (0-100)
+  - gap_analysis: What the render is missing vs reference
+  - improvements_needed: Specific changes to close the gap
+- issues: Identified problems with severity
+- primary_issue: Most important issue to fix
+- suggestions: Specific parameter changes to try
 
 ### PHASE 5: LEARN & ITERATE (MANDATORY KNOWLEDGE CAPTURE)
 
