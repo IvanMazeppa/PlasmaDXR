@@ -18,10 +18,69 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper
+from pydantic import BaseModel, Field
+
+from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers
+from agents.agent_output import AgentOutputSchema
+from agents.extensions import handoff_filters
+from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
 from openai.types.shared import Reasoning
+
+
+# =============================================================================
+# STRUCTURED OUTPUT MODELS (Pydantic)
+# =============================================================================
+# These enable type-safe data passing between agents in the pipeline.
+
+class ResearchOutput(BaseModel):
+    """Output from Research Agent - provides starting parameters for script generation."""
+    recommended_approach: str = Field(description="Best approach for the effect type")
+    key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Recommended parameter values")
+    api_modules: List[str] = Field(default_factory=list, description="Blender API modules to use")
+    code_patterns: List[Dict[str, str]] = Field(default_factory=list, description="Proven patterns from library")
+    warnings: List[str] = Field(default_factory=list, description="Potential pitfalls to avoid")
+    alternative_approaches: List[str] = Field(default_factory=list, description="Backup approaches if primary fails")
+
+
+class ScriptOutput(BaseModel):
+    """Output from Script Writer - path to generated/modified script."""
+    script_path: str = Field(description="Absolute path to the generated script")
+    technique_used: str = Field(description="Technique/approach used in script generation")
+    parameters_set: Dict[str, Any] = Field(default_factory=dict, description="Key parameters configured")
+    validation_passed: bool = Field(default=True, description="Whether script validation passed")
+    validation_errors: List[str] = Field(default_factory=list, description="Any validation errors")
+
+
+class ExecutionOutput(BaseModel):
+    """Output from Executor - render path and execution status."""
+    success: bool = Field(description="Whether Blender execution succeeded")
+    render_path: Optional[str] = Field(default=None, description="Path to rendered output")
+    vdb_path: Optional[str] = Field(default=None, description="Path to VDB volume data")
+    error_message: Optional[str] = Field(default=None, description="Error message if failed")
+    execution_time_seconds: float = Field(default=0.0, description="Total execution time")
+
+
+class QualityOutput(BaseModel):
+    """Output from Quality Analyst - evaluation results with feedback."""
+    overall_score: float = Field(description="Quality score 0-100")
+    passed: bool = Field(description="Whether quality threshold was met")
+    primary_issue: Optional[str] = Field(default=None, description="Most critical issue to fix")
+    issues: List[str] = Field(default_factory=list, description="All identified issues")
+    suggestions: List[str] = Field(default_factory=list, description="Specific improvement suggestions")
+    vision_assessment: str = Field(default="", description="Detailed visual quality description")
+    reference_similarity: Optional[float] = Field(default=None, description="Similarity to reference (if available)")
+
+
+class LearningOutput(BaseModel):
+    """Output from Learning Agent - experiment recorded, next action suggested."""
+    experiment_recorded: bool = Field(default=True, description="Whether experiment was logged")
+    pattern_extracted: bool = Field(default=False, description="Whether a new pattern was extracted")
+    pattern_id: Optional[str] = Field(default=None, description="ID of extracted pattern")
+    next_action: str = Field(description="Recommended next action: 'iterate', 'switch_technique', 'complete'")
+    suggested_modifications: List[str] = Field(default_factory=list, description="Specific changes for next iteration")
 
 from models.shared_context import (
     AssetRequest,
@@ -30,6 +89,9 @@ from models.shared_context import (
     SharedContext,
     IterationResult,
     EscapeLevel,
+    ScriptModification,
+    BlenderExecution,
+    QualityMetrics,
 )
 
 # Proactive research tools for Strategy 3: Early warning detection
@@ -92,7 +154,36 @@ Your role is to coordinate specialized agents to generate high-quality Blender V
 assets through iterative improvement. You manage the full lifecycle from script
 generation through quality evaluation.
 
+## MANDATORY WORKFLOW STATE MACHINE
+
+**CRITICAL: Follow this EXACT sequence. Do NOT do extra research between steps.**
+
+```
+START → [Research with tools] → delegate_to_script_writer
+     → Script Writer returns → delegate_to_executor
+     → Executor returns → delegate_to_quality_analyst
+     → Quality Analyst returns → delegate_to_learning_agent
+     → Learning Agent returns → CHECK QUALITY GATE:
+         - If passed OR max_iterations reached → END
+         - Else → delegate_to_script_writer (with modifications)
+```
+
+**AFTER EACH HANDOFF COMPLETES:**
+- Script Writer returns with script → IMMEDIATELY delegate_to_executor (DO NOT research)
+- Executor returns with render → IMMEDIATELY delegate_to_quality_analyst (DO NOT research)
+- Quality Analyst returns → IMMEDIATELY delegate_to_learning_agent (DO NOT research)
+- Learning Agent returns → CHECK if passed, then either END or delegate_to_script_writer
+
+**DO NOT:**
+- Do extra research after Script Writer returns
+- Call semantic_search or find_alternative_approaches between pipeline steps
+- Delay handoffs with more tool calls
+
 ## SPECIALIZED AGENTS (use handoffs to delegate)
+
+**CRITICAL: You can only handoff to ONE agent at a time.**
+Never request multiple handoffs simultaneously - the SDK will reject it.
+Complete each handoff, receive the result, then decide the next step.
 
 1. **Script Writer** - Generates and modifies Blender Python scripts
    - delegate_to_script_writer for: new scripts, script modifications
@@ -149,19 +240,20 @@ The iteration loop has 6 phases. RESEARCH COMES FIRST - before any script genera
    ```
    Discover which Blender APIs control the desired properties
 
-4. **Consult DocsExpert for technique recommendation:**
+4. **Find alternative approaches if standard technique is unclear:**
    ```
-   delegate_to_docs_expert: "What is the best technique and parameter
-   configuration for generating a {effect_type} effect in Blender 5.0?"
-   ```
-
-5. **Query Learning Agent for historical wisdom:**
-   ```
-   delegate_to_learning_agent: "What techniques have worked best
-   for {effect_type} effects? Any gotchas to avoid?"
+   find_alternative_approaches(
+       current_approach="{standard technique for effect_type}",
+       issue="initial generation - need best starting point",
+       effect_type="{effect_type}"
+   )
    ```
 
-**Use the research results to inform your generate_script() call.**
+**IMPORTANT: Use your TOOLS for research - do NOT handoff during Phase 0.**
+The semantic_search_blender_docs, search_code_patterns, and search_blender_api_by_intent
+tools give you direct access to documentation and patterns. Use them.
+
+Only handoff to Script Writer AFTER you have gathered research.
 Do NOT generate blindly - start with documented best practices.
 
 ### PHASE 1: PRE-ITERATION CHECK (iteration > 1 ONLY)
@@ -515,9 +607,11 @@ class BlenderVFXOrchestrator:
     """
     Main orchestrator for autonomous VFX asset generation.
 
-    Coordinates 5 specialized agents through the OpenAI Agents SDK
-    handoff mechanism. Manages the full iteration loop from script
-    generation through quality evaluation.
+    Coordinates 5 specialized agents through DETERMINISTIC CODE-BASED
+    orchestration. Python controls the pipeline sequence explicitly,
+    ensuring reliable execution without relying on LLM instruction-following.
+
+    Pipeline: Research → Script → Execute → Evaluate → Learn → (loop or complete)
     """
 
     def __init__(self):
@@ -528,6 +622,13 @@ class BlenderVFXOrchestrator:
         self._quality_analyst: Optional[Agent] = None
         self._learning_agent: Optional[Agent] = None
         self._docs_expert: Optional[Agent] = None
+
+        # Standalone agents for code-based orchestration (no handoffs)
+        self._research_agent: Optional[Agent] = None
+        self._script_agent_standalone: Optional[Agent] = None
+        self._executor_agent_standalone: Optional[Agent] = None
+        self._quality_agent_standalone: Optional[Agent] = None
+        self._learning_agent_standalone: Optional[Agent] = None
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
@@ -542,90 +643,291 @@ class BlenderVFXOrchestrator:
         All 5 specialized agents are initialized synchronously. DocsExpert uses
         in-process function_tools (extracted from blender-manual MCP server),
         which avoids the anyio TaskGroup conflicts that blocked MCP tool handlers.
+
+        IMPORTANT: Sub-agents have handoffs back to the orchestrator to maintain
+        the iteration loop. Without return handoffs, the run ends when any
+        sub-agent outputs a message.
         """
         if self._initialized:
             return
 
         print("[Orchestrator] Initializing all 5 specialized agents...", file=sys.stderr)
 
-        # Create all 5 specialized agents (all synchronous - no await needed!)
-        self._script_writer = create_script_writer()
-        self._executor = create_executor()
-        self._quality_analyst = create_quality_analyst()
-        self._learning_agent = create_learning_agent()
-        self._docs_expert = create_docs_expert()  # Now synchronous!
+        # Step 1: Create orchestrator first (without sub-agent handoffs yet)
+        # This breaks the circular dependency
+        orchestrator_tools = [
+            # Proactive research tools (Strategy 3)
+            pre_iteration_research,
+            evaluate_escape_velocity,
+            search_alternative_approaches,
+            # Semantic docs tools (Strategy 1)
+            semantic_search_blender_docs,
+            find_alternative_approaches,
+            search_blender_api_by_intent,
+            # Code pattern tools (Strategy 4)
+            record_code_pattern,
+            search_code_patterns,
+            get_pattern_code,
+            report_pattern_outcome,
+            get_pattern_library_stats,
+            list_patterns_by_effect,
+            # Knowledge distillation tools (Strategy 2)
+            extract_successful_pattern,
+            apply_pattern_to_script,
+            analyze_script_for_patterns,
+            compare_scripts,
+        ]
 
-        # Build handoffs list with all 5 agents
+        # Create a temporary orchestrator (will be replaced with full version)
+        temp_orchestrator = Agent[SharedContext](
+            name="Blender VFX Orchestrator",
+            instructions=ORCHESTRATOR_INSTRUCTIONS,
+            model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
+            model_settings=ModelSettings(verbosity="low"),
+            tools=orchestrator_tools,
+        )
+
+        # Step 2: Create sub-agents with handoffs back to the orchestrator
+        # This allows the iteration loop to continue after each specialist finishes
+        # IMPORTANT: Use remove_all_tools filter to strip reasoning items from history,
+        # which prevents gpt-5.2 API error about "reasoning item without following item"
+        return_to_orchestrator = handoff(
+            temp_orchestrator,
+            tool_name_override="return_to_orchestrator",
+            tool_description_override="Return control to the Orchestrator to continue the VFX generation pipeline. ALWAYS use this when you have completed your task.",
+            input_filter=handoff_filters.remove_all_tools
+        )
+
+        # Create specialized handoffs with explicit NEXT_ACTION directives
+        # This tells the orchestrator exactly what to do next after each agent returns
+        return_from_script_writer = handoff(
+            temp_orchestrator,
+            tool_name_override="script_complete_execute_next",
+            tool_description_override="Script generation complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_executor to run the script. Do NOT research.",
+            input_filter=handoff_filters.remove_all_tools
+        )
+
+        return_from_executor = handoff(
+            temp_orchestrator,
+            tool_name_override="execution_complete_evaluate_next",
+            tool_description_override="Script execution complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_quality_analyst to evaluate the render. Do NOT research.",
+            input_filter=handoff_filters.remove_all_tools
+        )
+
+        return_from_quality_analyst = handoff(
+            temp_orchestrator,
+            tool_name_override="evaluation_complete_learn_next",
+            tool_description_override="Quality evaluation complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_learning_agent to record results. Do NOT research.",
+            input_filter=handoff_filters.remove_all_tools
+        )
+
+        return_from_learning_agent = handoff(
+            temp_orchestrator,
+            tool_name_override="learning_complete_decide_next",
+            tool_description_override="Learning recorded. Use this to signal the orchestrator to CHECK if quality passed. If passed, output final result. If not, delegate_to_script_writer with modifications.",
+            input_filter=handoff_filters.remove_all_tools
+        )
+
+        # Create all 5 specialized agents with specific return handoffs
+        self._script_writer = create_script_writer().clone(
+            handoffs=[return_from_script_writer],
+            instructions=create_script_writer().instructions + """
+
+CRITICAL: After generating and validating a script, use script_complete_execute_next to hand off.
+This signals the orchestrator to IMMEDIATELY run the script - no more research needed."""
+        )
+
+        self._executor = create_executor().clone(
+            handoffs=[return_from_executor],
+            instructions=create_executor().instructions + """
+
+CRITICAL: After executing a script (success or failure), use execution_complete_evaluate_next to hand off.
+This signals the orchestrator to IMMEDIATELY evaluate the render - no more research needed."""
+        )
+
+        self._quality_analyst = create_quality_analyst().clone(
+            handoffs=[return_from_quality_analyst],
+            instructions=create_quality_analyst().instructions + """
+
+CRITICAL: After evaluating render quality, use evaluation_complete_learn_next to hand off.
+This signals the orchestrator to IMMEDIATELY record learnings - no more research needed."""
+        )
+
+        self._learning_agent = create_learning_agent().clone(
+            handoffs=[return_from_learning_agent],
+            instructions=create_learning_agent().instructions + """
+
+CRITICAL: After recording experiments, use learning_complete_decide_next to hand off.
+This signals the orchestrator to decide: if quality passed, finish. If not, modify script."""
+        )
+
+        self._docs_expert = create_docs_expert().clone(
+            handoffs=[return_to_orchestrator],
+            instructions=create_docs_expert().instructions + """
+
+CRITICAL: After searching documentation, use return_to_orchestrator to hand off."""
+        )
+
+        # Step 3: Build handoffs list with all 5 sub-agents
+        # Use remove_all_tools filter on all handoffs to prevent reasoning item issues
         handoffs_list = [
             handoff(
                 self._script_writer,
                 tool_name_override="delegate_to_script_writer",
-                tool_description_override="Delegate to Script Writer for generating or modifying Blender scripts"
+                tool_description_override="Delegate to Script Writer for generating or modifying Blender scripts",
+                input_filter=handoff_filters.remove_all_tools
             ),
             handoff(
                 self._executor,
                 tool_name_override="delegate_to_executor",
-                tool_description_override="Delegate to Executor for running Blender scripts and handling errors"
+                tool_description_override="Delegate to Executor for running Blender scripts and handling errors",
+                input_filter=handoff_filters.remove_all_tools
             ),
             handoff(
                 self._quality_analyst,
                 tool_name_override="delegate_to_quality_analyst",
-                tool_description_override="Delegate to Quality Analyst for evaluating render quality"
+                tool_description_override="Delegate to Quality Analyst for evaluating render quality",
+                input_filter=handoff_filters.remove_all_tools
             ),
             handoff(
                 self._learning_agent,
                 tool_name_override="delegate_to_learning_agent",
-                tool_description_override="Delegate to Learning Agent for fix suggestions and experiment recording"
+                tool_description_override="Delegate to Learning Agent for fix suggestions and experiment recording",
+                input_filter=handoff_filters.remove_all_tools
             ),
             handoff(
                 self._docs_expert,
                 tool_name_override="delegate_to_docs_expert",
-                tool_description_override="Delegate to Docs Expert for searching Blender documentation (use when stuck)"
+                tool_description_override="Delegate to Docs Expert for searching Blender documentation (use when stuck)",
+                input_filter=handoff_filters.remove_all_tools
             ),
         ]
 
-        # Create main orchestrator with handoffs to all 5 agents
-        # Also include proactive research tools for early warning detection (Strategy 3)
-        # Using typed Agent[SharedContext] for type-safe context access in tools
+        # Step 4: Create the final orchestrator with handoffs to sub-agents
         self._orchestrator = Agent[SharedContext](
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
             model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="medium"),
-                verbosity="low"
-            ),
+            model_settings=ModelSettings(verbosity="low"),
             handoffs=handoffs_list,
+            tools=orchestrator_tools,
+        )
+
+        # Step 5: Create STANDALONE agents for code-based orchestration
+        # These have NO handoffs - Python controls the pipeline sequence directly
+        # Using structured outputs (output_type) for type-safe data passing between agents
+        self._research_agent = Agent[SharedContext](
+            name="Research Agent",
+            instructions=prompt_with_handoff_instructions("""You are a Blender documentation research specialist.
+
+Your job is to research the best approach for creating a VFX effect BEFORE any script generation.
+
+## Research Steps
+1. Search documentation for best practices for the effect type
+2. Find proven code patterns from the pattern library
+3. Search Blender API by intent to find the right modules/functions
+4. Identify alternative approaches if the standard one is unclear
+
+Use your tools to gather information, then return a summary of your findings including:
+- recommended_approach: Best approach for the effect
+- key_parameters: Important parameter settings
+- warnings: Potential pitfalls to avoid"""),
+            model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
+            model_settings=ModelSettings(verbosity="low"),
+            # Note: Don't use output_type for tool-using agents - they output messages, not structured data
             tools=[
-                # Proactive research tools (Strategy 3)
-                # These run directly in the orchestrator for early warning detection
-                pre_iteration_research,
-                evaluate_escape_velocity,
-                search_alternative_approaches,
-                # Semantic docs tools (Strategy 1)
-                # Vector store search for finding related concepts and alternatives
                 semantic_search_blender_docs,
                 find_alternative_approaches,
                 search_blender_api_by_intent,
-                # Code pattern tools (Strategy 4)
-                # Store and retrieve successful code patterns
-                record_code_pattern,
                 search_code_patterns,
-                get_pattern_code,
-                report_pattern_outcome,
-                get_pattern_library_stats,
                 list_patterns_by_effect,
-                # Knowledge distillation tools (Strategy 2)
-                # Extract patterns from script diffs automatically
-                extract_successful_pattern,
-                apply_pattern_to_script,
-                analyze_script_for_patterns,
-                compare_scripts,
             ],
         )
 
+        # Script Writer with structured output
+        base_script_writer = create_script_writer()
+        self._script_agent_standalone = Agent[SharedContext](
+            name="Script Writer",
+            instructions=prompt_with_handoff_instructions(base_script_writer.instructions + """
+
+## Output Requirements
+After generating and validating the script, return a structured ScriptOutput with:
+- script_path: Absolute path to the generated/modified script
+- technique_used: The approach/technique used
+- parameters_set: Key parameters configured in the script
+- validation_passed: Whether validation succeeded
+- validation_errors: Any validation errors encountered
+
+IMPORTANT: Always return the script_path even if validation fails."""),
+            model=base_script_writer.model,
+            model_settings=base_script_writer.model_settings,
+            output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
+            tools=base_script_writer.tools,
+        )
+
+        # Executor with structured output
+        base_executor = create_executor()
+        self._executor_agent_standalone = Agent[SharedContext](
+            name="Executor",
+            instructions=prompt_with_handoff_instructions(base_executor.instructions + """
+
+## Output Requirements
+After executing the script, return a structured ExecutionOutput with:
+- success: Whether Blender executed without errors
+- render_path: Path to the rendered output image/sequence
+- vdb_path: Path to VDB volume data (if generated)
+- error_message: Error details if execution failed
+- execution_time_seconds: How long execution took"""),
+            model=base_executor.model,
+            model_settings=base_executor.model_settings,
+            output_type=AgentOutputSchema(ExecutionOutput, strict_json_schema=False),
+            tools=base_executor.tools,
+        )
+
+        # Quality Analyst with structured output (LLM-as-judge pattern)
+        base_quality = create_quality_analyst()
+        self._quality_agent_standalone = Agent[SharedContext](
+            name="Quality Analyst",
+            instructions=prompt_with_handoff_instructions(base_quality.instructions + """
+
+## Output Requirements (LLM-as-Judge Pattern)
+After evaluating render quality, return a structured QualityOutput with:
+- overall_score: Quality score 0-100
+- passed: Whether quality threshold was met
+- primary_issue: The most critical issue to fix (if any)
+- issues: List of all identified issues
+- suggestions: Specific parameter changes to try
+- vision_assessment: Detailed visual quality description
+- reference_similarity: Similarity to reference image (if available)
+
+Be a STRICT judge - only pass renders that truly meet quality standards."""),
+            model=base_quality.model,
+            model_settings=base_quality.model_settings,
+            output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
+            tools=base_quality.tools,
+        )
+
+        # Learning Agent with structured output
+        base_learning = create_learning_agent()
+        self._learning_agent_standalone = Agent[SharedContext](
+            name="Learning Agent",
+            instructions=prompt_with_handoff_instructions(base_learning.instructions + """
+
+## Output Requirements
+After recording the experiment, return a structured LearningOutput with:
+- experiment_recorded: Whether the experiment was logged
+- pattern_extracted: Whether a successful pattern was extracted
+- pattern_id: ID of the extracted pattern (if any)
+- next_action: One of 'iterate', 'switch_technique', 'complete'
+- suggested_modifications: Specific changes for the next iteration"""),
+            model=base_learning.model,
+            model_settings=base_learning.model_settings,
+            output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
+            tools=base_learning.tools,
+        )
+
         self._initialized = True
-        print("[Orchestrator] Initialization complete (5 agents ready)", file=sys.stderr)
+        print("[Orchestrator] Initialization complete (5 agents + 5 standalone ready)", file=sys.stderr)
 
     async def create_asset(self, request: AssetRequest) -> SessionState:
         """
@@ -676,6 +978,308 @@ class BlenderVFXOrchestrator:
 
         # Save session state
         self._persistence.save_session(session)
+
+        return session
+
+    async def create_asset_pipeline(self, request: AssetRequest) -> SessionState:
+        """
+        CODE-BASED ORCHESTRATION: Python controls the pipeline sequence.
+
+        This method implements deterministic workflow control instead of
+        relying on LLM instruction-following. Each agent runs independently
+        and Python manages the state transitions.
+
+        Pipeline: Research → Script → Execute → Evaluate → Learn → (loop)
+
+        Args:
+            request: Asset generation request parameters
+
+        Returns:
+            SessionState with final results
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Check budget before starting
+        if not self._budget_tracker.can_afford_evaluation():
+            raise RuntimeError(
+                f"Budget exhausted. Monthly limit: ${self._budget_tracker.monthly_limit}"
+            )
+
+        # Create session
+        session_id = generate_session_id(request.asset_name)
+        context = create_session_from_request(request, session_id)
+        session = context.session
+
+        print(f"\n{'='*70}", file=sys.stderr)
+        print(f"PIPELINE ORCHESTRATION: {request.asset_name}", file=sys.stderr)
+        print(f"Effect: {request.effect_type.value} | Max Iterations: {request.max_iterations}", file=sys.stderr)
+        print(f"{'='*70}\n", file=sys.stderr)
+
+        try:
+            with trace(f"VFX Pipeline: {request.asset_name}"):
+                # ====== PHASE 0: RESEARCH (once at start) ======
+                print("[Pipeline] PHASE 0: Research", file=sys.stderr)
+                research_prompt = f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
+
+Effect Type: {request.effect_type.value}
+Description: {request.description}
+Reference: {request.reference_path or "None"}
+
+Research documentation, patterns, and APIs to find the optimal starting approach."""
+
+                research_result = await Runner.run(
+                    self._research_agent,
+                    research_prompt,
+                    context=context,
+                    max_turns=8  # Limit research turns
+                )
+                # Research agent outputs text summary (no output_type for tool-using agents)
+                research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
+                print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
+
+                # ====== ITERATION LOOP ======
+                iteration = 0
+                previous_script: Optional[ScriptOutput] = None
+                previous_score = 0.0
+                quality: Optional[QualityOutput] = None
+                learning: Optional[LearningOutput] = None
+
+                while iteration < request.max_iterations:
+                    iteration += 1
+                    session.current_iteration = iteration
+                    print(f"\n[Pipeline] ====== ITERATION {iteration}/{request.max_iterations} ======", file=sys.stderr)
+
+                    # ====== PHASE 1: SCRIPT GENERATION ======
+                    print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
+                    if iteration == 1:
+                        script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
+
+## Research Findings
+{research_text}
+
+## Parameters
+- Asset Name: {request.asset_name}
+- Effect Type: {request.effect_type.value}
+- Description: {request.description}
+- Resolution: {request.resolution}
+- Frames: {request.frame_start}-{request.frame_end}
+
+Generate a complete, validated script. Return the script_path in your output."""
+                    else:
+                        # Include quality feedback and learning suggestions
+                        feedback_parts = []
+                        if quality:
+                            feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
+                            feedback_parts.append(f"Vision Assessment: {quality.vision_assessment}")
+                            if quality.primary_issue:
+                                feedback_parts.append(f"Primary Issue: {quality.primary_issue}")
+                            if quality.suggestions:
+                                feedback_parts.append(f"Suggestions: {chr(10).join(f'- {s}' for s in quality.suggestions)}")
+                        if learning and learning.suggested_modifications:
+                            feedback_parts.append(f"## Learning Agent Recommendations")
+                            feedback_parts.append(chr(10).join(f'- {m}' for m in learning.suggested_modifications))
+
+                        script_prompt = f"""Modify the existing script to fix quality issues.
+
+## Current Script
+Path: {previous_script.script_path if previous_script else 'Unknown'}
+Technique: {previous_script.technique_used if previous_script else 'Unknown'}
+
+{chr(10).join(feedback_parts)}
+
+## Target
+Previous Score: {previous_score:.1f}
+Target Score: {request.quality_threshold}
+
+Modify the script to address the issues. Use patterns from library if available."""
+
+                    script_result = await Runner.run(
+                        self._script_agent_standalone,
+                        script_prompt,
+                        context=context,
+                        max_turns=10
+                    )
+                    # Structured output: ScriptOutput
+                    script: ScriptOutput = script_result.final_output
+
+                    # Always capture script_path if available (for subsequent iterations)
+                    if script.script_path:
+                        session.current_script_path = script.script_path
+                        previous_script = script
+                        print(f"[Pipeline] Script: {script.script_path} ({script.technique_used})", file=sys.stderr)
+                    else:
+                        print(f"[Pipeline] WARNING: No script_path returned", file=sys.stderr)
+
+                    if not script.validation_passed:
+                        print(f"[Pipeline] WARNING: Script validation failed: {script.validation_errors}", file=sys.stderr)
+                        # If we have a script path, try executing anyway (some validation errors are warnings)
+                        if not script.script_path:
+                            # No script to execute - continue to next iteration
+                            quality = QualityOutput(
+                                overall_score=0,
+                                passed=False,
+                                primary_issue="Script generation failed - no path",
+                                issues=script.validation_errors,
+                                suggestions=["Fix script generation errors"]
+                            )
+                            continue
+                        # Else proceed with execution to see actual results
+
+                    # ====== PHASE 2: EXECUTION ======
+                    print(f"[Pipeline] PHASE 2: Executor", file=sys.stderr)
+                    exec_prompt = f"""Execute the Blender script and render the VFX asset.
+
+Script Path: {script.script_path}
+Frames: {request.frame_start}-{request.frame_end}
+
+Run the script and report results."""
+
+                    exec_result = await Runner.run(
+                        self._executor_agent_standalone,
+                        exec_prompt,
+                        context=context,
+                        max_turns=6
+                    )
+                    # Structured output: ExecutionOutput
+                    execution: ExecutionOutput = exec_result.final_output
+
+                    if not execution.success or not execution.render_path:
+                        print(f"[Pipeline] ERROR: Execution failed: {execution.error_message}", file=sys.stderr)
+                        # Continue to next iteration with error context
+                        quality = QualityOutput(
+                            overall_score=0,
+                            passed=False,
+                            primary_issue=f"Execution failed: {execution.error_message}",
+                            issues=[execution.error_message or "Unknown execution error"],
+                            suggestions=["Fix script errors and retry"]
+                        )
+                        continue
+
+                    print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
+
+                    # ====== PHASE 3: QUALITY EVALUATION (LLM-as-Judge) ======
+                    print(f"[Pipeline] PHASE 3: Quality Analyst (LLM-as-Judge)", file=sys.stderr)
+                    eval_prompt = f"""Evaluate the render quality strictly.
+
+Render Path: {execution.render_path}
+Effect Type: {request.effect_type.value}
+Reference: {request.reference_path or "None"}
+Quality Threshold: {request.quality_threshold}
+
+Be a strict judge. Only pass renders that truly meet quality standards.
+Provide detailed feedback for improvement."""
+
+                    eval_result = await Runner.run(
+                        self._quality_agent_standalone,
+                        eval_prompt,
+                        context=context,
+                        max_turns=6
+                    )
+                    # Structured output: QualityOutput
+                    quality = eval_result.final_output
+
+                    previous_score = quality.overall_score
+                    print(f"[Pipeline] Score: {quality.overall_score:.1f} | Passed: {quality.passed}", file=sys.stderr)
+                    if quality.primary_issue:
+                        print(f"[Pipeline] Issue: {quality.primary_issue[:60]}...", file=sys.stderr)
+
+                    # Update session
+                    session.best_score = max(session.best_score, quality.overall_score)
+                    if quality.overall_score == session.best_score:
+                        session.best_iteration = iteration
+                        session.final_render_path = execution.render_path
+
+                    # Record iteration - create nested models from agent outputs
+                    script_mod = ScriptModification(
+                        script_path=script.script_path or "unknown",
+                        modifications=script.key_parameters if hasattr(script, 'key_parameters') else {},
+                        technique_name=script.technique_used,
+                        validation_passed=script.validation_passed,
+                        validation_issues=script.validation_errors,
+                    )
+                    blender_exec = BlenderExecution(
+                        success=execution.success,
+                        run_dir=str(Path(execution.render_path).parent) if execution.render_path else "",
+                        render_path=execution.render_path,
+                        vdb_files=[],
+                        execution_time_seconds=execution.execution_time if hasattr(execution, 'execution_time') else None,
+                        errors=[execution.error_message] if execution.error_message else [],
+                    )
+                    quality_metrics = QualityMetrics(
+                        overall_score=quality.overall_score,
+                        passed=quality.passed,
+                        issues=quality.issues,
+                        primary_issue=quality.primary_issue,
+                        suggestions=quality.recommendations if hasattr(quality, 'recommendations') else [],
+                    )
+                    iter_result = IterationResult(
+                        iteration=iteration,
+                        script=script_mod,
+                        execution=blender_exec,
+                        quality=quality_metrics,
+                        passed=quality.passed,
+                        score=quality.overall_score,
+                    )
+                    session.iterations.append(iter_result)
+
+                    # ====== PHASE 4: LEARNING ======
+                    print(f"[Pipeline] PHASE 4: Learning Agent", file=sys.stderr)
+                    learn_prompt = f"""Record the experiment results.
+
+Iteration: {iteration}
+Script: {script.script_path}
+Technique: {script.technique_used}
+Render: {execution.render_path}
+Score: {quality.overall_score:.1f}
+Passed: {quality.passed}
+Primary Issue: {quality.primary_issue or 'None'}
+
+If this iteration improved significantly, extract the pattern.
+Recommend next action: 'iterate' (continue improving), 'switch_technique' (try different approach), or 'complete' (quality achieved)."""
+
+                    learn_result = await Runner.run(
+                        self._learning_agent_standalone,
+                        learn_prompt,
+                        context=context,
+                        max_turns=8
+                    )
+                    # Structured output: LearningOutput
+                    learning = learn_result.final_output
+                    print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
+
+                    # ====== QUALITY GATE ======
+                    if quality.passed or learning.next_action == 'complete':
+                        print(f"\n[Pipeline] ✓ QUALITY GATE PASSED at iteration {iteration}", file=sys.stderr)
+                        session.status = SessionStatus.PASSED
+                        break
+
+                    # Handle technique switching recommendation
+                    if learning.next_action == 'switch_technique':
+                        print(f"[Pipeline] Learning Agent recommends switching technique", file=sys.stderr)
+                        # Research agent already found alternatives in research_text
+                        # Next iteration will get modified feedback to try different approach
+
+                # End of iteration loop
+                if session.status != SessionStatus.PASSED:
+                    session.status = SessionStatus.MAX_ITERATIONS
+                    print(f"\n[Pipeline] ✗ Max iterations reached. Best: {session.best_score:.1f}", file=sys.stderr)
+
+        except Exception as e:
+            import traceback
+            print(f"[Pipeline] ERROR: {e}", file=sys.stderr)
+            traceback.print_exc()
+            session.status = SessionStatus.FAILED
+            session.current_issues.append(f"Pipeline error: {str(e)}")
+
+        # Save session state
+        self._persistence.save_session(session)
+        session.update_timestamp()
+
+        print(f"\n{'='*70}", file=sys.stderr)
+        print(f"PIPELINE COMPLETE: {session.status.value}", file=sys.stderr)
+        print(f"Best Score: {session.best_score:.1f} (iteration {session.best_iteration})", file=sys.stderr)
+        print(f"{'='*70}\n", file=sys.stderr)
 
         return session
 
