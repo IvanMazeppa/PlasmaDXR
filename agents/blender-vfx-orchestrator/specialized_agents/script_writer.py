@@ -38,6 +38,12 @@ from tools.script_generator_tools import (
     record_technique_outcome,
 )
 
+# Import vector store documentation tools for API verification
+from tools.semantic_docs_tools import (
+    semantic_search_blender_docs,
+    search_blender_api_by_intent,
+)
+
 # Blender 5.0 API parameter ranges (MUST be enforced during script generation)
 # Source: bpy.types.FluidDomainSettings, bpy.types.FluidFlowSettings
 BLENDER_PARAMETER_RANGES = """
@@ -70,6 +76,7 @@ Your role:
 2. Modify existing scripts based on quality feedback
 3. Validate all scripts before returning
 4. Apply parameter ranges from Blender API
+5. VERIFY API usage against documentation when uncertain
 
 CRITICAL PATH HANDLING:
 - ALWAYS use the EXACT paths returned from tool responses
@@ -86,22 +93,112 @@ WORKFLOW:
    d. Call validate_script() with that EXACT path (no modifications)
    e. Return the script path and any validation warnings
 
-2. For MODIFICATIONS:
-   a. Read the current issues from the evaluation
-   b. Determine which parameters to adjust
-   c. Call modify_script() with the changes
-   d. Extract the EXACT script_path from modify_script() response JSON
-   e. Call validate_script() with that EXACT path
+2. For MODIFICATIONS (using visual feedback):
+   a. Read the VISION ANALYSIS carefully - this describes what the render LOOKS like
+   b. Identify the specific VISUAL observations (thin smoke, dim flames, etc.)
+   c. Map visual observations to parameters using the PROCESSING VISUAL FEEDBACK section
+   d. Determine which 2-3 parameters will address the visual issues
+   e. Call modify_script() with the changes
+   f. Extract the EXACT script_path from modify_script() response JSON
+   g. Call validate_script() with that EXACT path
+
+   IMPORTANT: The vision analysis tells you WHAT it looks like.
+   Your job is to translate visual descriptions into parameter adjustments.
+   Example: "The smoke appears thin and wispy near the edges" →
+            Increase smoke_density from 0.5 to 0.8, flame_smoke from 1 to 3
 
 {BLENDER_PARAMETER_RANGES}
 
-COMMON FIXES:
+## PROCESSING VISUAL FEEDBACK
+
+You will receive RICH VISUAL DESCRIPTIONS from the Quality Analyst's vision analysis.
+Map these visual observations to specific parameter changes:
+
+### DENSITY & OPACITY ISSUES
+Visual observation → Parameter fix:
+- "Smoke appears thin/wispy/transparent" → Increase smoke_density (0.5→0.8), flame_smoke (1→3)
+- "Smoke too thick/opaque/blocks view" → Decrease smoke_density, increase dissolve_speed
+- "Density fades too quickly" → Decrease dissolve_speed (lower = slower fade)
+- "Visible banding in density gradient" → Increase domain_resolution, noise_strength
+
+### LIGHTING & EMISSION ISSUES
+Visual observation → Parameter fix:
+- "Flames appear dark/dim/not glowing" → Increase emission_intensity (1→5), flame_max_temp
+- "Core too bright/blown out/white" → Decrease emission_intensity, adjust flame_max_temp
+- "Wrong color temperature (too orange/blue)" → Adjust flame_max_temp (higher=bluer, lower=redder)
+- "No visible light emission" → Check emission_intensity > 0, verify material setup
+
+### MOTION & STRUCTURE ISSUES
+Visual observation → Parameter fix:
+- "Flames/smoke lack turbulence/movement" → Increase turbulence (0.3→0.6), vorticity
+- "Too chaotic/noisy movement" → Decrease turbulence, increase timesteps_max
+- "Doesn't rise properly" → Adjust alpha (buoyancy heat), beta (buoyancy density)
+- "Mushroom cloud shape missing" → Increase vorticity, adjust fuel_amount
+
+### BOUNDARY & SCALE ISSUES
+Visual observation → Parameter fix:
+- "Effect clipped at edges/cut off" → Increase domain_scale, reposition emitter
+- "Effect too small in frame" → Increase emitter scale, fuel_amount
+- "Fills entire domain unnaturally" → Decrease fuel_amount, increase domain_scale
+
+### TEMPORAL ISSUES
+Visual observation → Parameter fix:
+- "Animation stutters/jumps" → Increase timesteps_max, enable use_adaptive_timesteps
+- "Burns out too fast" → Decrease burning_rate, increase fuel_amount
+- "Takes too long to develop" → Increase burning_rate, temperature
+
+COMMON FIXES (quick reference):
 - "TOO DARK" → Increase emission_intensity, flame_max_temp
 - "LACKS STRUCTURE" → Increase turbulence, vorticity
 - "TOO BRIGHT" → Decrease emission_intensity
 - "WRONG COLOR" → Adjust flame_max_temp (higher = bluer, lower = redder)
 - "CLIPPING AT EDGES" → Increase domain_scale, adjust emitter position
 - "NOT ENOUGH SMOKE" → Increase flame_smoke, smoke_density
+
+## DOCUMENTATION SEARCH (Use When Uncertain)
+
+You have access to Blender documentation via vector store semantic search.
+Use these tools to VERIFY API usage and DISCOVER alternatives.
+
+### semantic_search_blender_docs(query, max_results, include_code_examples)
+Search the Blender documentation using AI embeddings.
+**WHEN TO USE:**
+- Unsure about correct parameter name or range
+- Need to verify a property exists on a Blender type
+- Looking for code examples for a specific technique
+- Visual feedback mentions something you don't recognize
+
+**EXAMPLES:**
+```
+semantic_search_blender_docs("FluidDomainSettings flame parameters")
+semantic_search_blender_docs("Mantaflow smoke density dissolve")
+semantic_search_blender_docs("volume shader density input principled")
+```
+
+### search_blender_api_by_intent(intent, domain)
+Find Blender APIs based on what you want to DO.
+**WHEN TO USE:**
+- Know WHAT you want but not WHICH API
+- Looking for alternatives to a parameter that isn't working
+- Need to discover related properties
+
+**EXAMPLES:**
+```
+search_blender_api_by_intent("control how fast smoke fades", "fluid")
+search_blender_api_by_intent("make flames brighter", "fluid")
+search_blender_api_by_intent("add turbulence to gas simulation", "fluid")
+```
+
+### WHEN TO SEARCH DOCS:
+1. **Before unfamiliar parameter changes** - Verify the parameter exists and its range
+2. **When visual feedback mentions unknown terms** - Find the correct API
+3. **When common fixes don't work** - Search for alternatives
+4. **When generating new techniques** - Find code examples
+
+### WHEN NOT TO SEARCH:
+- For parameters you've used successfully before
+- For well-documented common parameters (smoke_density, turbulence, etc.)
+- When time-critical (search adds latency)
 
 OUTPUT FORMAT:
 Always return JSON with:
@@ -153,12 +250,16 @@ class ScriptWriterAgent:
                 # Note: temperature not supported with gpt-5.2 reasoning models
             ),
             tools=[
+                # Script generation tools
                 generate_script,
                 modify_script,
                 validate_script,
                 list_techniques,
                 recommend_technique,
                 record_technique_outcome,
+                # Documentation search tools (verify API usage, find alternatives)
+                semantic_search_blender_docs,
+                search_blender_api_by_intent,
             ],
         )
 

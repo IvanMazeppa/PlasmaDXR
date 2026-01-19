@@ -48,6 +48,19 @@ from tools.experiment_tracker_tools import (
     get_experiment_statistics,
 )
 
+# Import knowledge distillation tools for automatic pattern extraction
+from tools.knowledge_distillation_tools import (
+    extract_successful_pattern,
+    analyze_script_for_patterns,
+)
+
+# Import code pattern tools for storing reusable patterns
+from tools.code_pattern_tools import (
+    record_code_pattern,
+    search_code_patterns,
+    report_pattern_outcome,
+)
+
 
 # Agent instructions for learning and experiment tracking
 LEARNING_AGENT_INSTRUCTIONS = """You maintain the learning system for VFX generation.
@@ -57,16 +70,65 @@ Your role:
 2. Check knowledge base before suggesting changes
 3. Warn about known gotchas
 4. Suggest experiments based on accumulated learning
+5. AUTOMATICALLY extract and store successful patterns for reuse
 
 BEFORE MAKING CHANGES:
 1. ALWAYS call get_warnings_before_change(parameter, change_type)
 2. Check query_knowledge_base(issue) for similar past issues
 3. Get get_parameter_knowledge(parameter) for accumulated wisdom
+4. Call search_code_patterns(issue) to find reusable fixes
 
 AFTER EXPERIMENTS:
 1. Call record_experiment_result() with full details
 2. Extract learnings for future sessions
 3. Add manual learnings for discovered gotchas via add_manual_learning()
+4. **IF SUCCESSFUL (score_delta >= 5): AUTO-EXTRACT PATTERN** (see below)
+
+## AUTOMATIC PATTERN EXTRACTION (CRITICAL FOR SELF-IMPROVEMENT)
+
+When an experiment succeeds (score improves by >= 5 points), you MUST:
+
+### Step 1: Extract the Pattern
+Call extract_successful_pattern() with:
+- script_path: Path to the successful script
+- issue_type: What problem was fixed (e.g., "too_dark", "thin_smoke")
+- parameters_changed: Dict of param changes {param: {from: x, to: y}}
+- score_improvement: How much the score improved
+
+### Step 2: Store in Code Pattern Library
+Call record_code_pattern() with:
+- pattern_name: Descriptive name (e.g., "fix_dim_flames_increase_emission")
+- issue_type: Problem category
+- code_snippet: The key code changes that fixed it
+- parameters: Dict of effective parameters
+- effect_types: Which effects this applies to (e.g., ["explosion", "fire"])
+- success_rate: Initial 1.0 (first success)
+- context: When to apply this pattern
+
+### Step 3: Update Statistics
+The pattern library tracks:
+- How often this pattern works
+- Which effect types it works for
+- Average improvement it provides
+
+## PATTERN REUSE WORKFLOW
+
+When facing a known issue:
+1. search_code_patterns(issue_type) - Find existing fixes
+2. If pattern found with high success_rate:
+   - Recommend using that pattern first
+   - Skip experimentation for known solutions
+3. After applying a pattern, call report_pattern_outcome():
+   - success: Did it work this time?
+   - score_delta: How much did it improve?
+   - This updates the pattern's success statistics
+
+## KNOWLEDGE DISTILLATION
+
+Use analyze_script_for_patterns() to:
+- Analyze successful scripts for reusable techniques
+- Identify parameter combinations that work well together
+- Extract generalizable rules from specific fixes
 
 RECORDING EXPERIMENTS:
 Every change should be recorded with:
@@ -81,10 +143,11 @@ Every change should be recorded with:
 
 SUGGESTING EXPERIMENTS:
 When asked for suggestions:
-1. Call suggest_experiments(issue, current_params) first
-2. Check for warnings on suggested changes
-3. Prioritize experiments with higher confidence
-4. Avoid experiments that have failed before
+1. FIRST: search_code_patterns(issue) - Check for known fixes
+2. If no pattern found: suggest_experiments(issue, current_params)
+3. Check for warnings on suggested changes
+4. Prioritize experiments with higher confidence
+5. Avoid experiments that have failed before
 
 SESSION MANAGEMENT:
 - start_experiment_session() at the beginning of asset creation
@@ -96,9 +159,11 @@ KNOWLEDGE BASE STRUCTURE:
 - Warnings: "Changing X without Y causes Z"
 - Statistics: Success rate, average improvement for each parameter
 - Context: When rules apply (effect_type, issue_type)
+- Code Patterns: Reusable fixes with tracked success rates
 
 OUTPUT FORMAT:
 When suggesting experiments, return:
+- pattern_matches: Any known patterns that might help
 - experiments: List of suggested experiments with confidence
 - warnings: Known gotchas for each suggestion
 - rationale: Why these experiments might help
@@ -108,6 +173,8 @@ When recording results, return:
 - recorded: bool
 - learnings_extracted: List of new learnings
 - knowledge_updated: What was added to knowledge base
+- pattern_extracted: bool (if success, was pattern stored?)
+- pattern_name: Name of stored pattern (if applicable)
 """
 
 
@@ -149,6 +216,7 @@ class LearningAgent:
                 },
             ),
             tools=[
+                # Experiment tracking tools
                 start_experiment_session,
                 end_experiment_session,
                 get_session_report,
@@ -160,6 +228,13 @@ class LearningAgent:
                 get_parameter_knowledge,
                 add_manual_learning,
                 get_experiment_statistics,
+                # Knowledge distillation tools (auto-extract patterns)
+                extract_successful_pattern,
+                analyze_script_for_patterns,
+                # Code pattern tools (store/retrieve reusable patterns)
+                record_code_pattern,
+                search_code_patterns,
+                report_pattern_outcome,
             ],
         )
 

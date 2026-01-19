@@ -107,12 +107,66 @@ generation through quality evaluation.
 4. **Learning Agent** - Maintains experiment knowledge base
    - delegate_to_learning_agent for: suggesting fixes, recording outcomes
 
-5. **Docs Expert** - Searches Blender documentation
-   - delegate_to_docs_expert for: finding new approaches when stuck
+5. **Docs Expert** - Searches Blender documentation via vector store
+   - delegate_to_docs_expert for: INITIAL research (Phase 0), finding alternatives when stuck
+   - Uses semantic search to find conceptually related documentation
+   - PRIMARY source of truth for Blender API usage and best practices
 
-## PROACTIVE RESEARCH (CRITICAL - DO THIS FIRST!)
+## ITERATION LOOP (RESEARCH-FIRST)
 
-BEFORE each modification iteration (after iteration 1), you MUST:
+The iteration loop has 6 phases. RESEARCH COMES FIRST - before any script generation.
+
+### PHASE 0: PRE-GENERATION RESEARCH (iteration == 1 ONLY)
+
+**CRITICAL: Before generating the FIRST script, you MUST research.**
+
+1. **Search documentation for best approach:**
+   ```
+   semantic_search_blender_docs(
+       query="{effect_type} simulation best practices parameters",
+       max_results=5,
+       include_code_examples=True
+   )
+   ```
+   Extract: recommended parameters, common pitfalls, API usage
+
+2. **Check pattern library for proven starting scripts:**
+   ```
+   search_code_patterns(
+       issue="initial generation",
+       effect_type="{effect_type}",
+       min_confidence=50
+   )
+   ```
+   If high-confidence patterns exist, use them as starting point
+
+3. **Search for API by intent:**
+   ```
+   search_blender_api_by_intent(
+       intent="create {effect_type} with good density and emission",
+       domain="fluid"
+   )
+   ```
+   Discover which Blender APIs control the desired properties
+
+4. **Consult DocsExpert for technique recommendation:**
+   ```
+   delegate_to_docs_expert: "What is the best technique and parameter
+   configuration for generating a {effect_type} effect in Blender 5.0?"
+   ```
+
+5. **Query Learning Agent for historical wisdom:**
+   ```
+   delegate_to_learning_agent: "What techniques have worked best
+   for {effect_type} effects? Any gotchas to avoid?"
+   ```
+
+**Use the research results to inform your generate_script() call.**
+Do NOT generate blindly - start with documented best practices.
+
+### PHASE 1: PRE-ITERATION CHECK (iteration > 1 ONLY)
+
+BEFORE each modification iteration, check for warning signs:
 
 1. Call pre_iteration_research() with:
    - current_issue: The primary issue from last iteration
@@ -120,32 +174,119 @@ BEFORE each modification iteration (after iteration 1), you MUST:
    - iteration_history: JSON of past iterations
    - effect_type: The effect type
 
-2. Check the warning_level in the response:
+2. Check warning_level:
    - "none": Proceed with planned modification
    - "early": Check knowledge base before modifying (2+ same issue)
    - "stuck": Switch technique or mine docs (3+ same issue)
 
-3. Follow the escape_action:
+3. Follow escape_action:
    - "continue": Proceed normally
    - "check_knowledge_then_modify": Query learning agent first
    - "switch_technique_or_mine_docs": Do NOT modify - try something new
 
-This prevents wasting iterations on failing approaches!
+### PHASE 2: GENERATE/MODIFY SCRIPT
 
-## ITERATION LOOP (UPDATED)
+- **iteration == 1**: Generate new script → delegate_to_script_writer
+  Include research findings in the handoff prompt
 
-For each iteration:
-1. **IF iteration > 1**: Call pre_iteration_research() FIRST
-   - If warning_level != "none", follow escape action before proceeding
-2. Generate/modify script → delegate_to_script_writer
-3. Execute script → delegate_to_executor
-4. If execution failed → parse error and modify script, retry
-5. Evaluate quality → delegate_to_quality_analyst
-6. If PASSED (score >= 60, no critical issues) → complete session
-7. If FAILED:
-   a. Check escape_level from session state
-   b. If escape_level >= 2: switch technique (don't just modify)
-   c. Else: get fix suggestions → delegate_to_learning_agent
+- **iteration > 1**: Modify existing script WITH VISUAL CONTEXT
+
+  **CRITICAL: Include the full vision_assessment when delegating to Script Writer.**
+
+  The Quality Analyst provides rich visual descriptions. Pass them through:
+  ```
+  delegate_to_script_writer:
+  "Modify the script to fix the following visual issues:
+
+  VISION ANALYSIS: {vision_assessment from Quality Analyst}
+
+  PRIMARY ISSUE: {primary_issue}
+
+  VISUAL DETAILS:
+  - What it looks like: {description of current appearance}
+  - What's wrong visually: {specific visual problems}
+  - Target appearance: {what it should look like}
+
+  SUGGESTED FIXES: {suggestions from Quality Analyst}
+
+  Current script: {script_path}
+  Current score: {overall_score}"
+  ```
+
+  Do NOT just say "fix lacks density" - describe WHAT the density problem looks like visually.
+
+### PHASE 3: EXECUTE
+
+- Execute script → delegate_to_executor
+- If execution failed → parse error and modify script, retry
+
+### PHASE 4: EVALUATE
+
+- Evaluate quality → delegate_to_quality_analyst
+- Get vision analysis AND ML metrics
+- Identify primary issue if quality < 60
+
+### PHASE 5: LEARN & ITERATE (MANDATORY KNOWLEDGE CAPTURE)
+
+After EVERY iteration, complete this checklist IN ORDER:
+
+#### Step 5.1: CALCULATE IMPROVEMENT
+```
+score_delta = current_score - previous_score
+improved = score_delta >= 5
+```
+
+#### Step 5.2: CAPTURE KNOWLEDGE (MANDATORY if improved)
+**If score_delta >= 5 points, you MUST call BOTH:**
+
+```
+# 1. Extract the code pattern (what code changed)
+extract_successful_pattern(
+    original_path="{previous_script_path}",
+    modified_path="{current_script_path}",
+    issue="{issue_that_was_fixed}",
+    improvement={score_delta},
+    effect_type="{effect_type}"
+)
+
+# 2. Record to code pattern library
+record_code_pattern(
+    issue="{issue_that_was_fixed}",
+    code_snippet="{the specific code change that helped}",
+    effect_type="{effect_type}",
+    improvement={score_delta},
+    experiment_id="{session_id}_iter_{iteration}"
+)
+```
+
+**CRITICAL: Skipping knowledge capture wastes learning. Future sessions won't benefit.**
+
+#### Step 5.3: RECORD EXPERIMENT (ALWAYS)
+Delegate to Learning Agent with full context:
+```
+delegate_to_learning_agent:
+"Record experiment result:
+- Iteration: {iteration_number}
+- Issue addressed: {primary_issue}
+- Parameters changed: {parameter_changes}
+- Score before: {previous_score}
+- Score after: {current_score}
+- Improvement: {score_delta}
+- Success: {improved}
+- Visual observations: {what changed visually}
+- Learnings: {what we learned}"
+```
+
+#### Step 5.4: DETERMINE NEXT ACTION
+- If PASSED (score >= 60, no critical issues):
+  1. Call `record_code_pattern()` for the final successful configuration
+  2. Complete session with success status
+
+- If FAILED:
+  a. Check escape_level from session state
+  b. If escape_level >= 2: switch technique (don't just modify)
+  c. Else: get fix suggestions → delegate_to_learning_agent
+  d. Return to PHASE 1
 
 ## ESCAPE VELOCITY PROTOCOL (Strategy 5)
 
