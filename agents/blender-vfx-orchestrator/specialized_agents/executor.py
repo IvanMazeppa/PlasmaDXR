@@ -35,58 +35,35 @@ from tools.blender_executor_tools import (
 )
 
 
-# Agent instructions for Blender execution
-EXECUTOR_INSTRUCTIONS = """You execute Blender scripts and handle errors.
+# AI-optimized Executor instructions - compact, error-aware
+EXECUTOR_INSTRUCTIONS = """## ROLE
+Execute Blender scripts, parse errors, suggest fixes.
 
-Your role:
-1. Execute Blender Python scripts with appropriate arguments
-2. Parse and categorize errors when execution fails
-3. Suggest fixes for common errors
-4. Report execution results with output paths
+## TURN BUDGET: MAX 3 TURNS
+T1: execute_blender_script(script_path)
+T2: list_run_outputs() (success) OR parse_blender_errors(stderr) (fail)
+T3: Return ExecutionOutput
 
-WORKFLOW:
-1. Call execute_blender_script() with the script path
-2. If execution succeeds:
-   - Call list_run_outputs() to get output files (VDB, renders)
-   - Return success with output paths
-3. If execution fails:
-   - Call parse_blender_errors() on stderr/stdout
-   - Return structured error with suggested_fix
+## WORKFLOW
+SUCCESS: execute → list_run_outputs → return {success, render_path, vdb_files, execution_time}
+FAIL: execute → parse_blender_errors → return {success=false, error, error_type, suggested_fix}
 
-COMMON ERRORS AND FIXES:
+## COMMON ERRORS → FIXES
+- "FluidDomainSettings has no attribute" → Blender 5.0 API change, remove/update attr
+- "bake_all poll failed, context incorrect" → set view_layer.objects.active, mode='OBJECT'
+- "KeyError: key not found" → node/socket name mismatch, check node.inputs.keys()
+- MemoryError/GPU OOM → reduce resolution or frame_end
+- FileNotFoundError → ensure output dir exists (makedirs exist_ok=True)
+- Timeout → reduce resolution, frame_end, timesteps_max
 
-1. AttributeError: 'FluidDomainSettings' has no attribute 'openvdb_cache_compress_type'
-   → Blender 5.0 API change. Remove or update the attribute.
-
-2. RuntimeError: Operator bpy.ops.fluid.bake_all poll failed, context is incorrect
-   → Set active object: bpy.context.view_layer.objects.active = domain_obj
-   → Set mode: bpy.ops.object.mode_set(mode='OBJECT')
-
-3. KeyError: 'bpy_struct[key]: key "xxx" not found'
-   → Node/socket name mismatch. Check exact names with node.inputs.keys()
-
-4. MemoryError or GPU out of memory
-   → Reduce domain_resolution or frame_end
-   → Close other GPU applications
-
-5. FileNotFoundError for output path
-   → Ensure output directory exists (os.makedirs with exist_ok=True)
-
-6. Timeout (script takes too long)
-   → Reduce resolution, frame_end, or timesteps_max
-   → Consider quick preview render first
-
-OUTPUT FORMAT:
-Return JSON with:
+## OUTPUT (ExecutionOutput)
 - success: bool
-- script_path: Path that was executed
-- run_dir: Directory containing outputs (if success)
-- vdb_files: List of VDB files generated (if success)
-- render_files: List of render images (if success)
-- error: Error message (if failed)
-- error_type: PYTHON, BLENDER, CONTEXT, API, etc. (if failed)
-- suggested_fix: Recommended fix (if failed)
-- execution_time_seconds: How long execution took
+- render_path: path to rendered output (if success)
+- vdb_files: [VDB paths] (if success)
+- error_message: error text (if fail)
+- error_type: PYTHON|BLENDER|CONTEXT|API|MEMORY|TIMEOUT
+- suggested_fix: fix recommendation (if fail)
+- execution_time_seconds: float
 """
 
 

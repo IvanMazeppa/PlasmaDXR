@@ -932,8 +932,14 @@ async def modify_script(
 
 def _apply_space_physics_fix_impl(script_path: str, output_name: Optional[str] = None) -> str:
     """
-    Apply space physics corrections to a script.
-    Sets gravity=0, beta_buoyancy=0 for effects that should be in space (sun, star, nebula).
+    Apply COMPREHENSIVE space physics corrections to a script.
+    For sun/star/nebula effects where there's no atmosphere.
+
+    Fixes:
+    1. Scene gravity -> (0, 0, 0)
+    2. settings.beta (buoyancy density) -> 0
+    3. settings.alpha (buoyancy heat) -> 0
+    4. Emitter position -> centered (0, 0, 0)
     """
     try:
         path = Path(script_path)
@@ -950,50 +956,74 @@ def _apply_space_physics_fix_impl(script_path: str, output_name: Optional[str] =
         content = path.read_text()
         changes_made = []
 
-        # Space physics corrections - parameters to set to 0.0
-        # NOTE: In the Config class, variables are defined as just "BETA_BUOYANCY = value"
-        # NOT as "Config.BETA_BUOYANCY = value". The Config. prefix is only used when
-        # accessing from outside the class.
+        # 1. Fix BETA_BUOYANCY in Config class
+        pattern_beta = r"(\s+BETA_BUOYANCY\s*=\s*)([0-9.-]+)"
+        if re.search(pattern_beta, content):
+            old = re.search(pattern_beta, content).group(2)
+            if old != "0.0":
+                content = re.sub(pattern_beta, r"\g<1>0.0", content)
+                changes_made.append(f"BETA_BUOYANCY: {old} -> 0.0")
 
-        # Fix BETA_BUOYANCY in Config class (handles "    BETA_BUOYANCY = <value>")
-        pattern_beta_config = r"(\s+BETA_BUOYANCY\s*=\s*)([0-9.]+)"
-        match = re.search(pattern_beta_config, content)
-        if match:
-            old_val = match.group(2).strip()
-            if old_val != "0.0":
-                content = re.sub(pattern_beta_config, r"\g<1>0.0", content)
-                changes_made.append(f"BETA_BUOYANCY: {old_val} -> 0.0")
-
-        # Fix settings.beta = Config.BETA_BUOYANCY (no change needed, it references Config)
-        # But if there's a direct settings.beta = <value>, fix it
-        pattern_settings_beta = r"(settings\.beta\s*=\s*)([0-9.]+)"
-        match2 = re.search(pattern_settings_beta, content)
-        if match2:
-            old_val = match2.group(2).strip()
-            if old_val != "0.0":
+        # 2. Fix settings.beta direct assignment
+        pattern_settings_beta = r"(settings\.beta\s*=\s*)([0-9.-]+)"
+        if re.search(pattern_settings_beta, content):
+            old = re.search(pattern_settings_beta, content).group(2)
+            if old != "0.0":
                 content = re.sub(pattern_settings_beta, r"\g<1>0.0", content)
-                changes_made.append(f"settings.beta: {old_val} -> 0.0")
+                changes_made.append(f"settings.beta: {old} -> 0.0")
 
-        # Also fix flow.temperature for space (should be based on stellar temp, not combustion)
-        # And add comment about space physics
-        if changes_made:
-            # Add space physics comment if not present
-            if "# SPACE PHYSICS" not in content:
-                # Insert after Config class
-                config_end = content.find("def parse_args")
-                if config_end > 0:
-                    space_comment = "\n    # SPACE PHYSICS: gravity=0, buoyancy=0 (no atmosphere)\n"
-                    # Find the line before parse_args and insert comment in Config
-                    insert_point = content.rfind("\n", 0, config_end)
-                    if insert_point > 0:
-                        content = content[:insert_point] + space_comment + content[insert_point:]
-                        changes_made.append("Added SPACE PHYSICS comment")
+        # 3. Add settings.alpha = 0 (buoyancy heat) after settings.beta line
+        if "settings.alpha" not in content and "settings.beta" in content:
+            content = re.sub(
+                r"(settings\.beta\s*=\s*[^\n]+)",
+                r"\1\n    settings.alpha = 0.0  # SPACE: no buoyancy heat",
+                content
+            )
+            changes_made.append("Added settings.alpha = 0.0")
+
+        # 4. Add scene gravity = 0 in setup_scene()
+        if "scene.gravity" not in content:
+            # Find setup_scene function and add gravity after render.engine line
+            pattern_engine = r"(scene\.render\.engine\s*=\s*['\"]CYCLES['\"])"
+            if re.search(pattern_engine, content):
+                content = re.sub(
+                    pattern_engine,
+                    r"\1\n    scene.gravity = (0.0, 0.0, 0.0)  # SPACE: no gravity",
+                    content
+                )
+                changes_made.append("Added scene.gravity = (0, 0, 0)")
+
+        # 5. Center emitter position (change -1.5 z to 0)
+        pattern_emitter_pos = r"(primitive_ico_sphere_add\s*\([^)]*location\s*=\s*\()([^)]+)(\))"
+        emitter_match = re.search(pattern_emitter_pos, content)
+        if emitter_match:
+            old_pos = emitter_match.group(2)
+            if "-1.5" in old_pos or "- 1.5" in old_pos:
+                new_pos = "0, 0, 0"
+                content = re.sub(
+                    pattern_emitter_pos,
+                    rf"\g<1>{new_pos}\g<3>",
+                    content
+                )
+                changes_made.append(f"Emitter position: ({old_pos}) -> (0, 0, 0)")
+
+        # 6. Add SPACE PHYSICS comment in Config if changes were made
+        if changes_made and "# SPACE PHYSICS" not in content:
+            pattern_config = r"(class Config:.*?\"\"\"Script configuration\.\"\"\")"
+            if re.search(pattern_config, content, re.DOTALL):
+                content = re.sub(
+                    pattern_config,
+                    r'\1\n    # SPACE PHYSICS: gravity=0, alpha=0, beta=0, centered emitter',
+                    content,
+                    flags=re.DOTALL
+                )
+                changes_made.append("Added SPACE PHYSICS comment")
 
         # Save modified script
         if output_name:
             modified_path = OUTPUT_DIR / f"{output_name}.py"
         else:
-            modified_path = path.with_stem(path.stem + "_spacephysics")
+            modified_path = path.with_stem(path.stem + "_spacefixed")
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         modified_path.write_text(content)
@@ -1004,7 +1034,12 @@ def _apply_space_physics_fix_impl(script_path: str, output_name: Optional[str] =
             "modified_path": str(modified_path),
             "changes_made": changes_made,
             "space_physics_applied": True,
-            "note": "Gravity and buoyancy set to 0 for space environment (sun/star/nebula)"
+            "fixes_applied": {
+                "scene_gravity": "scene.gravity = (0, 0, 0)",
+                "buoyancy_density": "settings.beta = 0",
+                "buoyancy_heat": "settings.alpha = 0",
+                "emitter_position": "centered at (0, 0, 0)"
+            }
         }, indent=2)
 
     except Exception as e:

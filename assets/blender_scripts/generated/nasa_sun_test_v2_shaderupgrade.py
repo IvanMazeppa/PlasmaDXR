@@ -39,10 +39,11 @@ from pathlib import Path
 
 class Config:
     """Script configuration."""
+    # SPACE PHYSICS: gravity=0, alpha=0, beta=0, centered emitter
     RESOLUTION = 96
     FRAME_START = 1
     FRAME_END = 50
-    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v1"
+    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v2_shaderupgrade"
     BAKE = True
     RENDER = True
     RENDER_FRAMES = "mid"
@@ -107,6 +108,7 @@ def setup_scene():
     scene.frame_start = Config.FRAME_START
     scene.frame_end = Config.FRAME_END
     scene.render.engine = 'CYCLES'
+    scene.gravity = (0.0, 0.0, 0.0)  # SPACE: no gravity
     scene.cycles.device = 'GPU'
 
 
@@ -136,6 +138,7 @@ def create_domain():
     settings.flame_smoke = Config.FLAME_SMOKE
     settings.flame_vorticity = Config.FLAME_VORTICITY
     settings.beta = Config.BETA_BUOYANCY
+    settings.alpha = 0.0  # SPACE: no buoyancy heat
 
     # Add volume material
     add_volume_material(domain)
@@ -171,7 +174,7 @@ def add_volume_material(domain):
 
 def create_emitter():
     """Create flow emitter."""
-    bpy.ops.mesh.primitive_ico_sphere_add(radius=0.5, location=(0, 0, -1.5))
+    bpy.ops.mesh.primitive_ico_sphere_add(radius=0.5, location=(0, 0, 0))
     emitter = bpy.context.active_object
     emitter.name = "FlowEmitter"
 
