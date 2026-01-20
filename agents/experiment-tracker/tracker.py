@@ -19,6 +19,40 @@ from database import (
 )
 
 
+def _normalize_observed_effect(effect_dict: Dict[str, Any]) -> ObservedEffect:
+    """
+    Normalize an observed effect dict into an ObservedEffect dataclass.
+    Handles cases where agents pass side_effect as a string description.
+    """
+    # Extract fields with defaults
+    metric = effect_dict.get('metric', 'unknown')
+    direction = effect_dict.get('direction', 'unknown')
+    magnitude = float(effect_dict.get('magnitude', 0.0))
+    expected = bool(effect_dict.get('expected', False))
+
+    # Handle side_effect - can be bool, string, or missing
+    side_effect_raw = effect_dict.get('side_effect', False)
+    description = effect_dict.get('description', '')
+
+    if isinstance(side_effect_raw, str):
+        # Agent passed a description as side_effect - this is common
+        # Treat non-empty string as True (is a side effect), use string as description
+        side_effect = bool(side_effect_raw.strip())
+        if not description:
+            description = side_effect_raw
+    else:
+        side_effect = bool(side_effect_raw)
+
+    return ObservedEffect(
+        metric=metric,
+        direction=direction,
+        magnitude=magnitude,
+        expected=expected,
+        side_effect=side_effect,
+        description=description
+    )
+
+
 @dataclass
 class ExperimentPlan:
     """A planned experiment to test a hypothesis."""
@@ -269,7 +303,7 @@ class ExperimentTracker:
             warnings=warnings,
             human_notes=human_notes,
             parameter_changes=[ParameterChange(**c) for c in parameter_changes],
-            observed_effects=[ObservedEffect(**e) for e in observed_effects]
+            observed_effects=[_normalize_observed_effect(e) for e in observed_effects]
         )
 
         # Save to database

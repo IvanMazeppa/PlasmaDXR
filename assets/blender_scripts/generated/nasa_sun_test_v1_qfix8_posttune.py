@@ -58,7 +58,7 @@ def parse_args():
     while i < len(argv):
         arg = argv[i]
         if arg == "--resolution" and i + 1 < len(argv):
-            Config.RESOLUTION = int(argv[i + 1])
+            Config.RESOLUTION = 256
             i += 2
         elif arg == "--frame_start" and i + 1 < len(argv):
             Config.FRAME_START = int(argv[i + 1])
@@ -168,7 +168,7 @@ def create_emitter():
     flow.flow_type = 'BOTH'
     flow.flow_behavior = 'INFLOW'
     flow.fuel_amount = Config.FUEL_AMOUNT
-    flow.temperature = Config.TEMPERATURE
+    flow.temperature = 0.0
 
     emitter.hide_render = True
 

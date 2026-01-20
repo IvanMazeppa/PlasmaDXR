@@ -850,6 +850,21 @@ Use your tools to gather information, then return a summary of your findings inc
             name="Script Writer",
             instructions=prompt_with_handoff_instructions(base_script_writer.instructions + """
 
+## EFFICIENCY REQUIREMENT - CRITICAL
+You have LIMITED turns (max 10). Be efficient:
+1. Call recommend_technique ONCE to pick approach
+2. Call generate_script ONCE to create initial script
+3. Call validate_script ONCE
+4. If validation fails, call modify_script AT MOST 2 times
+5. IMMEDIATELY return ScriptOutput - do NOT keep iterating
+
+Total tool calls should be 4-6, not 10+. Return output even if imperfect.
+
+## Domain Physics Context
+- sun/star/nebula effects: SPACE environment → set gravity=0, buoyancy=0 (beta=0)
+- explosion/fire/smoke effects: EARTH environment → normal gravity/buoyancy OK
+Apply correct physics parameters based on effect type.
+
 ## Output Requirements
 After generating and validating the script, return a structured ScriptOutput with:
 - script_path: Absolute path to the generated/modified script
@@ -858,7 +873,7 @@ After generating and validating the script, return a structured ScriptOutput wit
 - validation_passed: Whether validation succeeded
 - validation_errors: Any validation errors encountered
 
-IMPORTANT: Always return the script_path even if validation fails."""),
+IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely."""),
             model=base_script_writer.model,
             model_settings=base_script_writer.model_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
@@ -890,12 +905,20 @@ After executing the script, return a structured ExecutionOutput with:
             name="Quality Analyst",
             instructions=prompt_with_handoff_instructions(base_quality.instructions + """
 
+## Domain Physics Awareness
+Check for physics anomalies based on effect type:
+- sun/star/nebula: Should be STATIC or have internal motion only (no drift/rise)
+  If flame/volume moves upward → wrong: buoyancy should be 0 for space
+- explosion/fire: Can have upward motion (buoyancy is expected on Earth)
+
+Flag physics violations as HIGH PRIORITY issues.
+
 ## Output Requirements (LLM-as-Judge Pattern)
 After evaluating render quality, return a structured QualityOutput with:
 - overall_score: Quality score 0-100
 - passed: Whether quality threshold was met
 - primary_issue: The most critical issue to fix (if any)
-- issues: List of all identified issues
+- issues: List of all identified issues (include physics violations)
 - suggestions: Specific parameter changes to try
 - vision_assessment: Detailed visual quality description
 - reference_similarity: Similarity to reference image (if available)
@@ -913,13 +936,32 @@ Be a STRICT judge - only pass renders that truly meet quality standards."""),
             name="Learning Agent",
             instructions=prompt_with_handoff_instructions(base_learning.instructions + """
 
-## Output Requirements
-After recording the experiment, return a structured LearningOutput with:
-- experiment_recorded: Whether the experiment was logged
-- pattern_extracted: Whether a successful pattern was extracted
-- pattern_id: ID of the extracted pattern (if any)
-- next_action: One of 'iterate', 'switch_technique', 'complete'
-- suggested_modifications: Specific changes for the next iteration"""),
+## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
+You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
+
+Turn 1: Query knowledge (query_knowledge_base) - MAX 2 parallel calls
+Turn 2: Record experiment (record_experiment_result) - CALL EXACTLY ONCE
+Turn 3: Return LearningOutput structured response
+
+RULES:
+- DO NOT make more than 3 tool calls total
+- DO NOT call record_experiment_result more than ONCE (even if it returns an error)
+- DO NOT call start_experiment_session or record_baseline (handled elsewhere)
+- If record_experiment_result fails, STILL return LearningOutput (set experiment_recorded=False)
+- NEVER retry failed tool calls
+
+## Domain Physics Context
+- sun/star/nebula effects: SPACE environment → gravity=0, buoyancy=0 (beta=0)
+- explosion/fire/smoke effects: EARTH environment → normal gravity/buoyancy
+If a sun/star is drifting upward, the fix is: beta=0 (disable buoyancy)
+
+## Output Requirements (RETURN AFTER 1 record_experiment_result call)
+Return a structured LearningOutput with:
+- experiment_recorded: True (you recorded it)
+- pattern_extracted: bool
+- pattern_id: str or None
+- next_action: 'iterate' | 'switch_technique' | 'complete'
+- suggested_modifications: List of specific parameter changes (include beta=0 for space effects)"""),
             model=base_learning.model,
             model_settings=base_learning.model_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),

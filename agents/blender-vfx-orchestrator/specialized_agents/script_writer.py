@@ -36,6 +36,7 @@ from tools.script_generator_tools import (
     list_techniques,
     recommend_technique,
     record_technique_outcome,
+    apply_space_physics_fix,  # Critical for sun/star/nebula effects
 )
 
 # Import vector store documentation tools for API verification
@@ -155,6 +156,32 @@ COMMON FIXES (quick reference):
 - "CLIPPING AT EDGES" → Increase domain_scale, adjust emitter position
 - "NOT ENOUGH SMOKE" → Increase flame_smoke, smoke_density
 
+## SPACE PHYSICS FIX (CRITICAL for sun/star/nebula)
+
+### apply_space_physics_fix(script_path, output_name)
+**ALWAYS USE THIS TOOL** for sun, star, or nebula effects!
+
+In space there is NO ATMOSPHERE, so:
+- beta_buoyancy MUST be 0.0 (no hot air rising)
+- gravity effects should be 0 (no atmosphere to create buoyancy)
+
+**WHEN TO USE:**
+- Effect type is "sun", "star", or "nebula"
+- Quality feedback mentions "buoyant", "rising", "drifting upward"
+- Quality feedback mentions "fireball" behavior for a stellar object
+- Any space-based effect that should be static/spherical
+
+**EXAMPLE:**
+```python
+# After generating a sun script, ALWAYS apply space physics:
+apply_space_physics_fix(script_path="/path/to/sun_script.py", output_name="sun_spacefixed")
+```
+
+This tool automatically:
+- Sets BETA_BUOYANCY = 0.0
+- Sets settings.beta = 0.0
+- Adds a comment documenting the space physics fix
+
 ## DOCUMENTATION SEARCH (Use When Uncertain)
 
 You have access to Blender documentation via vector store semantic search.
@@ -257,6 +284,8 @@ class ScriptWriterAgent:
                 list_techniques,
                 recommend_technique,
                 record_technique_outcome,
+                # Space physics correction (critical for sun/star/nebula)
+                apply_space_physics_fix,
                 # Documentation search tools (verify API usage, find alternatives)
                 semantic_search_blender_docs,
                 search_blender_api_by_intent,

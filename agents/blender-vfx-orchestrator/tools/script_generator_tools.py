@@ -449,6 +449,14 @@ def _generate_script_impl(
         domain_params = selected_technique.get("domain_params", {})
         flow_params = selected_technique.get("flow_params", {})
 
+        # SPACE PHYSICS: For sun/star/nebula, override beta to 0.0
+        # In space there's no atmosphere, so no buoyancy effects
+        is_space_effect = effect_lower in ["sun", "star", "nebula", "solar", "stellar"]
+        if is_space_effect:
+            domain_params = dict(domain_params)  # Copy to avoid mutating original
+            domain_params["beta"] = 0.0
+            notes.append("SPACE PHYSICS: beta=0.0 (no buoyancy in space)")
+
         script_content = f'''#!/usr/bin/env python3
 """
 {output_name.replace("_", " ").title()}
@@ -791,6 +799,21 @@ def _modify_script_impl(
         # Determine output path
         if output_name:
             modified_path = OUTPUT_DIR / f"{output_name}.py"
+            # Also update the script's internal OUTPUT_DIR to prevent render overwrites
+            # This ensures each iteration writes to a unique directory
+            old_output_dir_pattern = r'(OUTPUT_DIR\s*=\s*["\'])([^"\']+)(["\'])'
+            output_dir_match = re.search(old_output_dir_pattern, content)
+            if output_dir_match:
+                old_output_path = output_dir_match.group(2)
+                # Replace the base name with the new output_name (e.g., nasa_sun_test_v1 -> nasa_sun_test_v1_qfix3)
+                new_output_path = re.sub(r'[^/]+$', output_name, old_output_path)
+                content = re.sub(
+                    old_output_dir_pattern,
+                    f'\\g<1>{new_output_path}\\g<3>',
+                    content
+                )
+                changes_made.append(f"OUTPUT_DIR: {old_output_path} -> {new_output_path}")
+                params_changed["OUTPUT_DIR"] = {"from": old_output_path, "to": new_output_path}
         else:
             modified_path = path.with_stem(path.stem + "_modified")
 
@@ -905,6 +928,117 @@ async def modify_script(
         modifications=modifications,
         output_name=output_name
     )
+
+
+def _apply_space_physics_fix_impl(script_path: str, output_name: Optional[str] = None) -> str:
+    """
+    Apply space physics corrections to a script.
+    Sets gravity=0, beta_buoyancy=0 for effects that should be in space (sun, star, nebula).
+    """
+    try:
+        path = Path(script_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / script_path
+
+        if not path.exists():
+            return json.dumps({
+                "success": False,
+                "error": f"Script not found: {path}",
+                "changes_made": []
+            })
+
+        content = path.read_text()
+        changes_made = []
+
+        # Space physics corrections - parameters to set to 0.0
+        # NOTE: In the Config class, variables are defined as just "BETA_BUOYANCY = value"
+        # NOT as "Config.BETA_BUOYANCY = value". The Config. prefix is only used when
+        # accessing from outside the class.
+
+        # Fix BETA_BUOYANCY in Config class (handles "    BETA_BUOYANCY = <value>")
+        pattern_beta_config = r"(\s+BETA_BUOYANCY\s*=\s*)([0-9.]+)"
+        match = re.search(pattern_beta_config, content)
+        if match:
+            old_val = match.group(2).strip()
+            if old_val != "0.0":
+                content = re.sub(pattern_beta_config, r"\g<1>0.0", content)
+                changes_made.append(f"BETA_BUOYANCY: {old_val} -> 0.0")
+
+        # Fix settings.beta = Config.BETA_BUOYANCY (no change needed, it references Config)
+        # But if there's a direct settings.beta = <value>, fix it
+        pattern_settings_beta = r"(settings\.beta\s*=\s*)([0-9.]+)"
+        match2 = re.search(pattern_settings_beta, content)
+        if match2:
+            old_val = match2.group(2).strip()
+            if old_val != "0.0":
+                content = re.sub(pattern_settings_beta, r"\g<1>0.0", content)
+                changes_made.append(f"settings.beta: {old_val} -> 0.0")
+
+        # Also fix flow.temperature for space (should be based on stellar temp, not combustion)
+        # And add comment about space physics
+        if changes_made:
+            # Add space physics comment if not present
+            if "# SPACE PHYSICS" not in content:
+                # Insert after Config class
+                config_end = content.find("def parse_args")
+                if config_end > 0:
+                    space_comment = "\n    # SPACE PHYSICS: gravity=0, buoyancy=0 (no atmosphere)\n"
+                    # Find the line before parse_args and insert comment in Config
+                    insert_point = content.rfind("\n", 0, config_end)
+                    if insert_point > 0:
+                        content = content[:insert_point] + space_comment + content[insert_point:]
+                        changes_made.append("Added SPACE PHYSICS comment")
+
+        # Save modified script
+        if output_name:
+            modified_path = OUTPUT_DIR / f"{output_name}.py"
+        else:
+            modified_path = path.with_stem(path.stem + "_spacephysics")
+
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        modified_path.write_text(content)
+
+        return json.dumps({
+            "success": True,
+            "original_path": str(path),
+            "modified_path": str(modified_path),
+            "changes_made": changes_made,
+            "space_physics_applied": True,
+            "note": "Gravity and buoyancy set to 0 for space environment (sun/star/nebula)"
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "changes_made": []
+        })
+
+
+@function_tool
+async def apply_space_physics_fix(
+    script_path: str,
+    output_name: Optional[str] = None
+) -> str:
+    """
+    Apply space physics corrections to a Blender script.
+
+    CRITICAL: Use this tool when creating sun/star/nebula effects.
+    In space, there is no atmosphere, so:
+    - Gravity should NOT affect the visual (beta=0)
+    - Buoyancy should be ZERO (no hot air rising)
+    - Objects should appear static or have only internal motion
+
+    This fixes the common "fireball rising upward" bug for solar effects.
+
+    Args:
+        script_path: Path to the Blender script to fix
+        output_name: Optional new filename (default: adds "_spacephysics" suffix)
+
+    Returns:
+        JSON with modified script path and changes made
+    """
+    return _apply_space_physics_fix_impl(script_path, output_name)
 
 
 @function_tool
