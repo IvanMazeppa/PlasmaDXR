@@ -26,23 +26,23 @@ if TYPE_CHECKING:
     from agents import RunContextWrapper
     from models.shared_context import SharedContext
     from tools.script_generator_tools import (
-        generate_script,
+        write_script,
         modify_script,
         validate_script,
-        list_techniques,
-        recommend_technique,
         record_technique_outcome,
     )
 
 # Import tools at runtime to avoid circular imports
 from tools.script_generator_tools import (
-    generate_script,
-    modify_script,
-    validate_script,
-    list_techniques,
-    recommend_technique,
-    record_technique_outcome,
-    # NOTE: apply_space_physics_fix REMOVED - we don't hardcode physics anymore
+    # PRIMARY: LLM writes code directly based on research
+    write_script,         # NEW: Save LLM-generated code to file
+    validate_script,      # Check script for errors
+    modify_script,        # Modify existing scripts
+    # DEPRECATED: Template-based tools (removed from agent)
+    # generate_script,    # REMOVED - uses hardcoded templates
+    # list_techniques,    # REMOVED - lists catalog techniques
+    # recommend_technique, # REMOVED - recommends from catalog
+    record_technique_outcome,  # Keep for learning feedback
 )
 
 # Import vector store documentation tools for API verification
@@ -127,18 +127,16 @@ class ScriptWriterAgent:
                 # Note: temperature not supported with gpt-5.2 reasoning models
             ),
             tools=[
-                # Script generation tools
-                generate_script,
-                modify_script,
-                validate_script,
-                list_techniques,
-                recommend_technique,
-                record_technique_outcome,
-                # NOTE: apply_space_physics_fix REMOVED
-                # We don't hardcode physics anymore - rules emerge from learning
-                # Documentation search tools (verify API usage, find alternatives)
+                # PRIMARY: Direct code generation (LLM writes code based on research)
+                write_script,         # Save LLM-generated code to file
+                validate_script,      # Check script before execution
+                modify_script,        # Modify existing scripts for iteration
+                record_technique_outcome,  # Learning feedback
+                # Documentation search (verify API usage, find examples)
                 semantic_search_blender_docs,
                 search_blender_api_by_intent,
+                # NOTE: generate_script, list_techniques, recommend_technique REMOVED
+                # These used hardcoded templates - LLM now generates code directly
             ],
         )
 

@@ -649,6 +649,24 @@ class SessionState(BaseModel):
         description="Stuck detection state for escape velocity"
     )
 
+    # Research tracking for technique switching
+    research_text: str = Field(
+        default="",
+        description="Research findings text for Script Writer context"
+    )
+    alternative_approaches: List[str] = Field(
+        default_factory=list,
+        description="Alternative approaches from Research Agent"
+    )
+    techniques_tried: List[str] = Field(
+        default_factory=list,
+        description="Techniques already attempted in this session"
+    )
+    current_technique: Optional[str] = Field(
+        default=None,
+        description="Currently active technique"
+    )
+
     # Final outputs
     final_render_path: Optional[str] = Field(
         default=None,

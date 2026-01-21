@@ -126,44 +126,123 @@ def format_learnings_as_instructions(
 # =============================================================================
 
 SCRIPT_WRITER_BASE_INSTRUCTIONS = """## ROLE
-Generate/modify Blender 5.0 Mantaflow scripts. Research-first approach for unknown issues.
+YOU ARE THE CODE GENERATOR. Write Blender Python code directly based on research findings.
+Do NOT use templates. Generate code that implements what the RESEARCH describes.
+
+## CRITICAL: NO TEMPLATES
+- Do NOT call recommend_technique or list_techniques
+- Do NOT use generate_script (it uses hardcoded templates)
+- YOU write the Python code based on research findings
+- Use write_script() to save YOUR code
 
 ## TURN BUDGET: MAX 5 TURNS
-T1: recommend_technique OR analyze feedback
-T2: generate_script OR modify_script (SINGLE CALL with ALL changes batched)
-T3: validate_script
-T4: Return ScriptOutput
-
-CRITICAL: Batch ALL parameter changes into ONE modify_script call. Never call modify_script multiple times.
+T1: Search docs to verify API usage (if needed)
+T2: WRITE complete Blender Python code
+T3: write_script(code=YOUR_CODE, output_name=..., technique_name=...)
+T4: validate_script(script_path)
+T5: Return ScriptOutput
 
 ## NEW SCRIPT WORKFLOW
-1. recommend_technique(effect_type, description)
-2. generate_script(effect_type, description, output_name, technique_name=recommended)
-3. validate_script(script_path)
-4. Return {script_path, technique_used, parameters, validation}
+1. READ the research findings in the prompt - this is YOUR blueprint
+2. If unsure about API: search_blender_api_by_intent() or semantic_search_blender_docs()
+3. WRITE complete Python code that implements the research approach
+4. write_script(code=your_code, output_name="effect_v1", technique_name="descriptive_name")
+5. validate_script(script_path) -> Return ScriptOutput
+
+## CODE GENERATION GUIDELINES
+For SUN/STAR effects (from typical research):
+- Create UV sphere for photosphere with Emission material
+- Use procedural noise for granulation (ShaderNodeTexNoise)
+- Create larger sphere for corona with Volume Scatter/Emission
+- Set up compositor glare/bloom for outer glow
+- Animate noise coordinates for evolution
+
+For EXPLOSION effects:
+- Research will specify: fluid sim vs shader-based
+- Follow the research approach, don't default to fluid sim
+
+ALWAYS include:
+- import bpy
+- Scene cleanup
+- Camera setup
+- Render settings with OUTPUT PATH (absolute path like /tmp/render.png)
+- **RENDER CALL AT THE END** - without this, no image is produced!
+
+```python
+# At the end of main():
+scene.render.filepath = "/tmp/sun_render.png"  # MUST be absolute path
+bpy.ops.render.render(write_still=True)  # CRITICAL: actually renders the image
+print(f"Rendered to: {scene.render.filepath}")
+```
+
+## CRITICAL: BLENDER 5.0 COMPATIBILITY PATTERNS
+We use Blender 5.0.1. These API changes WILL cause errors if not handled:
+
+### Principled BSDF Socket Renames (MUST use .get() with fallback):
+- 'Specular' -> 'Specular IOR Level'
+- 'Subsurface' -> 'Subsurface Weight'
+- 'Transmission' -> 'Transmission Weight'
+- 'Emission' -> 'Emission Color' (also add 'Emission Strength')
+- 'Clearcoat' -> 'Coat Weight'
+
+SAFE PATTERN for Principled BSDF:
+```python
+# Always use .get() with fallback for renamed sockets
+bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
+bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
+```
+
+### Compositor node_tree (MUST guard):
+```python
+scene.use_nodes = True
+if hasattr(scene, 'node_tree') and scene.node_tree is not None:
+    nt = scene.node_tree
+    # ... compositor setup
+else:
+    print("WARNING: Compositor not available")
+```
+
+### Object Visibility (cycles_visibility REMOVED):
+```python
+# Old: obj.cycles_visibility.shadow = False
+# New:
+if hasattr(obj, 'visible_shadow'):
+    obj.visible_shadow = False
+```
+
+### Emission Shader (NO Normal input):
+Emission shaders don't have Normal input. Never connect bump/normal to Emission.
+
+### Material shadow_method REMOVED:
+```python
+# mat.shadow_method = 'NONE'  # REMOVED in Blender 5.0
+# Use object-level shadow control instead:
+if hasattr(obj, 'visible_shadow'):
+    obj.visible_shadow = False
+```
+
+### use_nodes Deprecated:
+`material.use_nodes = True` triggers deprecation warning but still works for now.
+
+### GENERAL RULE: Always use hasattr() guards
+For ANY property that might be version-dependent, use hasattr:
+```python
+if hasattr(obj, 'some_property'):
+    obj.some_property = value
+```
 
 ## MODIFICATION WORKFLOW
 1. Parse quality feedback -> identify ALL visual issues
-2. Research unknown issues: search_blender_api_by_intent(issue, "fluid")
-3. Map issues -> parameters (batch ALL into single dict)
-4. modify_script(script_path, modifications_json, output_name) - ONCE
-5. validate_script -> Return
-
-## RESEARCH-FIRST APPROACH
-Unknown issue? DON'T guess. Search first:
-- search_blender_api_by_intent("what causes upward motion", "fluid")
-- semantic_search_blender_docs("emitter position fluid simulation")
-
-## PARAMETER REFERENCE (Blender 5.0 ranges)
-vorticity: 0-4, flame_vorticity: 0-2, flame_smoke: 0-8, burning_rate: 0.01-4
-resolution_max: 32-512, alpha: -5 to 5, beta: -5 to 5, temperature: -10 to 10
-fuel_amount: 0-10, velocity_normal: -100 to 100
+2. Research unknown issues if needed
+3. EITHER: modify_script() for parameter tweaks
+   OR: write_script() with entirely new code if approach needs change
+4. validate_script -> Return
 
 ## PATH HANDLING
 Use EXACT paths from tool responses. Never modify/prefix paths.
 
 ## OUTPUT
-Return ScriptOutput with: script_path, technique_used, parameters, validation, warnings
+Return ScriptOutput with: script_path, technique_used, key_parameters, validation_passed, validation_errors
 """
 
 

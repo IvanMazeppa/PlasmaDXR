@@ -25,6 +25,17 @@ from pydantic import BaseModel, Field
 
 from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers
 
+# Enable verbose logging for debugging agent interactions
+# Set AGENTS_DEBUG=1 to enable, or call enable_verbose_stdout_logging() directly
+import logging
+if os.environ.get("AGENTS_DEBUG", "").lower() in ("1", "true", "yes"):
+    from agents import enable_verbose_stdout_logging
+    enable_verbose_stdout_logging()
+    print("[Orchestrator] Verbose SDK logging ENABLED", file=sys.stderr)
+
+# Configure agents logger for custom filtering
+_agents_logger = logging.getLogger("openai.agents")
+
 # Session Manager for deterministic experiment state tracking
 from session_manager import SessionManager
 from agents.agent_output import AgentOutputSchema
@@ -154,6 +165,36 @@ from utils import (
     create_session_from_request,
     resume_or_create_session,
 )
+
+# =============================================================================
+# VISUALIZATION UTILITIES
+# =============================================================================
+
+def visualize_agents(agent, filename: str = "agent_graph") -> Optional[str]:
+    """
+    Generate a graphical visualization of the agent architecture.
+
+    Requires: pip install "openai-agents[viz]"
+
+    Args:
+        agent: The root agent to visualize
+        filename: Output filename (without extension)
+
+    Returns:
+        Path to generated PNG file, or None if visualization unavailable
+    """
+    try:
+        from agents.extensions.visualization import draw_graph
+        graph = draw_graph(agent, filename=filename)
+        print(f"[Viz] Agent graph saved to {filename}.png", file=sys.stderr)
+        return f"{filename}.png"
+    except ImportError:
+        print("[Viz] Visualization not available. Run: pip install 'openai-agents[viz]'", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"[Viz] Error generating graph: {e}", file=sys.stderr)
+        return None
+
 
 # =============================================================================
 # ORCHESTRATOR INSTRUCTIONS
@@ -761,6 +802,22 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
                 print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
 
+                # Store research in session for persistence and handoff to Script Writer
+                session.research_text = research_text
+
+                # Extract alternative approaches from research text (look for bullet points/lists)
+                import re
+                alt_pattern = r'(?:alternative|backup|other|also consider)[s]?[:\s]+([^\n]+(?:\n[-•*]\s*[^\n]+)*)'
+                alt_matches = re.findall(alt_pattern, research_text.lower())
+                if alt_matches:
+                    for match in alt_matches:
+                        approaches = re.split(r'[-•*\n,]', match)
+                        for a in approaches:
+                            a = a.strip()
+                            if a and len(a) > 10 and a not in session.alternative_approaches:
+                                session.alternative_approaches.append(a)
+                    print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches", file=sys.stderr)
+
                 # ====== ITERATION LOOP ======
                 iteration = 0
                 previous_script: Optional[ScriptOutput] = None
@@ -893,12 +950,44 @@ Generate a complete, validated script. Return the script_path in your output."""
                                 for param, value in learning.parameter_modifications.items():
                                     feedback_parts.append(f"- {param}: {value}")
 
+                            # Include research findings and alternatives for technique switching
+                            research_section = ""
+                            if session.research_text:
+                                research_section = f"""## Research Findings (from Phase 0)
+{session.research_text[:1500]}...
+"""
+                            alternatives_section = ""
+                            if session.alternative_approaches:
+                                untried = [a for a in session.alternative_approaches if a not in session.techniques_tried]
+                                if untried:
+                                    alternatives_section = f"""## Alternative Approaches NOT YET TRIED
+{chr(10).join(f'- {a}' for a in untried[:5])}
+"""
+                            techniques_section = ""
+                            if session.techniques_tried:
+                                techniques_section = f"""## Techniques Already Tried (do NOT repeat)
+{chr(10).join(f'- {t}' for t in session.techniques_tried)}
+"""
+
+                            # Recommend technique switch if stuck
+                            switch_recommendation = ""
+                            if ctx.get("stuck_issues") or ctx.get("consecutive_same_issue", 0) >= 2:
+                                switch_recommendation = """
+## IMPORTANT: TECHNIQUE SWITCH RECOMMENDED
+The current approach is not resolving issues. You SHOULD try a DIFFERENT technique from the alternatives above.
+Do NOT just tweak parameters - fundamentally change the approach.
+"""
+
                             script_prompt = f"""Modify the existing script to fix quality issues.
 
 ## Current Script
 Path: {previous_script.script_path if previous_script else 'Unknown'}
 Technique: {previous_script.technique_used if previous_script else 'Unknown'}
 
+{research_section}
+{alternatives_section}
+{techniques_section}
+{switch_recommendation}
 {chr(10).join(feedback_parts)}
 
 ## Target
@@ -906,6 +995,7 @@ Previous Score: {previous_score:.1f}
 Target Score: {request.quality_threshold}
 
 Modify the script to address the issues. Do NOT repeat parameter values that hurt scores.
+If stuck on same issue, try a DIFFERENT TECHNIQUE from research alternatives.
 Use patterns from library if available."""
 
                             script_result = await Runner.run(
@@ -921,6 +1011,13 @@ Use patterns from library if available."""
                     if script.script_path:
                         session.current_script_path = script.script_path
                         previous_script = script
+
+                        # Track techniques tried (for technique switching logic)
+                        if script.technique_used and script.technique_used not in session.techniques_tried:
+                            session.techniques_tried.append(script.technique_used)
+                            print(f"[Pipeline] New technique: {script.technique_used} (total tried: {len(session.techniques_tried)})", file=sys.stderr)
+                        session.current_technique = script.technique_used
+
                         print(f"[Pipeline] Script: {script.script_path} ({script.technique_used})", file=sys.stderr)
                     else:
                         print(f"[Pipeline] WARNING: No script_path returned", file=sys.stderr)
@@ -1396,7 +1493,10 @@ async def create_vfx_asset(
     Returns:
         SessionState with results
     """
-    from .models.shared_context import EffectType
+    try:
+        from models.shared_context import EffectType
+    except ImportError:
+        from .models.shared_context import EffectType
 
     request = AssetRequest(
         asset_name=asset_name,

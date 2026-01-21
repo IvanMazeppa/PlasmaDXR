@@ -23,7 +23,7 @@ class Config:
     RESOLUTION = 64
     FRAME_START = 1
     FRAME_END = 25
-    OUTPUT_DIR = "build/vdb_output/sun_fix_test_v1_iter2_paramfix"
+    OUTPUT_DIR = "build/vdb_output/sun_fix_test_v1_iter3_paramfix"
     BAKE = True
     RENDER = True
     RENDER_FRAMES = "mid"
@@ -33,12 +33,12 @@ class Config:
     DOMAIN_SCALE = 4.0
 
     # Technique parameters
-    BURNING_RATE = 0.6922860018224942
-    FLAME_SMOKE = 0.8
-    FLAME_VORTICITY = 1.0
+    BURNING_RATE = 1.0
+    FLAME_SMOKE = 0.6
+    FLAME_VORTICITY = 1.3
     BETA_BUOYANCY = 0.3921049916461336
-    FUEL_AMOUNT = 4.220999506787131
-    TEMPERATURE = 1.5
+    FUEL_AMOUNT = 1.2
+    TEMPERATURE = 2.5
 
 
 def parse_args():

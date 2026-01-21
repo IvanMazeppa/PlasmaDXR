@@ -127,7 +127,7 @@ ERROR_PATTERNS = [
     (r"ModuleNotFoundError: No module named '(?P<module>\w+)'", "MODULE"),
 ]
 
-# Suggested fixes for common errors
+# Suggested fixes for common errors (general category fixes)
 ERROR_FIXES = {
     "CONTEXT": "Ensure correct mode (OBJECT/EDIT) and active object is set before operator call.",
     "API": "Property may have been renamed or removed in Blender 5.0. Use blender-manual MCP to verify.",
@@ -135,6 +135,193 @@ ERROR_FIXES = {
     "MODULE": "Module not available. Check if it's a Blender addon that needs enabling.",
     "openvdb_cache_compress_type": "BLOSC compression removed in Blender 5.0. Use 'ZIP' or 'NONE' instead.",
 }
+
+# =============================================================================
+# BLENDER 5.0 SPECIFIC FIXES (pattern-matched for auto-repair)
+# =============================================================================
+# Each entry: (pattern_in_message, fix_description, code_replacement)
+# code_replacement is a tuple: (old_code_pattern, new_code_pattern) or None if manual
+BLENDER_5_FIXES = {
+    # Shader node socket renames
+    "'Specular'": (
+        "Specular socket renamed in Blender 5.0. Use 'Specular IOR Level' instead, or check if socket exists with hasattr check.",
+        ("inputs['Specular']", "inputs.get('Specular IOR Level', inputs.get('Specular', None))")
+    ),
+    "'Specular Tint'": (
+        "Specular Tint socket renamed in Blender 5.0. Use 'Specular Tint' is now controlled differently.",
+        None
+    ),
+    "'Subsurface'": (
+        "Subsurface input renamed in Blender 5.0 to 'Subsurface Weight'. Use inputs.get() with fallback.",
+        ("inputs['Subsurface']", "inputs.get('Subsurface Weight', inputs.get('Subsurface', None))")
+    ),
+    "'Transmission'": (
+        "Transmission input renamed in Blender 5.0 to 'Transmission Weight'. Use inputs.get() with fallback.",
+        ("inputs['Transmission']", "inputs.get('Transmission Weight', inputs.get('Transmission', None))")
+    ),
+    "'Sheen'": (
+        "Sheen input renamed in Blender 5.0 to 'Sheen Weight'. Use inputs.get() with fallback.",
+        ("inputs['Sheen']", "inputs.get('Sheen Weight', inputs.get('Sheen', None))")
+    ),
+    "'Clearcoat'": (
+        "Clearcoat removed in Blender 5.0. Use 'Coat Weight' and 'Coat Roughness' instead.",
+        ("inputs['Clearcoat']", "inputs.get('Coat Weight', None)")
+    ),
+
+    # Principled BSDF Emission sockets renamed in Blender 4.0+
+    "'Emission'": (
+        "Principled BSDF 'Emission' socket renamed in Blender 4.0+. Use 'Emission Color' for color and 'Emission Strength' for intensity. Safe pattern: sock = bsdf.inputs.get('Emission') or bsdf.inputs.get('Emission Color'); if sock: sock.default_value = color",
+        ("inputs['Emission']", "inputs.get('Emission Color', inputs.get('Emission'))")
+    ),
+    'key "Emission" not found': (
+        "Principled BSDF 'Emission' renamed to 'Emission Color' in Blender 4.0+. Use inputs.get('Emission Color') or inputs.get('Emission') with fallback.",
+        None
+    ),
+
+    # Emission node has no Normal input (multiple patterns)
+    "Emission': 'Normal'": (
+        "Emission shader has no 'Normal' input in Blender 5.0. Remove the normal link or use Mix Shader with Diffuse for bump effect.",
+        None  # Requires manual restructuring
+    ),
+    "'Normal' not found": (
+        "The 'Normal' input doesn't exist on this node type. Check node type - Emission nodes don't have Normal input.",
+        None
+    ),
+    # More generic Normal patterns for KeyError cases (handle both quote styles)
+    "KeyError: 'Normal'": (
+        "The 'Normal' input doesn't exist on this node type. Emission and Volume shaders don't have Normal inputs - only surface shaders like Principled BSDF do. Remove the normal connection for emission/volume nodes.",
+        None
+    ),
+    'key "normal" not found': (
+        "The 'Normal' input doesn't exist on this shader node. Emission and Volume Principled shaders don't accept Normal input. Only use Normal on surface shaders like Principled BSDF. Remove: links.new(bump.outputs['Normal'], emission.inputs['Normal'])",
+        None
+    ),
+    "'Normal'": (
+        "The 'Normal' input likely doesn't exist on this shader node. Emission and Volume Principled shaders don't accept Normal input. Only use Normal input on surface shaders like Principled BSDF or Diffuse BSDF.",
+        None
+    ),
+
+    # Cycles volume stepping API changes
+    "volume_step_size": (
+        "volume_step_size deprecated in Blender 5.0. Use volume_step_rate with hasattr guard: if hasattr(scene.cycles, 'volume_step_rate'): scene.cycles.volume_step_rate = 0.5",
+        ("volume_step_size", "volume_step_rate")
+    ),
+    "volume_max_steps": (
+        "volume_max_steps may not exist in all Blender versions. Use hasattr guard: if hasattr(scene.cycles, 'volume_max_steps'): scene.cycles.volume_max_steps = 256",
+        None
+    ),
+
+    # OpenVDB compression
+    "openvdb_cache_compress_type": (
+        "BLOSC compression removed in Blender 5.0. Use 'ZIP' or 'NONE' for cache_file_format.",
+        ("'BLOSC'", "'ZIP'")
+    ),
+    "cache_compress_type": (
+        "cache_compress_type property renamed/removed. Use cache_data_format and cache_type instead.",
+        None
+    ),
+
+    # Fluid domain changes
+    "use_adaptive_domain": (
+        "use_adaptive_domain behavior changed. Ensure domain is properly configured with bpy.ops.fluid.bake_all().",
+        None
+    ),
+
+    # Material output changes
+    "'Displacement'": (
+        "Displacement output may need different setup. Ensure Material Output has 'Displacement' socket and material uses displacement in settings.",
+        None
+    ),
+
+    # Color management
+    "'AgX'": (
+        "AgX color transform available in Blender 4.0+. Use hasattr check: if 'AgX' in scene.view_settings.bl_rna.properties['view_transform'].enum_items.keys()",
+        None
+    ),
+    "'Filmic'": (
+        "Filmic may not be available. Use try/except or check available transforms.",
+        None
+    ),
+
+    # Context/operator issues
+    "context is incorrect": (
+        "Operator poll failed. Use context override: with bpy.context.temp_override(area=area, region=region): bpy.ops.xxx()",
+        None
+    ),
+    "override context": (
+        "Context override syntax changed in Blender 3.2+. Use temp_override instead of passing dict.",
+        ("bpy.ops.xxx(override,", "with bpy.context.temp_override(**override): bpy.ops.xxx(")
+    ),
+
+    # Object visibility
+    "visible_shadow": (
+        "visible_shadow is a valid property but may need object to be renderable. Check hide_render = False.",
+        None
+    ),
+    "cycles_visibility": (
+        "cycles_visibility removed in Blender 5.0. Use direct object properties: obj.visible_shadow, obj.visible_camera, obj.visible_diffuse. Guard with: if hasattr(obj, 'cycles_visibility'): obj.cycles_visibility.shadow = False elif hasattr(obj, 'visible_shadow'): obj.visible_shadow = False",
+        None
+    ),
+    "shadow_method": (
+        "mat.shadow_method removed in Blender 5.0. Use hasattr guard: if hasattr(mat, 'shadow_method'): mat.shadow_method = 'NONE'. For shadows, disable at object level with obj.visible_shadow = False instead.",
+        None
+    ),
+
+    # Denoising
+    "use_denoising": (
+        "use_denoising location changed. In Blender 4.0+ use scene.cycles.use_denoising, in earlier versions it was on render layer.",
+        None
+    ),
+
+    # Deprecation warnings for Blender 6.0
+    "use_nodes' is expected to be removed": (
+        "use_nodes will be removed in Blender 6.0. Nodes are always enabled now - simply remove the use_nodes = True line.",
+        ("use_nodes = True", "# use_nodes removed in Blender 6.0 - nodes always enabled")
+    ),
+    "'use_nodes'": (
+        "use_nodes property is deprecated. In Blender 5.0+ materials and worlds always use nodes. Remove use_nodes assignments.",
+        None
+    ),
+
+    # Scene compositor access
+    "Scene' object has no attribute 'node_tree'": (
+        "Compositor node_tree access requires scene.use_nodes = True first. In Blender 5.0+, add hasattr check: if hasattr(scene, 'node_tree') and scene.node_tree: ...",
+        None
+    ),
+    "'node_tree'": (
+        "node_tree may not be available. For compositor: ensure scene.use_nodes = True. For materials/worlds: nodes are always enabled in Blender 5.0+.",
+        None
+    ),
+}
+
+
+def _get_specific_fix(message: str, error_type: str) -> Optional[str]:
+    """
+    Get a specific fix suggestion based on the error message content.
+
+    This function matches against known Blender 5.0 API changes and returns
+    detailed fix suggestions with code examples where available.
+
+    Args:
+        message: The error message text
+        error_type: The general error category
+
+    Returns:
+        Specific fix suggestion or None if no specific fix found
+    """
+    # Check for specific Blender 5.0 patterns
+    for pattern, fix_info in BLENDER_5_FIXES.items():
+        if pattern.lower() in message.lower():
+            description = fix_info[0] if isinstance(fix_info, tuple) else fix_info
+            code_fix = fix_info[1] if isinstance(fix_info, tuple) and len(fix_info) > 1 else None
+
+            if code_fix:
+                old_code, new_code = code_fix
+                return f"{description}\n\nCode fix: Replace '{old_code}' with '{new_code}'"
+            return description
+
+    # Fall back to category fix
+    return ERROR_FIXES.get(error_type)
 
 
 # =============================================================================
@@ -182,14 +369,9 @@ def _parse_blender_errors_impl(stderr: str, stdout: str = "") -> List[BlenderErr
                 # Create new error
                 message = groups.get("message", line)
 
-                # Determine suggested fix
-                suggested_fix = ERROR_FIXES.get(error_type)
-
-                # Check for specific known issues in message
-                if "openvdb_cache_compress_type" in message:
-                    suggested_fix = ERROR_FIXES["openvdb_cache_compress_type"]
-                elif "has no attribute" in message:
-                    suggested_fix = ERROR_FIXES.get("API")
+                # Determine suggested fix using enhanced pattern matching
+                # This checks against BLENDER_5_FIXES for specific API changes
+                suggested_fix = _get_specific_fix(message, error_type)
 
                 current_error = BlenderError(
                     error_type=error_type,
