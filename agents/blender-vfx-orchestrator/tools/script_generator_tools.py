@@ -449,13 +449,10 @@ def _generate_script_impl(
         domain_params = selected_technique.get("domain_params", {})
         flow_params = selected_technique.get("flow_params", {})
 
-        # SPACE PHYSICS: For sun/star/nebula, override beta to 0.0
-        # In space there's no atmosphere, so no buoyancy effects
-        is_space_effect = effect_lower in ["sun", "star", "nebula", "solar", "stellar"]
-        if is_space_effect:
-            domain_params = dict(domain_params)  # Copy to avoid mutating original
-            domain_params["beta"] = 0.0
-            notes.append("SPACE PHYSICS: beta=0.0 (no buoyancy in space)")
+        # SELF-LEARNING: NO HARDCODED PHYSICS RULES
+        # Previously had space physics override here (beta=0.0 for sun/nebula)
+        # Now physics rules emerge from learning via dynamic_instructions.py
+        # The system will observe outcomes and build validated rules
 
         script_content = f'''#!/usr/bin/env python3
 """
@@ -772,28 +769,41 @@ def _modify_script_impl(
         params_changed = {}
 
         # Apply modifications via regex replacements
+        # CRITICAL: Only modify parameters within the Config class section
+        # This prevents accidental modification of parse_args() or other functions
         for param, value in modifications.items():
-            # Try to find and replace Config.PARAM = value
-            pattern = rf"(Config\.{param.upper()}\s*=\s*)([^\n]+)"
-            match = re.search(pattern, content, re.IGNORECASE)
+            param_upper = param.upper()
 
-            if match:
-                old_val = match.group(2).strip()
-                new_content = re.sub(pattern, f"\\g<1>{value}", content, flags=re.IGNORECASE)
-                if new_content != content:
-                    content = new_content
-                    changes_made.append(f"{param}: {old_val} -> {value}")
+            # First, find the Config class boundaries
+            config_class_pattern = r"(class Config:.*?)((?=\ndef\s|\nclass\s|\Z))"
+            config_match = re.search(config_class_pattern, content, re.DOTALL)
+
+            if config_match:
+                config_section = config_match.group(0)
+                config_start = config_match.start()
+
+                # Look for PARAM = value ONLY within Config class
+                param_pattern = rf"(\s+{param_upper}\s*=\s*)([^\n]+)"
+                param_match = re.search(param_pattern, config_section, re.IGNORECASE)
+
+                if param_match:
+                    old_val = param_match.group(2).strip()
+                    # Replace only within Config section
+                    new_config = re.sub(param_pattern, f"\\g<1>{value}", config_section, count=1, flags=re.IGNORECASE)
+                    content = content[:config_start] + new_config + content[config_start + len(config_section):]
+                    changes_made.append(f"{param_upper}: {old_val} -> {value}")
                     params_changed[param] = {"from": old_val, "to": value}
+                    continue
 
-            # Also try simple variable assignment
-            pattern2 = rf"(\b{param}\s*=\s*)([^\n,\)]+)"
-            match2 = re.search(pattern2, content)
-            if match2 and param not in params_changed:
-                old_val = match2.group(2).strip()
-                new_content = re.sub(pattern2, f"\\g<1>{value}", content)
+            # Fallback: Try Config.PARAM references anywhere (for dynamically assigned values)
+            pattern_config_ref = rf"(Config\.{param_upper}\s*=\s*)([^\n]+)"
+            match = re.search(pattern_config_ref, content, re.IGNORECASE)
+            if match and param not in params_changed:
+                old_val = match.group(2).strip()
+                new_content = re.sub(pattern_config_ref, f"\\g<1>{value}", content, flags=re.IGNORECASE)
                 if new_content != content:
                     content = new_content
-                    changes_made.append(f"{param}: {old_val} -> {value}")
+                    changes_made.append(f"Config.{param_upper}: {old_val} -> {value}")
                     params_changed[param] = {"from": old_val, "to": value}
 
         # Determine output path
@@ -930,150 +940,10 @@ async def modify_script(
     )
 
 
-def _apply_space_physics_fix_impl(script_path: str, output_name: Optional[str] = None) -> str:
-    """
-    Apply COMPREHENSIVE space physics corrections to a script.
-    For sun/star/nebula effects where there's no atmosphere.
-
-    Fixes:
-    1. Scene gravity -> (0, 0, 0)
-    2. settings.beta (buoyancy density) -> 0
-    3. settings.alpha (buoyancy heat) -> 0
-    4. Emitter position -> centered (0, 0, 0)
-    """
-    try:
-        path = Path(script_path)
-        if not path.is_absolute():
-            path = PROJECT_ROOT / script_path
-
-        if not path.exists():
-            return json.dumps({
-                "success": False,
-                "error": f"Script not found: {path}",
-                "changes_made": []
-            })
-
-        content = path.read_text()
-        changes_made = []
-
-        # 1. Fix BETA_BUOYANCY in Config class
-        pattern_beta = r"(\s+BETA_BUOYANCY\s*=\s*)([0-9.-]+)"
-        if re.search(pattern_beta, content):
-            old = re.search(pattern_beta, content).group(2)
-            if old != "0.0":
-                content = re.sub(pattern_beta, r"\g<1>0.0", content)
-                changes_made.append(f"BETA_BUOYANCY: {old} -> 0.0")
-
-        # 2. Fix settings.beta direct assignment
-        pattern_settings_beta = r"(settings\.beta\s*=\s*)([0-9.-]+)"
-        if re.search(pattern_settings_beta, content):
-            old = re.search(pattern_settings_beta, content).group(2)
-            if old != "0.0":
-                content = re.sub(pattern_settings_beta, r"\g<1>0.0", content)
-                changes_made.append(f"settings.beta: {old} -> 0.0")
-
-        # 3. Add settings.alpha = 0 (buoyancy heat) after settings.beta line
-        if "settings.alpha" not in content and "settings.beta" in content:
-            content = re.sub(
-                r"(settings\.beta\s*=\s*[^\n]+)",
-                r"\1\n    settings.alpha = 0.0  # SPACE: no buoyancy heat",
-                content
-            )
-            changes_made.append("Added settings.alpha = 0.0")
-
-        # 4. Add scene gravity = 0 in setup_scene()
-        if "scene.gravity" not in content:
-            # Find setup_scene function and add gravity after render.engine line
-            pattern_engine = r"(scene\.render\.engine\s*=\s*['\"]CYCLES['\"])"
-            if re.search(pattern_engine, content):
-                content = re.sub(
-                    pattern_engine,
-                    r"\1\n    scene.gravity = (0.0, 0.0, 0.0)  # SPACE: no gravity",
-                    content
-                )
-                changes_made.append("Added scene.gravity = (0, 0, 0)")
-
-        # 5. Center emitter position (change -1.5 z to 0)
-        pattern_emitter_pos = r"(primitive_ico_sphere_add\s*\([^)]*location\s*=\s*\()([^)]+)(\))"
-        emitter_match = re.search(pattern_emitter_pos, content)
-        if emitter_match:
-            old_pos = emitter_match.group(2)
-            if "-1.5" in old_pos or "- 1.5" in old_pos:
-                new_pos = "0, 0, 0"
-                content = re.sub(
-                    pattern_emitter_pos,
-                    rf"\g<1>{new_pos}\g<3>",
-                    content
-                )
-                changes_made.append(f"Emitter position: ({old_pos}) -> (0, 0, 0)")
-
-        # 6. Add SPACE PHYSICS comment in Config if changes were made
-        if changes_made and "# SPACE PHYSICS" not in content:
-            pattern_config = r"(class Config:.*?\"\"\"Script configuration\.\"\"\")"
-            if re.search(pattern_config, content, re.DOTALL):
-                content = re.sub(
-                    pattern_config,
-                    r'\1\n    # SPACE PHYSICS: gravity=0, alpha=0, beta=0, centered emitter',
-                    content,
-                    flags=re.DOTALL
-                )
-                changes_made.append("Added SPACE PHYSICS comment")
-
-        # Save modified script
-        if output_name:
-            modified_path = OUTPUT_DIR / f"{output_name}.py"
-        else:
-            modified_path = path.with_stem(path.stem + "_spacefixed")
-
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        modified_path.write_text(content)
-
-        return json.dumps({
-            "success": True,
-            "original_path": str(path),
-            "modified_path": str(modified_path),
-            "changes_made": changes_made,
-            "space_physics_applied": True,
-            "fixes_applied": {
-                "scene_gravity": "scene.gravity = (0, 0, 0)",
-                "buoyancy_density": "settings.beta = 0",
-                "buoyancy_heat": "settings.alpha = 0",
-                "emitter_position": "centered at (0, 0, 0)"
-            }
-        }, indent=2)
-
-    except Exception as e:
-        return json.dumps({
-            "success": False,
-            "error": str(e),
-            "changes_made": []
-        })
-
-
-@function_tool
-async def apply_space_physics_fix(
-    script_path: str,
-    output_name: Optional[str] = None
-) -> str:
-    """
-    Apply space physics corrections to a Blender script.
-
-    CRITICAL: Use this tool when creating sun/star/nebula effects.
-    In space, there is no atmosphere, so:
-    - Gravity should NOT affect the visual (beta=0)
-    - Buoyancy should be ZERO (no hot air rising)
-    - Objects should appear static or have only internal motion
-
-    This fixes the common "fireball rising upward" bug for solar effects.
-
-    Args:
-        script_path: Path to the Blender script to fix
-        output_name: Optional new filename (default: adds "_spacephysics" suffix)
-
-    Returns:
-        JSON with modified script path and changes made
-    """
-    return _apply_space_physics_fix_impl(script_path, output_name)
+# REMOVED: apply_space_physics_fix tool
+# This tool was removed as part of the self-learning architecture.
+# Physics rules should emerge from experimentation, not be hardcoded.
+# See docs/SELF_LEARNING_ARCHITECTURE.md for details.
 
 
 @function_tool

@@ -80,7 +80,11 @@ class LearningOutput(BaseModel):
     pattern_extracted: bool = Field(default=False, description="Whether a new pattern was extracted")
     pattern_id: Optional[str] = Field(default=None, description="ID of extracted pattern")
     next_action: str = Field(description="Recommended next action: 'iterate', 'switch_technique', 'complete'")
-    suggested_modifications: List[str] = Field(default_factory=list, description="Specific changes for next iteration")
+    suggested_modifications: List[str] = Field(default_factory=list, description="Text descriptions of changes for context")
+    parameter_modifications: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Concrete parameter changes as {param_name: new_value}, e.g., {'temperature': 3.0, 'density': 5.0}"
+    )
 
 from models.shared_context import (
     AssetRequest,
@@ -125,6 +129,10 @@ from tools.knowledge_distillation_tools import (
     analyze_script_for_patterns,
     compare_scripts,
 )
+
+# Script modification for direct parameter changes
+from tools.script_generator_tools import _modify_script_impl
+
 from specialized_agents import (
     create_script_writer,
     create_executor,
@@ -370,41 +378,49 @@ class BlenderVFXOrchestrator:
         )
 
         # Create all 5 specialized agents with specific return handoffs
-        self._script_writer = create_script_writer().clone(
+        # NOTE: Handoff agents use STATIC instructions (use_dynamic_instructions=False)
+        # because we need to append handoff-specific text. Dynamic instructions are
+        # used by the STANDALONE agents in create_asset_pipeline().
+        base_sw = create_script_writer(use_dynamic_instructions=False)
+        self._script_writer = base_sw.clone(
             handoffs=[return_from_script_writer],
-            instructions=create_script_writer().instructions + """
+            instructions=base_sw.instructions + """
 
 CRITICAL: After generating and validating a script, use script_complete_execute_next to hand off.
 This signals the orchestrator to IMMEDIATELY run the script - no more research needed."""
         )
 
-        self._executor = create_executor().clone(
+        base_exec = create_executor()
+        self._executor = base_exec.clone(
             handoffs=[return_from_executor],
-            instructions=create_executor().instructions + """
+            instructions=base_exec.instructions + """
 
 CRITICAL: After executing a script (success or failure), use execution_complete_evaluate_next to hand off.
 This signals the orchestrator to IMMEDIATELY evaluate the render - no more research needed."""
         )
 
-        self._quality_analyst = create_quality_analyst().clone(
+        base_qa = create_quality_analyst(use_dynamic_instructions=False)
+        self._quality_analyst = base_qa.clone(
             handoffs=[return_from_quality_analyst],
-            instructions=create_quality_analyst().instructions + """
+            instructions=base_qa.instructions + """
 
 CRITICAL: After evaluating render quality, use evaluation_complete_learn_next to hand off.
 This signals the orchestrator to IMMEDIATELY record learnings - no more research needed."""
         )
 
-        self._learning_agent = create_learning_agent().clone(
+        base_la = create_learning_agent(use_dynamic_instructions=False)
+        self._learning_agent = base_la.clone(
             handoffs=[return_from_learning_agent],
-            instructions=create_learning_agent().instructions + """
+            instructions=base_la.instructions + """
 
 CRITICAL: After recording experiments, use learning_complete_decide_next to hand off.
 This signals the orchestrator to decide: if quality passed, finish. If not, modify script."""
         )
 
-        self._docs_expert = create_docs_expert().clone(
+        base_docs = create_docs_expert()
+        self._docs_expert = base_docs.clone(
             handoffs=[return_to_orchestrator],
-            instructions=create_docs_expert().instructions + """
+            instructions=base_docs.instructions + """
 
 CRITICAL: After searching documentation, use return_to_orchestrator to hand off."""
         )
@@ -486,10 +502,13 @@ Use your tools to gather information, then return a summary of your findings inc
         )
 
         # Script Writer with structured output
-        base_script_writer = create_script_writer()
+        # NOTE: Using static instructions for standalone agents (can't append to functions)
+        # KB integration happens through tools (query_knowledge_base, get_physics_patterns)
+        # No hardcoded physics rules - they emerge from experimentation
+        base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
         self._script_agent_standalone = Agent[SharedContext](
             name="Script Writer",
-            instructions=prompt_with_handoff_instructions(base_script_writer.instructions + """
+            instructions=prompt_with_handoff_instructions(base_script_writer_standalone.instructions + """
 
 ## EFFICIENCY REQUIREMENT - CRITICAL
 You have LIMITED turns (max 10). Be efficient:
@@ -501,10 +520,10 @@ You have LIMITED turns (max 10). Be efficient:
 
 Total tool calls should be 4-6, not 10+. Return output even if imperfect.
 
-## Domain Physics Context
-- sun/star/nebula effects: SPACE environment → set gravity=0, buoyancy=0 (beta=0)
-- explosion/fire/smoke effects: EARTH environment → normal gravity/buoyancy OK
-Apply correct physics parameters based on effect type.
+## SELF-LEARNING NOTE
+Physics rules are NOT hardcoded. They come from the knowledge base (via dynamic instructions).
+If the KB has no rules for this effect type yet, use Blender defaults and observe outcomes.
+The Learning Agent will build knowledge from experiments.
 
 ## Output Requirements
 After generating and validating the script, return a structured ScriptOutput with:
@@ -515,10 +534,10 @@ After generating and validating the script, return a structured ScriptOutput wit
 - validation_errors: Any validation errors encountered
 
 IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely."""),
-            model=base_script_writer.model,
-            model_settings=base_script_writer.model_settings,
+            model=base_script_writer_standalone.model,
+            model_settings=base_script_writer_standalone.model_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
-            tools=base_script_writer.tools,
+            tools=base_script_writer_standalone.tools,
         )
 
         # Executor with structured output
@@ -541,60 +560,70 @@ After executing the script, return a structured ExecutionOutput with:
         )
 
         # Quality Analyst with structured output (LLM-as-judge pattern)
-        base_quality = create_quality_analyst()
+        # NOTE: Using static instructions for standalone agents (can't append to functions)
+        # Physics observation happens through tools (observe_physics_anomaly, get_physics_patterns)
+        base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
         self._quality_agent_standalone = Agent[SharedContext](
             name="Quality Analyst",
-            instructions=prompt_with_handoff_instructions(base_quality.instructions + """
+            instructions=prompt_with_handoff_instructions(base_quality_standalone.instructions + """
 
-## Domain Physics Awareness
-Check for physics anomalies based on effect type:
-- sun/star/nebula: Should be STATIC or have internal motion only (no drift/rise)
-  If flame/volume moves upward → wrong: buoyancy should be 0 for space
-- explosion/fire: Can have upward motion (buoyancy is expected on Earth)
+## SELF-LEARNING: Physics Observation
+When you observe unexpected physical behavior, use observe_physics_anomaly() to record it.
+The Learning Agent will correlate these observations with parameters to build knowledge.
 
-Flag physics violations as HIGH PRIORITY issues.
+DO NOT assume what physics should look like. OBSERVE and REPORT:
+- What did you expect to see?
+- What did you actually see?
+- What parameters might be causing this?
 
 ## Output Requirements (LLM-as-Judge Pattern)
 After evaluating render quality, return a structured QualityOutput with:
 - overall_score: Quality score 0-100
 - passed: Whether quality threshold was met
 - primary_issue: The most critical issue to fix (if any)
-- issues: List of all identified issues (include physics violations)
+- issues: List of all identified issues
 - suggestions: Specific parameter changes to try
 - vision_assessment: Detailed visual quality description
 - reference_similarity: Similarity to reference image (if available)
 
 Be a STRICT judge - only pass renders that truly meet quality standards."""),
-            model=base_quality.model,
-            model_settings=base_quality.model_settings,
+            model=base_quality_standalone.model,
+            model_settings=base_quality_standalone.model_settings,
             output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
-            tools=base_quality.tools,
+            tools=base_quality_standalone.tools,
         )
 
         # Learning Agent with structured output
-        base_learning = create_learning_agent()
+        # NOTE: Using static instructions for standalone agents (can't append to functions)
+        # Core of the self-learning system - processes physics observations via tools
+        base_learning_standalone = create_learning_agent(use_dynamic_instructions=False)
         self._learning_agent_standalone = Agent[SharedContext](
             name="Learning Agent",
-            instructions=prompt_with_handoff_instructions(base_learning.instructions + """
+            instructions=prompt_with_handoff_instructions(base_learning_standalone.instructions + """
 
 ## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
 You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
 
-Turn 1: Query knowledge (query_knowledge_base) - MAX 2 parallel calls
+Turn 1: Query knowledge (query_knowledge_base) + check pending observations (get_pending_observations)
 Turn 2: Record experiment (record_experiment_result) - CALL EXACTLY ONCE
+        If pending physics observations: correlate_observation() for each
 Turn 3: Return LearningOutput structured response
 
 RULES:
-- DO NOT make more than 3 tool calls total
+- DO NOT make more than 4 tool calls total
 - DO NOT call record_experiment_result more than ONCE (even if it returns an error)
 - DO NOT call start_experiment_session or record_baseline (handled elsewhere)
 - If record_experiment_result fails, STILL return LearningOutput (set experiment_recorded=False)
 - NEVER retry failed tool calls
 
-## Domain Physics Context
-- sun/star/nebula effects: SPACE environment → gravity=0, buoyancy=0 (beta=0)
-- explosion/fire/smoke effects: EARTH environment → normal gravity/buoyancy
-If a sun/star is drifting upward, the fix is: beta=0 (disable buoyancy)
+## SELF-LEARNING: Physics Observations
+Check get_pending_observations() for any physics anomalies the Quality Analyst recorded.
+For each pending observation, use correlate_observation() to record your analysis:
+- What parameters likely caused this behavior?
+- What's the recommended fix?
+- How confident are you? (0.0-1.0)
+
+This builds the knowledge base that dynamic instructions query!
 
 ## Output Requirements (RETURN AFTER 1 record_experiment_result call)
 Return a structured LearningOutput with:
@@ -602,11 +631,19 @@ Return a structured LearningOutput with:
 - pattern_extracted: bool
 - pattern_id: str or None
 - next_action: 'iterate' | 'switch_technique' | 'complete'
-- suggested_modifications: List of specific parameter changes (include beta=0 for space effects)"""),
-            model=base_learning.model,
-            model_settings=base_learning.model_settings,
+- suggested_modifications: List[str] - TEXT descriptions for context
+- parameter_modifications: Dict[str, Any] - CONCRETE VALUES for direct script modification
+
+CRITICAL FOR parameter_modifications:
+Provide ACTUAL NUMBERS, not descriptions. Example:
+  {"temperature": 3.0, "density": 5.0, "blackbody_intensity": 2.0, "beta": 0.0}
+
+These values are applied DIRECTLY to the Blender script's Config class.
+If quality issues relate to parameters, ALWAYS include concrete fixes in parameter_modifications."""),
+            model=base_learning_standalone.model,
+            model_settings=base_learning_standalone.model_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
-            tools=base_learning.tools,
+            tools=base_learning_standalone.tools,
         )
 
         self._initialized = True
@@ -749,21 +786,75 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 - Frames: {request.frame_start}-{request.frame_end}
 
 Generate a complete, validated script. Return the script_path in your output."""
-                    else:
-                        # Include quality feedback and learning suggestions
-                        feedback_parts = []
-                        if quality:
-                            feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
-                            feedback_parts.append(f"Vision Assessment: {quality.vision_assessment}")
-                            if quality.primary_issue:
-                                feedback_parts.append(f"Primary Issue: {quality.primary_issue}")
-                            if quality.suggestions:
-                                feedback_parts.append(f"Suggestions: {chr(10).join(f'- {s}' for s in quality.suggestions)}")
-                        if learning and learning.suggested_modifications:
-                            feedback_parts.append(f"## Learning Agent Recommendations")
-                            feedback_parts.append(chr(10).join(f'- {m}' for m in learning.suggested_modifications))
 
-                        script_prompt = f"""Modify the existing script to fix quality issues.
+                        # Run Script Writer for iteration 1
+                        script_result = await Runner.run(
+                            self._script_agent_standalone,
+                            script_prompt,
+                            context=context,
+                            max_turns=10
+                        )
+                        script: ScriptOutput = script_result.final_output
+                    else:
+                        # Track if we successfully modified the script directly
+                        direct_modification_success = False
+                        script: Optional[ScriptOutput] = None
+
+                        # Check for concrete parameter modifications from Learning Agent
+                        # If provided, apply directly without going through Script Writer interpretation
+                        if learning and learning.parameter_modifications and previous_script and previous_script.script_path:
+                            print(f"[Pipeline] Applying {len(learning.parameter_modifications)} parameter modifications directly", file=sys.stderr)
+                            print(f"[Pipeline] Modifications: {learning.parameter_modifications}", file=sys.stderr)
+
+                            # Generate output name for modified script
+                            output_name = f"{request.asset_name}_iter{iteration}_paramfix"
+
+                            # Call modify_script directly with concrete parameters
+                            modify_result_json = _modify_script_impl(
+                                script_path=previous_script.script_path,
+                                modifications=learning.parameter_modifications,
+                                output_name=output_name
+                            )
+                            modify_result = json.loads(modify_result_json)
+
+                            if modify_result.get("success") and modify_result.get("modified_path"):
+                                print(f"[Pipeline] Direct modification SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
+                                print(f"[Pipeline] Changes: {modify_result.get('changes_made', [])}", file=sys.stderr)
+
+                                # Create ScriptOutput for the modified script
+                                script = ScriptOutput(
+                                    script_path=modify_result["modified_path"],
+                                    technique_used=previous_script.technique_used + " (param-modified)",
+                                    key_parameters=learning.parameter_modifications,
+                                    validation_passed=True,
+                                    validation_errors=[],
+                                    description=f"Parameter-modified from {previous_script.script_path}"
+                                )
+                                direct_modification_success = True
+                            else:
+                                print(f"[Pipeline] Direct modification FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
+
+                        # If no direct modifications (or they failed), use Script Writer
+                        if not direct_modification_success:
+                            # Include quality feedback and learning suggestions
+                            feedback_parts = []
+                            if quality:
+                                feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
+                                feedback_parts.append(f"Vision Assessment: {quality.vision_assessment}")
+                                if quality.primary_issue:
+                                    feedback_parts.append(f"Primary Issue: {quality.primary_issue}")
+                                if quality.suggestions:
+                                    feedback_parts.append(f"Suggestions: {chr(10).join(f'- {s}' for s in quality.suggestions)}")
+                            if learning and learning.suggested_modifications:
+                                feedback_parts.append(f"## Learning Agent Recommendations")
+                                feedback_parts.append(chr(10).join(f'- {m}' for m in learning.suggested_modifications))
+                            # Also include concrete params as guidance for Script Writer
+                            if learning and learning.parameter_modifications:
+                                feedback_parts.append(f"## Concrete Parameter Changes")
+                                for param, value in learning.parameter_modifications.items():
+                                    feedback_parts.append(f"- {param}: {value}")
+
+                            script_prompt = f"""Modify the existing script to fix quality issues.
 
 ## Current Script
 Path: {previous_script.script_path if previous_script else 'Unknown'}
@@ -777,14 +868,14 @@ Target Score: {request.quality_threshold}
 
 Modify the script to address the issues. Use patterns from library if available."""
 
-                    script_result = await Runner.run(
-                        self._script_agent_standalone,
-                        script_prompt,
-                        context=context,
-                        max_turns=10
-                    )
-                    # Structured output: ScriptOutput
-                    script: ScriptOutput = script_result.final_output
+                            script_result = await Runner.run(
+                                self._script_agent_standalone,
+                                script_prompt,
+                                context=context,
+                                max_turns=10
+                            )
+                            # Structured output: ScriptOutput
+                            script: ScriptOutput = script_result.final_output
 
                     # Always capture script_path if available (for subsequent iterations)
                     if script.script_path:

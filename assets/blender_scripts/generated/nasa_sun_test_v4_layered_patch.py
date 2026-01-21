@@ -30,7 +30,7 @@ class Config:
     RESOLUTION = 96
     FRAME_START = 1
     FRAME_END = 50
-    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v1"
+    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v4_layered_patch"
     BAKE = True
     RENDER = True
     RENDER_FRAMES = "mid"
@@ -60,13 +60,13 @@ def parse_args():
     while i < len(argv):
         arg = argv[i]
         if arg == "--resolution" and i + 1 < len(argv):
-            Config.RESOLUTION = int(argv[i + 1])
+            Config.RESOLUTION = 192
             i += 2
         elif arg == "--frame_start" and i + 1 < len(argv):
             Config.FRAME_START = int(argv[i + 1])
             i += 2
         elif arg == "--frame_end" and i + 1 < len(argv):
-            Config.FRAME_END = int(argv[i + 1])
+            Config.FRAME_END = 80
             i += 2
         elif arg == "--output_dir" and i + 1 < len(argv):
             Config.OUTPUT_DIR = argv[i + 1]
@@ -121,7 +121,7 @@ def create_domain():
 
     # Gas behavior (from technique)
     settings.burning_rate = Config.BURNING_RATE
-    settings.flame_smoke = Config.FLAME_SMOKE
+    settings.flame_smoke = 0.05
     settings.flame_vorticity = Config.FLAME_VORTICITY
     settings.beta = Config.BETA_BUOYANCY
 
@@ -170,7 +170,7 @@ def create_emitter():
     flow.flow_type = 'BOTH'
     flow.flow_behavior = 'INFLOW'
     flow.fuel_amount = Config.FUEL_AMOUNT
-    flow.temperature = Config.TEMPERATURE
+    flow.temperature = 1.5
 
     emitter.hide_render = True
 

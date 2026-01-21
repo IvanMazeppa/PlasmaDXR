@@ -9,6 +9,13 @@ Key capabilities:
 - Query knowledge base for relevant learnings
 - Suggest experiments based on past success
 - Warn about known gotchas before changes
+- Process physics observations from Quality Analyst
+
+SELF-LEARNING: This agent is the core of the self-learning system. It:
+1. Processes physics observations from the Quality Analyst
+2. Correlates parameters with outcomes
+3. Extracts patterns with success rates
+4. Builds a knowledge base that dynamic instructions query
 """
 
 from __future__ import annotations
@@ -61,51 +68,25 @@ from tools.code_pattern_tools import (
     report_pattern_outcome,
 )
 
+# Import physics observation tools for processing Quality Analyst observations
+from tools.physics_observation_tools import (
+    get_pending_observations,
+    correlate_observation,
+    get_physics_patterns,
+)
 
-# AI-optimized Learning Agent instructions - compact, pattern-focused
-LEARNING_AGENT_INSTRUCTIONS = """## ROLE
-Record experiments, extract patterns, suggest fixes from accumulated knowledge.
+# Import dynamic instructions for self-learning
+from tools.dynamic_instructions import (
+    dynamic_learning_agent_instructions,
+    get_learning_agent_instructions_static,
+    LEARNING_AGENT_BASE_INSTRUCTIONS,
+)
 
-## TURN BUDGET: MAX 3 TURNS
-T1: query_knowledge_base + search_code_patterns (parallel)
-T2: record_experiment_result (ONCE)
-T3: Return LearningOutput
 
-CRITICAL: Call record_experiment_result ONCE. Never retry on error.
-
-## BEFORE CHANGES
-1. search_code_patterns(issue) → find known fixes
-2. query_knowledge_base(issue) → check past learnings
-3. get_parameter_knowledge(param) → accumulated wisdom
-
-## AFTER EXPERIMENT
-record_experiment_result() with:
-- issue_addressed, parameters_changed, score_before/after
-- success: score_delta > 0
-- observed_effects: [{metric, direction, magnitude, expected, side_effect}]
-- learnings: what we learned
-
-IF score_delta >= 5 (success):
-→ extract_successful_pattern(script_path, issue_type, params_changed, improvement)
-→ record_code_pattern(pattern_name, issue_type, code_snippet, params)
-
-## PATTERN REUSE
-1. search_code_patterns(issue) → find existing fixes with success_rate
-2. High success_rate pattern? Recommend it, skip experimentation
-3. After applying: report_pattern_outcome(pattern_id, success, score_delta)
-
-## KNOWLEDGE STRUCTURE
-- Rules: "adjust X when changing Y"
-- Warnings: "X without Y causes Z"
-- Patterns: reusable fixes with tracked success rates
-- Stats: success rate, avg improvement per param
-
-## OUTPUT (LearningOutput)
-- experiment_recorded: bool
-- next_action: "iterate" | "stop" | "research"
-- priority_issues: top issues to fix
-- suggested_params: {param: value} recommendations
-- insights: patterns found, warnings, rationale
+# DEPRECATED: Hardcoded instructions replaced by dynamic_instructions.py
+# Keeping for reference only
+LEARNING_AGENT_INSTRUCTIONS_DEPRECATED = """
+[DEPRECATED - See tools/dynamic_instructions.py for current instructions]
 """
 
 
@@ -114,16 +95,25 @@ class LearningAgent:
     Learning Agent for experiment tracking and knowledge accumulation.
 
     Uses gpt-5.2 with high reasoning for intelligent learning and pattern recognition.
+
+    SELF-LEARNING: This is the core of the self-learning system. It:
+    1. Processes physics observations from the Quality Analyst
+    2. Correlates parameters with outcomes
+    3. Extracts patterns with success rates
+    4. Builds knowledge base that dynamic instructions query
     """
 
-    def __init__(self, model: str = "gpt-5.2"):
+    def __init__(self, model: str = "gpt-5.2", use_dynamic_instructions: bool = True):
         """
         Initialize the learning agent.
 
         Args:
             model: OpenAI model to use (default: gpt-5.2 for deep learning insights)
+            use_dynamic_instructions: If True, use dynamic instructions that include
+                                      current knowledge state and areas needing data.
         """
         self.model = os.getenv("LEARNING_AGENT_MODEL", model)
+        self.use_dynamic_instructions = use_dynamic_instructions
         self._agent: Optional[Agent] = None
 
     def initialize(self, custom_instructions: str = "") -> None:
@@ -133,13 +123,19 @@ class LearningAgent:
         Args:
             custom_instructions: Additional context (e.g., session ID)
         """
-        instructions = LEARNING_AGENT_INSTRUCTIONS
-        if custom_instructions:
-            instructions = instructions + "\n\n" + custom_instructions
+        # Choose instruction source
+        if self.use_dynamic_instructions:
+            # Dynamic instructions: function that generates instructions at runtime
+            instructions = dynamic_learning_agent_instructions
+        else:
+            # Static fallback
+            instructions = get_learning_agent_instructions_static()
+            if custom_instructions:
+                instructions = instructions + "\n\n" + custom_instructions
 
         self._agent = Agent(
             name="Learning Agent",
-            instructions=instructions,
+            instructions=instructions,  # Can be function OR string
             model=self.model,
             model_settings=ModelSettings(
                 reasoning={
@@ -166,6 +162,10 @@ class LearningAgent:
                 record_code_pattern,
                 search_code_patterns,
                 report_pattern_outcome,
+                # Physics observation tools (process Quality Analyst observations)
+                get_pending_observations,
+                correlate_observation,
+                get_physics_patterns,
             ],
         )
 
@@ -177,17 +177,22 @@ class LearningAgent:
         return self._agent
 
 
-def create_learning_agent(custom_instructions: str = "") -> Agent:
+def create_learning_agent(
+    custom_instructions: str = "",
+    use_dynamic_instructions: bool = True
+) -> Agent:
     """
     Factory function to create and initialize a learning agent.
 
     Args:
         custom_instructions: Additional context to append
+        use_dynamic_instructions: If True (default), use dynamic instructions that
+                                  include current knowledge state and areas needing data.
 
     Returns:
         Initialized Agent instance ready for use
     """
-    agent = LearningAgent()
+    agent = LearningAgent(use_dynamic_instructions=use_dynamic_instructions)
     agent.initialize(custom_instructions=custom_instructions)
     return agent.agent
 

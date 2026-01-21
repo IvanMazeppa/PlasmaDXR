@@ -30,7 +30,7 @@ class Config:
     RESOLUTION = 96
     FRAME_START = 1
     FRAME_END = 50
-    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v1"
+    OUTPUT_DIR = "build/vdb_output/nasa_sun_test_v2"
     BAKE = True
     RENDER = True
     RENDER_FRAMES = "mid"

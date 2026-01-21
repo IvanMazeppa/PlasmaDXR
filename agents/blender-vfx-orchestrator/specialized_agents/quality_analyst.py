@@ -9,6 +9,11 @@ Key capabilities:
 - VLM-powered issue diagnosis
 - Iteration comparison for improvement tracking
 - Temporal quality analysis for animations
+- Physics anomaly observation for self-learning system
+
+SELF-LEARNING: This agent can observe physics anomalies and feed them into
+the learning system. Instead of hardcoding physics expectations, we observe
+what happens and let the system learn from experimentation.
 """
 
 from __future__ import annotations
@@ -45,51 +50,24 @@ from tools.asset_evaluator_tools import (
     compare_to_reference,
 )
 
+# Import physics observation tools for self-learning
+from tools.physics_observation_tools import (
+    observe_physics_anomaly,
+    get_physics_patterns,
+)
 
-# AI-optimized Quality Analyst instructions - compact, vision-first
-QUALITY_ANALYST_INSTRUCTIONS = """## ROLE
-Evaluate VFX render quality. Vision-first, reference-benchmark, brutally honest.
+# Import dynamic instructions for self-learning
+from tools.dynamic_instructions import (
+    dynamic_quality_analyst_instructions,
+    get_quality_analyst_instructions_static,
+    QUALITY_ANALYST_BASE_INSTRUCTIONS,
+)
 
-## TURN BUDGET: MAX 3 TURNS
-T1: analyze_with_vision("quality") + find_reference_images (parallel)
-T2: compare_to_reference (if refs found) OR evaluate_render (for metrics)
-T3: Return QualityOutput
 
-## TOOLS (priority order)
-PRIMARY: analyze_with_vision(path, analysis_type) → types: quality|issues|comparison|realism
-REFERENCE: find_reference_images(effect_type) → compare_to_reference(render, ref, type)
-BACKUP: evaluate_render (ML metrics), compare_renders (A/B), diagnose_issues (VLM)
-
-## WORKFLOW
-NEW EVAL:
-1. analyze_with_vision(path, "quality") — PRIMARY truth source
-2. find_reference_images(effect_type) — get objective benchmark
-3. IF refs: compare_to_reference() — gap analysis
-4. Return QualityOutput
-
-ISSUE DIAGNOSIS: analyze_with_vision(path, "issues") — smarter than ML
-COMPARISON: analyze_with_vision(path, "comparison", reference_path=prev)
-
-## QUALITY GATES
-PASS: vision_score >= 60 AND no critical issues
-PASS (with ref): similarity_score >= 50
-
-SEVERITY: critical (broken/black) > high (quality impact) > medium (noticeable) > low (minor)
-
-## OUTPUT (QualityOutput)
-- passed: bool
-- overall_score: 0-100 (from vision)
-- vision_assessment: summary text
-- issues: [{category, severity, description}]
-- primary_issue: top fix needed
-- strengths: what works
-- suggestions: specific improvements
-- reference_comparison: {ref_path, similarity_score, gap_analysis} (if used)
-
-## CRITICAL
-- Vision > ML metrics for nuanced quality
-- References = objective benchmarks, not subjective opinion
-- Be BRUTALLY HONEST — "looks bad" beats "could be improved"
+# DEPRECATED: Hardcoded instructions replaced by dynamic_instructions.py
+# Keeping for reference only - the actual instructions come from QUALITY_ANALYST_BASE_INSTRUCTIONS
+QUALITY_ANALYST_INSTRUCTIONS_DEPRECATED = """
+[DEPRECATED - See tools/dynamic_instructions.py for current instructions]
 """
 
 
@@ -98,16 +76,23 @@ class QualityAnalystAgent:
     Quality Analyst Agent for VFX render evaluation.
 
     Uses gpt-5.2 with high reasoning for intelligent quality analysis and issue diagnosis.
+
+    SELF-LEARNING: This agent can observe physics anomalies and feed them into
+    the learning system. Uses dynamic instructions that include known physics
+    behaviors from past experiments.
     """
 
-    def __init__(self, model: str = "gpt-5.2"):
+    def __init__(self, model: str = "gpt-5.2", use_dynamic_instructions: bool = True):
         """
         Initialize the quality analyst agent.
 
         Args:
             model: OpenAI model to use (default: gpt-5.2 for deep quality analysis)
+            use_dynamic_instructions: If True, use dynamic instructions that include
+                                      known physics behaviors from past experiments.
         """
         self.model = os.getenv("QUALITY_ANALYST_MODEL", model)
+        self.use_dynamic_instructions = use_dynamic_instructions
         self._agent: Optional[Agent] = None
 
     def initialize(self, custom_instructions: str = "") -> None:
@@ -117,13 +102,19 @@ class QualityAnalystAgent:
         Args:
             custom_instructions: Additional context (e.g., quality thresholds)
         """
-        instructions = QUALITY_ANALYST_INSTRUCTIONS
-        if custom_instructions:
-            instructions = instructions + "\n\n" + custom_instructions
+        # Choose instruction source
+        if self.use_dynamic_instructions:
+            # Dynamic instructions: function that generates instructions at runtime
+            instructions = dynamic_quality_analyst_instructions
+        else:
+            # Static fallback
+            instructions = get_quality_analyst_instructions_static()
+            if custom_instructions:
+                instructions = instructions + "\n\n" + custom_instructions
 
         self._agent = Agent(
             name="Quality Analyst",
-            instructions=instructions,
+            instructions=instructions,  # Can be function OR string
             model=self.model,
             model_settings=ModelSettings(
                 reasoning={
@@ -136,6 +127,9 @@ class QualityAnalystAgent:
                 # REFERENCE: Compare against real footage/examples
                 find_reference_images,
                 compare_to_reference,
+                # PHYSICS OBSERVATION: Feed anomalies into learning system
+                observe_physics_anomaly,
+                get_physics_patterns,
                 # BACKUP: ML-based metrics (optional)
                 evaluate_render,
                 compare_renders,
@@ -154,17 +148,22 @@ class QualityAnalystAgent:
         return self._agent
 
 
-def create_quality_analyst(custom_instructions: str = "") -> Agent:
+def create_quality_analyst(
+    custom_instructions: str = "",
+    use_dynamic_instructions: bool = True
+) -> Agent:
     """
     Factory function to create and initialize a quality analyst agent.
 
     Args:
         custom_instructions: Additional context to append
+        use_dynamic_instructions: If True (default), use dynamic instructions that
+                                  include known physics behaviors from past experiments.
 
     Returns:
         Initialized Agent instance ready for use
     """
-    analyst = QualityAnalystAgent()
+    analyst = QualityAnalystAgent(use_dynamic_instructions=use_dynamic_instructions)
     analyst.initialize(custom_instructions=custom_instructions)
     return analyst.agent
 
