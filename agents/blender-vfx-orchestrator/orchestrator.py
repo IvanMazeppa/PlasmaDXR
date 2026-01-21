@@ -24,6 +24,9 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers
+
+# Session Manager for deterministic experiment state tracking
+from session_manager import SessionManager
 from agents.agent_output import AgentOutputSchema
 from agents.extensions import handoff_filters
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
@@ -762,13 +765,29 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 iteration = 0
                 previous_script: Optional[ScriptOutput] = None
                 previous_score = 0.0
+                previous_params: Dict[str, Any] = {}
                 quality: Optional[QualityOutput] = None
                 learning: Optional[LearningOutput] = None
+
+                # Session Manager for deterministic experiment state tracking
+                # This is Python-side logic, not LLM - ensures baseline is always recorded
+                session_mgr = SessionManager(session_id=session.session_id)
 
                 while iteration < request.max_iterations:
                     iteration += 1
                     session.current_iteration = iteration
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{request.max_iterations} ======", file=sys.stderr)
+
+                    # Record baseline BEFORE making changes (iteration 2+)
+                    # This fixes the "record_baseline never called" bug
+                    if iteration > 1 and previous_script and previous_script.script_path:
+                        session_mgr.record_baseline(
+                            params=previous_params,
+                            score=previous_score,
+                            script_path=previous_script.script_path,
+                            render_path=session.final_render_path
+                        )
+                        print(f"[Pipeline] Baseline recorded: score={previous_score:.1f}", file=sys.stderr)
 
                     # ====== PHASE 1: SCRIPT GENERATION ======
                     print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
@@ -838,6 +857,26 @@ Generate a complete, validated script. Return the script_path in your output."""
                         if not direct_modification_success:
                             # Include quality feedback and learning suggestions
                             feedback_parts = []
+
+                            # Add iteration history from SessionManager (prevents repeating failures)
+                            iteration_summary = session_mgr.get_iteration_summary()
+                            if iteration_summary:
+                                feedback_parts.append(iteration_summary)
+
+                            # Add what we've learned about params
+                            ctx = session_mgr.get_context_for_agents()
+                            if ctx.get("params_that_helped"):
+                                feedback_parts.append("## Parameters That Improved Scores")
+                                for p, (v, d) in ctx["params_that_helped"].items():
+                                    feedback_parts.append(f"- {p}={v} (+{d:.1f})")
+                            if ctx.get("params_that_hurt"):
+                                feedback_parts.append("## Parameters To AVOID (hurt scores)")
+                                for p, (v, d) in ctx["params_that_hurt"].items():
+                                    feedback_parts.append(f"- {p}={v} ({d:.1f})")
+                            if ctx.get("stuck_issues"):
+                                feedback_parts.append(f"## STUCK: These issues persist - try different approach")
+                                feedback_parts.append(f"- {', '.join(ctx['stuck_issues'])}")
+
                             if quality:
                                 feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
                                 feedback_parts.append(f"Vision Assessment: {quality.vision_assessment}")
@@ -866,7 +905,8 @@ Technique: {previous_script.technique_used if previous_script else 'Unknown'}
 Previous Score: {previous_score:.1f}
 Target Score: {request.quality_threshold}
 
-Modify the script to address the issues. Use patterns from library if available."""
+Modify the script to address the issues. Do NOT repeat parameter values that hurt scores.
+Use patterns from library if available."""
 
                             script_result = await Runner.run(
                                 self._script_agent_standalone,
@@ -964,6 +1004,21 @@ Provide detailed feedback for improvement."""
                         session.best_iteration = iteration
                         session.final_render_path = execution.render_path
 
+                    # Extract current params from script
+                    current_params = script.key_parameters if hasattr(script, 'key_parameters') and script.key_parameters else {}
+                    previous_params = current_params  # Save for next iteration's baseline
+
+                    # Record result in SessionManager for iteration history tracking
+                    session_mgr.record_result(
+                        iteration=iteration,
+                        params=current_params,
+                        score=quality.overall_score,
+                        issues=quality.issues if hasattr(quality, 'issues') else [],
+                        primary_issue=quality.primary_issue,
+                        technique=script.technique_used
+                    )
+                    print(f"[Pipeline] Result recorded: params_changed={len(session_mgr.iteration_history[-1].params_changed) if session_mgr.iteration_history else 0}", file=sys.stderr)
+
                     # Record iteration - create nested models from agent outputs
                     script_mod = ScriptModification(
                         script_path=script.script_path or "unknown",
@@ -999,8 +1054,14 @@ Provide detailed feedback for improvement."""
 
                     # ====== PHASE 4: LEARNING ======
                     print(f"[Pipeline] PHASE 4: Learning Agent", file=sys.stderr)
+
+                    # Get context from SessionManager for informed decisions
+                    learn_ctx = session_mgr.get_context_for_agents()
+                    iteration_history = session_mgr.get_iteration_summary()
+
                     learn_prompt = f"""Record the experiment results.
 
+## Current Iteration
 Iteration: {iteration}
 Script: {script.script_path}
 Technique: {script.technique_used}
@@ -1009,8 +1070,18 @@ Score: {quality.overall_score:.1f}
 Passed: {quality.passed}
 Primary Issue: {quality.primary_issue or 'None'}
 
-If this iteration improved significantly, extract the pattern.
-Recommend next action: 'iterate' (continue improving), 'switch_technique' (try different approach), or 'complete' (quality achieved)."""
+{iteration_history}
+
+## Analysis Needed
+1. Did the score improve? Delta: {learn_ctx.get('best_score', 0) - previous_score:+.1f}
+2. Same issue {learn_ctx.get('consecutive_same_issue', 0)} times in a row
+3. Techniques tried: {', '.join(learn_ctx.get('techniques_tried', []))}
+
+## Your Output
+- If score improved significantly (delta >= 5), extract the pattern
+- If same issue 3+ times, recommend 'switch_technique'
+- If issues are parameter-related, provide parameter_modifications with CONCRETE values
+- Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
                     learn_result = await Runner.run(
                         self._learning_agent_standalone,
@@ -1028,10 +1099,34 @@ Recommend next action: 'iterate' (continue improving), 'switch_technique' (try d
                         session.status = SessionStatus.PASSED
                         break
 
-                    # Handle technique switching recommendation
-                    if learning.next_action == 'switch_technique':
-                        print(f"[Pipeline] Learning Agent recommends switching technique", file=sys.stderr)
-                        # Research agent already found alternatives in research_text
+                    # Handle technique switching - either from Learning Agent OR SessionManager detection
+                    should_switch = learning.next_action == 'switch_technique' or session_mgr.should_switch_technique()
+                    if should_switch:
+                        consecutive = session_mgr.issue_tracker.consecutive_same_issue
+                        print(f"[Pipeline] STUCK DETECTED: same issue {consecutive}x - re-running Research Agent", file=sys.stderr)
+
+                        # Re-run Research Agent to find NEW approaches
+                        switch_prompt = f"""Find a DIFFERENT approach for {request.effect_type.value}.
+
+## Current Status
+We've tried {len(session_mgr.techniques_tried)} techniques: {', '.join(session_mgr.techniques_tried)}
+Same issue persisted {consecutive} times: {session_mgr.issue_tracker.last_primary_issue}
+
+## What We Need
+1. A fundamentally different technique (not just param tweaks)
+2. Alternative Blender approaches (e.g., shader-based vs simulation-based)
+3. Reference to working examples if available
+
+DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
+
+                        research_result = await Runner.run(
+                            self._research_agent,
+                            switch_prompt,
+                            context=context,
+                            max_turns=6
+                        )
+                        research_text = str(research_result.final_output) if research_result.final_output else research_text
+                        print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
                         # Next iteration will get modified feedback to try different approach
 
                 # End of iteration loop
