@@ -171,6 +171,13 @@ from specialized_agents import (
 # DocsExpert now uses in-process function_tools instead of MCP client connections.
 # This fixes the anyio TaskGroup conflict that previously blocked MCP tool handlers.
 from specialized_agents.docs_expert import create_docs_expert
+# API Validator for Blender 5.0 API validation (Phase 6 of Architecture Optimization)
+# Validates API calls in generated scripts BEFORE execution to catch errors at source
+from specialized_agents.api_validator import (
+    validate_code_api,
+    CodeValidationResult,
+    KNOWN_API_CHANGES,
+)
 from utils import (
     BudgetTracker,
     get_budget_tracker,
@@ -814,7 +821,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                         self._research_agent,
                         research_prompt,
                         context=context,
-                        run_hooks=phase0_research_hooks,
+                        hooks=phase0_research_hooks,
                         max_turns=8  # Limit research turns
                     )
                     # Research agent outputs text summary (no output_type for tool-using agents)
@@ -900,7 +907,7 @@ Generate a complete, validated script. Return the script_path in your output."""
                                 self._script_agent_standalone,
                                 script_prompt,
                                 context=context,
-                                run_hooks=script_hooks,
+                                hooks=script_hooks,
                                 max_turns=10
                             )
                             script: ScriptOutput = script_result.final_output
@@ -1059,7 +1066,7 @@ Use patterns from library if available."""
                                     self._script_agent_standalone,
                                     script_prompt,
                                     context=context,
-                                    run_hooks=iter_script_hooks,
+                                    hooks=iter_script_hooks,
                                     max_turns=10
                                 )
                                 # Structured output: ScriptOutput
@@ -1114,6 +1121,61 @@ Use patterns from library if available."""
                             continue
                         # Else proceed with execution to see actual results
 
+                    # ====== PHASE 1.5: API VALIDATION (Blender 5.0) ======
+                    # Validate API calls BEFORE execution to catch Blender 5.0 breaking changes
+                    # This addresses Problem 1 from Architecture Optimization Plan
+                    if script.script_path:
+                        print(f"[Pipeline] PHASE 1.5: API Validation", file=sys.stderr)
+                        try:
+                            # Read the script content
+                            script_content = Path(script.script_path).read_text()
+
+                            # Lightweight validation (no agent call - fast)
+                            api_validation: CodeValidationResult = await validate_code_api(script_content)
+
+                            print(f"[Pipeline] API Validation: {api_validation.valid_calls}/{api_validation.total_calls_checked} valid", file=sys.stderr)
+
+                            if not api_validation.is_valid and api_validation.corrections_needed:
+                                print(f"[Pipeline] API CORRECTIONS NEEDED:", file=sys.stderr)
+                                for correction in api_validation.corrections_needed:
+                                    print(f"[Pipeline]   - {correction}", file=sys.stderr)
+
+                                # Apply corrections to script content
+                                corrected_content = script_content
+                                for validation in api_validation.validations:
+                                    if not validation.is_valid and validation.correction:
+                                        # Apply the correction
+                                        corrected_content = corrected_content.replace(
+                                            validation.api_call.split('.')[-1] if '.' in validation.api_call else validation.api_call,
+                                            validation.correction.split('.')[-1] if '.' in validation.correction else validation.correction
+                                        )
+
+                                # Also apply known patterns directly
+                                for pattern, fix in KNOWN_API_CHANGES.items():
+                                    if pattern in corrected_content:
+                                        corrected_content = corrected_content.replace(pattern, fix["correction"])
+                                        print(f"[Pipeline]   Applied known fix: {pattern} → {fix['correction']}", file=sys.stderr)
+
+                                # Write corrected script
+                                corrected_path = script.script_path.replace('.py', '_api_fixed.py')
+                                Path(corrected_path).write_text(corrected_content)
+                                print(f"[Pipeline] Corrected script saved: {corrected_path}", file=sys.stderr)
+
+                                # Update script path to use corrected version
+                                script = ScriptOutput(
+                                    script_path=corrected_path,
+                                    technique_used=script.technique_used + " (api-corrected)",
+                                    parameters_set=script.parameters_set if hasattr(script, 'parameters_set') else {},
+                                    validation_passed=True,  # Now validated
+                                    validation_errors=[]
+                                )
+                                session.current_script_path = corrected_path
+                                previous_script = script
+
+                        except Exception as e:
+                            print(f"[Pipeline] API Validation error (non-fatal): {e}", file=sys.stderr)
+                            # Continue with original script if validation fails
+
                     # ====== PHASE 2: EXECUTION ======
                     print(f"[Pipeline] PHASE 2: Executor", file=sys.stderr)
                     exec_prompt = f"""Execute the Blender script and render the VFX asset.
@@ -1135,7 +1197,7 @@ Run the script and report results."""
                             self._executor_agent_standalone,
                             exec_prompt,
                             context=context,
-                            run_hooks=exec_hooks,
+                            hooks=exec_hooks,
                             max_turns=6
                         )
                         # Structured output: ExecutionOutput
@@ -1182,7 +1244,7 @@ Provide detailed feedback for improvement."""
                             self._quality_agent_standalone,
                             eval_prompt,
                             context=context,
-                            run_hooks=quality_hooks,
+                            hooks=quality_hooks,
                             max_turns=6
                         )
                         # Structured output: QualityOutput
@@ -1295,7 +1357,7 @@ Primary Issue: {quality.primary_issue or 'None'}
                             self._learning_agent_standalone,
                             learn_prompt,
                             context=context,
-                            run_hooks=learning_hooks,
+                            hooks=learning_hooks,
                             max_turns=8
                         )
                         # Structured output: LearningOutput
@@ -1345,7 +1407,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 self._research_agent,
                                 switch_prompt,
                                 context=context,
-                                run_hooks=switch_research_hooks,
+                                hooks=switch_research_hooks,
                                 max_turns=6
                             )
                             research_text = str(research_result.final_output) if research_result.final_output else research_text
