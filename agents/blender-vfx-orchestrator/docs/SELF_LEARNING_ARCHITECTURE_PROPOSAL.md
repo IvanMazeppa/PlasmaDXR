@@ -220,7 +220,7 @@ async def semantic_search_blender_docs(
     client = OpenAI()
 
     response = client.responses.create(
-        model="gpt-4.1",
+        model="gpt-5.2",
         input=f"""Find Blender 5.0 documentation relevant to: {query}
 
         Focus on:

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The user is named Ben, a novice programmer with C++, Java, and Python experience. He has high-functioning autism with a strong passion for AI/ML/LLMs, leveraging these tools to create this experimental raytracing engine.
+The user is named Ben, a novice programmer with C++, Java, and Python experience. He has high-functioning autism with a strong passion for AI/ML/LLMs, leveraging these tools to create experimental systems.
 
 ### Collaboration Preferences
 
@@ -20,243 +20,336 @@ The user is named Ben, a novice programmer with C++, Java, and Python experience
 
 **CRITICAL:** Brutal honesty is strongly preferred over sugar-coating.
 
-✅ **Good:** "ZERO LIGHTS ACTIVE - this is catastrophic, cannot assess visual quality"
-❌ **Bad:** "Lighting could use some refinement to improve visual quality"
+Good: "ZERO LIGHTS ACTIVE - this is catastrophic, cannot assess visual quality"
+Bad: "Lighting could use some refinement to improve visual quality"
 
 Direct, specific language accelerates debugging and saves development time.
 
 ---
 
-## What is PlasmaDX-Clean?
+## Current Focus: Blender VFX Orchestrator
 
-DirectX 12 volumetric particle renderer featuring:
-- **DXR 1.1 inline ray tracing** (RayQuery API)
-- **3D Gaussian splatting** (volumetric ellipsoids, not 2D splats)
-- **NVIDIA RTXDI** for weighted reservoir sampling
-- **ML-accelerated physics** via Physics-Informed Neural Networks (PINNs)
-- **Black hole accretion disk simulation** achieving 20 FPS @ 1440p with 10K particles, 16 lights on RTX 4060 Ti
+The primary focus of this project is **blender-vfx-orchestrator** - an autonomous multi-agent system built on the **OpenAI Agents SDK** that generates high-quality volumetric VFX assets through iterative improvement.
 
-**RT Priority:** RT lighting/shadowing should be first choice for upgrades, but only when it benefits image quality - never force RT just for the sake of using it.
+**Location:** `agents/blender-vfx-orchestrator/`
+
+### What It Does
+
+- Autonomously generates Blender Python scripts for VFX effects (explosions, fire, smoke, nebulae, solar effects)
+- Iterates on quality using ML-powered evaluation until thresholds are met
+- Coordinates 5 specialized agents via SDK handoffs
+- Implements 5 self-learning strategies for continuous improvement
+- Exports NanoVDB volumetric files for use in the DXR renderer
 
 ---
 
-## Build Commands
+## OpenAI Agents SDK Architecture
 
+**SDK Version:** v0.6.8+
+**Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
+
+### Agent Hierarchy
+
+```
+BlenderVFXOrchestrator (coordinator)
+├── ScriptWriter     - Generates/modifies Blender Python scripts
+├── Executor         - Runs scripts in Blender, parses errors
+├── QualityAnalyst   - ML-powered quality evaluation (vision + metrics)
+├── LearningAgent    - Experiment tracking, knowledge base queries
+└── DocsExpert       - Blender documentation search (semantic + keyword)
+```
+
+### SDK Patterns Used
+
+**Handoffs** - Transfer control between agents:
+```python
+from agents import Agent, handoff
+
+orchestrator = Agent(
+    name="Orchestrator",
+    handoffs=[script_writer, quality_analyst, learning_agent],
+)
+```
+
+**Agents as Tools** - Use agents as callable tools:
+```python
+orchestrator = Agent(
+    tools=[quality_analyst.as_tool(tool_name="evaluate_quality", ...)],
+)
+```
+
+**Function Tools** - Expose Python functions to agents:
+```python
+from agents import function_tool
+
+@function_tool
+async def my_tool(param: str) -> str:
+    """Tool description becomes the docstring."""
+    return result
+```
+
+### Critical SDK Lesson: MCP vs In-Process Tools
+
+**Tools must run in-process.** The SDK cannot call external MCP servers from within agent context.
+
+**Wrong:**
+```python
+@function_tool
+async def my_tool() -> str:
+    server = await get_mcp_server("some-server")  # FAILS
+    return await server.call_tool(...)
+```
+
+**Correct - Two-Layer Pattern:**
+```python
+# Layer 1: Internal implementation
+async def _my_tool_impl(param: str) -> str:
+    """Actual logic - callable by other functions."""
+    return result
+
+# Layer 2: Tool wrapper for agents
+@function_tool
+async def my_tool(param: str) -> str:
+    return await _my_tool_impl(param)
+```
+
+---
+
+## Self-Learning Strategies (All Implemented)
+
+| Strategy | Purpose |
+|----------|---------|
+| **1. Vector Store** | Semantic search over Blender 5.0 documentation |
+| **2. Knowledge Distillation** | Auto-extract patterns from successful experiments |
+| **3. Proactive Mining** | Research alternatives BEFORE getting stuck |
+| **4. Code Pattern Memory** | Store/retrieve working Python code snippets |
+| **5. Escape Velocity** | Escalating exploration when iterations plateau |
+
+### Escape Velocity Levels
+
+| Level | Trigger | Action |
+|-------|---------|--------|
+| 0 | Normal | Standard modification |
+| 1 | Plateau 2x | Query knowledge base |
+| 2 | Same issue 2x | Generate NEW script with different technique |
+| 3 | Same issue 3x | Semantic search for novel approaches |
+| 4 | No progress 4x | Request human guidance |
+
+**Critical:** At Level 2+, do NOT modify the current script. Switch techniques entirely.
+
+---
+
+## Key Files and Directories
+
+### Orchestrator Core
+| File | Purpose |
+|------|---------|
+| `orchestrator.py` | Main coordinator agent with pipeline logic |
+| `session_manager.py` | Tracks experiment state without LLM intervention |
+| `server.py` | MCP server wrapper (if running as MCP) |
+
+### Specialized Agents (`specialized_agents/`)
+| File | Purpose |
+|------|---------|
+| `script_writer.py` | Blender Python script generation |
+| `executor.py` | Script execution in Blender |
+| `quality_analyst.py` | ML quality evaluation (vision + metrics) |
+| `learning_agent.py` | Experiment tracking, pattern extraction |
+| `docs_expert.py` | Blender documentation search |
+
+### Tools (`tools/`)
+| File | Purpose |
+|------|---------|
+| `semantic_docs_tools.py` | Vector store search (Strategy 1) |
+| `knowledge_distillation_tools.py` | Pattern extraction (Strategy 2) |
+| `proactive_research_tools.py` | Early warning detection (Strategy 3) |
+| `code_pattern_tools.py` | Code snippet storage (Strategy 4) |
+| `dynamic_instructions.py` | Runtime instruction injection |
+| `asset_evaluator_tools.py` | ML quality metrics (LPIPS, CLIP, TOPIQ) |
+| `script_generator_tools.py` | Script generation/modification |
+| `blender_executor_tools.py` | Blender process management |
+| `experiment_tracker_tools.py` | Knowledge base operations |
+
+### Models (`models/`)
+| Model | Purpose |
+|-------|---------|
+| `SharedContext` | Agent coordination context |
+| `SessionState` | Persistent session state |
+| `AssetRequest` | User request parameters |
+| `QualityMetrics` | Evaluation results |
+
+---
+
+## Build and Run Commands
+
+### Setup
 ```bash
-# One-time setup: Generate Visual Studio solution
+cd agents/blender-vfx-orchestrator
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+```
+
+### Environment Variables
+```bash
+export OPENAI_API_KEY="sk-..."
+export BLENDER_DOCS_VECTOR_STORE_ID="vs_..."  # For semantic search
+export AGENTS_DEBUG=1  # Enable verbose SDK logging
+```
+
+### Running Tests
+```bash
+# E2E orchestrator test
+python test_e2e_orchestrator.py
+
+# Quick E2E test
+python test_quick_e2e.py
+
+# Specific component tests
+python test_docs_expert.py
+python test_self_learning_tools.py
+python test_orchestrator_tools.py
+```
+
+### Running the Orchestrator
+
+**Programmatic:**
+```python
+from orchestrator import create_vfx_asset
+
+result = await create_vfx_asset(
+    asset_name="explosion_001",
+    description="Large fiery explosion with rising smoke",
+    effect_type="explosion",
+    quality_threshold=60.0,
+    max_iterations=5
+)
+```
+
+**Resume Session:**
+```python
+from orchestrator import resume_vfx_session
+
+result = await resume_vfx_session("session_20260118_explosion_001")
+```
+
+---
+
+## Quality Gates
+
+**PASS** requires ALL of:
+- `overall_score >= 60`
+- No critical issues (ZERO_LIGHTS, BLACK_SCREEN, CLIPPING)
+- If reference provided: acceptable similarity
+
+**Critical Issues (Auto-Fail):**
+- `ZERO_LIGHTS_ACTIVE` - No lighting in scene
+- `BLACK_SCREEN` - Completely dark render
+- `WHITE_SCREEN` - Completely overexposed
+- `CLIPPING_ARTIFACTS` - Volume clipping at boundaries
+
+---
+
+## Common Pitfalls
+
+### 1. Modifying at High Escape Level
+
+**Wrong:**
+```python
+if escape_level >= 2:
+    modify_script(script_path, {"flame_smoke": 3.5})  # BAD
+```
+
+**Correct:**
+```python
+if escape_level >= 2:
+    generate_script(effect_type, technique=untried_techniques[0])
+    stuck_state.reset_for_new_technique()
+```
+
+### 2. Forgetting Pattern Feedback
+
+**Always report pattern outcomes:**
+```python
+apply_pattern_to_script(script, pattern_id)
+result = evaluate_quality()
+report_pattern_outcome(pattern_id, success=result.improvement > 0)  # REQUIRED
+```
+
+### 3. Skipping Pre-Iteration Research
+
+**Always check before iteration 2+:**
+```python
+if iteration > 0:
+    research = pre_iteration_research(...)
+    if research["warning_level"] != "none":
+        handle_escape_action(research["escape_action"])
+```
+
+---
+
+## Key Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `docs/AGENT_SPECIFICATION.md` | Complete agent specs, tools, schemas |
+| `docs/AI_OPERATION_MANUAL.md` | Operational guide for AI agents |
+| `docs/AGENTS_SDK_INTEGRATION.md` | SDK patterns and lessons learned |
+| `docs/SELF_LEARNING_ARCHITECTURE.md` | Learning system implementation |
+| `docs/WORKFLOW_ANALYSIS_2026-01-21.md` | Latest workflow issues and fixes |
+
+---
+
+## Budget Management
+
+**Monthly limit:** $20
+
+| Category | Allocation |
+|----------|------------|
+| Vision/Evaluation | $10 |
+| Documentation Search | $8 |
+| Emergency Buffer | $2 |
+
+Check budget before starting:
+```python
+orchestrator = await get_orchestrator()
+budget = orchestrator.get_budget_status()
+if not budget["can_afford_evaluation"]:
+    print(f"Budget exhausted: ${budget['total_spent']:.2f}")
+```
+
+---
+
+## SDK Documentation Reference
+
+**Always consult before making changes:**
+- https://github.com/openai/openai-agents-python/tree/main/docs
+- [Multi-Agent Patterns](https://github.com/openai/openai-agents-python/blob/main/docs/multi_agent.md)
+- [Tools Reference](https://github.com/openai/openai-agents-python/blob/main/docs/tools.md)
+- [Handoffs](https://github.com/openai/openai-agents-python/blob/main/docs/handoffs.md)
+
+**Use context7** when you need code generation, setup steps, or library/API documentation.
+
+---
+
+## PlasmaDX-Clean (DXR Renderer)
+
+The DXR volumetric particle renderer that consumes VFX assets is in the main `src/` directory. This is secondary to the orchestrator focus but still functional.
+
+### Quick Build Reference
+```bash
+# Build
 mkdir build && cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
-
-# Build (from repo root)
 MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
-MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Release /p:Platform=x64
 
 # Run
-./build/bin/Debug/PlasmaDX-Clean.exe
 ./build/bin/Debug/PlasmaDX-Clean.exe --config=configs/user/default.json
-
-# Manual shader recompilation (if .dxil is stale)
-dxc.exe -T cs_6_5 -E main shaders/particles/particle_physics.hlsl -Fo build/bin/Debug/shaders/particles/particle_physics.dxil
-dxc.exe -T cs_6_5 -E main shaders/particles/particle_gaussian_raytrace.hlsl -Fo build/bin/Debug/shaders/particles/particle_gaussian_raytrace.dxil
 ```
 
-**Configurations:** Debug (daily dev), Release (performance), DebugPIX (GPU debugging)
-
-**CRITICAL:** Stale .dxil files are the #1 cause of mysterious visual bugs. If you modify .hlsl and get unexpected visuals, rebuild or manually recompile.
-
----
-
-## Configuration System
-
-Hierarchical JSON loading (highest to lowest priority):
-1. `--config=<path>` CLI argument
-2. `PLASMADX_CONFIG` environment variable
-3. `./config.json` in build directory
-4. `configs/user/default.json`
-5. Hardcoded defaults
-
-**Key directories:** `configs/user/`, `configs/scenarios/`, `configs/presets/`, `ml/models/`, `ml/training_data/`
-
----
-
-## Architecture Overview
-
-### Core Systems (`src/`)
-
-| Directory | Purpose |
-|-----------|---------|
-| `core/` | Application, Device, SwapChain, FeatureDetector |
-| `particles/` | ParticleSystem (physics), ParticleRenderer_Gaussian (3D volumetric), ParticleRenderer_Billboard (fallback) |
-| `lighting/` | RTLightingSystem_RayQuery (DXR 1.1), RTXDILightingSystem, VolumetricReSTIRSystem, ProbeGridSystem |
-| `ml/` | AdaptiveQualitySystem (ONNX), PINNPhysicsSystem |
-| `dlss/` | DLSSSystem (Super Resolution) |
-| `debug/` | PIXCaptureHelper |
-| `utils/` | ResourceManager, Logger |
-
-### Key Shaders (`shaders/`)
-
-| Shader | Purpose |
-|--------|---------|
-| `particles/particle_gaussian_raytrace.hlsl` | **PRIMARY RENDERER** - RayQuery API, ray-ellipsoid intersection, Beer-Lambert, Henyey-Greenstein |
-| `particles/particle_physics.hlsl` | GPU physics - black hole gravity, Keplerian dynamics, blackbody emission |
-| `gaussian_common.hlsl` | Core `RayGaussianIntersection()` algorithm |
-| `dxr/generate_particle_aabbs.hlsl` | Procedural primitive AABB generation |
-| `rtxdi/rtxdi_raygen.hlsl` | DXR raygen for weighted reservoir sampling |
-
-### Architecture Principles
-
-1. **Feature Detection First** - Test capabilities before using (RT tier, mesh shaders, ONNX)
-2. **Single Responsibility** - Max ~500 lines per file
-3. **Automatic Fallbacks** - Mesh shader → compute shader, ONNX missing → traditional physics
-4. **Data-Driven Configuration** - Runtime adjustable via JSON/ImGui
-
----
-
-## DXR 1.1 Pipeline
-
-**Why RayQuery API?** Call from any shader stage, no SBT complexity, perfect for procedural primitives.
-
-**Pipeline:** GPU Physics → Generate AABBs → Build BLAS → Build TLAS → RayQuery (volumetric render) → RayQuery (shadow rays) → TraceRay (RTXDI sampling)
-
-**IMPORTANT:** Gaussian renderer reuses TLAS from RTLightingSystem. Do NOT create duplicate BLAS/TLAS.
-
----
-
-## MCP Servers (Autonomous Agents)
-
-PlasmaDX uses Model Context Protocol servers for specialized capabilities. All servers in `agents/`:
-
-### DXR/Rendering Agents
-- **dxr-image-quality-analyst** - LPIPS comparison, visual quality assessment, performance metrics
-- **log-analysis-rag** - PIX capture analysis, buffer dumps, rendering issue diagnosis
-- **path-and-probe** - Probe grid analysis, spherical harmonics debugging
-
-### Blender VFX Generation System
-Autonomous VFX asset generation using OpenAI Agents SDK:
-
-- **blender-vfx-orchestrator** - Main orchestrator coordinating multi-agent VFX workflows
-- **blender-executor** - Executes Blender Python scripts, parses errors
-- **blender-manual** - Searches Blender documentation, tutorials, Python API
-- **blender-librarian** - Budget tracking, playbook management, fix outcomes
-- **script-generator** - Generates Blender scripts from templates, validates parameters
-- **iteration-controller** - Manages iterative improvement loops, session state
-- **asset-evaluator** - ML-powered render quality evaluation (LPIPS, CLIP, structural analysis)
-- **experiment-tracker** - Records baselines, results, suggests experiments
-- **mission-control** - Strategic orchestrator for project-wide decisions
-
-### Using MCP Tools
-
-```python
-# Example: Evaluate render quality
-mcp__asset-evaluator__evaluate_render(image_path="renders/explosion_v3.png")
-
-# Example: Search Blender docs
-mcp__blender-manual__search_nodes(query="volume scatter principled")
-
-# Example: Generate VFX script
-mcp__script-generator__generate_script(effect_type="explosion", parameters={...})
-```
-
----
-
-## Critical Implementation Details
-
-### Root Signature Limitations
-- Root constants: 64 DWORD limit (256 bytes)
-- Use constant buffers for large structures
-
-### Descriptor Heap Management
-ResourceManager maintains central descriptor heap. Always allocate through ResourceManager, never create ad-hoc heaps.
-
-### Buffer Resource States
-Common transition: `UNORDERED_ACCESS (compute write) → UAV Barrier → NON_PIXEL_SHADER_RESOURCE (compute read) → UNORDERED_ACCESS (next pass)`
-
-### When Expanding Constant Buffers
-Update ALL of: struct definition, root signature, upload code, shader cbuffer, manual shader recompile if needed.
-
----
-
-## Known Issues and Workarounds
-
-| Issue | Workaround |
-|-------|------------|
-| **Mesh Shader Descriptor Access (RTX 40-series)** | Auto-fallback to compute shader (no performance loss) |
-| **RTXDI M5 Temporal Accumulation** | Patchwork pattern, temporal instability - Gaussian renderer is primary |
-| **Stale .dxil files** | Rebuild project or manually recompile with dxc |
-| **Froxel System** | DEPRECATED - replaced by NanoVDB, code remains but unused |
-
----
-
-## Debugging Tips
-
-### Shader Issues
-1. **Stale .dxil** - Check timestamps match .hlsl source
-2. **Debug visualization left enabled** - Look for `DebugVisualize*()` calls in shaders
-3. **Root signature mismatch** - Verify cbuffer layouts match C++ and HLSL exactly (causes device removal)
-4. **PIX GPU captures** - Essential for DXR issues, use DebugPIX configuration
-
-### Performance
-1. Check frame timings in ImGui - individual pass times reveal bottlenecks
-2. BLAS/TLAS rebuilds are expensive (2.1ms @ 100K particles)
-3. Ray budget per pixel is critical - even 1 extra ray can cost 20% performance
-
-### PIX Debugging Workflow
-```bash
-# Run with PIX config
-./build/DebugPIX/PlasmaDX-Clean-PIX.exe --config=configs/agents/pix_agent.json
-
-# Buffer dumps for ML training
-./build/Debug/PlasmaDX-Clean.exe --dump-buffers 120
-# Saves to PIX/buffer_dumps/
-```
-
-**F2** captures screenshots to `screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.bmp`
-
----
-
-## PINN ML Physics
-
-**Status:** Python training complete, C++ ONNX integration in progress
-
-```bash
-cd ml
-pip install -r requirements_pinn.txt
-../build/Debug/PlasmaDX-Clean.exe --dump-buffers 120
-python collect_physics_data.py --input ../PIX/buffer_dumps
-python pinn_accretion_disk.py  # ~20 min training
-python test_pinn.py --model models/pinn_accretion_disk.onnx
-```
-
-**Network:** 7D input (r,θ,φ,v_r,v_θ,v_φ,t) → 5×128 hidden (Tanh) → 3D force output
-
----
-
-## Code Style
-
-- Headers: `.h`, Implementation: `.cpp`, Shaders: `.hlsl`, Compiled: `.dxil`
-- Classes/Functions: PascalCase, Variables: camelCase (`m_particleCount`), Constants: UPPER_SNAKE_CASE
-- Max ~500 lines per file
-
----
-
-## Reference Documentation
-
-**Critical:** `MASTER_ROADMAP_V2.md` (authoritative roadmap), `PARTICLE_FLASHING_ROOT_CAUSE_ANALYSIS.md` (visual quality investigation), `BUILD_GUIDE.md`
-
-**In-repo:** `README.md`, `configs/README.md`, `ml/PINN_README.md`, `PIX/docs/QUICK_REFERENCE.md`
-
-**External:** DirectX 12 Programming Guide, DXR 1.1 Spec, ReSTIR Paper (Bitterli et al. 2020), RTXDI Documentation, 3D Gaussian Splatting (Kerbl et al. 2023)
-
-**Always use context7** when you need code generation, setup steps, or library/API documentation.
-
----
-
-## Dependencies
-
-**Required:** DirectX 12 Agility SDK, RTXDI Runtime SDK, Visual Studio 2022 (C++17), Windows SDK 10.0.26100.0+, DXC shader compiler
-
-**Optional:** ONNX Runtime (ML physics), DLSS SDK, PIX for Windows
-
-**Python (ML):** PyTorch >= 2.0.0, ONNX >= 1.14.0, NumPy, Matplotlib, SciPy
-
-**Drivers:** NVIDIA 531.00+ or AMD Adrenalin 23.1.1+ (DXR 1.1 required)
+### Key DXR Concepts
+- **DXR 1.1 RayQuery API** - Inline ray tracing from any shader stage
+- **3D Gaussian Splatting** - Volumetric ellipsoids (not 2D splats)
+- **NVIDIA RTXDI** - Weighted reservoir sampling for lighting
+
+**CRITICAL:** Stale .dxil files are the #1 cause of mysterious visual bugs. Rebuild or manually recompile if shader changes produce unexpected results.
