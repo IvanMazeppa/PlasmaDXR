@@ -39,6 +39,21 @@ _agents_logger = logging.getLogger("openai.agents")
 # Session Manager for deterministic experiment state tracking
 from session_manager import SessionManager
 from agents.agent_output import AgentOutputSchema
+
+# Enforcement Hooks for loop detection and doc query requirements
+from hooks import (
+    EnforcementHooks,
+    EnforcementConfig,
+    LoopDetectedError,
+    DocQueryRequiredError,
+    TurnBudgetExceededError,
+)
+from hooks.enforcement_hooks import (
+    create_research_hooks,
+    create_script_writer_hooks,
+    create_quality_analyst_hooks,
+    create_learning_agent_hooks,
+)
 from agents.extensions import handoff_filters
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
 from openai.types.shared import Reasoning
@@ -792,15 +807,24 @@ Reference: {request.reference_path or "None"}
 
 Research documentation, patterns, and APIs to find the optimal starting approach."""
 
-                research_result = await Runner.run(
-                    self._research_agent,
-                    research_prompt,
-                    context=context,
-                    max_turns=8  # Limit research turns
-                )
-                # Research agent outputs text summary (no output_type for tool-using agents)
-                research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
+                # Create research hooks for Phase 0
+                phase0_research_hooks = create_research_hooks()
+                try:
+                    research_result = await Runner.run(
+                        self._research_agent,
+                        research_prompt,
+                        context=context,
+                        run_hooks=phase0_research_hooks,
+                        max_turns=8  # Limit research turns
+                    )
+                    # Research agent outputs text summary (no output_type for tool-using agents)
+                    research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
+                except LoopDetectedError as e:
+                    # Research got stuck - use partial results
+                    print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
+                    research_text = "Research incomplete due to loop - proceeding with default approach"
                 print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
+                print(f"[Pipeline] Research hooks stats: {phase0_research_hooks.get_stats()}", file=sys.stderr)
 
                 # Store research in session for persistence and handoff to Script Writer
                 session.research_text = research_text
@@ -829,6 +853,13 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 # Session Manager for deterministic experiment state tracking
                 # This is Python-side logic, not LLM - ensures baseline is always recorded
                 session_mgr = SessionManager(session_id=session.session_id)
+
+                # Create enforcement hooks for each agent type
+                # These prevent loops and enforce documentation-first patterns
+                research_hooks = create_research_hooks()
+                script_hooks = create_script_writer_hooks()
+                quality_hooks = create_quality_analyst_hooks()
+                learning_hooks = create_learning_agent_hooks()
 
                 while iteration < request.max_iterations:
                     iteration += 1
@@ -863,14 +894,37 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 
 Generate a complete, validated script. Return the script_path in your output."""
 
-                        # Run Script Writer for iteration 1
-                        script_result = await Runner.run(
-                            self._script_agent_standalone,
-                            script_prompt,
-                            context=context,
-                            max_turns=10
-                        )
-                        script: ScriptOutput = script_result.final_output
+                        # Run Script Writer for iteration 1 with enforcement hooks
+                        try:
+                            script_result = await Runner.run(
+                                self._script_agent_standalone,
+                                script_prompt,
+                                context=context,
+                                run_hooks=script_hooks,
+                                max_turns=10
+                            )
+                            script: ScriptOutput = script_result.final_output
+                        except LoopDetectedError as e:
+                            print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
+                            # Create a minimal script output to continue
+                            script = ScriptOutput(
+                                script_path="",
+                                technique_used="loop_detected",
+                                parameters_set={},
+                                validation_passed=False,
+                                validation_errors=[str(e)]
+                            )
+                        except DocQueryRequiredError as e:
+                            print(f"[Pipeline] ERROR: Script Writer missing doc query: {e}", file=sys.stderr)
+                            # Force research before continuing
+                            script = ScriptOutput(
+                                script_path="",
+                                technique_used="doc_query_missing",
+                                parameters_set={},
+                                validation_passed=False,
+                                validation_errors=[str(e)]
+                            )
+                        print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
                     else:
                         # Track if we successfully modified the script directly
                         direct_modification_success = False
@@ -998,14 +1052,37 @@ Modify the script to address the issues. Do NOT repeat parameter values that hur
 If stuck on same issue, try a DIFFERENT TECHNIQUE from research alternatives.
 Use patterns from library if available."""
 
-                            script_result = await Runner.run(
-                                self._script_agent_standalone,
-                                script_prompt,
-                                context=context,
-                                max_turns=10
-                            )
-                            # Structured output: ScriptOutput
-                            script: ScriptOutput = script_result.final_output
+                            # Create fresh hooks for this iteration (reset counters)
+                            iter_script_hooks = create_script_writer_hooks()
+                            try:
+                                script_result = await Runner.run(
+                                    self._script_agent_standalone,
+                                    script_prompt,
+                                    context=context,
+                                    run_hooks=iter_script_hooks,
+                                    max_turns=10
+                                )
+                                # Structured output: ScriptOutput
+                                script = script_result.final_output
+                            except LoopDetectedError as e:
+                                print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}): {e}", file=sys.stderr)
+                                script = ScriptOutput(
+                                    script_path="",
+                                    technique_used="loop_detected",
+                                    parameters_set={},
+                                    validation_passed=False,
+                                    validation_errors=[str(e)]
+                                )
+                            except DocQueryRequiredError as e:
+                                print(f"[Pipeline] ERROR: Script Writer missing doc query (iter {iteration}): {e}", file=sys.stderr)
+                                script = ScriptOutput(
+                                    script_path="",
+                                    technique_used="doc_query_missing",
+                                    parameters_set={},
+                                    validation_passed=False,
+                                    validation_errors=[str(e)]
+                                )
+                            print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
 
                     # Always capture script_path if available (for subsequent iterations)
                     if script.script_path:
@@ -1046,14 +1123,33 @@ Frames: {request.frame_start}-{request.frame_end}
 
 Run the script and report results."""
 
-                    exec_result = await Runner.run(
-                        self._executor_agent_standalone,
-                        exec_prompt,
-                        context=context,
-                        max_turns=6
-                    )
-                    # Structured output: ExecutionOutput
-                    execution: ExecutionOutput = exec_result.final_output
+                    # Executor doesn't need doc query enforcement, just loop detection
+                    exec_hooks = EnforcementHooks(EnforcementConfig(
+                        max_same_tool_calls=3,
+                        max_turns=6,
+                        require_doc_query_before=[],  # Executor doesn't write code
+                        raise_on_doc_missing=False,
+                    ))
+                    try:
+                        exec_result = await Runner.run(
+                            self._executor_agent_standalone,
+                            exec_prompt,
+                            context=context,
+                            run_hooks=exec_hooks,
+                            max_turns=6
+                        )
+                        # Structured output: ExecutionOutput
+                        execution: ExecutionOutput = exec_result.final_output
+                    except LoopDetectedError as e:
+                        print(f"[Pipeline] WARN: Executor loop: {e}", file=sys.stderr)
+                        execution = ExecutionOutput(
+                            success=False,
+                            render_path=None,
+                            vdb_path=None,
+                            error_message=f"Executor loop detected: {e}",
+                            execution_time_seconds=0.0
+                        )
+                    print(f"[Pipeline] Executor hooks stats: {exec_hooks.get_stats()}", file=sys.stderr)
 
                     if not execution.success or not execution.render_path:
                         print(f"[Pipeline] ERROR: Execution failed: {execution.error_message}", file=sys.stderr)
@@ -1081,14 +1177,28 @@ Quality Threshold: {request.quality_threshold}
 Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
 
-                    eval_result = await Runner.run(
-                        self._quality_agent_standalone,
-                        eval_prompt,
-                        context=context,
-                        max_turns=6
-                    )
-                    # Structured output: QualityOutput
-                    quality = eval_result.final_output
+                    try:
+                        eval_result = await Runner.run(
+                            self._quality_agent_standalone,
+                            eval_prompt,
+                            context=context,
+                            run_hooks=quality_hooks,
+                            max_turns=6
+                        )
+                        # Structured output: QualityOutput
+                        quality = eval_result.final_output
+                    except LoopDetectedError as e:
+                        print(f"[Pipeline] WARN: Quality Analyst loop: {e}", file=sys.stderr)
+                        quality = QualityOutput(
+                            overall_score=0,
+                            passed=False,
+                            primary_issue=f"Quality evaluation loop detected: {e}",
+                            issues=[str(e)],
+                            suggestions=["Simplify evaluation criteria"],
+                            vision_assessment="Unable to complete evaluation due to loop",
+                            reference_similarity=None
+                        )
+                    print(f"[Pipeline] Quality hooks stats: {quality_hooks.get_stats()}", file=sys.stderr)
 
                     previous_score = quality.overall_score
                     print(f"[Pipeline] Score: {quality.overall_score:.1f} | Passed: {quality.passed}", file=sys.stderr)
@@ -1180,15 +1290,28 @@ Primary Issue: {quality.primary_issue or 'None'}
 - If issues are parameter-related, provide parameter_modifications with CONCRETE values
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
-                    learn_result = await Runner.run(
-                        self._learning_agent_standalone,
-                        learn_prompt,
-                        context=context,
-                        max_turns=8
-                    )
-                    # Structured output: LearningOutput
-                    learning = learn_result.final_output
+                    try:
+                        learn_result = await Runner.run(
+                            self._learning_agent_standalone,
+                            learn_prompt,
+                            context=context,
+                            run_hooks=learning_hooks,
+                            max_turns=8
+                        )
+                        # Structured output: LearningOutput
+                        learning = learn_result.final_output
+                    except LoopDetectedError as e:
+                        print(f"[Pipeline] WARN: Learning Agent loop: {e}", file=sys.stderr)
+                        learning = LearningOutput(
+                            experiment_recorded=False,
+                            pattern_extracted=False,
+                            pattern_id=None,
+                            next_action="iterate",  # Default to iterate on loop
+                            suggested_modifications=["Learning agent hit loop - using default action"],
+                            parameter_modifications={}
+                        )
                     print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
+                    print(f"[Pipeline] Learning hooks stats: {learning_hooks.get_stats()}", file=sys.stderr)
 
                     # ====== QUALITY GATE ======
                     if quality.passed or learning.next_action == 'complete':
@@ -1216,14 +1339,21 @@ Same issue persisted {consecutive} times: {session_mgr.issue_tracker.last_primar
 
 DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
 
-                        research_result = await Runner.run(
-                            self._research_agent,
-                            switch_prompt,
-                            context=context,
-                            max_turns=6
-                        )
-                        research_text = str(research_result.final_output) if research_result.final_output else research_text
+                        switch_research_hooks = create_research_hooks()
+                        try:
+                            research_result = await Runner.run(
+                                self._research_agent,
+                                switch_prompt,
+                                context=context,
+                                run_hooks=switch_research_hooks,
+                                max_turns=6
+                            )
+                            research_text = str(research_result.final_output) if research_result.final_output else research_text
+                        except LoopDetectedError as e:
+                            print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
+                            # Keep existing research_text if new research loops
                         print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
+                        print(f"[Pipeline] Switch research hooks stats: {switch_research_hooks.get_stats()}", file=sys.stderr)
                         # Next iteration will get modified feedback to try different approach
 
                 # End of iteration loop
