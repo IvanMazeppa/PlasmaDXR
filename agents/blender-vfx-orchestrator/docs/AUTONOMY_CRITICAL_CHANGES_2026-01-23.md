@@ -267,6 +267,149 @@ An autonomous system must not depend on LLM compliance for core logic.
 
 ---
 
+## Implementation Map (Files & Hotspots)
+This is the exact place each phase likely touches.
+
+| Item | Primary Files | Likely Functions/Sections |
+|------|---------------|---------------------------|
+| QW‑1 Budget checks | `orchestrator.py` | Before Phase 3 evaluation, before API‑expensive tools |
+| QW‑2 Dynamic fallback logs | `tools/dynamic_instructions.py` | `dynamic_*_instructions()` context extraction |
+| QW‑3 Reset stuck state | `orchestrator.py`, `session_manager.py` | Technique switch branch; `IssueTracker` reset |
+| 1 Pre‑iteration research | `orchestrator.py` | Iteration loop before Phase 1 |
+| 2 Escape level sync | `orchestrator.py`, `session_manager.py` | Post‑QualityGateJudge; `get_context_for_agents()` |
+| 3 Pattern extraction enforcement | `orchestrator.py` | Post‑Learning Agent; post‑Quality eval |
+| 4 Reset stuck state | `session_manager.py` | Add `reset_issue_tracker()` helper |
+| 5 Dynamic instruction logging | `tools/dynamic_instructions.py` | Log fallback cause + effect type |
+| 6 Enforce tool wrapper for modifications | `orchestrator.py`, `tools/script_generator_tools.py` | Replace `_modify_script_impl` direct call |
+| 7 Structured research output | `specialized_agents/research_agent.py` (if exists), `orchestrator.py` | Add `AgentOutputSchema` |
+| 8 Iteration‑aware budget check | `orchestrator.py` | Guard before evaluation and possibly before execution |
+| 9 Sub‑agent max_turns | `orchestrator.py` | `create_agent_tool_wrappers()` or tool wrappers |
+| 10 Mechanical self‑learning | `orchestrator.py` | Enforce pattern extraction/outcome reporting |
+| 11 Pattern outcome reporting | `orchestrator.py`, `tools/code_pattern_tools.py` | Call `report_pattern_outcome()` |
+| 12 Reuse extracted patterns | `orchestrator.py` | Use `search_code_patterns`/`apply_pattern_to_script` |
+| 13 Research schema | `models/` (new), `orchestrator.py` | Pydantic output model |
+| 14 Prompt budgets | `specialized_agents/*`, `orchestrator.py` | Align `max_turns` + prompt text |
+| 15 Session compaction | `orchestrator.py`, `session_manager.py` | Summarize + rotate SDK sessions |
+| 16 Cross‑session bootstrap | `session_persistence.py`, `tools/experiment_tracker_tools.py` | Load past patterns/learnings |
+
+---
+
+## Rough Effort Estimates (Engineering Hours)
+These are conservative ranges assuming one developer familiar with the code.
+
+| Phase | Item Count | Estimated Effort |
+|-------|------------|------------------|
+| Phase 0 | 3 items | 2–4 hours |
+| Phase 1 | 10 items | 10–18 hours |
+| Phase 2 | 2 items | 4–6 hours |
+| Phase 3 | 2 items | 4–8 hours |
+| Phase 4 | 2 items | 6–12 hours |
+
+**Total (all phases):** ~26–48 hours
+
+---
+
+## Is Loop‑Based Iteration Optimal?
+Short answer: **not by itself**. A single linear loop is a useful baseline, but it is usually **sub‑optimal** for systems that must demonstrate *self‑improvement* and *emergent behavior*. It tends to:
+- Over‑exploit local tweaks instead of exploring new techniques.
+- Repeat failure patterns because there is no branching or competition.
+- Hide uncertainty (one path gives no comparison set).
+
+The loop should be upgraded into a **search or population** process if autonomy is the goal.
+
+---
+
+## Alternative Workflow Families
+These patterns are better aligned with autonomy and learning. They are **examples**, not prescriptions.
+
+### A) Population‑Based Search (Evolutionary / Swarm)
+Maintain **N parallel candidates** (scripts or parameter sets). Each iteration:
+1. Mutate / crossover candidates.
+2. Evaluate in parallel.
+3. Keep top‑K and discard the rest.
+
+Why it helps: diversity + competition drive exploration and emergent behavior.  
+References: [EvoFlow](https://arxiv.org/pdf/2502.07373), [SwarmAgentic](https://yaoz720.github.io/SwarmAgentic/).
+
+### B) Tree Search (Branching Iterations)
+Branch into multiple candidate modifications and score them (MCTS‑style):
+1. Propose multiple modifications.
+2. Evaluate or predict outcomes.
+3. Expand best branches.
+
+Why it helps: prevents premature convergence and encourages novel paths.  
+Reference: [MC‑NEST](https://arxiv.org/html/2503.19309v1).
+
+### C) Planner–Executor–Verifier (Hierarchical Control)
+Use a **planner** to propose strategy, **executor** to run, and **verifier** to score. The planner is updated based on verifier outcomes.
+
+Why it helps: separates goals from execution; improves stability.  
+Reference: [AgentFlow](https://agentflow.stanford.edu/).
+
+### D) Multi‑Armed Bandit (Exploration vs Exploitation)
+Treat each technique as an arm; update weights based on reward (quality score).
+
+Why it helps: formalizes exploration vs exploitation with low overhead.
+
+---
+
+## Suggested Next‑Step Workflow (Cost‑Constrained)
+If you want autonomy without exploding compute:
+1. **Beam search**: Generate 2–3 candidate modifications each iteration; evaluate top‑K.
+2. **Bandit technique selection**: Use UCB/Thompson over techniques to avoid lock‑in.
+3. **Small population**: Maintain 3–5 concurrent scripts; prune worst each iteration.
+
+This moves you beyond “single‑path looping” while keeping cost in check.
+
+---
+
+## Plugin Snippets (agent-orchestration:multi-agent-optimize)
+**Purpose:** Head‑start templates for integrating the plugin. These are **pseudo‑code** placeholders; replace with the actual plugin API once installed.
+
+### Template A — Optimizer Wrapper (beam + selection)
+```
+# PSEUDO-CODE: replace with actual plugin API
+from <plugin_package> import MultiAgentOptimize
+
+optimizer = MultiAgentOptimize(
+    model="claude-opus-4.5",
+    beam_width=3,
+    keep_top_k=1,
+    candidate_generator=generate_candidate,   # Script Writer + params
+    evaluator=evaluate_candidate,             # Executor + Quality Analyst
+    selector=select_top_k,                     # Deterministic ranking
+)
+
+best = optimizer.run(
+    seed=baseline_candidate,
+    max_rounds=5,
+)
+```
+
+### Template B — Hook‑style integration
+```
+# PSEUDO-CODE: replace with actual plugin hooks/config keys
+plugin: agent-orchestration:multi-agent-optimize
+model: claude-opus-4.5
+beam_width: 3
+keep_top_k: 1
+hooks:
+  generate_candidates: generate_candidate
+  evaluate_candidate: evaluate_candidate
+  select_top_k: select_top_k
+```
+
+### Template C — Candidate generator stub
+```
+def generate_candidate(seed: Candidate, variant_id: int) -> Candidate:
+    # 1) Build prompt (include research + technique guidance)
+    # 2) Call Script Writer (possibly with different seed/technique)
+    # 3) Return Candidate(script_path, params, technique, ...)
+    return candidate
+```
+
+---
+
 ## Bottom Line
 If these phases are not implemented, the system will **look** active but won’t reliably self‑improve.  
 If they are implemented, you get a loop that can *provably* learn, adapt, and escalate — the minimum required for real autonomy.

@@ -130,6 +130,15 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "# volume_samples removed - Cycles uses automatic volume sampling in 5.0",
         "reason": "scene.cycles.volume_samples removed in Blender 5.0. Volume sampling is now automatic."
     },
+    # Compositor node_tree access (Blender 5.0 - CRITICAL)
+    "scene.node_tree": {
+        "correction": "bpy.context.scene.node_tree",
+        "reason": "In Blender 5.0, scene.node_tree is not a direct attribute. Use bpy.context.scene.node_tree after scene.use_nodes=True"
+    },
+    "nt = scene.node_tree": {
+        "correction": "nt = bpy.context.scene.node_tree",
+        "reason": "In Blender 5.0, access compositor node_tree via bpy.context.scene.node_tree"
+    },
 }
 
 # =============================================================================

@@ -202,13 +202,31 @@ bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (
 bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
 ```
 
-### Compositor Setup:
+### Compositor Setup (BLENDER 5.0 - CRITICAL):
+In Blender 5.0, `scene.node_tree` does NOT exist directly. Use this pattern:
 ```python
-scene.use_nodes = True
-if scene.node_tree is not None:
-    nt = scene.node_tree
-    # ... compositor setup
+def setup_compositor(scene):
+    # Enable compositing
+    scene.use_nodes = True
+
+    # BLENDER 5.0: Access compositor via bpy.context or check hasattr
+    # The node_tree is only available after use_nodes=True AND via context
+    import bpy
+    nt = bpy.context.scene.node_tree
+    if nt is None:
+        return  # Skip if not available
+
+    # Clear existing nodes
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+
+    # Add compositor nodes
+    rl = nt.nodes.new("CompositorNodeRLayers")
+    glare = nt.nodes.new("CompositorNodeGlare")
+    comp = nt.nodes.new("CompositorNodeComposite")
+    # ... setup and link nodes
 ```
+NEVER use `scene.node_tree` directly - always use `bpy.context.scene.node_tree`.
 
 ### Object Visibility (cycles_visibility REMOVED):
 ```python
