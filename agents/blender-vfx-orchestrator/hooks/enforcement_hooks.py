@@ -113,6 +113,8 @@ class EnforcementConfig:
 
     Attributes:
         max_same_tool_calls: Maximum times the same tool can be called (default: 3)
+        max_consecutive_same_tool: Maximum consecutive calls to same tool (default: 4)
+        max_exempt_tool_calls: Hard limit even for exempt tools (default: 10)
         max_turns: Maximum turns before warning (default: 10)
         hard_turn_limit: Absolute maximum turns before error (default: 15)
         require_doc_query_before: Tools that require prior doc query
@@ -123,6 +125,8 @@ class EnforcementConfig:
     """
 
     max_same_tool_calls: int = 3
+    max_consecutive_same_tool: int = 4  # Applies to ALL tools, even exempt ones
+    max_exempt_tool_calls: int = 10  # Hard limit even for exempt tools
     max_turns: int = 10
     hard_turn_limit: int = 15
 
@@ -284,20 +288,50 @@ class EnforcementHooks(RunHooks):
             self._doc_query_made = True
             self._log(f"Doc query detected via '{tool_name}'")
 
-        # ENFORCEMENT 1: Loop Detection
-        if tool_name not in self.config.exempt_from_loop_detection:
-            if call_count > self.config.max_same_tool_calls:
-                self._log(
-                    f"LOOP DETECTED: '{tool_name}' called {call_count} times "
-                    f"(limit: {self.config.max_same_tool_calls})",
-                    level="ERROR"
+        # ENFORCEMENT 1: Loop Detection (3 layers)
+        is_exempt = tool_name in self.config.exempt_from_loop_detection
+
+        # Layer 1: Standard limit for non-exempt tools
+        if not is_exempt and call_count > self.config.max_same_tool_calls:
+            self._log(
+                f"LOOP DETECTED: '{tool_name}' called {call_count} times "
+                f"(limit: {self.config.max_same_tool_calls})",
+                level="ERROR"
+            )
+            if self.config.raise_on_loop:
+                raise LoopDetectedError(
+                    tool_name=tool_name,
+                    call_count=call_count,
+                    max_allowed=self.config.max_same_tool_calls
                 )
-                if self.config.raise_on_loop:
-                    raise LoopDetectedError(
-                        tool_name=tool_name,
-                        call_count=call_count,
-                        max_allowed=self.config.max_same_tool_calls
-                    )
+
+        # Layer 2: Hard limit for exempt tools (they still have a ceiling)
+        if is_exempt and call_count > self.config.max_exempt_tool_calls:
+            self._log(
+                f"EXEMPT TOOL LIMIT: '{tool_name}' called {call_count} times "
+                f"(hard limit: {self.config.max_exempt_tool_calls})",
+                level="ERROR"
+            )
+            if self.config.raise_on_loop:
+                raise LoopDetectedError(
+                    tool_name=tool_name,
+                    call_count=call_count,
+                    max_allowed=self.config.max_exempt_tool_calls
+                )
+
+        # Layer 3: Consecutive call limit (applies to ALL tools)
+        if self._consecutive_same_tool > self.config.max_consecutive_same_tool:
+            self._log(
+                f"CONSECUTIVE LOOP: '{tool_name}' called {self._consecutive_same_tool} times "
+                f"in a row (limit: {self.config.max_consecutive_same_tool})",
+                level="ERROR"
+            )
+            if self.config.raise_on_loop:
+                raise LoopDetectedError(
+                    tool_name=tool_name,
+                    call_count=self._consecutive_same_tool,
+                    max_allowed=self.config.max_consecutive_same_tool
+                )
 
         # ENFORCEMENT 2: Doc Query Requirement
         if tool_name in self.config.require_doc_query_before:
@@ -433,6 +467,8 @@ def create_research_hooks() -> EnforcementHooks:
     """
     config = EnforcementConfig(
         max_same_tool_calls=6,  # Allow parallel searches for complex topics
+        max_consecutive_same_tool=4,  # But not 4+ in a row without processing
+        max_exempt_tool_calls=10,
         max_turns=10,
         hard_turn_limit=15,
         require_doc_query_before=[],  # Research agents ARE the doc queries
@@ -451,9 +487,16 @@ def create_script_writer_hooks() -> EnforcementHooks:
     1. It's called after write_script which already required doc query
     2. Modifications are often based on API error feedback, not new research
     3. The API Validator catches any API issues anyway
+
+    Loop detection: Doc search tools are exempt from the normal limit (6),
+    but they still have:
+    - max_consecutive_same_tool=5 (can't call same tool 5+ times in a row)
+    - max_exempt_tool_calls=10 (hard ceiling even for exempt tools)
     """
     config = EnforcementConfig(
-        max_same_tool_calls=6,  # Increased for complex effects
+        max_same_tool_calls=6,  # Standard limit for non-exempt tools
+        max_consecutive_same_tool=5,  # No tool should be called 5+ times in a row
+        max_exempt_tool_calls=10,  # Hard ceiling even for doc searches
         max_turns=12,
         hard_turn_limit=18,
         require_doc_query_before=[
@@ -482,6 +525,8 @@ def create_quality_analyst_hooks() -> EnforcementHooks:
     """
     config = EnforcementConfig(
         max_same_tool_calls=2,  # Evaluation should be decisive
+        max_consecutive_same_tool=2,  # Very strict - QA should not loop
+        max_exempt_tool_calls=4,
         max_turns=6,
         hard_turn_limit=10,
         require_doc_query_before=[],  # QA doesn't write code
@@ -499,6 +544,8 @@ def create_learning_agent_hooks() -> EnforcementHooks:
     """
     config = EnforcementConfig(
         max_same_tool_calls=2,
+        max_consecutive_same_tool=2,  # Very strict
+        max_exempt_tool_calls=4,
         max_turns=5,
         hard_turn_limit=8,
         require_doc_query_before=[],
@@ -519,18 +566,25 @@ if __name__ == "__main__":
 
     # Test default config
     hooks = EnforcementHooks()
-    print(f"Default config: max_same_tool={hooks.config.max_same_tool_calls}")
-    print(f"Doc query tools: {hooks.config.doc_query_tools}")
-    print(f"Require doc before: {hooks.config.require_doc_query_before}")
+    print(f"Default config:")
+    print(f"  max_same_tool_calls={hooks.config.max_same_tool_calls}")
+    print(f"  max_consecutive_same_tool={hooks.config.max_consecutive_same_tool}")
+    print(f"  max_exempt_tool_calls={hooks.config.max_exempt_tool_calls}")
+    print(f"  doc_query_tools: {hooks.config.doc_query_tools}")
 
     # Test specialized configs
+    print("\nSpecialized configs:")
     research_hooks = create_research_hooks()
-    print(f"\nResearch hooks: max_turns={research_hooks.config.max_turns}")
+    print(f"  Research: max_turns={research_hooks.config.max_turns}, consecutive={research_hooks.config.max_consecutive_same_tool}")
 
     script_hooks = create_script_writer_hooks()
-    print(f"Script Writer hooks: require_doc={script_hooks.config.require_doc_query_before}")
+    print(f"  Script Writer: max_same={script_hooks.config.max_same_tool_calls}, consecutive={script_hooks.config.max_consecutive_same_tool}, exempt_limit={script_hooks.config.max_exempt_tool_calls}")
+    print(f"    Exempt tools: {script_hooks.config.exempt_from_loop_detection}")
 
     qa_hooks = create_quality_analyst_hooks()
-    print(f"Quality Analyst hooks: max_same_tool={qa_hooks.config.max_same_tool_calls}")
+    print(f"  Quality Analyst: max_same={qa_hooks.config.max_same_tool_calls}, consecutive={qa_hooks.config.max_consecutive_same_tool}")
+
+    learning_hooks = create_learning_agent_hooks()
+    print(f"  Learning Agent: max_same={learning_hooks.config.max_same_tool_calls}, consecutive={learning_hooks.config.max_consecutive_same_tool}")
 
     print("\nAll tests passed!")

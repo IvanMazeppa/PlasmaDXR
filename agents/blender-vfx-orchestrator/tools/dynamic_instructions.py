@@ -551,3 +551,180 @@ def get_quality_analyst_instructions_static() -> str:
 def get_learning_agent_instructions_static() -> str:
     """Get static Learning Agent instructions."""
     return LEARNING_AGENT_BASE_INSTRUCTIONS
+
+
+# =============================================================================
+# STANDALONE AGENT WRAPPERS (Dynamic + Extra Rules)
+# =============================================================================
+# These wrappers call dynamic instruction functions and append pipeline-specific
+# rules for standalone agents in create_asset_pipeline().
+#
+# SDK Pattern: Agent.instructions can be a callable (ctx, agent) -> str.
+# These functions have that signature and return complete instruction strings.
+
+# Extra instructions for Script Writer standalone agent
+_SCRIPT_WRITER_STANDALONE_EXTRAS = """
+
+## EFFICIENCY REQUIREMENT - CRITICAL
+You have LIMITED turns (max 10). Be efficient:
+1. Call recommend_technique ONCE to pick approach
+2. Call generate_script ONCE to create initial script
+3. Call validate_script ONCE
+4. If validation fails, call modify_script AT MOST 2 times
+5. IMMEDIATELY return ScriptOutput - do NOT keep iterating
+
+Total tool calls should be 4-6, not 10+. Return output even if imperfect.
+
+## SELF-LEARNING NOTE
+Physics rules are NOT hardcoded. They come from the knowledge base (via dynamic instructions).
+If the KB has no rules for this effect type yet, use Blender defaults and observe outcomes.
+The Learning Agent will build knowledge from experiments.
+
+## Output Requirements
+After generating and validating the script, return a structured ScriptOutput with:
+- script_path: Absolute path to the generated/modified script
+- technique_used: The approach/technique used
+- parameters_set: Key parameters configured in the script
+- validation_passed: Whether validation succeeded
+- validation_errors: Any validation errors encountered
+
+IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely."""
+
+
+# Extra instructions for Quality Analyst standalone agent
+_QUALITY_ANALYST_STANDALONE_EXTRAS = """
+
+## SELF-LEARNING: Physics Observation
+When you observe unexpected physical behavior, use observe_physics_anomaly() to record it.
+The Learning Agent will correlate these observations with parameters to build knowledge.
+
+DO NOT assume what physics should look like. OBSERVE and REPORT:
+- What did you expect to see?
+- What did you actually see?
+- What parameters might be causing this?
+
+## Output Requirements (LLM-as-Judge Pattern)
+After evaluating render quality, return a structured QualityOutput with:
+- overall_score: Quality score 0-100
+- passed: Whether quality threshold was met
+- primary_issue: The most critical issue to fix (if any)
+- issues: List of all identified issues
+- suggestions: Specific parameter changes to try
+- vision_assessment: Detailed visual quality description
+- reference_similarity: Similarity to reference image (if available)
+
+Be a STRICT judge - only pass renders that truly meet quality standards."""
+
+
+# Extra instructions for Learning Agent standalone agent
+_LEARNING_AGENT_STANDALONE_EXTRAS = """
+
+## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
+You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
+
+Turn 1: Query knowledge (query_knowledge_base) + check pending observations (get_pending_observations)
+Turn 2: Record experiment (record_experiment_result) - CALL EXACTLY ONCE
+        If pending physics observations: correlate_observation() for each
+Turn 3: Return LearningOutput structured response
+
+RULES:
+- DO NOT make more than 4 tool calls total
+- DO NOT call record_experiment_result more than ONCE (even if it returns an error)
+- DO NOT call start_experiment_session or record_baseline (handled elsewhere)
+- If record_experiment_result fails, STILL return LearningOutput (set experiment_recorded=False)
+- NEVER retry failed tool calls
+
+## SELF-LEARNING: Physics Observations
+Check get_pending_observations() for any physics anomalies the Quality Analyst recorded.
+For each pending observation, use correlate_observation() to record your analysis:
+- What parameters likely caused this behavior?
+- What's the recommended fix?
+- How confident are you? (0.0-1.0)
+
+This builds the knowledge base that dynamic instructions query!
+
+## Output Requirements (RETURN AFTER 1 record_experiment_result call)
+Return a structured LearningOutput with:
+- experiment_recorded: True (you recorded it)
+- pattern_extracted: bool
+- pattern_id: str or None
+- next_action: 'iterate' | 'switch_technique' | 'complete'
+- suggested_modifications: List[str] - TEXT descriptions for context
+- parameter_modifications: Dict[str, Any] - CONCRETE VALUES for direct script modification
+
+CRITICAL FOR parameter_modifications:
+Provide ACTUAL NUMBERS, not descriptions.
+
+## ISSUE → PARAMETER MAPPING (use these as starting points):
+- "overexposed/clipped" → {"blackbody_intensity": 2.0, "emission_strength": 5.0}
+- "too dark" → {"blackbody_intensity": 8.0, "emission_strength": 15.0}
+- "static/no animation" → {"temperature": 3.0, "fuel_amount": 2.0}
+- "no surface detail" → {"noise_strength": 2.0, "flame_vorticity": 0.8}
+- "rises/sinks in space" → {"beta": 0.0, "alpha": 0.0}
+- "no corona/glow" → {"emission_strength": 20.0}
+
+These values are applied DIRECTLY to the Blender script's Config class.
+If quality issues relate to parameters, ALWAYS include concrete fixes in parameter_modifications."""
+
+
+def dynamic_script_writer_standalone_instructions(
+    ctx: "RunContextWrapper[SharedContext]",
+    agent: "Agent[SharedContext]"
+) -> str:
+    """
+    Dynamic instructions for Script Writer standalone agent.
+
+    Combines dynamic KB-injected instructions with pipeline-specific rules.
+    Use as: instructions=dynamic_script_writer_standalone_instructions
+
+    Args:
+        ctx: RunContextWrapper with SharedContext
+        agent: The Agent instance
+
+    Returns:
+        Complete instructions string with KB learnings + standalone rules
+    """
+    base = dynamic_script_writer_instructions(ctx, agent)
+    return base + _SCRIPT_WRITER_STANDALONE_EXTRAS
+
+
+def dynamic_quality_analyst_standalone_instructions(
+    ctx: "RunContextWrapper[SharedContext]",
+    agent: "Agent[SharedContext]"
+) -> str:
+    """
+    Dynamic instructions for Quality Analyst standalone agent.
+
+    Combines dynamic KB-injected instructions with pipeline-specific rules.
+    Use as: instructions=dynamic_quality_analyst_standalone_instructions
+
+    Args:
+        ctx: RunContextWrapper with SharedContext
+        agent: The Agent instance
+
+    Returns:
+        Complete instructions string with KB learnings + standalone rules
+    """
+    base = dynamic_quality_analyst_instructions(ctx, agent)
+    return base + _QUALITY_ANALYST_STANDALONE_EXTRAS
+
+
+def dynamic_learning_agent_standalone_instructions(
+    ctx: "RunContextWrapper[SharedContext]",
+    agent: "Agent[SharedContext]"
+) -> str:
+    """
+    Dynamic instructions for Learning Agent standalone agent.
+
+    Combines dynamic KB-injected instructions with pipeline-specific rules.
+    Use as: instructions=dynamic_learning_agent_standalone_instructions
+
+    Args:
+        ctx: RunContextWrapper with SharedContext
+        agent: The Agent instance
+
+    Returns:
+        Complete instructions string with KB learnings + standalone rules
+    """
+    base = dynamic_learning_agent_instructions(ctx, agent)
+    return base + _LEARNING_AGENT_STANDALONE_EXTRAS

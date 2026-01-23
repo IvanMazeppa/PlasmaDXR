@@ -168,7 +168,7 @@ class CostTrackingHooks(RunHooks):
 | Step | Action | Status |
 |------|--------|--------|
 | B1 | Fix contradictions in dynamic_instructions.py | ✅ Done |
-| B2 | Change `use_dynamic_instructions=True` for standalone agents | Deferred - requires wrapper functions |
+| B2 | Enable dynamic instructions for standalone agents | ✅ Done (wrapper functions created) |
 | B3 | Re-run Research when escape_level >= 2 | Already implemented in orchestrator |
 
 ### Phase C: Cleanup (Technical Debt)

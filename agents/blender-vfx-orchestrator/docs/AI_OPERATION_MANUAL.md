@@ -1,6 +1,6 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 3.3.0
+**Version:** 3.4.0
 **Last Updated:** 2026-01-23
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
@@ -960,6 +960,34 @@ Fields persisted:
 **Related Documents:**
 - [MULTI_AGENT_OPTIMIZATION_ANALYSIS_2026-01-23.md](./MULTI_AGENT_OPTIMIZATION_ANALYSIS_2026-01-23.md) - Full analysis
 - [WORKFLOW_ANALYSIS_2026-01-21.md](./WORKFLOW_ANALYSIS_2026-01-21.md) - Original problem identification
+
+### v3.4.0 (2026-01-23) - Dynamic Instructions Enabled
+
+**Dynamic Instructions Fully Implemented:**
+- Created wrapper functions in `tools/dynamic_instructions.py`:
+  - `dynamic_script_writer_standalone_instructions(ctx, agent)`
+  - `dynamic_quality_analyst_standalone_instructions(ctx, agent)`
+  - `dynamic_learning_agent_standalone_instructions(ctx, agent)`
+- Wrappers call base dynamic functions + append pipeline-specific rules
+- Standalone agents now receive KB-injected learnings at runtime
+
+**How It Works:**
+1. At agent run start, wrapper function is called with `(ctx, agent)`
+2. Base function queries knowledge base for validated learnings (success_rate > 0.7)
+3. Learnings are formatted and injected into instructions
+4. Pipeline-specific rules (efficiency, output format) are appended
+5. Complete instruction string is returned to agent
+
+**Benefits:**
+- Agents receive physics rules that emerged from experimentation
+- No hardcoded rules - knowledge comes from validated experiments
+- Context-aware instructions based on effect type and session state
+
+**Files Modified:**
+- `tools/dynamic_instructions.py` - Added standalone wrapper functions
+- `orchestrator.py` - Standalone agents use dynamic instruction functions
+- `docs/SDK_ENFORCEMENT_PROTOCOL.md` - Added section 8: Dynamic Instructions
+- `docs/DYNAMIC_INSTRUCTIONS_GUIDE_2026-01-23.md` - Updated with implementation details
 
 ---
 

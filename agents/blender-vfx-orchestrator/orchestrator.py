@@ -214,6 +214,13 @@ from tools.knowledge_distillation_tools import (
 # Script modification for direct parameter changes
 from tools.script_generator_tools import _modify_script_impl
 
+# Dynamic instruction wrappers for standalone agents (SDK dynamic instructions pattern)
+from tools.dynamic_instructions import (
+    dynamic_script_writer_standalone_instructions,
+    dynamic_quality_analyst_standalone_instructions,
+    dynamic_learning_agent_standalone_instructions,
+)
+
 from specialized_agents import (
     create_script_writer,
     create_executor,
@@ -1070,35 +1077,11 @@ Use your tools to gather information, then return a summary of your findings inc
         # KB integration happens through tools (query_knowledge_base, get_physics_patterns)
         # No hardcoded physics rules - they emerge from experimentation
         # Phase 3: Input/output guardrails for validation
+        # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_script_writer_instructions + extras
         base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
         self._script_agent_standalone = Agent[SharedContext](
             name="Script Writer",
-            instructions=base_script_writer_standalone.instructions + """
-
-## EFFICIENCY REQUIREMENT - CRITICAL
-You have LIMITED turns (max 10). Be efficient:
-1. Call recommend_technique ONCE to pick approach
-2. Call generate_script ONCE to create initial script
-3. Call validate_script ONCE
-4. If validation fails, call modify_script AT MOST 2 times
-5. IMMEDIATELY return ScriptOutput - do NOT keep iterating
-
-Total tool calls should be 4-6, not 10+. Return output even if imperfect.
-
-## SELF-LEARNING NOTE
-Physics rules are NOT hardcoded. They come from the knowledge base (via dynamic instructions).
-If the KB has no rules for this effect type yet, use Blender defaults and observe outcomes.
-The Learning Agent will build knowledge from experiments.
-
-## Output Requirements
-After generating and validating the script, return a structured ScriptOutput with:
-- script_path: Absolute path to the generated/modified script
-- technique_used: The approach/technique used
-- parameters_set: Key parameters configured in the script
-- validation_passed: Whether validation succeeded
-- validation_errors: Any validation errors encountered
-
-IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely.""",
+            instructions=dynamic_script_writer_standalone_instructions,  # Dynamic!
             model=base_script_writer_standalone.model,
             model_settings=base_script_writer_standalone.model_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
@@ -1130,34 +1113,13 @@ After executing the script, return a structured ExecutionOutput with:
         )
 
         # Quality Analyst with structured output (LLM-as-judge pattern)
-        # NOTE: Using static instructions for standalone agents (can't append to functions)
         # Physics observation happens through tools (observe_physics_anomaly, get_physics_patterns)
         # Phase 3: Input/output guardrails for validation
+        # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_quality_analyst_instructions + extras
         base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
         self._quality_agent_standalone = Agent[SharedContext](
             name="Quality Analyst",
-            instructions=base_quality_standalone.instructions + """
-
-## SELF-LEARNING: Physics Observation
-When you observe unexpected physical behavior, use observe_physics_anomaly() to record it.
-The Learning Agent will correlate these observations with parameters to build knowledge.
-
-DO NOT assume what physics should look like. OBSERVE and REPORT:
-- What did you expect to see?
-- What did you actually see?
-- What parameters might be causing this?
-
-## Output Requirements (LLM-as-Judge Pattern)
-After evaluating render quality, return a structured QualityOutput with:
-- overall_score: Quality score 0-100
-- passed: Whether quality threshold was met
-- primary_issue: The most critical issue to fix (if any)
-- issues: List of all identified issues
-- suggestions: Specific parameter changes to try
-- vision_assessment: Detailed visual quality description
-- reference_similarity: Similarity to reference image (if available)
-
-Be a STRICT judge - only pass renders that truly meet quality standards.""",
+            instructions=dynamic_quality_analyst_standalone_instructions,  # Dynamic!
             model=base_quality_standalone.model,
             model_settings=base_quality_standalone.model_settings,
             output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
@@ -1170,59 +1132,12 @@ Be a STRICT judge - only pass renders that truly meet quality standards.""",
         )
 
         # Learning Agent with structured output
-        # NOTE: Using static instructions for standalone agents (can't append to functions)
         # Core of the self-learning system - processes physics observations via tools
+        # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_learning_agent_instructions + extras
         base_learning_standalone = create_learning_agent(use_dynamic_instructions=False)
         self._learning_agent_standalone = Agent[SharedContext](
             name="Learning Agent",
-            instructions=base_learning_standalone.instructions + """
-
-## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
-You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
-
-Turn 1: Query knowledge (query_knowledge_base) + check pending observations (get_pending_observations)
-Turn 2: Record experiment (record_experiment_result) - CALL EXACTLY ONCE
-        If pending physics observations: correlate_observation() for each
-Turn 3: Return LearningOutput structured response
-
-RULES:
-- DO NOT make more than 4 tool calls total
-- DO NOT call record_experiment_result more than ONCE (even if it returns an error)
-- DO NOT call start_experiment_session or record_baseline (handled elsewhere)
-- If record_experiment_result fails, STILL return LearningOutput (set experiment_recorded=False)
-- NEVER retry failed tool calls
-
-## SELF-LEARNING: Physics Observations
-Check get_pending_observations() for any physics anomalies the Quality Analyst recorded.
-For each pending observation, use correlate_observation() to record your analysis:
-- What parameters likely caused this behavior?
-- What's the recommended fix?
-- How confident are you? (0.0-1.0)
-
-This builds the knowledge base that dynamic instructions query!
-
-## Output Requirements (RETURN AFTER 1 record_experiment_result call)
-Return a structured LearningOutput with:
-- experiment_recorded: True (you recorded it)
-- pattern_extracted: bool
-- pattern_id: str or None
-- next_action: 'iterate' | 'switch_technique' | 'complete'
-- suggested_modifications: List[str] - TEXT descriptions for context
-- parameter_modifications: Dict[str, Any] - CONCRETE VALUES for direct script modification
-
-CRITICAL FOR parameter_modifications:
-Provide ACTUAL NUMBERS, not descriptions.
-
-## ISSUE → PARAMETER MAPPING (use these as starting points):
-- "overexposed/clipped" → {"blackbody_intensity": 2.0, "emission_strength": 5.0}
-- "too dark" → {"blackbody_intensity": 8.0, "emission_strength": 15.0}
-- "static/no animation" → {"temperature": 3.0, "fuel_amount": 2.0}
-- "no surface detail" → {"noise_strength": 2.0, "flame_vorticity": 0.8}
-- "rises/sinks in space" → {"beta": 0.0, "alpha": 0.0}
-- "no corona/glow" → {"emission_strength": 20.0}
-
-These values are applied DIRECTLY to the Blender script's Config class.
-If quality issues relate to parameters, ALWAYS include concrete fixes in parameter_modifications.""",
+            instructions=dynamic_learning_agent_standalone_instructions,  # Dynamic!
             model=base_learning_standalone.model,
             model_settings=base_learning_standalone.model_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),

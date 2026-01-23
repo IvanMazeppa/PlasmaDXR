@@ -173,6 +173,39 @@ result = await Runner.run(agent, "Second message", session=session)  # Remembers
 
 **Key Benefit:** Agents automatically remember previous context without manual history management.
 
+### 8. Dynamic Instructions (Runtime Injection)
+
+```python
+from agents import Agent, RunContextWrapper
+
+def dynamic_instructions(ctx: RunContextWrapper[MyContext], agent: Agent) -> str:
+    """Generate instructions at runtime based on context."""
+    base = "You are a helpful assistant."
+
+    # Inject context-specific rules
+    if ctx.context and hasattr(ctx.context, 'user_name'):
+        base += f"\n\nThe user's name is {ctx.context.user_name}."
+
+    return base
+
+agent = Agent(
+    name="Assistant",
+    instructions=dynamic_instructions,  # Function, not string!
+)
+```
+
+**Key Behaviors:**
+- Function must accept exactly 2 parameters: `(ctx, agent)`
+- Can be sync or async, must return a string
+- Called at the START of each agent run
+- Enables KB-injected learnings, context-aware rules
+
+**Project Implementation (v3.4.0):**
+- Wrapper functions in `tools/dynamic_instructions.py`
+- `dynamic_script_writer_standalone_instructions(ctx, agent)`
+- `dynamic_quality_analyst_standalone_instructions(ctx, agent)`
+- `dynamic_learning_agent_standalone_instructions(ctx, agent)`
+
 ---
 
 ## Enforcement Coverage Gaps (2026-01-23)
