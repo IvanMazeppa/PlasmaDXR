@@ -1,6 +1,6 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 3.2.0
+**Version:** 3.3.0
 **Last Updated:** 2026-01-23
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
@@ -357,15 +357,31 @@ T2 validate_parameter_range (if needed)
 T3 return DocsOutput
 ```
 
-### Contradictions to Resolve (Current Instructions)
-1. "Blender 5.0 only, no compatibility checks" vs "Always use hasattr guards" in `tools/dynamic_instructions.py`.
-2. "Do not use backward compatibility" vs "Use .get() fallback for renamed sockets".
-3. Prompt turn budgets vs `max_turns` in Runner.run (e.g., prompt says max 3 turns, run allows 6-15).
+### Contradictions Resolved (v3.3.0)
 
-Recommendation: Consolidate to a single rule set:
-- Use exact Blender 5.0 APIs.
-- Guard only for None/missing data, not version detection.
-- Align prompt turn budgets with actual `max_turns`.
+The following contradictions were identified and fixed in `tools/dynamic_instructions.py`:
+
+| Issue | Resolution |
+|-------|------------|
+| "No compatibility checks" vs "Always use hasattr()" | Removed generic hasattr() guidance. Use `.get()` only for KNOWN Principled BSDF socket renames. |
+| "No backward compatibility" vs ".get() fallback" | Clarified: `.get()` is for KNOWN API changes (socket renames), not version detection. |
+| Prompt turn budgets vs `max_turns` | Aligned: Prompts specify 3-5 turns, `max_turns` set to 6-8 to allow buffer. |
+
+**Current Blender 5.0 API Guidance:**
+
+```python
+# KNOWN socket renames - use .get() for these specific sockets:
+bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
+bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
+
+# Direct property access (Blender 5.0):
+obj.visible_shadow = False  # Not cycles_visibility.shadow
+
+# Compositor setup:
+scene.use_nodes = True
+if scene.node_tree is not None:  # Guard for None, not version
+    nt = scene.node_tree
+```
 
 ## Standard Workflows
 
@@ -765,6 +781,59 @@ except OutputGuardrailTripwireTriggered as e:
 
 ---
 
+## Issue → Parameter Mapping (Learning Agent)
+
+The Learning Agent must output concrete parameter values in `parameter_modifications`, not text descriptions. Use this mapping table as a starting point:
+
+| Quality Issue | parameter_modifications |
+|---------------|------------------------|
+| "overexposed/clipped/white" | `{"blackbody_intensity": 2.0, "emission_strength": 5.0}` |
+| "too dark/underexposed" | `{"blackbody_intensity": 8.0, "emission_strength": 15.0}` |
+| "static/no animation" | `{"temperature": 3.0, "fuel_amount": 2.0}` |
+| "no surface detail" | `{"noise_strength": 2.0, "flame_vorticity": 0.8}` |
+| "blob/not spherical" | `{"domain_scale": 2.0}` |
+| "rises/sinks in space" | `{"beta": 0.0, "alpha": 0.0}` |
+| "too fast" | `{"time_scale": 0.3, "burning_rate": 0.5}` |
+| "too slow" | `{"time_scale": 2.0, "burning_rate": 2.0}` |
+| "no corona/glow" | `{"emission_strength": 20.0}` |
+| "fuzzy/soft edges" | `{"density": 8.0, "scatter_anisotropy": 0.8}` |
+
+**Parameter Ranges:**
+
+| Category | Parameter | Range | Notes |
+|----------|-----------|-------|-------|
+| Mantaflow | temperature | -10.0 to 10.0 | Flow temperature |
+| Mantaflow | density | 0.0 to 10.0 | Volume density |
+| Mantaflow | fuel_amount | 0.0 to 10.0 | Fuel for fire |
+| Mantaflow | burning_rate | 0.01 to 4.0 | Combustion speed |
+| Mantaflow | flame_smoke | 0.0 to 8.0 | Smoke from flames |
+| Mantaflow | flame_vorticity | 0.0 to 2.0 | Flame turbulence |
+| Mantaflow | beta | -5.0 to 5.0 | Density buoyancy (0.0 for space) |
+| Mantaflow | alpha | -5.0 to 5.0 | Thermal buoyancy (0.0 for space) |
+| Mantaflow | resolution_max | 32 to 512 | Simulation resolution |
+| Shader | blackbody_intensity | 0.0 to 20.0 | Emission brightness |
+| Shader | emission_strength | 0.0 to 100.0 | Glow intensity |
+| Shader | scatter_anisotropy | -1.0 to 1.0 | Scattering direction |
+
+**Usage in LearningOutput:**
+
+```python
+# CORRECT: Concrete values for direct script modification
+LearningOutput(
+    experiment_recorded=True,
+    next_action="iterate",
+    suggested_modifications=["Reduce emission to fix clipping"],
+    parameter_modifications={"blackbody_intensity": 2.0, "emission_strength": 5.0}
+)
+
+# WRONG: Empty or text descriptions
+LearningOutput(
+    parameter_modifications={}  # BAD - Learning Agent should always provide concrete values
+)
+```
+
+---
+
 ## Quality Issue Resolution Guide
 
 ### Issue: "smoke too thin"
@@ -846,6 +915,51 @@ Fields persisted:
 - Complete iteration history
 - Stuck detection state
 - Best results paths
+
+---
+
+## Changelog
+
+### v3.3.0 (2026-01-23) - Multi-Agent Optimization
+
+**Instruction Contradictions Resolved:**
+- Fixed conflicting Blender 5.0 API guidance in `tools/dynamic_instructions.py`
+- Removed generic "always use hasattr()" rule that contradicted "no backwards compatibility"
+- Clarified: use `.get()` ONLY for known Principled BSDF socket renames
+- Consolidated to single coherent rule set
+
+**Issue → Parameter Mapping Added:**
+- Added concrete issue→parameter mapping table to Learning Agent instructions
+- Learning Agent now outputs actual parameter values in `parameter_modifications`
+- Mapping table provides starting values for common quality issues
+- Added parameter ranges reference for Mantaflow and Shader parameters
+
+**Prompt Optimization:**
+- Removed `prompt_with_handoff_instructions()` wrapper from standalone agents
+- Standalone agents (Research, Script Writer, Executor, Quality Analyst, Learning) don't use handoffs
+- Reduces token usage and prompt confusion
+
+**Turn-Limited Agent Wrappers (SDK Compliance):**
+- Replaced `agent.as_tool()` with `function_tool` wrappers that call `Runner.run()` with explicit `max_turns`
+- SDK limitation: `agent.as_tool()` does not accept `max_turns`
+- Solution per SDK docs/tools.md: wrap in custom function_tool
+- Turn limits: Research=4, Script=6, Executor=3, Quality=4, Learning=3, API Validator=3
+- New functions: `create_agent_tool_wrappers()`, `create_research_tool_wrapper()`
+
+**Deprecated Handoff Architecture:**
+- Added deprecation notice to handoff-based agents section in `orchestrator.py`
+- Handoff agents kept only for `resume_session()` backwards compatibility
+- Future: Create `resume_session_pipeline()` to fully remove
+
+**Files Modified:**
+- `tools/dynamic_instructions.py` - Fixed contradictions, added mapping table
+- `orchestrator.py` - Removed handoff wrappers, added mapping, turn-limited wrappers, deprecation notices
+- `specialized_agents/api_validator.py` - Turn-limited `get_api_validator_as_tool()`
+- `docs/AI_OPERATION_MANUAL.md` - This changelog, mapping documentation
+
+**Related Documents:**
+- [MULTI_AGENT_OPTIMIZATION_ANALYSIS_2026-01-23.md](./MULTI_AGENT_OPTIMIZATION_ANALYSIS_2026-01-23.md) - Full analysis
+- [WORKFLOW_ANALYSIS_2026-01-21.md](./WORKFLOW_ANALYSIS_2026-01-21.md) - Original problem identification
 
 ---
 

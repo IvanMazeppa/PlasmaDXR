@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession
+from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
 
 # Enable verbose logging for debugging agent interactions
 # Set AGENTS_DEBUG=1 to enable, or call enable_verbose_stdout_logging() directly
@@ -457,6 +457,137 @@ Decrease level when: 2 consecutive improvements of +5 score
 
 
 # =============================================================================
+# AGENT TOOL WRAPPERS WITH TURN LIMITS
+# =============================================================================
+# SDK Limitation: agent.as_tool() does not accept max_turns.
+# Solution: Create function_tool wrappers that call Runner.run() with explicit limits.
+# Reference: docs/tools.md - "wrapping in a custom tool"
+
+def create_agent_tool_wrappers(
+    research_agent: Agent,
+    script_agent: Agent,
+    executor_agent: Agent,
+    quality_agent: Agent,
+    learning_agent: Agent,
+) -> list:
+    """
+    Create function_tool wrappers for agents with explicit turn limits.
+
+    SDK Pattern: Instead of agent.as_tool(), wrap in @function_tool that calls
+    Runner.run() with max_turns. This enforces turn budgets on sub-agents.
+
+    Turn limits are set based on task complexity:
+    - Research: 4 turns (query docs, analyze, synthesize)
+    - Script: 6 turns (may need iteration on generation)
+    - Executor: 3 turns (execute, parse errors, report)
+    - Quality: 4 turns (evaluate, analyze issues, report)
+    - Learning: 3 turns (record, query knowledge, suggest)
+
+    Returns:
+        List of function_tool wrapped agent callers
+    """
+
+    @function_tool
+    async def research_approach(effect_type: str, description: str) -> str:
+        """Research best approach for VFX effect type. Use at iteration 1 to find
+        optimal technique, parameters, and alternatives. Returns research summary."""
+        result = await Runner.run(
+            research_agent,
+            f"Research approach for {effect_type}: {description}",
+            max_turns=4,
+        )
+        return str(result.final_output)
+
+    @function_tool
+    async def generate_script(
+        effect_type: str,
+        description: str,
+        technique: str,
+        parameters: str = "{}",
+    ) -> str:
+        """Generate or modify Blender Python script for VFX effect. Provide effect_type,
+        description, and technique. Returns script_path, technique_used, parameters."""
+        result = await Runner.run(
+            script_agent,
+            f"Generate {effect_type} script using {technique}. Description: {description}. Parameters: {parameters}",
+            max_turns=6,
+        )
+        return str(result.final_output)
+
+    @function_tool
+    async def execute_script(script_path: str) -> str:
+        """Execute Blender script and render VFX asset. Provide script_path.
+        Returns success, render_path, vdb_path, execution_time."""
+        result = await Runner.run(
+            executor_agent,
+            f"Execute Blender script: {script_path}",
+            max_turns=3,
+        )
+        return str(result.final_output)
+
+    @function_tool
+    async def evaluate_render(render_path: str, effect_type: str) -> str:
+        """Evaluate render quality using vision and metrics. Provide render_path,
+        effect_type. Returns overall_score, passed, issues, suggestions."""
+        result = await Runner.run(
+            quality_agent,
+            f"Evaluate render quality for {effect_type}: {render_path}",
+            max_turns=4,
+        )
+        return str(result.final_output)
+
+    @function_tool
+    async def record_experiment(
+        iteration: int,
+        score: float,
+        issues: str,
+        parameters: str,
+    ) -> str:
+        """Record experiment results and suggest next action. Provide iteration,
+        score, issues, params. Returns next_action, parameter_modifications."""
+        result = await Runner.run(
+            learning_agent,
+            f"Record experiment: iteration={iteration}, score={score}, issues={issues}, parameters={parameters}",
+            max_turns=3,
+        )
+        return str(result.final_output)
+
+    return [
+        research_approach,
+        generate_script,
+        execute_script,
+        evaluate_render,
+        record_experiment,
+    ]
+
+
+def create_research_tool_wrapper(research_agent: Agent):
+    """
+    Create a single research_approach tool wrapper with turn limit.
+
+    Used by lightweight coordinators that only need research capability.
+
+    Args:
+        research_agent: Research Agent instance
+
+    Returns:
+        function_tool wrapped research caller
+    """
+
+    @function_tool
+    async def research_approach(effect_type: str, description: str) -> str:
+        """Research best approach for effect type. Returns research summary."""
+        result = await Runner.run(
+            research_agent,
+            f"Research approach for {effect_type}: {description}",
+            max_turns=4,
+        )
+        return str(result.final_output)
+
+    return research_approach
+
+
+# =============================================================================
 # COORDINATOR AGENT FACTORY
 # =============================================================================
 
@@ -470,9 +601,9 @@ def create_coordinator_agent(
     """
     Create the Coordinator Agent with all sub-agents wrapped as tools.
 
-    SDK Pattern: agent.as_tool() allows calling agents as utility functions
-    while keeping control with the Coordinator. This is the "Manager" pattern
-    from the SDK documentation.
+    SDK Pattern: Uses function_tool wrappers that call Runner.run() with
+    explicit max_turns instead of agent.as_tool() (which doesn't support
+    turn limits). This is the "Manager" pattern from SDK documentation.
 
     Args:
         research_agent: Research Agent instance
@@ -482,49 +613,22 @@ def create_coordinator_agent(
         learning_agent: Learning Agent Agent instance
 
     Returns:
-        Coordinator Agent with all sub-agents as tools
+        Coordinator Agent with all sub-agents as tools (turn-limited)
     """
     from specialized_agents.api_validator import get_api_validator_as_tool
 
-    # Wrap each agent as a tool
-    agent_tools = [
-        research_agent.as_tool(
-            tool_name="research_approach",
-            tool_description=(
-                "Research best approach for VFX effect type. Use at iteration 1 to find "
-                "optimal technique, parameters, and alternatives. Returns research summary."
-            ),
-        ),
-        get_api_validator_as_tool(),  # Already provides as_tool wrapper
-        script_agent.as_tool(
-            tool_name="generate_script",
-            tool_description=(
-                "Generate or modify Blender Python script for VFX effect. Provide effect_type, "
-                "description, and technique. Returns script_path, technique_used, parameters."
-            ),
-        ),
-        executor_agent.as_tool(
-            tool_name="execute_script",
-            tool_description=(
-                "Execute Blender script and render VFX asset. Provide script_path. "
-                "Returns success, render_path, vdb_path, execution_time."
-            ),
-        ),
-        quality_agent.as_tool(
-            tool_name="evaluate_render",
-            tool_description=(
-                "Evaluate render quality using vision and metrics. Provide render_path, "
-                "effect_type. Returns overall_score, passed, issues, suggestions."
-            ),
-        ),
-        learning_agent.as_tool(
-            tool_name="record_experiment",
-            tool_description=(
-                "Record experiment results and suggest next action. Provide iteration, "
-                "score, issues, params. Returns next_action, parameter_modifications."
-            ),
-        ),
-    ]
+    # Create turn-limited agent tool wrappers (SDK best practice)
+    # This replaces agent.as_tool() which cannot enforce turn limits
+    agent_tools = create_agent_tool_wrappers(
+        research_agent=research_agent,
+        script_agent=script_agent,
+        executor_agent=executor_agent,
+        quality_agent=quality_agent,
+        learning_agent=learning_agent,
+    )
+
+    # API validator already provides its own as_tool wrapper
+    agent_tools.append(get_api_validator_as_tool())
 
     # Also include direct research tools for the Coordinator to use
     research_tools = [
@@ -555,7 +659,13 @@ def create_technique_selection_coordinator(
     This is called at iteration 1 to select the initial technique.
     Uses TechniqueDecision structured output.
     Phase 3: Output guardrail validates TechniqueDecision structure.
+
+    Uses turn-limited research_approach wrapper (max_turns=4) instead of
+    agent.as_tool() which cannot enforce turn limits.
     """
+    # Create turn-limited research wrapper
+    research_tool = create_research_tool_wrapper(research_agent)
+
     return Agent[SharedContext](
         name="Technique Selector",
         instructions="""You select the best technique for VFX effect generation.
@@ -578,10 +688,7 @@ Return a TechniqueDecision with:
         model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
         model_settings=ModelSettings(verbosity="low"),
         tools=[
-            research_agent.as_tool(
-                tool_name="research_approach",
-                tool_description="Research best approach for effect type",
-            ),
+            research_tool,  # Turn-limited wrapper (max_turns=4)
             semantic_search_blender_docs,
             search_code_patterns,
             list_patterns_by_effect,
@@ -784,6 +891,15 @@ class BlenderVFXOrchestrator:
             tools=orchestrator_tools,
         )
 
+        # =============================================================
+        # DEPRECATED: Handoff-based agents (Steps 2-4)
+        # =============================================================
+        # These handoff-based agents are DEPRECATED as of v3.3.0.
+        # Use create_asset_pipeline() for new asset generation.
+        #
+        # Kept ONLY for resume_session() backwards compatibility.
+        # TODO: Create resume_session_pipeline() and remove this section.
+        #
         # Step 2: Create sub-agents with handoffs back to the orchestrator
         # This allows the iteration loop to continue after each specialist finishes
         # IMPORTANT: Use remove_all_tools filter to strip reasoning items from history,
@@ -2120,6 +2236,9 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
     async def resume_session(self, session_id: str) -> SessionState:
         """
         Resume a paused or incomplete session.
+
+        NOTE: This method uses the deprecated handoff-based orchestrator.
+        TODO: Migrate to resume_session_pipeline() using code-based orchestration.
 
         Args:
             session_id: ID of session to resume

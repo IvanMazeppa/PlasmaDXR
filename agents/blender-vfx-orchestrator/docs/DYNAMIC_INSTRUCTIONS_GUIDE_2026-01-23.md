@@ -93,3 +93,65 @@ agent = Agent(name="Code Reviewer", instructions=instructions, mcp_servers=[serv
 ```
 Use this only if you already have a reliable in-process MCP server available to the orchestration layer.
 
+---
+
+## Recent Changes (2026-01-23)
+
+### Contradictions Resolved in `tools/dynamic_instructions.py`
+
+The base instructions contained contradictory Blender 5.0 API guidance:
+
+| Before | After |
+|--------|-------|
+| "FORBIDDEN: hasattr() for version detection" | Removed generic prohibition |
+| "GENERAL RULE: Always use hasattr() guards" | Removed - contradicted above |
+| Conflicting guidance on `.get()` fallbacks | Clarified for KNOWN socket renames only |
+
+**Current Guidance (SCRIPT_WRITER_BASE_INSTRUCTIONS):**
+
+```python
+## KNOWN BLENDER 5.0 API CHANGES
+# Handle these SPECIFIC changes (verified for Blender 5.0):
+
+# Principled BSDF Socket Renames - use .get() for these:
+bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
+
+# Direct property access (Blender 5.0):
+obj.visible_shadow = False
+
+# Compositor setup - guard for None, not version:
+if scene.node_tree is not None:
+    nt = scene.node_tree
+```
+
+### Issue → Parameter Mapping Added to Learning Agent
+
+`LEARNING_AGENT_BASE_INSTRUCTIONS` now includes a mapping table:
+
+| Issue | parameter_modifications |
+|-------|------------------------|
+| "overexposed/clipped" | `{"blackbody_intensity": 2.0, "emission_strength": 5.0}` |
+| "too dark" | `{"blackbody_intensity": 8.0, "emission_strength": 15.0}` |
+| "static/no animation" | `{"temperature": 3.0, "fuel_amount": 2.0}` |
+| ... | (see full table in `tools/dynamic_instructions.py`) |
+
+This ensures the Learning Agent outputs **concrete parameter values**, not empty `{}`.
+
+### Standalone Agents Use Static Instructions (Current State)
+
+The orchestrator's standalone agents (`_research_agent`, `_script_writer_standalone`, etc.) currently use static base instructions with appended text:
+
+```python
+# Current pattern (v3.3.0):
+instructions=base_script_writer_standalone.instructions + """
+## ADDITIONAL RULES
+...
+"""
+```
+
+**Why not dynamic?** Appending text to a function requires a wrapper function. For now, the issue→parameter mapping is included in BOTH:
+1. `LEARNING_AGENT_BASE_INSTRUCTIONS` (for static use)
+2. The orchestrator's standalone Learning Agent instructions (appended text)
+
+**Future:** Create wrapper functions to enable full dynamic instructions for standalone agents.
+

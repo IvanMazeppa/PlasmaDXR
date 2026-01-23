@@ -491,15 +491,17 @@ def create_api_validator(custom_instructions: str = "") -> Agent:
 # AS_TOOL WRAPPER FOR ORCHESTRATOR INTEGRATION
 # =============================================================================
 
-def get_api_validator_as_tool() -> Any:
+def get_api_validator_as_tool():
     """
     Get the API Validator agent wrapped as a tool for orchestrator use.
 
-    SDK Pattern: agent.as_tool() allows calling this agent as a function
-    tool from another agent, with control returning to the caller.
+    SDK Pattern: Uses function_tool wrapper with Runner.run() and explicit
+    max_turns instead of agent.as_tool() which cannot enforce turn limits.
+
+    Turn limit: 3 (validate code, report results)
 
     Returns:
-        Tool instance that can be added to another agent's tools list
+        function_tool instance that can be added to another agent's tools list
 
     Usage:
         orchestrator = Agent(
@@ -509,15 +511,23 @@ def get_api_validator_as_tool() -> Any:
             ]
         )
     """
+    from agents import Runner
+
     validator = create_api_validator()
-    return validator.as_tool(
-        tool_name="validate_blender_api",
-        tool_description=(
-            "Validate Blender Python code against Blender 5.0 API documentation. "
-            "Call BEFORE writing or executing scripts to catch API errors. "
-            "Returns validation result with specific corrections for any invalid APIs."
-        ),
-    )
+
+    @function_tool
+    async def validate_blender_api(code: str) -> str:
+        """Validate Blender Python code against Blender 5.0 API documentation.
+        Call BEFORE writing or executing scripts to catch API errors.
+        Returns validation result with specific corrections for any invalid APIs."""
+        result = await Runner.run(
+            validator,
+            f"Validate this Blender Python code:\n\n```python\n{code}\n```",
+            max_turns=3,
+        )
+        return str(result.final_output)
+
+    return validate_blender_api
 
 
 # =============================================================================

@@ -1,7 +1,7 @@
 # Multi-Agent Optimization Analysis
 
 **Date:** 2026-01-23
-**Status:** Analysis Complete, Implementation In Progress
+**Status:** Phase A, B1-B2, and C Complete
 **Context:** SDK compliance review and optimization opportunities for blender-vfx-orchestrator
 
 ---
@@ -175,9 +175,9 @@ class CostTrackingHooks(RunHooks):
 
 | Step | Action | Status |
 |------|--------|--------|
-| C1 | Remove deprecated handoff-based agents from initialize() | Pending |
+| C1 | Remove deprecated handoff-based agents from initialize() | ✅ Deprecation notice added (kept for resume_session) |
 | C2 | Remove prompt_with_handoff_instructions() from standalone agents | ✅ Done |
-| C3 | Wrap as_tool() agents with custom function_tools for turn limits | Pending |
+| C3 | Wrap as_tool() agents with custom function_tools for turn limits | ✅ Done |
 
 ---
 
@@ -190,6 +190,146 @@ class CostTrackingHooks(RunHooks):
 | Guardrails | https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md |
 | Sessions | https://github.com/openai/openai-agents-python/blob/main/docs/sessions/index.md |
 | RunHooks | https://github.com/openai/openai-agents-python/blob/main/docs/run_hooks.md |
+
+---
+
+## Work Completed (2026-01-23)
+
+### 1. Fixed Instruction Contradictions in `tools/dynamic_instructions.py`
+
+**Before:**
+```python
+## CRITICAL: BLENDER 5.0 ONLY - NO BACKWARDS COMPATIBILITY
+**FORBIDDEN PATTERNS - NEVER USE:**
+- `if hasattr(obj, 'old_attr'):` for version detection
+...
+### GENERAL RULE: Always use hasattr() guards
+For ANY property that might be version-dependent, use hasattr:
+```
+
+**After:**
+```python
+## CRITICAL: BLENDER 5.0 ONLY
+**QUERY DOCS FIRST** if unsure about any API. Use exact Blender 5.0 property names.
+
+## KNOWN BLENDER 5.0 API CHANGES
+Handle these SPECIFIC changes (verified for Blender 5.0):
+### Principled BSDF Socket Renames:
+# Use .get() for these SPECIFIC renamed sockets:
+bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = ...
+```
+
+**Impact:** Removed contradictory guidance. Now clear: use `.get()` for KNOWN socket renames only.
+
+---
+
+### 2. Added Issue→Parameter Mapping to Learning Agent
+
+**Added to `LEARNING_AGENT_BASE_INSTRUCTIONS`:**
+
+```markdown
+## ISSUE → PARAMETER MAPPING
+| Issue | parameter_modifications |
+| "overexposed/clipped" | {"blackbody_intensity": 2.0, "emission_strength": 5.0} |
+| "too dark" | {"blackbody_intensity": 8.0, "emission_strength": 15.0} |
+| "static/no animation" | {"temperature": 3.0, "fuel_amount": 2.0} |
+| ... |
+
+CRITICAL: Always populate parameter_modifications with CONCRETE values.
+```
+
+**Also added to orchestrator.py standalone Learning Agent instructions** (lines 1097-1109).
+
+**Impact:** Learning Agent now has explicit guidance on what parameter values to output for common quality issues.
+
+---
+
+### 3. Removed `prompt_with_handoff_instructions()` from Standalone Agents
+
+**Before:**
+```python
+self._research_agent = Agent[SharedContext](
+    instructions=prompt_with_handoff_instructions("""You are a Blender..."""),
+    ...
+)
+```
+
+**After:**
+```python
+self._research_agent = Agent[SharedContext](
+    instructions="""You are a Blender...""",
+    ...
+)
+```
+
+**Agents fixed:**
+- `_research_agent` (line 926)
+- `_script_writer_standalone` (line 960)
+- `_executor_agent_standalone` (line 1001)
+- `_quality_analyst_standalone` (line 1023)
+- `_learning_agent_standalone` (line 1062)
+
+**Also removed unused import:**
+```python
+# Removed:
+from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
+```
+
+**Impact:** Reduced token usage, removed confusing handoff prefix from agents that don't use handoffs.
+
+---
+
+### 4. Fixed Syntax Issues from Wrapper Removal
+
+When removing `prompt_with_handoff_instructions()`, extra `)` characters remained:
+
+**Before:** `...pitfalls to avoid"""),`
+**After:** `...pitfalls to avoid""",`
+
+Fixed in 5 locations (lines 939, 985, 1009, 1044, 1109).
+
+---
+
+### 5. Replaced `agent.as_tool()` with Turn-Limited Wrappers (C3)
+
+**Problem:** SDK's `agent.as_tool()` does not accept `max_turns`, allowing sub-agents to run indefinitely.
+
+**Solution:** Created `function_tool` wrappers that call `Runner.run()` with explicit turn limits.
+
+**Files Modified:**
+
+1. **orchestrator.py:**
+   - Added `create_agent_tool_wrappers()` - creates 5 turn-limited wrappers
+   - Added `create_research_tool_wrapper()` - single research tool wrapper
+   - Updated `create_coordinator_agent()` to use wrappers
+   - Updated `create_technique_selection_coordinator()` to use wrapper
+
+2. **specialized_agents/api_validator.py:**
+   - Updated `get_api_validator_as_tool()` to use function_tool wrapper
+
+**Turn Limits Applied:**
+
+| Agent | max_turns | Rationale |
+|-------|-----------|-----------|
+| Research | 4 | Query docs, analyze, synthesize |
+| Script Writer | 6 | May need iteration on generation |
+| Executor | 3 | Execute, parse errors, report |
+| Quality Analyst | 4 | Evaluate, analyze issues, report |
+| Learning | 3 | Record, query knowledge, suggest |
+| API Validator | 3 | Validate code, report results |
+
+**Pattern Used (per SDK docs/tools.md):**
+```python
+@function_tool
+async def research_approach(effect_type: str, description: str) -> str:
+    """Research best approach for effect type..."""
+    result = await Runner.run(
+        research_agent,
+        f"Research approach for {effect_type}: {description}",
+        max_turns=4,  # Enforced!
+    )
+    return str(result.final_output)
+```
 
 ---
 
