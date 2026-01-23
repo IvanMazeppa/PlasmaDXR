@@ -723,6 +723,68 @@ Recovery is automatic when calling `resume_session(session_id)`.
 
 ---
 
+## Audit Findings (2026-01-23)
+
+This section captures **spec-to-implementation gaps** and high-impact risks identified in the current codebase.
+
+### Critical / High
+
+1. **Mixed orchestration models still active**
+   - Spec says **agents-as-tools** only, but `orchestrator.py` still builds a **handoff-based** orchestrator for `create_asset()` (deprecated but callable).
+   - **Impact:** Guardrails are only guaranteed on the first/last agent in a run; in a handoff chain, mid-agent guardrails may not fire.
+   - **Recommendation:** Hard-disable `create_asset()` in production or remove the handoff pipeline entirely.
+
+2. **Self-learning dynamic instructions are disabled in the pipeline**
+   - All standalone agents are created with `use_dynamic_instructions=False`, so knowledge-base rules never get injected during the main pipeline.
+   - **Impact:** The "self-learning" strategies exist in tooling but are not applied to the core runs.
+   - **Recommendation:** Wrap dynamic instruction functions to append static text instead of disabling them.
+
+3. **Output schema mismatches cause silent data loss**
+   - `ScriptOutput` defines `parameters_set`, but the pipeline writes/reads `key_parameters`.
+   - `ExecutionOutput` defines `execution_time_seconds`, but the pipeline checks `execution.execution_time`.
+   - **Impact:** Parameter tracking and timing data are dropped or incorrect, which degrades learning and diagnostics.
+
+### Medium
+
+4. **Non-handoff agents still receive handoff prompt injection**
+   - Standalone agents are wrapped with `prompt_with_handoff_instructions(...)` even when they have no handoffs.
+   - **Impact:** Extra tokens + potential confusion in agent behavior.
+   - **Recommendation:** Only add handoff prompts to agents that can actually handoff.
+
+5. **Doc-query enforcement can be satisfied by non-doc tools**
+   - RunHooks treat `search_code_patterns` as a "doc query", which can allow code generation without authoritative API validation.
+   - **Recommendation:** Require at least one **documentation** tool (e.g., `semantic_search_blender_docs` or `search_blender_api_by_intent`) before `write_script`.
+
+### Low / Informational
+
+6. **Turn budget enforcement is not wired**
+   - `TurnBudgetExceededError` is defined but `check_turn_budget()` is never invoked.
+   - **Impact:** Turn budget is effectively advisory only.
+
+7. **Session growth risk**
+   - A single `SQLiteSession` is shared across all agents and iterations with no summarization.
+   - **Impact:** Context can grow large and increase token cost over long runs.
+
+### Evidence Snippets
+
+```python
+# orchestrator.py (standalone agents)
+base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
+base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
+base_learning_standalone = create_learning_agent(use_dynamic_instructions=False)
+```
+
+```python
+# orchestrator.py (schema mismatch)
+script = ScriptOutput(
+    script_path=...,
+    technique_used=...,
+    key_parameters=learning.parameter_modifications,  # field does not exist on ScriptOutput
+)
+```
+
+---
+
 ## Version History
 
 | Version | Date | Changes |

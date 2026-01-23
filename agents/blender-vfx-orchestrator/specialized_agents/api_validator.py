@@ -132,6 +132,34 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
     },
 }
 
+# =============================================================================
+# BACKWARDS-COMPATIBILITY ANTI-PATTERNS (Flag these as warnings)
+# =============================================================================
+
+# Patterns that indicate version-compatibility code (we only support Blender 5.0)
+VERSION_COMPAT_ANTIPATTERNS = {
+    r"if\s+hasattr\s*\([^,]+,\s*['\"](\w+)['\"]\s*\)": {
+        "severity": "warning",
+        "reason": "hasattr() for version detection - use exact Blender 5.0 API instead"
+    },
+    r"set_attr_if_exists": {
+        "severity": "warning",
+        "reason": "Version compatibility helper - use exact Blender 5.0 API instead"
+    },
+    r"#.*[Bb]lender\s+[34]\.[x\d]": {
+        "severity": "warning",
+        "reason": "Reference to old Blender version in comments - we only support 5.0"
+    },
+    r"if\s+not\s+set_\w+\s*\([^)]+\)\s*:\s*set_": {
+        "severity": "warning",
+        "reason": "Fallback chain pattern - use exact Blender 5.0 API instead"
+    },
+    r"try:\s*\n\s*\w+\.\w+\s*=.*\nexcept\s+AttributeError": {
+        "severity": "warning",
+        "reason": "Try/except for API detection - use exact Blender 5.0 API instead"
+    },
+}
+
 # Known valid Blender 5.0 API patterns (don't warn about these)
 KNOWN_VALID_5_0_PATTERNS = [
     r"bpy\.types\.FluidDomainSettings\.\w+",
@@ -537,20 +565,33 @@ async def validate_code_api(code: str) -> CodeValidationResult:
 
         validations.append(validation)
 
+    # Check for version compatibility anti-patterns
+    version_compat_warnings = []
+    for pattern, info in VERSION_COMPAT_ANTIPATTERNS.items():
+        if re.search(pattern, code, re.MULTILINE):
+            version_compat_warnings.append(f"[{info['severity'].upper()}] {info['reason']}")
+
     valid_count = sum(1 for v in validations if v.is_valid)
     invalid_count = len(validations) - valid_count
 
+    # Add version compat warnings to summary
+    summary_parts = []
+    if validations:
+        summary_parts.append(f"Validated {len(validations)} API calls: {valid_count} valid, {invalid_count} invalid")
+    else:
+        summary_parts.append("No API calls found to validate")
+
+    if version_compat_warnings:
+        summary_parts.append(f"VERSION COMPAT WARNINGS: {'; '.join(version_compat_warnings[:3])}")
+
     return CodeValidationResult(
-        is_valid=(invalid_count == 0),
+        is_valid=(invalid_count == 0 and len(version_compat_warnings) == 0),
         total_calls_checked=len(validations),
         valid_calls=valid_count,
         invalid_calls=invalid_count,
         validations=validations,
         corrections_needed=corrections_needed,
-        summary=(
-            f"Validated {len(validations)} API calls: {valid_count} valid, {invalid_count} invalid"
-            if validations else "No API calls found to validate"
-        )
+        summary=" | ".join(summary_parts)
     )
 
 

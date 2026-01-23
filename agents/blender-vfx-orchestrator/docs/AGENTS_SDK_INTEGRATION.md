@@ -331,6 +331,48 @@ result = requests.get(url)  # Bad - use httpx
 
 ---
 
+## SDK Compliance Findings (2026-01-23)
+
+These items are **actionable gaps** between current usage and the SDK's documented behaviors.
+
+### 1. Guardrails coverage in handoff flows
+- **SDK behavior:** Input guardrails run **only for the first agent**, and output guardrails run **only for the last agent** in a handoff chain.
+- **Impact:** If you keep the deprecated handoff pipeline, sub-agents will **not** get their guardrails.
+- **Recommendation:** Prefer the code-based pipeline (standalone `Runner.run()` per agent). If a handoff path remains, explicitly re-run sub-agents as standalone runs when guardrail enforcement is required.
+  - **Source:** Agents SDK `docs/guardrails.md`
+
+### 2. Tool guardrails apply only to function tools
+- **SDK behavior:** Tool guardrails run only for `@function_tool` tools.
+- **Impact:** Guardrails **will not** apply to `agent.as_tool()` or hosted tools.
+- **Recommendation:** Use RunHooks for cross-tool enforcement, and add tool guardrails only where applicable.
+
+### 3. `agent.as_tool()` cannot set `max_turns`
+- **SDK behavior:** `agent.as_tool()` does not accept `max_turns`. The SDK recommends a custom tool that calls `Runner.run()` if you need a specific turn budget.
+- **Recommendation:** Wrap agent tools when turn limits matter:
+  - **Source:** Agents SDK `docs/tools.md`
+
+```python
+@function_tool
+async def run_quality_agent(render_path: str) -> str:
+    result = await Runner.run(
+        quality_agent,
+        f"Evaluate {render_path}",
+        max_turns=4
+    )
+    return result.final_output
+```
+
+### 4. Handoff prompt injection should be scoped
+- **SDK behavior:** The handoff prompt prefix is recommended for **agents that actually hand off**.
+- **Impact:** Using `prompt_with_handoff_instructions()` on non-handoff agents adds noise.
+- **Recommendation:** Use the prefix only on agents with `handoffs=[...]`.
+
+### 5. Runner.run uses `hooks=...`
+- **SDK behavior:** The `Runner.run(...)` signature includes `hooks` for RunHooks enforcement.
+- **Recommendation:** Keep all enforcement hooks wired via `hooks=...` (not `run_hooks=`) to match SDK API.
+
+---
+
 ## Testing Tools
 
 Test tools directly by calling `_impl` functions:

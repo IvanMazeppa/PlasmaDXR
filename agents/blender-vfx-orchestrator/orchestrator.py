@@ -1259,7 +1259,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                         metadata={
                             "phase": "research",
                             "effect_type": request.effect_type.value,
-                            "iteration": 0,
+                            "iteration": "0",
                         }
                     ):
                         research_result = await Runner.run(
@@ -1440,8 +1440,8 @@ Generate a complete, validated script using the selected technique. Return the s
                                 metadata={
                                     "phase": "script_writer",
                                     "effect_type": request.effect_type.value,
-                                    "iteration": iteration,
-                                    "is_initial": True,
+                                    "iteration": str(iteration),
+                                    "is_initial": "true",
                                 }
                             ):
                                 script_result = await Runner.run(
@@ -1450,7 +1450,7 @@ Generate a complete, validated script using the selected technique. Return the s
                                     context=context,
                                     session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                     hooks=script_hooks,
-                                    max_turns=10
+                                    max_turns=15
                                 )
                             script: ScriptOutput = script_result.final_output
                         except LoopDetectedError as e:
@@ -1552,7 +1552,7 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                     metadata={
                                         "phase": "modification_strategy",
                                         "effect_type": request.effect_type.value,
-                                        "iteration": iteration,
+                                        "iteration": str(iteration),
                                         "coordinator": "modification",
                                     }
                                 ):
@@ -1690,8 +1690,8 @@ Use patterns from library if available."""
                                     metadata={
                                         "phase": "script_writer",
                                         "effect_type": request.effect_type.value,
-                                        "iteration": iteration,
-                                        "is_modification": True,
+                                        "iteration": str(iteration),
+                                        "is_modification": "true",
                                         "previous_score": previous_score,
                                     }
                                 ):
@@ -1701,7 +1701,7 @@ Use patterns from library if available."""
                                         context=context,
                                         session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                         hooks=iter_script_hooks,
-                                        max_turns=10
+                                        max_turns=15
                                     )
                                 # Structured output: ScriptOutput
                                 script = script_result.final_output
@@ -1832,7 +1832,7 @@ Run the script and report results."""
                             metadata={
                                 "phase": "executor",
                                 "effect_type": request.effect_type.value,
-                                "iteration": iteration,
+                                "iteration": str(iteration),
                                 "script_path": script.script_path,
                             }
                         ):
@@ -1889,7 +1889,7 @@ Provide detailed feedback for improvement."""
                             metadata={
                                 "phase": "quality_analyst",
                                 "effect_type": request.effect_type.value,
-                                "iteration": iteration,
+                                "iteration": str(iteration),
                                 "render_path": execution.render_path,
                             }
                         ):
@@ -2012,7 +2012,7 @@ Primary Issue: {quality.primary_issue or 'None'}
                             metadata={
                                 "phase": "learning_agent",
                                 "effect_type": request.effect_type.value,
-                                "iteration": iteration,
+                                "iteration": str(iteration),
                                 "score": quality.overall_score,
                                 "passed": quality.passed,
                                 "primary_issue": quality.primary_issue,
@@ -2076,7 +2076,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                             metadata={
                                 "phase": "quality_gate",
                                 "effect_type": request.effect_type.value,
-                                "iteration": iteration,
+                                "iteration": str(iteration),
                                 "coordinator": "quality_gate",
                                 "score": quality.overall_score,
                             }
@@ -2142,7 +2142,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 metadata={
                                     "phase": "technique_switch",
                                     "effect_type": request.effect_type.value,
-                                    "iteration": iteration,
+                                    "iteration": str(iteration),
                                     "consecutive_same_issue": consecutive,
                                     "techniques_tried": list(session_mgr.techniques_tried),
                                 }

@@ -287,6 +287,86 @@ if applied_pattern_id:
 
 ---
 
+## Instruction Style Optimization (Machine-First Prompts)
+
+The current prompts are prose-heavy and occasionally contradictory. The agents behave more reliably with compact, machine-optimized instruction blocks that make tool order, stopping conditions, and output schema explicit.
+
+### Prompt Design Rules
+- Short imperative lines (no narrative).
+- Explicit tool order (T1/T2/T3).
+- Explicit stop conditions (max turns or max tool calls).
+- Schema-first output spec (fields, types, required/optional).
+- No contradictory rules (e.g., "never use hasattr" vs "always use hasattr").
+
+### Template: Script Writer (Machine-Optimized)
+```
+ROLE: Generate or modify Blender Python code.
+INPUTS: effect_type, description, research_summary, technique, constraints.
+TOOLS: semantic_search_blender_docs, search_blender_api_by_intent, write_script, validate_script, modify_script.
+TURNS: MAX 5.
+
+T1: If API uncertain -> one doc search.
+T2: Write complete code (no templates).
+T3: write_script(code, output_name, technique_name).
+T4: validate_script(script_path).
+T5: If validation fails -> one modify_script, then return.
+
+OUTPUT (ScriptOutput):
+- script_path (str, required)
+- technique_used (str, required)
+- parameters_set (dict, optional)
+- validation_passed (bool, required)
+- validation_errors (list, optional)
+STOP after T5 regardless of quality.
+```
+
+### Template: Quality Analyst (Machine-Optimized)
+```
+ROLE: Evaluate render quality strictly.
+TOOLS: analyze_with_vision, find_reference_images, compare_to_reference.
+TURNS: MAX 3.
+
+T1: analyze_with_vision(render_path). If reference exists -> find_reference_images.
+T2: compare_to_reference if reference available.
+T3: Return QualityOutput.
+
+OUTPUT (QualityOutput): overall_score (0-100), passed (bool), primary_issue, issues[], suggestions[], vision_assessment, reference_similarity.
+```
+
+### Template: Learning Agent (Machine-Optimized)
+```
+ROLE: Record experiment + suggest next action.
+TOOLS: query_knowledge_base, search_code_patterns, record_experiment_result.
+TURNS: MAX 3.
+
+T1: query_knowledge_base + search_code_patterns (parallel ok).
+T2: record_experiment_result (exactly once).
+T3: Return LearningOutput.
+
+OUTPUT (LearningOutput): experiment_recorded, pattern_extracted, pattern_id, next_action, suggested_modifications[], parameter_modifications{}.
+```
+
+### Template: Executor / Docs Expert (Machine-Optimized)
+```
+Executor:
+T1 execute_blender_script; T2 parse_blender_errors or list_run_outputs; T3 return ExecutionOutput.
+
+Docs Expert:
+T1 semantic_search_blender_docs or search_blender_api_by_intent
+T2 validate_parameter_range (if needed)
+T3 return DocsOutput
+```
+
+### Contradictions to Resolve (Current Instructions)
+1. "Blender 5.0 only, no compatibility checks" vs "Always use hasattr guards" in `tools/dynamic_instructions.py`.
+2. "Do not use backward compatibility" vs "Use .get() fallback for renamed sockets".
+3. Prompt turn budgets vs `max_turns` in Runner.run (e.g., prompt says max 3 turns, run allows 6-15).
+
+Recommendation: Consolidate to a single rule set:
+- Use exact Blender 5.0 APIs.
+- Guard only for None/missing data, not version detection.
+- Align prompt turn budgets with actual `max_turns`.
+
 ## Standard Workflows
 
 ### Workflow 1: New Asset Generation

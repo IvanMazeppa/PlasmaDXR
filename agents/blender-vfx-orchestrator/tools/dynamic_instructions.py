@@ -175,8 +175,23 @@ bpy.ops.render.render(write_still=True)  # CRITICAL: actually renders the image
 print(f"Rendered to: {scene.render.filepath}")
 ```
 
-## CRITICAL: BLENDER 5.0 COMPATIBILITY PATTERNS
-We use Blender 5.0.1. These API changes WILL cause errors if not handled:
+## CRITICAL: BLENDER 5.0 ONLY - NO BACKWARDS COMPATIBILITY
+We use Blender 5.0.1. Generate code for THIS VERSION ONLY.
+
+**FORBIDDEN PATTERNS - NEVER USE:**
+- `if hasattr(obj, 'old_attr'):` for version detection
+- `set_attr_if_exists()` helper functions
+- Try/except blocks to catch version differences
+- Comments like "# Blender 3.x / 4.x" or "# older versions"
+- Fallback chains: `if not set_X(): set_Y()`
+
+**CORRECT APPROACH:**
+1. QUERY DOCS FIRST if unsure about the API
+2. Use the EXACT Blender 5.0 property name - no guessing
+3. If a property doesn't exist, that's a BUG - don't hide it with hasattr()
+
+## BLENDER 5.0 API CHANGES
+These API changes WILL cause errors if not handled:
 
 ### Principled BSDF Socket Renames (MUST use .get() with fallback):
 - 'Specular' -> 'Specular IOR Level'

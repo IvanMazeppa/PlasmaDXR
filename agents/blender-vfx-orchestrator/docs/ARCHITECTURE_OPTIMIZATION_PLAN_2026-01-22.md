@@ -747,6 +747,41 @@ result = await Runner.run(agent, prompt, context=context, session=sdk_session, .
 
 ---
 
+## Audit Addendum (2026-01-23): Remaining Gaps and New Phases
+
+### Key Gaps Identified
+1. **Dynamic instructions disabled** in the pipeline (self-learning rules not injected).
+2. **Schema drift** between Pydantic outputs and pipeline usage (e.g., `parameters_set` vs `key_parameters`).
+3. **Handoff path still wired** (guardrails do not cover mid-chain agents).
+4. **Prompt contradictions** (e.g., "no hasattr" vs "always use hasattr") reduce reliability.
+5. **Turn budget enforcement** not wired (TurnBudgetExceededError never raised).
+
+### Phase 8: Re-enable Dynamic Instructions in Pipeline
+**Goal:** Restore self-learning behavior without losing custom context.
+- Wrap dynamic instruction functions to append static context.
+- Remove `use_dynamic_instructions=False` in standalone agents.
+- Validate that knowledge-base rules appear in prompts (trace snapshot).
+
+### Phase 9: Schema Normalization
+**Goal:** Align structured outputs with pipeline usage.
+- Standardize ScriptOutput field usage (`parameters_set` everywhere).
+- Align ExecutionOutput timing field (`execution_time_seconds`).
+- Add a schema compatibility test (unit test on sample outputs).
+
+### Phase 10: Prompt Compaction + Consistency
+**Goal:** Replace prose-heavy instructions with machine-optimized blocks.
+- Adopt T1/T2/T3 tool order format across agents.
+- Remove contradictory rules (e.g., `hasattr` guidance).
+- Align prompt turn budgets with `max_turns` in Runner.run().
+
+### Phase 11: Handoff Pipeline Sunset
+**Goal:** Eliminate the deprecated handoff path to avoid guardrail gaps.
+- Hard-disable `create_asset()` in production.
+- Remove handoff agent initialization after deprecation window.
+- Update docs and tests to target pipeline-only behavior.
+
+---
+
 ## References
 
 - [OpenAI Agents SDK Documentation](https://github.com/openai/openai-agents-python/tree/main/docs)

@@ -175,6 +175,29 @@ result = await Runner.run(agent, "Second message", session=session)  # Remembers
 
 ---
 
+## Enforcement Coverage Gaps (2026-01-23)
+
+These gaps are **SDK-defined behaviors** that affect enforcement reliability:
+
+1. **Guardrails only run for first/last agent in a handoff chain**
+   - If the deprecated handoff pipeline is used, sub-agents in the middle will not run their guardrails.
+   - **Action:** Prefer standalone `Runner.run()` per agent (code-based pipeline). If handoffs remain, explicitly re-run critical agents as standalone runs.
+   - **Source:** Agents SDK `docs/guardrails.md`
+
+2. **Tool guardrails apply only to function tools**
+   - Tool guardrails will not apply to `agent.as_tool()` or hosted tools.
+   - **Action:** Use RunHooks for cross-tool enforcement, and tool guardrails only where applicable.
+
+3. **Handoff prompt prefix only for handoff-enabled agents**
+   - `prompt_with_handoff_instructions()` should only be used when the agent has `handoffs=[...]`.
+   - **Action:** Remove handoff prompt injection from standalone agents to reduce confusion and token waste.
+
+4. **Agent-as-tool turn limits**
+   - `agent.as_tool()` cannot set `max_turns`; the SDK recommends a custom tool that calls `Runner.run()` when turn budgets matter.
+   - **Source:** Agents SDK `docs/tools.md`
+
+---
+
 ## Enforcement Checklist
 
 Before modifying orchestrator code, verify:
