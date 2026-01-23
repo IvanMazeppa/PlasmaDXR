@@ -122,6 +122,87 @@ def _generate_analysis_text(
 
 
 # =============================================================================
+# DIRECT CALLABLE FOR ORCHESTRATOR (non-tool version)
+# =============================================================================
+
+def pre_iteration_research_direct(
+    current_issue: str,
+    current_approach: str,
+    iteration_history: str = "",
+    effect_type: str = ""
+) -> str:
+    """
+    Direct callable version of pre_iteration_research for orchestrator use.
+
+    Unlike the @function_tool version, this doesn't require RunContextWrapper.
+    Call this from orchestrator code to check for early warning signs.
+
+    Args:
+        current_issue: The primary issue being addressed
+        current_approach: Description of current approach
+        iteration_history: JSON array of iteration results OR session summary text
+        effect_type: Type of effect
+
+    Returns:
+        JSON with warning_level, escape_action, and recommendations
+    """
+    # Parse iteration history (if JSON) or treat as text
+    try:
+        if iteration_history.startswith('['):
+            iterations = json.loads(iteration_history)
+        else:
+            # Text format - count issue mentions
+            same_issue_count = iteration_history.lower().count(current_issue.lower())
+            if same_issue_count >= 3:
+                warning_level = "stuck"
+            elif same_issue_count >= 2:
+                warning_level = "early"
+            else:
+                warning_level = "none"
+
+            result = {
+                "warning_level": warning_level,
+                "should_research": warning_level != "none",
+                "same_issue_count": same_issue_count,
+                "plateau_count": 0,
+                "analysis": f"Issue '{current_issue}' found {same_issue_count}x in history",
+            }
+
+            if warning_level == "none":
+                result["escape_action"] = "continue"
+            elif warning_level == "early":
+                result["escape_action"] = "check_knowledge_then_modify"
+            else:
+                result["escape_action"] = "switch_technique_or_mine_docs"
+
+            return json.dumps(result)
+    except (json.JSONDecodeError, TypeError):
+        iterations = []
+
+    # Use existing analysis function
+    analysis = analyze_iteration_history(iterations, current_issue)
+    warning_level = analysis["warning_level"]
+
+    result = {
+        "warning_level": warning_level,
+        "should_research": warning_level != "none",
+        "same_issue_count": analysis["same_issue_count"],
+        "plateau_count": analysis["plateau_count"],
+        "techniques_tried": analysis.get("techniques_tried", []),
+        "analysis": analysis["analysis"],
+    }
+
+    if warning_level == "none":
+        result["escape_action"] = "continue"
+    elif warning_level == "early":
+        result["escape_action"] = "check_knowledge_then_modify"
+    else:
+        result["escape_action"] = "switch_technique_or_mine_docs"
+
+    return json.dumps(result)
+
+
+# =============================================================================
 # PROACTIVE RESEARCH TOOL
 # =============================================================================
 

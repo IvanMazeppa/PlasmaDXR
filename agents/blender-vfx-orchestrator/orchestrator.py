@@ -41,6 +41,10 @@ from session_manager import SessionManager
 
 # ExperimentTracker baseline recording for Learning Agent compatibility
 from tools.experiment_tracker_tools import _record_baseline_impl as record_experiment_baseline
+# Proactive research for pre-iteration checks (direct callable, no tool wrapper)
+from tools.proactive_research_tools import pre_iteration_research_direct as pre_iteration_research
+# Pattern outcome reporting
+from tools.code_pattern_tools import _report_pattern_outcome_impl as report_pattern_outcome
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -466,9 +470,9 @@ Decrease level when: 2 consecutive improvements of +5 score
 # =============================================================================
 # AGENT TOOL WRAPPERS WITH TURN LIMITS
 # =============================================================================
-# SDK Limitation: agent.as_tool() does not accept max_turns.
-# Solution: Create function_tool wrappers that call Runner.run() with explicit limits.
-# Reference: docs/tools.md - "wrapping in a custom tool"
+# SDK Update (v0.6.9+): agent.as_tool() now supports max_turns parameter.
+# Reference: https://openai.github.io/openai-agents-python/tools
+# Pattern: agent.as_tool(tool_name="name", tool_description="desc", max_turns=X)
 
 def create_agent_tool_wrappers(
     research_agent: Agent,
@@ -478,10 +482,10 @@ def create_agent_tool_wrappers(
     learning_agent: Agent,
 ) -> list:
     """
-    Create function_tool wrappers for agents with explicit turn limits.
+    Create agent-as-tool wrappers with explicit turn limits using native SDK pattern.
 
-    SDK Pattern: Instead of agent.as_tool(), wrap in @function_tool that calls
-    Runner.run() with max_turns. This enforces turn budgets on sub-agents.
+    SDK Pattern (v0.6.9+): Use agent.as_tool(max_turns=X) for turn-limited sub-agents.
+    This is cleaner than wrapping in @function_tool with Runner.run().
 
     Turn limits are set based on task complexity:
     - Research: 4 turns (query docs, analyze, synthesize)
@@ -491,86 +495,40 @@ def create_agent_tool_wrappers(
     - Learning: 3 turns (record, query knowledge, suggest)
 
     Returns:
-        List of function_tool wrapped agent callers
+        List of Tool objects for coordinator agents
     """
-
-    @function_tool
-    async def research_approach(effect_type: str, description: str) -> str:
-        """Research best approach for VFX effect type. Use at iteration 1 to find
-        optimal technique, parameters, and alternatives. Returns research summary."""
-        result = await Runner.run(
-            research_agent,
-            f"Research approach for {effect_type}: {description}",
-            max_turns=4,
-        )
-        return str(result.final_output)
-
-    @function_tool
-    async def generate_script(
-        effect_type: str,
-        description: str,
-        technique: str,
-        parameters: str = "{}",
-    ) -> str:
-        """Generate or modify Blender Python script for VFX effect. Provide effect_type,
-        description, and technique. Returns script_path, technique_used, parameters."""
-        result = await Runner.run(
-            script_agent,
-            f"Generate {effect_type} script using {technique}. Description: {description}. Parameters: {parameters}",
-            max_turns=6,
-        )
-        return str(result.final_output)
-
-    @function_tool
-    async def execute_script(script_path: str) -> str:
-        """Execute Blender script and render VFX asset. Provide script_path.
-        Returns success, render_path, vdb_path, execution_time."""
-        result = await Runner.run(
-            executor_agent,
-            f"Execute Blender script: {script_path}",
-            max_turns=3,
-        )
-        return str(result.final_output)
-
-    @function_tool
-    async def evaluate_render(render_path: str, effect_type: str) -> str:
-        """Evaluate render quality using vision and metrics. Provide render_path,
-        effect_type. Returns overall_score, passed, issues, suggestions."""
-        result = await Runner.run(
-            quality_agent,
-            f"Evaluate render quality for {effect_type}: {render_path}",
-            max_turns=4,
-        )
-        return str(result.final_output)
-
-    @function_tool
-    async def record_experiment(
-        iteration: int,
-        score: float,
-        issues: str,
-        parameters: str,
-    ) -> str:
-        """Record experiment results and suggest next action. Provide iteration,
-        score, issues, params. Returns next_action, parameter_modifications."""
-        result = await Runner.run(
-            learning_agent,
-            f"Record experiment: iteration={iteration}, score={score}, issues={issues}, parameters={parameters}",
-            max_turns=3,
-        )
-        return str(result.final_output)
-
     return [
-        research_approach,
-        generate_script,
-        execute_script,
-        evaluate_render,
-        record_experiment,
+        research_agent.as_tool(
+            tool_name="research_approach",
+            tool_description="Research best approach for VFX effect type. Use at iteration 1 to find optimal technique, parameters, and alternatives. Returns research summary.",
+            max_turns=4,
+        ),
+        script_agent.as_tool(
+            tool_name="generate_script",
+            tool_description="Generate or modify Blender Python script for VFX effect. Provide effect_type, description, and technique. Returns script_path, technique_used, parameters.",
+            max_turns=6,
+        ),
+        executor_agent.as_tool(
+            tool_name="execute_script",
+            tool_description="Execute Blender script and render VFX asset. Provide script_path. Returns success, render_path, vdb_path, execution_time.",
+            max_turns=3,
+        ),
+        quality_agent.as_tool(
+            tool_name="evaluate_render",
+            tool_description="Evaluate render quality using vision and metrics. Provide render_path, effect_type. Returns overall_score, passed, issues, suggestions.",
+            max_turns=4,
+        ),
+        learning_agent.as_tool(
+            tool_name="record_experiment",
+            tool_description="Record experiment results and suggest next action. Provide iteration, score, issues, params. Returns next_action, parameter_modifications.",
+            max_turns=3,
+        ),
     ]
 
 
 def create_research_tool_wrapper(research_agent: Agent):
     """
-    Create a single research_approach tool wrapper with turn limit.
+    Create a single research_approach tool wrapper with turn limit using native as_tool.
 
     Used by lightweight coordinators that only need research capability.
 
@@ -578,20 +536,13 @@ def create_research_tool_wrapper(research_agent: Agent):
         research_agent: Research Agent instance
 
     Returns:
-        function_tool wrapped research caller
+        Tool object for research capability (turn-limited)
     """
-
-    @function_tool
-    async def research_approach(effect_type: str, description: str) -> str:
-        """Research best approach for effect type. Returns research summary."""
-        result = await Runner.run(
-            research_agent,
-            f"Research approach for {effect_type}: {description}",
-            max_turns=4,
-        )
-        return str(result.final_output)
-
-    return research_approach
+    return research_agent.as_tool(
+        tool_name="research_approach",
+        tool_description="Research best approach for effect type. Returns research summary.",
+        max_turns=4,
+    )
 
 
 # =============================================================================
@@ -608,9 +559,8 @@ def create_coordinator_agent(
     """
     Create the Coordinator Agent with all sub-agents wrapped as tools.
 
-    SDK Pattern: Uses function_tool wrappers that call Runner.run() with
-    explicit max_turns instead of agent.as_tool() (which doesn't support
-    turn limits). This is the "Manager" pattern from SDK documentation.
+    SDK Pattern (v0.6.9+): Uses agent.as_tool(max_turns=X) for turn-limited
+    sub-agents. This is the "Manager" pattern from SDK documentation.
 
     Args:
         research_agent: Research Agent instance
@@ -624,8 +574,7 @@ def create_coordinator_agent(
     """
     from specialized_agents.api_validator import get_api_validator_as_tool
 
-    # Create turn-limited agent tool wrappers (SDK best practice)
-    # This replaces agent.as_tool() which cannot enforce turn limits
+    # Create turn-limited agent tools using native as_tool(max_turns=X)
     agent_tools = create_agent_tool_wrappers(
         research_agent=research_agent,
         script_agent=script_agent,
@@ -1426,6 +1375,37 @@ Select the optimal technique and provide starting parameters."""
                         )
                         print(f"[Pipeline] Baseline recorded: score={previous_score:.1f}", file=sys.stderr)
 
+                        # ====== PHASE 0.9: PRE-ITERATION RESEARCH (iter>1 only) ======
+                        # Phase 1.1: MANDATORY pre_iteration_research() call
+                        # This checks for early warning signals BEFORE modifications
+                        print(f"[Pipeline] PHASE 0.9: Pre-Iteration Research", file=sys.stderr)
+                        try:
+                            pre_research = pre_iteration_research(
+                                current_issue=quality.primary_issue if quality else "unknown",
+                                current_approach=previous_script.technique_used if previous_script else "unknown",
+                                iteration_history=session_mgr.get_iteration_summary(),
+                                effect_type=request.effect_type.value
+                            )
+                            import json as _json
+                            pre_research_data = _json.loads(pre_research)
+
+                            warning_level = pre_research_data.get("warning_level", "none")
+                            escape_action = pre_research_data.get("escape_action", "continue")
+
+                            print(f"[Pipeline] Pre-research: warning={warning_level}, action={escape_action}", file=sys.stderr)
+
+                            # If pre-research recommends technique switch, override learning agent
+                            if escape_action == "switch_technique_or_mine_docs":
+                                print(f"[Pipeline] Pre-research recommends TECHNIQUE SWITCH", file=sys.stderr)
+                                if learning:
+                                    learning.next_action = "switch_technique"
+                            elif escape_action == "check_knowledge_then_modify":
+                                print(f"[Pipeline] Pre-research recommends KNOWLEDGE CHECK first", file=sys.stderr)
+                                # Let Modification Coordinator handle this
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Pre-iteration research failed: {e}", file=sys.stderr)
+                            # Continue without pre-research
+
                     # ====== PHASE 1: SCRIPT GENERATION ======
                     print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
                     if iteration == 1:
@@ -1886,6 +1866,20 @@ Run the script and report results."""
                     print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
 
                     # ====== PHASE 3: QUALITY EVALUATION (LLM-as-Judge) ======
+                    # QW-1: Budget check before expensive vision evaluation
+                    if not self._budget_tracker.can_afford_evaluation():
+                        print(f"[Pipeline] BUDGET EXHAUSTED - using last available score", file=sys.stderr)
+                        quality = QualityOutput(
+                            overall_score=previous_score,  # Use last known score
+                            passed=previous_score >= request.quality_threshold,
+                            primary_issue="Budget exhausted - returning best available result",
+                            issues=["Budget limit reached"],
+                            suggestions=["Increase budget allocation or reduce quality requirements"],
+                            vision_assessment="No vision evaluation - budget exhausted"
+                        )
+                        session.status = SessionStatus.BUDGET_EXHAUSTED if previous_score < request.quality_threshold else SessionStatus.PASSED
+                        break
+
                     print(f"[Pipeline] PHASE 3: Quality Analyst (LLM-as-Judge)", file=sys.stderr)
                     eval_prompt = f"""Evaluate the render quality strictly.
 
@@ -2049,6 +2043,36 @@ Primary Issue: {quality.primary_issue or 'None'}
                     print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
                     print(f"[Pipeline] Learning hooks stats: {learning_hooks.get_stats()}", file=sys.stderr)
 
+                    # ====== PHASE 4.5: PATTERN EXTRACTION ENFORCEMENT ======
+                    # Phase 1.3: Orchestrator MUST handle extracted patterns
+                    if learning.pattern_extracted and learning.pattern_id:
+                        print(f"[Pipeline] Pattern extracted: {learning.pattern_id}", file=sys.stderr)
+                        # Track patterns in session for future use
+                        if not hasattr(session, 'extracted_patterns'):
+                            session.extracted_patterns = []
+                        session.extracted_patterns.append({
+                            "pattern_id": learning.pattern_id,
+                            "iteration": iteration,
+                            "score_delta": quality.overall_score - previous_score if quality else 0,
+                        })
+
+                        # Store pattern_id to report outcome after next execution
+                        context.last_applied_pattern_id = learning.pattern_id
+
+                    # Report outcome for previously applied pattern
+                    if hasattr(context, 'last_applied_pattern_id') and context.last_applied_pattern_id:
+                        try:
+                            score_improvement = quality.overall_score - previous_score if quality else 0
+                            pattern_success = score_improvement > 0
+                            report_pattern_outcome(
+                                context.last_applied_pattern_id,
+                                success=pattern_success
+                            )
+                            print(f"[Pipeline] Pattern outcome reported: {context.last_applied_pattern_id} success={pattern_success}", file=sys.stderr)
+                            context.last_applied_pattern_id = None  # Clear after reporting
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Pattern outcome report failed: {e}", file=sys.stderr)
+
                     # ====== QUALITY GATE (Coordinator Decision) ======
                     # Phase 2 Enhancement: Use Quality Gate Coordinator for intelligent decision
                     print(f"[Pipeline] PHASE 5: Quality Gate (Coordinator)", file=sys.stderr)
@@ -2090,6 +2114,11 @@ Decide: Is quality gate PASSED? What is the next action?"""
                         print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
                         print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
 
+                        # Phase 1.2: Sync escape_level to session IMMEDIATELY after Coordinator returns
+                        # This ensures downstream logic has access to the current escape level
+                        session.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
+                        context.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
+
                     except Exception as e:
                         print(f"[Pipeline] WARN: Quality Gate Coordinator failed: {e}", file=sys.stderr)
                         # Fall back to simple quality check
@@ -2118,6 +2147,10 @@ Decide: Is quality gate PASSED? What is the next action?"""
                     if should_switch:
                         consecutive = session_mgr.issue_tracker.consecutive_same_issue
                         print(f"[Pipeline] STUCK DETECTED: same issue {consecutive}x - re-running Research Agent", file=sys.stderr)
+
+                        # Phase 1.4: Reset stuck state when switching techniques
+                        # This prevents old failure streaks from affecting the new approach
+                        session_mgr.reset_for_technique_switch(f"switch_from_iter{iteration}")
 
                         # Re-run Research Agent to find NEW approaches
                         switch_prompt = f"""Find a DIFFERENT approach for {request.effect_type.value}.

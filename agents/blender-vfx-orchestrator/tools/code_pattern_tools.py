@@ -286,31 +286,16 @@ Expected improvement: ~{pattern.average_improvement:.1f} points
     })
 
 
-@function_tool
-def report_pattern_outcome(
+def _report_pattern_outcome_impl(
     pattern_id: str,
     success: bool,
     improvement: float = 0.0,
     notes: str = ""
 ) -> str:
     """
-    Report the outcome after applying a pattern.
+    Direct callable implementation of report_pattern_outcome.
 
-    IMPORTANT: Always call this after applying a pattern from the library.
-    This feedback improves future pattern recommendations.
-
-    Args:
-        pattern_id: The pattern that was applied
-        success: Whether the pattern helped (True) or not (False)
-        improvement: Score improvement achieved (if successful)
-        notes: Optional notes about what happened
-
-    Returns:
-        JSON with:
-        - recorded: Whether outcome was recorded
-        - pattern_id: The pattern ID
-        - new_confidence: Updated confidence score
-        - new_success_rate: Updated success rate
+    For use by orchestrator without @function_tool wrapper.
     """
     memory = get_pattern_memory()
 
@@ -340,6 +325,35 @@ def report_pattern_outcome(
         "notes": notes,
         "message": f"Pattern outcome recorded. New confidence: {pattern_after.confidence:.0f}%" if pattern_after else "Error updating pattern"
     })
+
+
+@function_tool
+def report_pattern_outcome(
+    pattern_id: str,
+    success: bool,
+    improvement: float = 0.0,
+    notes: str = ""
+) -> str:
+    """
+    Report the outcome after applying a pattern.
+
+    IMPORTANT: Always call this after applying a pattern from the library.
+    This feedback improves future pattern recommendations.
+
+    Args:
+        pattern_id: The pattern that was applied
+        success: Whether the pattern helped (True) or not (False)
+        improvement: Score improvement achieved (if successful)
+        notes: Optional notes about what happened
+
+    Returns:
+        JSON with:
+        - recorded: Whether outcome was recorded
+        - pattern_id: The pattern ID
+        - new_confidence: Updated confidence score
+        - new_success_rate: Updated success rate
+    """
+    return _report_pattern_outcome_impl(pattern_id, success, improvement, notes)
 
 
 @function_tool

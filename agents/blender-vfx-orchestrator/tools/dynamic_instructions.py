@@ -21,9 +21,13 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+# Logger for dynamic instructions - makes KB failures visible
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agents import Agent, RunContextWrapper
@@ -86,7 +90,12 @@ def query_validated_learnings(
                 validated.append(learning)
 
         return validated
-    except Exception:
+    except Exception as e:
+        # QW-2: Log KB query failures instead of silently swallowing
+        logger.warning(
+            "query_validated_learnings: KB query failed for %s/%s. Returning empty list. Error: %s",
+            effect_type, category, str(e)
+        )
         return []
 
 
@@ -507,14 +516,19 @@ def dynamic_script_writer_instructions(
     base = SCRIPT_WRITER_BASE_INSTRUCTIONS
 
     # Try to get effect type from context
+    # QW-2: Log fallbacks so KB failures are visible
     effect_type = None
     try:
         if hasattr(ctx, 'context') and ctx.context:
             if hasattr(ctx.context, 'session') and ctx.context.session:
                 if hasattr(ctx.context.session, 'request') and ctx.context.session.request:
                     effect_type = ctx.context.session.request.effect_type.value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "dynamic_script_writer_instructions: Context extraction failed, using 'general'. Error: %s",
+            str(e)
+        )
+        effect_type = "general"  # Fallback to general instead of None
 
     # Query validated learnings
     learnings = []
@@ -568,14 +582,18 @@ def dynamic_quality_analyst_instructions(
     base = QUALITY_ANALYST_BASE_INSTRUCTIONS
 
     # Try to get effect type from context
+    # QW-2: Log fallbacks so KB failures are visible
     effect_type = None
     try:
         if hasattr(ctx, 'context') and ctx.context:
             if hasattr(ctx.context, 'session') and ctx.context.session:
                 if hasattr(ctx.context.session, 'request') and ctx.context.session.request:
                     effect_type = ctx.context.session.request.effect_type.value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "dynamic_quality_analyst_instructions: Context extraction failed. Error: %s",
+            str(e)
+        )
 
     # Query known physics behaviors to watch for
     if effect_type:
@@ -615,14 +633,18 @@ def dynamic_learning_agent_instructions(
     base = LEARNING_AGENT_BASE_INSTRUCTIONS
 
     # Try to get effect type from context
+    # QW-2: Log fallbacks so KB failures are visible
     effect_type = None
     try:
         if hasattr(ctx, 'context') and ctx.context:
             if hasattr(ctx.context, 'session') and ctx.context.session:
                 if hasattr(ctx.context, 'request') and ctx.context.session.request:
                     effect_type = ctx.context.session.request.effect_type.value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "dynamic_learning_agent_instructions: Context extraction failed. Error: %s",
+            str(e)
+        )
 
     # Add context about current knowledge state
     if effect_type:

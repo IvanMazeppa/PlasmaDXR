@@ -108,6 +108,18 @@ class IssueTracker:
         found = [term for term in key_terms if term.lower() in issue.lower()]
         return "|".join(sorted(found)) if found else issue[:50].lower()
 
+    def reset(self) -> None:
+        """
+        Reset issue tracker state.
+
+        QW-3: Call this when switching techniques to prevent old failure
+        streaks from affecting the new approach.
+        """
+        self.issue_counts.clear()
+        self.issue_first_seen.clear()
+        self.consecutive_same_issue = 0
+        self.last_primary_issue = None
+
 
 class SessionManager:
     """
@@ -329,6 +341,21 @@ class SessionManager:
         - We have untried alternative techniques available
         """
         return self.issue_tracker.consecutive_same_issue >= threshold
+
+    def reset_for_technique_switch(self, new_technique: str) -> None:
+        """
+        Reset stuck state when switching to a new technique.
+
+        QW-3: Prevents old failure streaks from affecting the new approach.
+        Call this when escape_level triggers a technique switch.
+
+        Args:
+            new_technique: Name of the new technique being tried
+        """
+        self.issue_tracker.reset()
+        if new_technique and new_technique not in self.techniques_tried:
+            self.techniques_tried.append(new_technique)
+        # Note: We keep params_that_helped/hurt - those might still be useful
 
     def get_params_to_avoid(self) -> Dict[str, List[Any]]:
         """Get parameter values that consistently hurt scores."""

@@ -50,6 +50,7 @@ class SessionStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     MAX_ITERATIONS = "max_iterations"
+    BUDGET_EXHAUSTED = "budget_exhausted"  # QW-1: Added for budget limit handling
     PAUSED = "paused"
     CANCELLED = "cancelled"
 
@@ -675,6 +676,12 @@ class SessionState(BaseModel):
         description="Currently active technique"
     )
 
+    # Phase 1.3: Pattern tracking
+    extracted_patterns: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Patterns extracted during this session for outcome tracking"
+    )
+
     # Final outputs
     final_render_path: Optional[str] = Field(
         default=None,
@@ -787,6 +794,18 @@ class SharedContext(BaseModel):
         default=0.0,
         ge=0.0,
         description="Total API cost for the session"
+    )
+
+    # Stuck detection (mirror of session.stuck_state for quick access)
+    stuck_state: StuckDetectionState = Field(
+        default_factory=StuckDetectionState,
+        description="Stuck detection state for escape velocity"
+    )
+
+    # Phase 1.3: Pattern tracking for outcome reporting
+    last_applied_pattern_id: Optional[str] = Field(
+        default=None,
+        description="Pattern ID to report outcome for after next iteration"
     )
 
     @classmethod
