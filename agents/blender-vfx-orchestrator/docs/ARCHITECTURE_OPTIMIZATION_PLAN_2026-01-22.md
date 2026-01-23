@@ -3,7 +3,7 @@
 **Date:** 2026-01-22
 **Author:** Ben + Claude
 **Status:** Active Implementation
-**Last Updated:** 2026-01-22 (Phase 1, 2, 6, 7 complete)
+**Last Updated:** 2026-01-23 (Phase 1, 2, 3, 6, 7 complete)
 
 ---
 
@@ -21,9 +21,9 @@ This document captures the comprehensive analysis of the Blender VFX Orchestrato
 |-------|------|--------|-------|
 | 1 | RunHooks for loop detection | ✅ **COMPLETE** | `hooks/enforcement_hooks.py` created |
 | 2 | Agents-as-tools pattern | ✅ **COMPLETE** | 3 Coordinator agents + as_tool() wrappers |
+| 3 | Input/Output guardrails | ✅ **COMPLETE** | `guardrails/` module with 9 guardrails |
 | 6 | API Validator agent | ✅ **COMPLETE** | `specialized_agents/api_validator.py` created |
 | 7 | Tracing everywhere | ✅ **COMPLETE** | 10+ trace() calls with metadata |
-| 3 | Input/Output guardrails | 🔄 **NEXT** | After Phase 2 |
 | 4 | SDK Sessions | ⏳ Pending | Low priority |
 | 5 | Turn budget per agent | ⚠️ **PARTIAL** | Covered by RunHooks max_turns |
 
@@ -184,6 +184,64 @@ coordinator = Agent(
 
 ---
 
+### Phase 3: Input/Output Guardrails ✅
+
+**Implementation Date:** 2026-01-23
+
+**Files Created:**
+- `guardrails/__init__.py` - Module exports
+- `guardrails/script_guardrails.py` - Script Writer guardrails
+- `guardrails/quality_guardrails.py` - Quality Analyst guardrails
+- `guardrails/coordinator_guardrails.py` - Coordinator agent guardrails
+
+**Guardrails Implemented:**
+
+1. **Script Writer Input Guardrails:**
+   - `require_research_context` - Blocks if no research findings in prompt
+   - `validate_effect_type` - Ensures valid effect type is specified
+
+2. **Script Writer Output Guardrail:**
+   - `validate_script_output` - Validates ScriptOutput has script_path, technique_used
+
+3. **Quality Analyst Input Guardrail:**
+   - `check_budget_before_quality` - Blocks if budget exhausted (expensive vision API)
+
+4. **Quality Analyst Output Guardrail:**
+   - `validate_quality_output` - Validates score range, passed boolean, critical issue consistency
+
+5. **Coordinator Output Guardrails:**
+   - `validate_technique_decision` - Validates selected_technique, reasoning
+   - `validate_modification_decision` - Validates action, parameter_changes when modify_params
+   - `validate_quality_decision` - Validates passed/next_action consistency
+
+**SDK Pattern Used:**
+```python
+from agents import Agent, input_guardrail, output_guardrail, GuardrailFunctionOutput
+
+@input_guardrail
+async def require_research_context(ctx, agent, input):
+    if not has_research_indicators(input):
+        return GuardrailFunctionOutput(
+            tripwire_triggered=True,
+            output_info={"reason": "No research context found"}
+        )
+    return GuardrailFunctionOutput(tripwire_triggered=False, output_info={"status": "passed"})
+
+agent = Agent(
+    input_guardrails=[require_research_context],
+    output_guardrails=[validate_script_output],
+)
+```
+
+**Integration:**
+- Script Writer standalone agent: `input_guardrails=[require_research_context, validate_effect_type], output_guardrails=[validate_script_output]`
+- Quality Analyst standalone agent: `input_guardrails=[check_budget_before_quality], output_guardrails=[validate_quality_output]`
+- All 3 Coordinator agents: output guardrails for respective decision types
+
+**Key Benefit:** Validation at agent level catches structural issues before pipeline proceeds. Combined with RunHooks (tool level) creates defense-in-depth.
+
+---
+
 ## Current State Assessment
 
 ### What's Working Well
@@ -191,7 +249,7 @@ coordinator = Agent(
 | Component | Status | Notes |
 |-----------|--------|-------|
 | 6 Specialized Agents | ✅ Good | Research, Script Writer, Executor, Quality Analyst, Learning, **API Validator** |
-| **3 Coordinator Agents** | ✅ **NEW** | Technique Selection, Modification Strategy, Quality Gate |
+| **3 Coordinator Agents** | ✅ Good | Technique Selection, Modification Strategy, Quality Gate |
 | SessionManager | ✅ Excellent | Deterministic Python-side state tracking |
 | Self-Learning Strategies | ✅ Good | 5 strategies implemented |
 | Quality Evaluation | ✅ Good | Vision + LPIPS/CLIP/TOPIQ metrics |
@@ -199,7 +257,8 @@ coordinator = Agent(
 | **RunHooks Enforcement** | ✅ Good | Loop detection, doc query requirements |
 | **API Validation** | ✅ Good | Blender 5.0 API corrections |
 | **Tracing** | ✅ Good | Full visibility with metadata |
-| **Agents-as-Tools Pattern** | ✅ **NEW** | Coordinators use sub-agents via as_tool() |
+| **Agents-as-Tools Pattern** | ✅ Good | Coordinators use sub-agents via as_tool() |
+| **Input/Output Guardrails** | ✅ **NEW** | 9 guardrails validating agent inputs/outputs |
 
 ### What's Still Not Working
 
@@ -382,10 +441,10 @@ result = await Runner.run(agent, "Follow-up", session=session)
 
 ## Proposed Architecture: Hybrid Orchestrator
 
-### Current vs Proposed
+### Architecture (After Phase 2)
 
 ```
-CURRENT (After Phase 1, 6, 7):
+CURRENT (After Phase 1, 2, 6, 7):
 ┌─────────────────────────────────────────────────────────────────────┐
 │                 create_asset_pipeline() (Python)                    │
 │                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━                     │
@@ -394,33 +453,27 @@ CURRENT (After Phase 1, 6, 7):
 │  - RunHooks for enforcement ✅                                      │
 │  - API Validation (Phase 1.5) ✅                                    │
 │  - Tracing with metadata ✅                                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  BUT: No LLM intelligence for workflow DECISIONS                    │
-│       (e.g., "should we switch technique?")                         │
-└─────────────────────────────────────────────────────────────────────┘
-
-PROPOSED (After Phase 2):
-┌─────────────────────────────────────────────────────────────────────┐
-│                 PipelineOrchestrator (Python)                       │
-│                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━                        │
-│  - Deterministic state machine (no LLM)                             │
-│  - Handles iteration loop, quality gates                            │
-│  - Manages escape velocity transitions                              │
+│  - 3 Coordinator Agents for intelligent decisions ✅                │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  ┌─────────────┐                                                    │
-│  │ Coordinator │ ← Reasoning agent for DECISIONS only               │
-│  │   Agent     │   Called at decision points:                       │
-│  │  (gpt-5.2)  │   - Which technique to try?                        │
-│  └─────────────┘   - Should we switch approach?                     │
-│         │          - What parameters to modify?                     │
-│         │                                                           │
-│         ├── research_agent.as_tool("research_approach")             │
-│         ├── api_validator.as_tool("validate_blender_api")  ← NEW    │
-│         ├── script_writer.as_tool("generate_script")                │
-│         ├── executor.as_tool("execute_script")                      │
-│         ├── quality_analyst.as_tool("evaluate_render")              │
-│         └── learning_agent.as_tool("record_experiment")             │
+│  ┌───────────────────┐                                              │
+│  │ TechniqueSelector │ ← Phase 0.5: Initial technique selection     │
+│  │     (gpt-5.2)     │   Returns TechniqueDecision                  │
+│  └───────────────────┘                                              │
+│                                                                     │
+│  ┌───────────────────────┐                                          │
+│  │ ModificationStrategist │ ← Phase 1.1: Modification strategy     │
+│  │       (gpt-5.2)        │   Returns ModificationDecision         │
+│  └───────────────────────┘                                          │
+│                                                                     │
+│  ┌─────────────────────┐                                            │
+│  │ QualityGateJudge    │ ← Phase 5: Quality gate interpretation     │
+│  │     (gpt-5.2)       │   Returns QualityDecision                  │
+│  └─────────────────────┘                                            │
+│                                                                     │
+│  Each Coordinator has access to:                                    │
+│  - research_agent.as_tool("research_approach")                      │
+│  - search_code_patterns, pre_iteration_research, etc.               │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -549,14 +602,14 @@ PROPOSED (After Phase 2):
 |-------|------|--------|--------|----------|
 | 1 | RunHooks for loop detection | 2h | ✅ COMPLETE | 🔴 CRITICAL |
 | 2 | Agents-as-tools pattern | 4h | ✅ COMPLETE | 🟡 HIGH |
+| 3 | Input/Output guardrails | 2h | ✅ COMPLETE | 🟡 HIGH |
 | 6 | API Validator agent | 3h | ✅ COMPLETE | 🔴 CRITICAL |
 | 7 | Tracing everywhere | 1h | ✅ COMPLETE | 🟡 HIGH |
-| **3** | **Input/Output guardrails** | **2h** | **🔄 NEXT** | **🟡 HIGH** |
 | 4 | SDK Sessions | 2h | ⏳ Pending | 🟢 MEDIUM |
 | 5 | Turn budget per agent | 1h | ⚠️ Partial | 🟢 LOW |
 
-**Completed:** 10 hours (Phase 1: 2h, Phase 2: 4h, Phase 6: 3h, Phase 7: 1h)
-**Remaining:** ~4 hours (Phase 3: 2h, Phase 4: 2h)
+**Completed:** 12 hours (Phase 1: 2h, Phase 2: 4h, Phase 3: 2h, Phase 6: 3h, Phase 7: 1h)
+**Remaining:** ~2 hours (Phase 4: 2h)
 
 ---
 
@@ -597,6 +650,14 @@ PROPOSED (After Phase 2):
 - Fallback logic is essential when coordinators fail (network issues, etc.)
 - Deprecation warnings guide users to the correct API
 
+### From Phase 3 (Input/Output Guardrails)
+- `GuardrailFunctionOutput` requires `output_info` even when `tripwire_triggered=False`
+- Guardrails decorated with `@input_guardrail` return `InputGuardrail` objects, not functions
+- Access the underlying function via `.guardrail_function` attribute for testing
+- Guardrails complement RunHooks: RunHooks operate at tool level, guardrails at agent level
+- Consistency checks (e.g., `passed=True` with critical issues) catch logical errors early
+- Defense-in-depth: RunHooks (Phase 1) + Guardrails (Phase 3) = robust validation
+
 ---
 
 ## References
@@ -608,53 +669,6 @@ PROPOSED (After Phase 2):
 - [Guardrails](https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md)
 - [Tracing](https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md)
 - [Sessions](https://github.com/openai/openai-agents-python/blob/main/docs/sessions.md)
-
----
-
-## Context for Phase 3 Implementation
-
-When starting Phase 3 (Input/Output Guardrails), the key files to review are:
-
-1. **`orchestrator.py`** - Main file to modify
-   - Script Writer standalone agent (`_script_agent_standalone`) needs guardrails
-   - Quality Analyst (`_quality_agent_standalone`) could benefit from output guardrails
-
-2. **SDK Docs to Query:**
-   - `/openai/openai-agents-python` via context7
-   - Topic: "input_guardrail and output_guardrail decorators"
-   - Topic: "GuardrailFunctionOutput structure"
-   - URL: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
-
-3. **Proposed Guardrails:**
-
-   **Input Guardrails:**
-   - `require_research_context` - Block Script Writer if no research findings provided
-   - `validate_effect_type` - Ensure effect_type is valid enum value
-   - `check_budget_before_quality` - Block Quality Analyst if budget exhausted
-
-   **Output Guardrails:**
-   - `validate_script_output` - Ensure ScriptOutput has valid script_path
-   - `validate_quality_output` - Ensure QualityOutput has required fields
-   - `validate_technique_decision` - Ensure TechniqueDecision has selected_technique
-
-4. **Implementation Pattern:**
-   ```python
-   from agents import Agent, input_guardrail, GuardrailFunctionOutput
-
-   @input_guardrail
-   async def require_research_context(ctx, agent, input: str):
-       if "research" not in input.lower() and "findings" not in input.lower():
-           return GuardrailFunctionOutput(
-               tripwire_triggered=True,
-               output_info={"reason": "Script Writer requires research context"}
-           )
-       return GuardrailFunctionOutput(tripwire_triggered=False)
-
-   script_writer = Agent(
-       input_guardrails=[require_research_context],
-       # ... existing config
-   )
-   ```
 
 ---
 

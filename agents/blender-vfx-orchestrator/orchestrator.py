@@ -54,6 +54,21 @@ from hooks.enforcement_hooks import (
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
 )
+
+# Phase 3: Input/Output Guardrails for agent validation
+from guardrails import (
+    # Script Writer guardrails
+    require_research_context,
+    validate_effect_type,
+    validate_script_output,
+    # Quality Analyst guardrails
+    check_budget_before_quality,
+    validate_quality_output,
+    # Coordinator guardrails
+    validate_technique_decision,
+    validate_modification_decision,
+    validate_quality_decision,
+)
 from agents.extensions import handoff_filters
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
 from openai.types.shared import Reasoning
@@ -505,6 +520,7 @@ def create_technique_selection_coordinator(
 
     This is called at iteration 1 to select the initial technique.
     Uses TechniqueDecision structured output.
+    Phase 3: Output guardrail validates TechniqueDecision structure.
     """
     return Agent[SharedContext](
         name="Technique Selector",
@@ -537,6 +553,8 @@ Return a TechniqueDecision with:
             list_patterns_by_effect,
         ],
         output_type=AgentOutputSchema(TechniqueDecision, strict_json_schema=False),
+        # Phase 3: Validate TechniqueDecision has required fields
+        output_guardrails=[validate_technique_decision],
     )
 
 
@@ -546,6 +564,7 @@ def create_modification_coordinator() -> Agent:
 
     This is called at iteration 2+ to decide how to fix quality issues.
     Uses ModificationDecision structured output.
+    Phase 3: Output guardrail validates ModificationDecision structure.
     """
     return Agent[SharedContext](
         name="Modification Strategist",
@@ -580,6 +599,8 @@ Return a ModificationDecision with:
             evaluate_escape_velocity,
         ],
         output_type=AgentOutputSchema(ModificationDecision, strict_json_schema=False),
+        # Phase 3: Validate action is valid and params provided when needed
+        output_guardrails=[validate_modification_decision],
     )
 
 
@@ -589,6 +610,7 @@ def create_quality_gate_coordinator() -> Agent:
 
     This is called after quality evaluation to interpret results.
     Uses QualityDecision structured output.
+    Phase 3: Output guardrail validates QualityDecision structure and consistency.
     """
     return Agent[SharedContext](
         name="Quality Gate Judge",
@@ -629,6 +651,8 @@ Return a QualityDecision with:
             evaluate_escape_velocity,
         ],
         output_type=AgentOutputSchema(QualityDecision, strict_json_schema=False),
+        # Phase 3: Validate decision consistency (e.g., passed=True must have next_action='complete')
+        output_guardrails=[validate_quality_decision],
     )
 
 
@@ -895,6 +919,7 @@ Use your tools to gather information, then return a summary of your findings inc
         # NOTE: Using static instructions for standalone agents (can't append to functions)
         # KB integration happens through tools (query_knowledge_base, get_physics_patterns)
         # No hardcoded physics rules - they emerge from experimentation
+        # Phase 3: Input/output guardrails for validation
         base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
         self._script_agent_standalone = Agent[SharedContext](
             name="Script Writer",
@@ -928,6 +953,11 @@ IMPORTANT: Always return the script_path even if validation fails. Do NOT loop i
             model_settings=base_script_writer_standalone.model_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
             tools=base_script_writer_standalone.tools,
+            # Phase 3: Guardrails for Script Writer
+            # - Input: Ensure research context provided, valid effect type
+            # - Output: Ensure ScriptOutput has required fields
+            input_guardrails=[require_research_context, validate_effect_type],
+            output_guardrails=[validate_script_output],
         )
 
         # Executor with structured output
@@ -952,6 +982,7 @@ After executing the script, return a structured ExecutionOutput with:
         # Quality Analyst with structured output (LLM-as-judge pattern)
         # NOTE: Using static instructions for standalone agents (can't append to functions)
         # Physics observation happens through tools (observe_physics_anomaly, get_physics_patterns)
+        # Phase 3: Input/output guardrails for validation
         base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
         self._quality_agent_standalone = Agent[SharedContext](
             name="Quality Analyst",
@@ -981,6 +1012,11 @@ Be a STRICT judge - only pass renders that truly meet quality standards."""),
             model_settings=base_quality_standalone.model_settings,
             output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
             tools=base_quality_standalone.tools,
+            # Phase 3: Guardrails for Quality Analyst
+            # - Input: Check budget before expensive vision evaluation
+            # - Output: Validate QualityOutput structure and critical issue consistency
+            input_guardrails=[check_budget_before_quality],
+            output_guardrails=[validate_quality_output],
         )
 
         # Learning Agent with structured output

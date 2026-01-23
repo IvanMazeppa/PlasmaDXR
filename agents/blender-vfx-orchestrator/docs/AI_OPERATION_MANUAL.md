@@ -1,8 +1,11 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 2.0.0
+**Version:** 3.0.0
+**Last Updated:** 2026-01-23
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
+
+> **Architecture Note:** This system uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions. The deprecated handoff-based `create_asset()` method should NOT be used.
 
 ---
 
@@ -203,26 +206,38 @@ if applied_pattern_id:
 1. Receive AssetRequest
 2. Create session with generate_session_id()
 3. Check budget availability
-4. ITERATION LOOP:
+4. PHASE 0: RESEARCH
+   - Research Agent gathers best approach for effect type
+   - Extract alternative approaches from findings
+5. PHASE 0.5: TECHNIQUE SELECTION (Coordinator)
+   - TechniqueSelector Coordinator analyzes research
+   - Returns TechniqueDecision with selected_technique, reasoning, key_parameters
+6. ITERATION LOOP:
    a. IF iteration > 1:
-      - Call pre_iteration_research()
-      - Check warning_level and escape_level
-      - If escape_level >= 2: switch technique
-   b. Search code patterns for known fixes
-   c. Generate/modify script (delegate_to_script_writer)
-   d. Execute script (delegate_to_executor)
-   e. IF execution failed:
-      - Parse error
-      - Fix script
-      - Re-execute (max 2 retries)
-   f. Evaluate quality (delegate_to_quality_analyst)
-   g. Record experiment outcome (delegate_to_learning_agent)
-   h. IF passed: complete session
-   i. IF failed:
+      - PHASE 1.1: MODIFICATION STRATEGY (Coordinator)
+      - ModificationStrategist decides: modify_params OR switch_technique
+      - Returns ModificationDecision with parameter_changes
+   b. IF iteration == 1:
+      - Use technique from TechniqueSelector
+   c. PHASE 1: SCRIPT GENERATION
+      - Script Writer generates/modifies script with Coordinator's guidance
+   d. PHASE 1.5: API VALIDATION
+      - Validate Blender 5.0 API calls, apply corrections
+   e. PHASE 2: EXECUTION
+      - Execute script in Blender
+      - Parse errors if failed, fix and retry (max 2)
+   f. PHASE 3: QUALITY EVALUATION
+      - Quality Analyst evaluates render with vision + metrics
+   g. PHASE 4: LEARNING
+      - Learning Agent records experiment, suggests next action
+   h. PHASE 5: QUALITY GATE (Coordinator)
+      - QualityGateJudge interprets results
+      - Returns QualityDecision with passed, next_action, escape_level
+   i. IF passed: complete session
+   j. IF failed:
       - Extract patterns if improvement >= 5
-      - Update stuck_state
-      - Continue loop
-5. Return SessionState
+      - Continue loop based on next_action
+7. Return SessionState
 ```
 
 ### Workflow 2: Session Resumption
@@ -417,28 +432,32 @@ if budget_tracker.get_remaining() <= 0:
 
 | Level | When Used |
 |-------|-----------|
-| `INFO` | Iteration start/end, handoffs |
+| `INFO` | Iteration start/end, Coordinator decisions, phase transitions |
 | `DEBUG` | Tool calls, parameter changes |
-| `WARNING` | Escape level changes, budget warnings |
+| `WARNING` | Escape level changes, budget warnings, Coordinator failures |
 | `ERROR` | Execution failures, API errors |
 
 ### Key Log Points
 
 ```python
-# Iteration start
-logger.info(f"[Iteration {n}] Starting with escape_level={escape_level}")
+# Phase transitions
+print(f"[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
 
-# Handoff
-logger.info(f"[Handoff] Delegating to {agent_name}: {reason}")
+# Coordinator decisions
+print(f"[Pipeline] Coordinator selected: {technique}", file=sys.stderr)
+print(f"[Pipeline] Reasoning: {reasoning[:60]}...", file=sys.stderr)
+
+# Iteration start
+print(f"[Pipeline] ====== ITERATION {n}/{max} ======", file=sys.stderr)
+
+# Quality Gate
+print(f"[Pipeline] Quality Gate: passed={passed}, next={next_action}", file=sys.stderr)
 
 # Escape level change
-logger.warning(f"[Escape] Level escalated: {old} -> {new}, reason: {trigger}")
-
-# Pattern applied
-logger.info(f"[Pattern] Applied {pattern_id} to {script_path}")
+print(f"[Pipeline] Escape Level: {level}, Reasoning: {reason[:50]}...", file=sys.stderr)
 
 # Session complete
-logger.info(f"[Complete] Session {session_id}: score={final_score}, iterations={n}")
+print(f"[Pipeline] ✓ QUALITY GATE PASSED at iteration {n}", file=sys.stderr)
 ```
 
 ---

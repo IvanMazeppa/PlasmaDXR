@@ -1,8 +1,9 @@
 # .blend File Patching & Analysis Proposal
 
 **Date:** 2026-01-22
-**Status:** Proposed (Post-Phase 2)
+**Status:** Ready for Implementation (Phase 2 Complete ✅)
 **Priority:** High Impact, Medium Effort
+**Last Updated:** 2026-01-23
 
 ---
 
@@ -423,13 +424,48 @@ User provides their own .blend → Agent enhances it with VFX → Returns improv
 
 ---
 
-## Next Steps (After Phase 2 Complete)
+## Next Steps (Phase 2 Complete ✅)
+
+Phase 2 (agents-as-tools with Coordinators) is now complete. The patching system can integrate with the existing architecture:
 
 1. **Immediate:** Add `bpy.ops.wm.save_as_mainfile()` to script generation
+   - Modify Script Writer to save .blend after each iteration
+   - Store path in SessionState for reference
+
 2. **Short-term:** Create basic patch script templates for common fixes
-3. **Medium-term:** Build Blend Analyzer agent
+   - `patch_emission_strength.py` - Adjust emission levels
+   - `patch_color_ramp.py` - Modify color gradients
+   - `patch_volume_density.py` - Adjust smoke/fire density
+
+3. **Medium-term:** Build Blend Analyzer agent using `as_tool()` pattern
+   - Create `blend_analyzer.py` in `specialized_agents/`
+   - Wrap as tool for Coordinator: `analyzer.as_tool("analyze_blend", ...)`
+   - Integrate with TechniqueSelector for learning from examples
+
 4. **Long-term:** Implement external .blend ingestion and learning pipeline
+   - Download .blend files from approved sources
+   - Analyze with Blend Analyzer agent
+   - Extract techniques to knowledge base
+
+### Integration with Coordinator Architecture
+
+The Coordinators can leverage .blend patching:
+
+```python
+# TechniqueSelector can reference analyzed .blend files
+technique_prompt = f"""Select technique based on:
+- Research findings: {research_text}
+- Analyzed .blend techniques: {analyzed_techniques}
+"""
+
+# ModificationStrategist can suggest patch vs regenerate
+mod_decision = ModificationDecision(
+    action='patch_blend',  # New action type
+    patch_script='patch_emission_strength.py',
+    parameter_changes={'strength': 0.7},
+)
+```
 
 ---
 
-*This proposal should be revisited after Phase 2 (agents-as-tools) is complete, as the Coordinator pattern will inform how patching fits into the workflow.*
+*Phase 2 (agents-as-tools) is complete. This proposal is ready for implementation as a future enhancement.*

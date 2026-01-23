@@ -37,7 +37,7 @@ The primary focus of this project is **blender-vfx-orchestrator** - an autonomou
 
 - Autonomously generates Blender Python scripts for VFX effects (explosions, fire, smoke, nebulae, solar effects)
 - Iterates on quality using ML-powered evaluation until thresholds are met
-- Coordinates 5 specialized agents via SDK handoffs
+- Uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions
 - Implements 5 self-learning strategies for continuous improvement
 - Exports NanoVDB volumetric files for use in the DXR renderer
 
@@ -45,37 +45,61 @@ The primary focus of this project is **blender-vfx-orchestrator** - an autonomou
 
 ## OpenAI Agents SDK Architecture
 
-**SDK Version:** v0.6.8+
+**SDK Version:** v0.6.9+
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
 ### Agent Hierarchy
 
 ```
-BlenderVFXOrchestrator (coordinator)
-├── ScriptWriter     - Generates/modifies Blender Python scripts
-├── Executor         - Runs scripts in Blender, parses errors
-├── QualityAnalyst   - ML-powered quality evaluation (vision + metrics)
-├── LearningAgent    - Experiment tracking, knowledge base queries
-└── DocsExpert       - Blender documentation search (semantic + keyword)
+create_asset_pipeline() (Python-controlled)
+│
+├── COORDINATOR AGENTS (Decision Points)
+│   ├── TechniqueSelector      - Phase 0.5: Selects initial technique
+│   ├── ModificationStrategist - Phase 1.1: Decides modification strategy
+│   └── QualityGateJudge       - Phase 5: Interprets quality results
+│
+├── SPECIALIZED AGENTS (Execution)
+│   ├── ResearchAgent    - Researches best approach for effect type
+│   ├── ScriptWriter     - Generates/modifies Blender Python scripts
+│   ├── Executor         - Runs scripts in Blender, parses errors
+│   ├── QualityAnalyst   - ML-powered quality evaluation (vision + metrics)
+│   ├── LearningAgent    - Experiment tracking, knowledge base queries
+│   └── DocsExpert       - Blender documentation search (semantic + keyword)
+│
+└── API Validator        - Validates Blender 5.0 API calls before execution
 ```
 
 ### SDK Patterns Used
 
-**Handoffs** - Transfer control between agents:
+**Agents as Tools** (Primary Pattern) - Coordinators call sub-agents as tools:
 ```python
-from agents import Agent, handoff
-
-orchestrator = Agent(
-    name="Orchestrator",
-    handoffs=[script_writer, quality_analyst, learning_agent],
+coordinator = Agent(
+    tools=[
+        research_agent.as_tool(
+            tool_name="research_approach",
+            tool_description="Research best approach for effect type",
+        ),
+        # Sub-agents called as tools, control returns to coordinator
+    ],
 )
 ```
 
-**Agents as Tools** - Use agents as callable tools:
+**RunHooks** - Lifecycle callbacks for enforcement:
 ```python
-orchestrator = Agent(
-    tools=[quality_analyst.as_tool(tool_name="evaluate_quality", ...)],
-)
+from agents import RunHooks
+
+class EnforcementHooks(RunHooks):
+    async def on_tool_start(self, context, agent, tool):
+        # Loop detection, doc query requirements
+        pass
+
+result = await Runner.run(agent, prompt, hooks=EnforcementHooks())
+```
+
+**Handoffs** (Deprecated) - Transfer control between agents:
+```python
+# NOTE: Handoff pattern is deprecated - use agents-as-tools instead
+# The create_asset() method using handoffs is deprecated
 ```
 
 **Function Tools** - Expose Python functions to agents:
@@ -156,6 +180,7 @@ async def my_tool(param: str) -> str:
 | `quality_analyst.py` | ML quality evaluation (vision + metrics) |
 | `learning_agent.py` | Experiment tracking, pattern extraction |
 | `docs_expert.py` | Blender documentation search |
+| `api_validator.py` | Blender 5.0 API validation (Phase 1.5) |
 
 ### Tools (`tools/`)
 | File | Purpose |
@@ -292,11 +317,12 @@ if iteration > 0:
 
 | Document | Purpose |
 |----------|---------|
+| `docs/ARCHITECTURE_OPTIMIZATION_PLAN_2026-01-22.md` | **Phase 1-7 implementation status** |
 | `docs/AGENT_SPECIFICATION.md` | Complete agent specs, tools, schemas |
 | `docs/AI_OPERATION_MANUAL.md` | Operational guide for AI agents |
 | `docs/AGENTS_SDK_INTEGRATION.md` | SDK patterns and lessons learned |
 | `docs/SELF_LEARNING_ARCHITECTURE.md` | Learning system implementation |
-| `docs/WORKFLOW_ANALYSIS_2026-01-21.md` | Latest workflow issues and fixes |
+| `docs/BLEND_PATCHING_PROPOSAL.md` | Future: .blend file patching proposal |
 
 ---
 
@@ -326,7 +352,9 @@ if not budget["can_afford_evaluation"]:
 - https://github.com/openai/openai-agents-python/tree/main/docs
 - [Multi-Agent Patterns](https://github.com/openai/openai-agents-python/blob/main/docs/multi_agent.md)
 - [Tools Reference](https://github.com/openai/openai-agents-python/blob/main/docs/tools.md)
-- [Handoffs](https://github.com/openai/openai-agents-python/blob/main/docs/handoffs.md)
+- [RunHooks](https://github.com/openai/openai-agents-python/blob/main/docs/run_hooks.md)
+- [Guardrails](https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md) - **Next Phase**
+- [Tracing](https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md)
 
 **Use context7** when you need code generation, setup steps, or library/API documentation.
 
