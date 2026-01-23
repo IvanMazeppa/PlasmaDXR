@@ -9,9 +9,9 @@ References:
 
 ---
 
-## ✅ UPDATE (2026-01-23): SDK v0.6.9+ Now Supports `max_turns` Natively
+## ✅ UPDATE (2026-01-23): SDK v0.7.0 Supports `max_turns` Natively
 
-**Important Discovery:** As of SDK v0.6.9+, `agent.as_tool()` now accepts `max_turns` directly:
+**Important Discovery:** As of SDK v0.6.9+ (now v0.7.0), `agent.as_tool()` accepts `max_turns` directly:
 
 ```python
 research_agent.as_tool(

@@ -285,7 +285,7 @@ Replace `as_tool()` with `@function_tool` wrappers that call `Runner.run(..., ma
 Turn limits enforce bounded reasoning and prevent runaway loops.
 
 **Implementation (2026-01-23):**
-- **Discovery:** SDK v0.6.9+ now supports `agent.as_tool(max_turns=X)` natively!
+- **Discovery:** SDK v0.7.0 supports `agent.as_tool(max_turns=X)` natively!
 - Refactored `create_agent_tool_wrappers()` to use native SDK pattern:
   ```python
   research_agent.as_tool(

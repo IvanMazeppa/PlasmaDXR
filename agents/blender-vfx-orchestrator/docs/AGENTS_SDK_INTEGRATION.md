@@ -1,7 +1,7 @@
 # OpenAI Agents SDK Integration Guide
 
 **Last Updated:** 2026-01-23
-**SDK Version:** 0.6.9+
+**SDK Version:** 0.7.0
 
 ---
 
@@ -10,12 +10,25 @@
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Agents-as-tools pattern | ✅ COMPLETE | All sub-agents exposed via `as_tool()` |
-| Native `max_turns` enforcement | ✅ COMPLETE | Using SDK v0.6.9+ `as_tool(max_turns=X)` |
+| Native `max_turns` enforcement | ✅ COMPLETE | Using SDK v0.7.0 `as_tool(max_turns=X)` |
 | Two-layer tool pattern | ✅ COMPLETE | `_impl` + `@function_tool` wrapper |
 | RunHooks enforcement | ✅ PARTIAL | Hooks defined, not all wired |
 | Input/Output guardrails | ⏳ PENDING | Defined but not all agents use them |
 | SQLiteSession persistence | ⏳ PENDING | Helper exists, not fully integrated |
 | Handoffs deprecated | ✅ COMPLETE | Using code-based pipeline |
+
+---
+
+## SDK v0.7.0 Changes (2026-01-23)
+
+**Breaking Changes:**
+- Nested handoffs now disabled by default → **No impact** (we use agents-as-tools, not handoffs)
+- Default `reasoning_effort` for GPT-5.1/5.2 changed from "low" to "none" → May need explicit setting if using reasoning models
+
+**New Features:**
+- `MCPServerManager` for simplified MCP server lifecycle management
+- `session_input_callback` now optional (auto-appends to session history)
+- Additional WebSocket customization options
 
 ---
 
