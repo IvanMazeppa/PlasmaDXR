@@ -1436,7 +1436,7 @@ Select the optimal technique and provide starting parameters."""
                             pre_research = pre_iteration_research(
                                 current_issue=quality.primary_issue if quality else "unknown",
                                 current_approach=previous_script.technique_used if previous_script else "unknown",
-                                iteration_history=session_mgr.get_iteration_summary(),
+                                iteration_history=session_mgr.get_iteration_history_json(),  # Use JSON for proper parsing
                                 effect_type=request.effect_type.value
                             )
                             import json as _json
@@ -1566,10 +1566,9 @@ Generate a complete, validated script using the selected technique. Return the s
                                 script = ScriptOutput(
                                     script_path=modify_result["modified_path"],
                                     technique_used=previous_script.technique_used + " (param-modified)",
-                                    key_parameters=learning.parameter_modifications,
+                                    parameters_set=learning.parameter_modifications,
                                     validation_passed=True,
                                     validation_errors=[],
-                                    description=f"Parameter-modified from {previous_script.script_path}"
                                 )
                                 direct_modification_success = True
                             else:
@@ -1637,7 +1636,7 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                         script = ScriptOutput(
                                             script_path=modify_result["modified_path"],
                                             technique_used=previous_script.technique_used + " (coord-modified)",
-                                            key_parameters=mod_decision.parameter_changes,
+                                            parameters_set=mod_decision.parameter_changes,
                                             validation_passed=True,
                                             validation_errors=[],
                                         )
@@ -1834,17 +1833,38 @@ Use patterns from library if available."""
                                 corrected_content = script_content
                                 for validation in api_validation.validations:
                                     if not validation.is_valid and validation.correction:
-                                        # Apply the correction
-                                        corrected_content = corrected_content.replace(
-                                            validation.api_call.split('.')[-1] if '.' in validation.api_call else validation.api_call,
-                                            validation.correction.split('.')[-1] if '.' in validation.correction else validation.correction
-                                        )
+                                        correction = validation.correction
+                                        api_call = validation.api_call
+                                        # If correction is a comment, comment out lines containing the API call
+                                        if correction.startswith("#"):
+                                            lines = corrected_content.split('\n')
+                                            for i, line in enumerate(lines):
+                                                if api_call in line and not line.strip().startswith('#'):
+                                                    lines[i] = f"# REMOVED (Blender 5.0): {line.strip()}  {correction}"
+                                            corrected_content = '\n'.join(lines)
+                                        else:
+                                            # Direct token replacement
+                                            old_token = api_call.split('.')[-1] if '.' in api_call else api_call
+                                            new_token = correction.split('.')[-1] if '.' in correction else correction
+                                            corrected_content = corrected_content.replace(old_token, new_token)
 
                                 # Also apply known patterns directly
                                 for pattern, fix in KNOWN_API_CHANGES.items():
                                     if pattern in corrected_content:
-                                        corrected_content = corrected_content.replace(pattern, fix["correction"])
-                                        print(f"[Pipeline]   Applied known fix: {pattern} → {fix['correction']}", file=sys.stderr)
+                                        correction = fix["correction"]
+                                        # If correction is a comment (line removal), comment out the entire line
+                                        if correction.startswith("#"):
+                                            # Find and comment out lines containing this pattern
+                                            lines = corrected_content.split('\n')
+                                            for i, line in enumerate(lines):
+                                                if pattern in line and not line.strip().startswith('#'):
+                                                    # Comment out the line with explanation
+                                                    lines[i] = f"# REMOVED (Blender 5.0): {line.strip()}  {correction}"
+                                            corrected_content = '\n'.join(lines)
+                                        else:
+                                            # Direct replacement for non-comment corrections
+                                            corrected_content = corrected_content.replace(pattern, correction)
+                                        print(f"[Pipeline]   Applied known fix: {pattern} → {correction[:50]}...", file=sys.stderr)
 
                                 # Write corrected script
                                 corrected_path = script.script_path.replace('.py', '_api_fixed.py')
@@ -1979,8 +1999,8 @@ Provide detailed feedback for improvement."""
                         session.best_iteration = iteration
                         session.final_render_path = execution.render_path
 
-                    # Extract current params from script
-                    current_params = script.key_parameters if hasattr(script, 'key_parameters') and script.key_parameters else {}
+                    # Extract current params from script (use parameters_set, the correct field on ScriptOutput)
+                    current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
                     previous_params = current_params  # Save for next iteration's baseline
 
                     # Record result in SessionManager for iteration history tracking
@@ -1997,7 +2017,7 @@ Provide detailed feedback for improvement."""
                     # Record iteration - create nested models from agent outputs
                     script_mod = ScriptModification(
                         script_path=script.script_path or "unknown",
-                        modifications=script.key_parameters if hasattr(script, 'key_parameters') else {},
+                        modifications=script.parameters_set if hasattr(script, 'parameters_set') else {},
                         technique_name=script.technique_used,
                         validation_passed=script.validation_passed,
                         validation_issues=script.validation_errors,
@@ -2033,7 +2053,7 @@ Provide detailed feedback for improvement."""
                     # Sync baseline to ExperimentTracker (for Learning Agent's record_experiment_result)
                     # This fixes the "No baseline recorded" error in the Learning Agent
                     try:
-                        baseline_params = json.dumps(script.key_parameters or {})
+                        baseline_params = json.dumps(script.parameters_set if hasattr(script, 'parameters_set') else {})
                         baseline_scores = json.dumps({"overall": previous_score})
                         record_experiment_baseline(
                             params=baseline_params,

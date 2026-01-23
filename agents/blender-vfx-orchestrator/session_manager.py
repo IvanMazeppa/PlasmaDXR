@@ -332,6 +332,28 @@ class SessionManager:
             "params_that_hurt": {k: v[-1] for k, v in self.params_that_hurt.items()} if self.params_that_hurt else {},
         }
 
+    def get_iteration_history_json(self) -> str:
+        """
+        Get iteration history as JSON for pre_iteration_research.
+
+        Returns a JSON array with score, issue (primary_issue), and technique
+        for each iteration - the format expected by pre_iteration_research_direct().
+
+        Returns:
+            JSON string of iteration history array
+        """
+        history = [
+            {
+                "score": rec.score,
+                "issue": rec.primary_issue or "",
+                "primary_issue": rec.primary_issue or "",  # Alias for compatibility
+                "technique": rec.technique or "",
+                "technique_name": rec.technique or "",  # Alias for compatibility
+            }
+            for rec in self.iteration_history
+        ]
+        return json.dumps(history)
+
     def should_switch_technique(self, threshold: int = 3) -> bool:
         """
         Determine if we should try a different technique.

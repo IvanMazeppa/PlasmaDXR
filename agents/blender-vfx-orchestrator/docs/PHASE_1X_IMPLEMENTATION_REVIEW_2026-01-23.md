@@ -82,8 +82,45 @@ Docs now define Learning Agent as **pre‑generation**, but the pipeline only ru
 ---
 
 ## Recommended Next Actions (Minimal)
-1. Fix `parameters_set` vs `key_parameters` mismatch (1 hour).
-2. Replace token‑level API fixes with full‑pattern replacements (1–2 hours).
+1. ~~Fix `parameters_set` vs `key_parameters` mismatch (1 hour).~~ **DONE**
+2. ~~Replace token‑level API fixes with full‑pattern replacements (1–2 hours).~~ **DONE**
 3. Call the **full API Validator agent** on scripts that fail validation (1–2 hours).
-4. Pass JSON iteration history into pre‑iteration research (30 min).
+4. ~~Pass JSON iteration history into pre‑iteration research (30 min).~~ **DONE**
+
+---
+
+## Fixes Applied (2026-01-23)
+
+### What Was Fixed
+
+**1. `parameters_set` vs `key_parameters` mismatch (Finding #3)**
+- Changed 5 locations in `orchestrator.py` to use `parameters_set` instead of `key_parameters`
+- Affected: ScriptOutput creation (lines 1569, 1640), param extraction (line 1999), ScriptModification creation (line 2017), baseline sync (line 2053)
+- Parameter tracking should now correctly record what was changed between iterations
+
+**2. API correction producing invalid Python (Finding #1)**
+- Comment-based corrections (e.g., `"# volume_samples removed..."`) now comment out the entire line instead of inline substitution
+- Format: `# REMOVED (Blender 5.0): <original line>  <correction reason>`
+- Both correction loops updated (validation-based and KNOWN_API_CHANGES-based)
+
+**3. Pre-iteration research JSON history (Finding #4)**
+- Added `get_iteration_history_json()` method to `SessionManager`
+- Returns proper JSON array with `score`, `issue`, `technique` fields
+- Updated orchestrator to call this instead of `get_iteration_summary()`
+
+### Observations
+
+**Schema drift is a recurring theme.** The `key_parameters` vs `parameters_set` issue suggests the codebase grew organically with multiple contributors (or agent sessions) that didn't always sync on field names. The Pydantic models are correct (`ScriptOutput.parameters_set`), but downstream code drifted. Consider:
+- Adding a linter rule or mypy check for attribute access on Pydantic models
+- Keeping a single "source of truth" schema doc that all code references
+
+**The API correction logic was dangerously naive.** Simple `str.replace()` on code is fragile. The fix handles the immediate symptom (comment-based corrections), but the broader issue is that the validator was designed for *detection*, not *automated repair*. For production:
+- Consider having the validator return structured diffs rather than attempting inline fixes
+- Or have Script Writer re-generate with explicit "avoid these APIs" instructions
+
+**Pre-iteration research was almost useless before this fix.** Passing truncated text summaries meant `same_issue_count` was almost always 0-1. The JSON format exposes this dependency clearly. Going forward, any function expecting structured data should fail loudly on text input rather than silently degrading.
+
+### Remaining Work
+- Finding #2 (full API Validator agent) still open - requires budget consideration
+- Finding #5 (pre-generation Learning) still open - architectural change
 

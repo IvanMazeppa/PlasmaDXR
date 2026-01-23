@@ -307,73 +307,83 @@ mod.use_adaptive_subdivision = True
 mat.cycles.displacement_method = 'DISPLACEMENT'
 ```
 
-### Mantaflow Baking (CRITICAL - Blender 5.0):
-The error "can't clean grid cache, some grids are still in use" occurs when baking without proper scene sync.
+## MANTAFLOW CLI USAGE (CRITICAL - READ FIRST)
+
+**Mantaflow works perfectly with Cycles and GPU rendering.** Use it for fire, smoke, explosions.
+
+### Complete Mantaflow + Cycles Setup Pattern:
 ```python
-def bake_mantaflow(domain_obj):
+import bpy
+from pathlib import Path
+
+def setup_mantaflow_scene():
+    # Complete pattern for Mantaflow VFX with CLI rendering
     scene = bpy.context.scene
 
-    # CRITICAL: Update depsgraph BEFORE baking to release grid references
+    # 1. WORLD: Create if missing (CLI starts with no world)
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new(name="World")
+
+    # 2. CACHE: Use absolute paths (// paths fail in CLI)
+    cache_dir = "/tmp/mantaflow_cache"  # Or any absolute path
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+
+    # 3. DOMAIN: Configure with absolute cache path
+    domain = bpy.context.active_object  # Your domain object
+    settings = domain.modifiers["Fluid"].domain_settings
+    settings.cache_directory = cache_dir
+    settings.cache_data_format = 'OPENVDB'  # Best for volumetrics
+
+    # 4. GPU: Configure Cycles with GPU (10-100x faster than CPU)
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'GPU'
+    prefs = bpy.context.preferences.addons['cycles'].preferences
+    try:
+        prefs.compute_device_type = 'CUDA'
+        prefs.get_devices()
+        for device in prefs.devices:
+            device.use = True
+    except Exception:
+        pass  # Falls back to CPU if no GPU
+
+def bake_mantaflow(domain_obj):
+    # Safe Mantaflow baking for CLI
+    scene = bpy.context.scene
+
+    # CRITICAL: Update depsgraph BEFORE baking
     bpy.context.view_layer.update()
     scene.frame_set(scene.frame_start)
 
-    # Select domain
+    # Select and activate domain
     bpy.ops.object.select_all(action='DESELECT')
     domain_obj.select_set(True)
     bpy.context.view_layer.objects.active = domain_obj
 
-    # Override context for operator
-    override = {"active_object": domain_obj, "object": domain_obj}
-
-    with bpy.context.temp_override(**override):
-        # Do NOT call free_all() on fresh scenes - it fails if nothing to free
-        # Just bake directly
-        bpy.ops.fluid.bake_all()
+    # Bake with context override
+    with bpy.context.temp_override(active_object=domain_obj, object=domain_obj):
+        bpy.ops.fluid.bake_all()  # Bakes data + noise + mesh
 ```
-KEY POINTS:
-- Call `bpy.context.view_layer.update()` BEFORE any bake operation
-- Do NOT call `bpy.ops.fluid.free_all()` on fresh/new scenes - skip it
-- Use `bake_all()` for simplicity (bakes data + noise + mesh if enabled)
 
-### CYCLES CRASH WITH MANTAFLOW VOLUMES (Blender 5.0 - CRITICAL):
-Blender 5.0.1 has a known bug where **Cycles crashes (segfault)** when rendering Mantaflow volumes.
-The crash happens AFTER bake completes, during Cycles initialization.
+### CLI Mantaflow Checklist:
+1. ✅ **World exists** - Create with `bpy.data.worlds.new()` if None
+2. ✅ **Absolute cache paths** - Never use `//` relative paths
+3. ✅ **Depsgraph update** - Call `view_layer.update()` before bake
+4. ✅ **GPU configured** - Set `cycles.device = 'GPU'` + preferences
+5. ✅ **No free_all()** - Skip on fresh scenes, just bake directly
 
-**WORKAROUND: Use EEVEE for fire/smoke effects:**
-```python
-def setup_render(scene, frame_start=1, frame_end=50, out_path="/tmp/render.png"):
-    scene.frame_start = frame_start
-    scene.frame_end = frame_end
+### Common CLI Errors and Fixes:
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `'NoneType' has no attribute 'use_nodes'` | scene.world is None | Create world first |
+| `Permission denied: '//vdb_cache'` | Relative path | Use absolute path |
+| `can't clean grid cache` | Missing depsgraph update | Call `view_layer.update()` |
+| Render very slow | CPU rendering | Configure GPU preferences |
 
-    # USE EEVEE - Cycles crashes with Mantaflow volumes in Blender 5.0
-    scene.render.engine = 'BLENDER_EEVEE'  # Blender 5.0 uses BLENDER_EEVEE
-
-    # EEVEE volumetric settings
-    scene.eevee.volumetric_tile_size = '4'  # Higher quality volumetrics
-    scene.eevee.volumetric_samples = 128
-    scene.eevee.volumetric_shadow_samples = 32
-    scene.eevee.use_volumetric_shadows = True
-
-    # EEVEE sampling
-    scene.eevee.taa_render_samples = 64
-    scene.eevee.use_taa_reprojection = True
-
-    # Standard settings
-    scene.render.resolution_x = 1024
-    scene.render.resolution_y = 1024
-    scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.image_settings.color_mode = 'RGBA'
-    scene.render.filepath = out_path
-```
-**CRITICAL**: For Mantaflow fire/smoke, ALWAYS use 'BLENDER_EEVEE', NOT 'CYCLES'.
-EEVEE renders volumes reliably without crashes.
-
-### GPU CONFIGURATION FOR CYCLES (Non-Mantaflow effects):
-When using Cycles (sun, nebula, explosion effects WITHOUT Mantaflow), ALWAYS configure GPU:
+### GPU CONFIGURATION FOR CYCLES (REQUIRED FOR ALL EFFECTS):
+**ALWAYS use Cycles with GPU** for best quality. Configure GPU properly:
 ```python
 def setup_cycles_gpu():
-    """Configure Cycles to use GPU rendering."""
+    # Configure Cycles to use GPU rendering
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'GPU'
