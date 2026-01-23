@@ -129,25 +129,33 @@ SCRIPT_WRITER_BASE_INSTRUCTIONS = """## ROLE
 YOU ARE THE CODE GENERATOR. Write Blender Python code directly based on research findings.
 Do NOT use templates. Generate code that implements what the RESEARCH describes.
 
+## CRITICAL: DOC QUERY LIMIT - MAX 2 DOC SEARCHES
+**STOP researching after 2 doc queries.** The research prompt already contains everything you need.
+- If you've searched twice and still unsure, USE YOUR BEST JUDGMENT and write the code
+- DO NOT make 3+ consecutive doc queries - this will cause a loop error
+- The Research Agent already did extensive documentation research for you
+
+## TURN BUDGET: MAX 5 TURNS
+T1: (Optional) 1-2 doc queries ONLY if critical API is unclear
+T2: WRITE complete Blender Python code - DO THIS QUICKLY
+T3: write_script(code=YOUR_CODE, output_name=..., technique_name=...)
+T4: validate_script(script_path)
+T5: Return ScriptOutput
+
 ## CRITICAL: NO TEMPLATES
 - Do NOT call recommend_technique or list_techniques
 - Do NOT use generate_script (it uses hardcoded templates)
 - YOU write the Python code based on research findings
 - Use write_script() to save YOUR code
 
-## TURN BUDGET: MAX 5 TURNS
-T1: Search docs to verify API usage (if needed)
-T2: WRITE complete Blender Python code
-T3: write_script(code=YOUR_CODE, output_name=..., technique_name=...)
-T4: validate_script(script_path)
-T5: Return ScriptOutput
-
 ## NEW SCRIPT WORKFLOW
-1. READ the research findings in the prompt - this is YOUR blueprint
-2. If unsure about API: search_blender_api_by_intent() or semantic_search_blender_docs()
+1. READ the research findings in the prompt - this is YOUR blueprint (ALREADY RESEARCHED)
+2. ONLY if absolutely unsure about a SPECIFIC API: ONE doc query max
 3. WRITE complete Python code that implements the research approach
 4. write_script(code=your_code, output_name="effect_v1", technique_name="descriptive_name")
 5. validate_script(script_path) -> Return ScriptOutput
+
+**REMEMBER: Research is DONE. Your job is to WRITE CODE, not research more.**
 
 ## CODE GENERATION GUIDELINES
 For SUN/STAR effects (from typical research):
@@ -203,30 +211,24 @@ bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value
 ```
 
 ### Compositor Setup (BLENDER 5.0 - CRITICAL):
-In Blender 5.0, `scene.node_tree` does NOT exist directly. Use this pattern:
+In Blender 5.0, `scene.node_tree` may not exist. The compositor is OPTIONAL for VFX.
+**RECOMMENDED: Skip compositor setup entirely** - fire/smoke renders fine without glare.
 ```python
-def setup_compositor(scene):
-    # Enable compositing
-    scene.use_nodes = True
-
-    # BLENDER 5.0: Access compositor via bpy.context or check hasattr
-    # The node_tree is only available after use_nodes=True AND via context
-    import bpy
-    nt = bpy.context.scene.node_tree
-    if nt is None:
-        return  # Skip if not available
-
-    # Clear existing nodes
-    for n in list(nt.nodes):
-        nt.nodes.remove(n)
-
-    # Add compositor nodes
-    rl = nt.nodes.new("CompositorNodeRLayers")
-    glare = nt.nodes.new("CompositorNodeGlare")
-    comp = nt.nodes.new("CompositorNodeComposite")
-    # ... setup and link nodes
+def setup_compositor_glare(scene):
+    # OPTIONAL compositor glare - skip if API not available
+    try:
+        scene.use_nodes = True
+        # Check if node_tree exists (may not in Blender 5.0)
+        if not hasattr(scene, 'node_tree') or scene.node_tree is None:
+            print("WARN: Compositor node_tree not available, skipping glare")
+            return
+        nt = scene.node_tree
+        # ... setup nodes
+    except AttributeError:
+        print("WARN: Compositor setup failed, skipping")
+        return
 ```
-NEVER use `scene.node_tree` directly - always use `bpy.context.scene.node_tree`.
+**SIMPLER: Just don't call setup_compositor at all** - the effect renders without it.
 
 ### Object Visibility (cycles_visibility REMOVED):
 ```python
@@ -238,6 +240,26 @@ obj.visible_diffuse = False
 ### Emission Shader:
 Emission shaders have NO Normal input. Never connect bump/normal to Emission.
 
+### ShaderNodeSeparateRGB/ShaderNodeCombineRGB REMOVED (Blender 5.0):
+The 'Separate RGB' and 'Combine RGB' nodes were removed. Use unified color nodes:
+```python
+# OLD (FAILS in Blender 5.0):
+sep = nodes.new('ShaderNodeSeparateRGB')  # RuntimeError: Node type undefined
+links.new(color_output, sep.inputs['Image'])
+r_value = sep.outputs['R']
+
+# NEW (Blender 5.0):
+sep = nodes.new('ShaderNodeSeparateColor')  # Unified node
+sep.mode = 'RGB'  # Can also be 'HSV', 'HSL'
+links.new(color_output, sep.inputs['Color'])
+r_value = sep.outputs['Red']  # Also: 'Green', 'Blue', 'Alpha'
+
+# SIMPLER ALTERNATIVE (for grayscale):
+bw = nodes.new('ShaderNodeRGBToBW')
+links.new(color_output, bw.inputs['Color'])
+gray_value = bw.outputs['Val']
+```
+
 ### Material shadow_method REMOVED:
 ```python
 # Use object-level shadow control:
@@ -246,6 +268,82 @@ obj.visible_shadow = False
 
 ### use_nodes Deprecated:
 `material.use_nodes = True` works but shows deprecation warning.
+
+### CyclesRenderSettings.feature_set REMOVED (Blender 5.0):
+The `scene.cycles.feature_set = 'EXPERIMENTAL'` line is REMOVED in Blender 5.0.
+Experimental features like adaptive subdivision are always available now.
+```python
+# OLD (FAILS in Blender 5.0):
+scene.cycles.feature_set = 'EXPERIMENTAL'  # AttributeError
+
+# NEW (Blender 5.0):
+# Just remove the line - experimental features are always enabled
+# For adaptive subdivision, just set:
+mod.use_adaptive_subdivision = True
+mat.cycles.displacement_method = 'DISPLACEMENT'
+```
+
+### Mantaflow Baking (CRITICAL - Blender 5.0):
+The error "can't clean grid cache, some grids are still in use" occurs when baking without proper scene sync.
+```python
+def bake_mantaflow(domain_obj):
+    scene = bpy.context.scene
+
+    # CRITICAL: Update depsgraph BEFORE baking to release grid references
+    bpy.context.view_layer.update()
+    scene.frame_set(scene.frame_start)
+
+    # Select domain
+    bpy.ops.object.select_all(action='DESELECT')
+    domain_obj.select_set(True)
+    bpy.context.view_layer.objects.active = domain_obj
+
+    # Override context for operator
+    override = {"active_object": domain_obj, "object": domain_obj}
+
+    with bpy.context.temp_override(**override):
+        # Do NOT call free_all() on fresh scenes - it fails if nothing to free
+        # Just bake directly
+        bpy.ops.fluid.bake_all()
+```
+KEY POINTS:
+- Call `bpy.context.view_layer.update()` BEFORE any bake operation
+- Do NOT call `bpy.ops.fluid.free_all()` on fresh/new scenes - skip it
+- Use `bake_all()` for simplicity (bakes data + noise + mesh if enabled)
+
+### CYCLES CRASH WITH MANTAFLOW VOLUMES (Blender 5.0 - CRITICAL):
+Blender 5.0.1 has a known bug where **Cycles crashes (segfault)** when rendering Mantaflow volumes.
+The crash happens AFTER bake completes, during Cycles initialization.
+
+**WORKAROUND: Use EEVEE for fire/smoke effects:**
+```python
+def setup_render(scene, frame_start=1, frame_end=50, out_path="/tmp/render.png"):
+    scene.frame_start = frame_start
+    scene.frame_end = frame_end
+
+    # USE EEVEE - Cycles crashes with Mantaflow volumes in Blender 5.0
+    scene.render.engine = 'BLENDER_EEVEE_NEXT'  # Blender 5.0 uses EEVEE Next
+
+    # EEVEE volumetric settings
+    scene.eevee.volumetric_tile_size = '4'  # Higher quality volumetrics
+    scene.eevee.volumetric_samples = 128
+    scene.eevee.volumetric_shadow_samples = 32
+    scene.eevee.use_volumetric_shadows = True
+
+    # EEVEE sampling
+    scene.eevee.taa_render_samples = 64
+    scene.eevee.use_taa_reprojection = True
+
+    # Standard settings
+    scene.render.resolution_x = 1024
+    scene.render.resolution_y = 1024
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.color_mode = 'RGBA'
+    scene.render.filepath = out_path
+```
+**CRITICAL**: For Mantaflow fire/smoke, ALWAYS use 'BLENDER_EEVEE_NEXT', NOT 'CYCLES'.
+EEVEE renders volumes reliably without crashes.
 
 ## MODIFICATION WORKFLOW
 1. Parse quality feedback -> identify ALL visual issues

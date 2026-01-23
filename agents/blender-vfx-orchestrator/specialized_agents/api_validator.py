@@ -139,6 +139,54 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "nt = bpy.context.scene.node_tree",
         "reason": "In Blender 5.0, access compositor node_tree via bpy.context.scene.node_tree"
     },
+    # Mantaflow baking issues (Blender 5.0)
+    "bpy.ops.fluid.free_all()": {
+        "correction": "# Skip free_all() on fresh scenes - call bpy.context.view_layer.update() instead",
+        "reason": "free_all() fails with 'grids still in use' on fresh scenes. Update depsgraph first, then bake directly."
+    },
+    # ShaderNodeSeparateRGB/CombineRGB REMOVED (Blender 5.0 - CRITICAL)
+    "ShaderNodeSeparateRGB": {
+        "correction": "ShaderNodeSeparateColor",
+        "reason": "ShaderNodeSeparateRGB removed in Blender 5.0. Use ShaderNodeSeparateColor with mode='RGB'. Inputs: 'Color' (not 'Image'). Outputs: 'Red', 'Green', 'Blue', 'Alpha' (not 'R', 'G', 'B')."
+    },
+    "'ShaderNodeSeparateRGB'": {
+        "correction": "'ShaderNodeSeparateColor'",
+        "reason": "ShaderNodeSeparateRGB removed in Blender 5.0. Use ShaderNodeSeparateColor."
+    },
+    "ShaderNodeCombineRGB": {
+        "correction": "ShaderNodeCombineColor",
+        "reason": "ShaderNodeCombineRGB removed in Blender 5.0. Use ShaderNodeCombineColor with mode='RGB'. Inputs: 'Red', 'Green', 'Blue', 'Alpha' (not 'R', 'G', 'B')."
+    },
+    "'ShaderNodeCombineRGB'": {
+        "correction": "'ShaderNodeCombineColor'",
+        "reason": "ShaderNodeCombineRGB removed in Blender 5.0. Use ShaderNodeCombineColor."
+    },
+    # Node socket name changes for SeparateColor/CombineColor
+    ".outputs['R']": {
+        "correction": ".outputs['Red']",
+        "reason": "ShaderNodeSeparateColor uses 'Red' not 'R' in Blender 5.0"
+    },
+    ".outputs['G']": {
+        "correction": ".outputs['Green']",
+        "reason": "ShaderNodeSeparateColor uses 'Green' not 'G' in Blender 5.0"
+    },
+    ".outputs['B']": {
+        "correction": ".outputs['Blue']",
+        "reason": "ShaderNodeSeparateColor uses 'Blue' not 'B' in Blender 5.0"
+    },
+    ".inputs['Image']": {
+        "correction": ".inputs['Color']",
+        "reason": "ShaderNodeSeparateColor uses 'Color' input not 'Image' in Blender 5.0"
+    },
+    # CyclesRenderSettings.feature_set REMOVED (Blender 5.0)
+    "scene.cycles.feature_set": {
+        "correction": "# scene.cycles.feature_set removed in Blender 5.0 - experimental features are always available",
+        "reason": "CyclesRenderSettings.feature_set removed in Blender 5.0. Experimental features like adaptive subdivision are enabled differently."
+    },
+    ".feature_set": {
+        "correction": "# .feature_set removed in Blender 5.0",
+        "reason": "CyclesRenderSettings.feature_set removed in Blender 5.0."
+    },
 }
 
 # =============================================================================
@@ -257,6 +305,19 @@ def extract_api_calls_from_code(code: str) -> List[str]:
         prop = match.group(1)
         if prop == 'volume_samples':
             api_calls.add('CyclesRenderSettings.volume_samples')
+
+    # Pattern 13: ShaderNodeSeparateRGB/CombineRGB (REMOVED in Blender 5.0)
+    if 'ShaderNodeSeparateRGB' in code:
+        api_calls.add('ShaderNodeSeparateRGB')
+    if 'ShaderNodeCombineRGB' in code:
+        api_calls.add('ShaderNodeCombineRGB')
+
+    # Pattern 14: Old socket names for Separate/Combine nodes
+    for match in re.finditer(r"\.outputs\['([RGB])'\]", code):
+        letter = match.group(1)
+        api_calls.add(f".outputs['{letter}']")
+    if ".inputs['Image']" in code:
+        api_calls.add(".inputs['Image']")
 
     return sorted(api_calls)
 

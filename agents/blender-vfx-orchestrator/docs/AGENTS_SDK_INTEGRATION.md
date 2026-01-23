@@ -174,6 +174,11 @@ orchestrator = Agent(
 - `as_tool()`: Agent called as utility, control returns to caller ✅
 - Handoffs: New agent takes over conversation completely ❌
 
+**Project-Specific Execution Order (Learning First)**
+- The Learning Agent runs **before Script Writer** on every iteration.
+- Its proposals **must include Blender 5 doc references**; missing refs trigger Docs Expert or rejection.
+- New API usage requires **at least one** micro-experiment before full integration.
+
 ### 2. Handoffs (DEPRECATED for this project)
 
 > **Note:** Handoffs are deprecated in favor of agents-as-tools. The handoff-based `create_asset()` method should NOT be used.

@@ -335,16 +335,25 @@ OUTPUT (QualityOutput): overall_score (0-100), passed (bool), primary_issue, iss
 
 ### Template: Learning Agent (Machine-Optimized)
 ```
-ROLE: Record experiment + suggest next action.
-TOOLS: query_knowledge_base, search_code_patterns, record_experiment_result.
+ROLE: Mandatory pre-generation exploration controller + record outcomes.
+TOOLS: query_knowledge_base, search_code_patterns, record_experiment_result, (Docs Expert if missing doc refs).
 TURNS: MAX 3.
 
 T1: query_knowledge_base + search_code_patterns (parallel ok).
-T2: record_experiment_result (exactly once).
-T3: Return LearningOutput.
+T2: Propose doc-grounded candidates + micro-experiments (Blender 5 only).
+T3: record_experiment_result (exactly once), return LearningOutput.
 
-OUTPUT (LearningOutput): experiment_recorded, pattern_extracted, pattern_id, next_action, suggested_modifications[], parameter_modifications{}.
+OUTPUT (LearningOutput):
+- proposals[] (technique, params, expected_effect, doc_refs[])
+- micro_experiments[] (minimal script + success_criteria + doc_refs[])
+- anti_patterns[]
+- experiment_recorded, pattern_extracted, pattern_id, next_action, suggested_modifications[], parameter_modifications{}.
 ```
+
+### Doc-Gating Rules (Blender 5 Only)
+- Every proposal must include `doc_refs` from Blender 5 docs.
+- If `doc_refs` are missing, **force Docs Expert** before proposal is accepted.
+- New API usage requires **at least one** micro-experiment before full integration.
 
 ### Template: Executor / Docs Expert (Machine-Optimized)
 ```
@@ -404,18 +413,20 @@ if scene.node_tree is not None:  # Guard for None, not version
       - Returns ModificationDecision with parameter_changes
    b. IF iteration == 1:
       - Use technique from TechniqueSelector
-   c. PHASE 1: SCRIPT GENERATION
-      - Script Writer generates/modifies script with Coordinator's guidance
-   d. PHASE 1.5: API VALIDATION
+   c. PHASE 0.75: LEARNING (Doc-Grounded)
+      - Learning Agent proposes candidates + micro-experiments (Blender 5 doc refs required)
+   d. PHASE 1: SCRIPT GENERATION
+      - Script Writer generates/modifies script from Learning Agent proposals
+   e. PHASE 1.5: API VALIDATION
       - Validate Blender 5.0 API calls, apply corrections
-   e. PHASE 2: EXECUTION
+   f. PHASE 2: EXECUTION
       - Execute script in Blender
       - Parse errors if failed, fix and retry (max 2)
-   f. PHASE 3: QUALITY EVALUATION
+   g. PHASE 3: QUALITY EVALUATION
       - Quality Analyst evaluates render with vision + metrics
-   g. PHASE 4: LEARNING
-      - Learning Agent records experiment, suggests next action
-   h. PHASE 5: QUALITY GATE (Coordinator)
+   h. PHASE 4: LEARNING (Post-Eval)
+      - Learning Agent records experiment, updates knowledge base
+   i. PHASE 5: QUALITY GATE (Coordinator)
       - QualityGateJudge interprets results
       - Returns QualityDecision with passed, next_action, escape_level
    i. IF passed: complete session

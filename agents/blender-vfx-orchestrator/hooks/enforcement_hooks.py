@@ -482,11 +482,11 @@ def create_script_writer_hooks() -> EnforcementHooks:
     """
     Create hooks optimized for Script Writer agent.
 
-    Strict doc query requirement for NEW script generation, but modify_script
-    is exempt since:
-    1. It's called after write_script which already required doc query
-    2. Modifications are often based on API error feedback, not new research
-    3. The API Validator catches any API issues anyway
+    Doc query requirement REMOVED for write_script because:
+    1. The Research Agent already did extensive documentation research
+    2. Research findings are passed in the prompt to Script Writer
+    3. Script Writer should write code based on that research, not re-research
+    4. The API Validator (Phase 1.5) catches any API issues anyway
 
     Loop detection: Doc search tools are exempt from the normal limit (6),
     but they still have:
@@ -500,10 +500,9 @@ def create_script_writer_hooks() -> EnforcementHooks:
         max_turns=12,
         hard_turn_limit=18,
         require_doc_query_before=[
-            "write_script",
-            "generate_script",
-            # NOTE: modify_script exempt - it's used for fixing API errors
-            # where the research was done in a previous iteration
+            # NOTE: write_script and generate_script NO LONGER require doc query
+            # because Research Agent already did the documentation research
+            # and the API Validator (Phase 1.5) catches API issues
         ],
         exempt_from_loop_detection=[
             "validate_script",  # May need multiple validation calls

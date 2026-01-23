@@ -170,7 +170,7 @@ Request → create_asset_pipeline()
 | `write_script` | ScriptWriter | Generate/modify Blender scripts |
 | `execute_script` | Executor | Execute scripts, handle errors |
 | `evaluate_quality` | QualityAnalyst | Evaluate render quality |
-| `record_learning` | LearningAgent | Get fix suggestions, record outcomes |
+| `record_learning` | LearningAgent | Doc-grounded proposals + record outcomes |
 | `search_docs` | DocsExpert | Search Blender documentation |
 
 ---
@@ -320,8 +320,10 @@ runs/
 #### 6. Learning Agent
 
 **Model:** `gpt-5.2` with `reasoning.effort="high"`
-**Role:** Maintain experiment knowledge, suggest fixes, record outcomes
+**Role:** **Mandatory pre-generation exploration controller**; propose doc-grounded ideas, define micro-experiments, record outcomes
 **RunHooks:** `create_learning_agent_hooks()` - max 3 same-tool calls, 8 turns
+
+**Execution Order:** Runs **before Script Writer** on every iteration. Proposals **must** include Blender 5 doc references; missing refs trigger Docs Expert or rejection.
 
 ##### Tools
 
@@ -335,6 +337,14 @@ runs/
 | `query_knowledge_base` | experiment-tracker MCP | Search past experiments |
 | `get_parameter_knowledge` | experiment-tracker MCP | Parameter-specific knowledge |
 | `add_manual_learning` | experiment-tracker MCP | Add custom learnings |
+
+#### Doc-Grounded Proposals (Required)
+
+- `proposals[]`: technique, params, expected_effect, `doc_refs[]`
+- `micro_experiments[]`: minimal script + success_criteria + `doc_refs[]`
+- `anti_patterns[]`: “avoid this” + evidence (errors/metrics)
+
+**Enforcement:** Reject any proposal with empty `doc_refs`. If a proposal uses a new API, run **at least one** micro-experiment first.
 
 #### Knowledge Base Schema
 

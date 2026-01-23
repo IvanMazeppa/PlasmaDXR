@@ -223,6 +223,38 @@ An autonomous system must not depend on LLM compliance for core logic.
 
 ---
 
+## Phase 1.5 — Learning Agent as Exploration Controller (Doc‑Grounded)
+
+### Problem
+The Learning Agent is mostly post‑hoc and optional. It doesn’t *drive* exploration, and Blender 5.0.1 specifics are not guaranteed to propagate. This creates training‑data drift.
+
+### Change
+Make the Learning Agent a **mandatory pre‑generation step** that outputs doc‑grounded proposals and micro‑experiments. Every proposal must cite **Blender 5** documentation; anything else is rejected or routed to DocsExpert.
+
+### Why it matters
+This is the only way to reliably learn new Blender 5.0.1 behavior without drifting back to prior training data. You force the system to test, measure, and store evidence.
+
+### Required outputs (structured)
+- `proposals[]`: technique, params, expected_effect, `doc_refs[]`
+- `micro_experiments[]`: minimal script + success_criteria + `doc_refs[]`
+- `anti_patterns[]`: “avoid this” + evidence (errors/metrics)
+
+### Enforcement rules
+- Reject any proposal with empty `doc_refs`.
+- If `doc_refs` do not map to Blender 5 docs, force a DocsExpert query.
+- If a proposal uses a new API, run **at least one** micro‑experiment first.
+
+### Example (conceptual)
+```
+learning = run_learning_agent(...)
+assert learning.proposals and all(p.doc_refs for p in learning.proposals)
+
+if learning.uses_new_api:
+    run_micro_experiment(learning.micro_experiments[0])
+```
+
+---
+
 ## Phase 2 — Self‑Improvement Plumbing (Persistence + reuse)
 
 ### 11) Report pattern outcomes consistently
@@ -285,6 +317,7 @@ This is the exact place each phase likely touches.
 | 8 Iteration‑aware budget check | `orchestrator.py` | Guard before evaluation and possibly before execution |
 | 9 Sub‑agent max_turns | `orchestrator.py` | `create_agent_tool_wrappers()` or tool wrappers |
 | 10 Mechanical self‑learning | `orchestrator.py` | Enforce pattern extraction/outcome reporting |
+| LA‑1 Learning Agent as controller | `orchestrator.py`, `specialized_agents/learning_agent.py`, `tools/semantic_docs_tools.py` | Pre‑generation proposals + doc‑gated experiments |
 | 11 Pattern outcome reporting | `orchestrator.py`, `tools/code_pattern_tools.py` | Call `report_pattern_outcome()` |
 | 12 Reuse extracted patterns | `orchestrator.py` | Use `search_code_patterns`/`apply_pattern_to_script` |
 | 13 Research schema | `models/` (new), `orchestrator.py` | Pydantic output model |

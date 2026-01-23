@@ -438,11 +438,11 @@ def setup_compositor_glare(scene, threshold=0.5):
     # OPTIONAL: In some Blender 5.0 builds compositor node_tree may be unavailable.
     try:
         scene.use_nodes = True
-        if not hasattr(scene, 'node_tree') or scene.node_tree is None:
+        if not hasattr(scene, 'node_tree') or bpy.context.scene.node_tree is None:
             print("WARN: Compositor node_tree not available, skipping glare")
             return
 
-        nt = scene.node_tree
+        nt = bpy.context.scene.node_tree
         nodes = nt.nodes
         links = nt.links
         nodes.clear()
@@ -459,8 +459,8 @@ def setup_compositor_glare(scene, threshold=0.5):
         comp = nodes.new('CompositorNodeComposite')
         comp.location = (480, 0)
 
-        links.new(rl.outputs['Image'], glare.inputs['Image'])
-        links.new(glare.outputs['Image'], comp.inputs['Image'])
+        links.new(rl.outputs['Image'], glare.inputs['Color'])
+        links.new(glare.outputs['Image'], comp.inputs['Color'])
 
     except Exception as e:
         print(f"WARN: Compositor setup failed, skipping glare. Reason: {e}")

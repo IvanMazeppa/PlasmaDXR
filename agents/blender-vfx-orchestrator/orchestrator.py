@@ -1489,6 +1489,19 @@ Generate a complete, validated script using the selected technique. Return the s
                                 validation_passed=False,
                                 validation_errors=[str(e)]
                             )
+                        except Exception as e:
+                            # SDK wraps LoopDetectedError in UserError - check for it
+                            if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                print(f"[Pipeline] WARN: Script Writer loop (wrapped): {e}", file=sys.stderr)
+                                script = ScriptOutput(
+                                    script_path="",
+                                    technique_used="loop_detected",
+                                    parameters_set={},
+                                    validation_passed=False,
+                                    validation_errors=["Loop detected - agent made too many consecutive doc queries"]
+                                )
+                            else:
+                                raise  # Re-raise if it's a different error
                         print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
                     else:
                         # Track if we successfully modified the script directly
@@ -1720,6 +1733,19 @@ Use patterns from library if available."""
                                     validation_passed=False,
                                     validation_errors=[str(e)]
                                 )
+                            except Exception as e:
+                                # SDK wraps LoopDetectedError in UserError - check for it
+                                if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                    print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}, wrapped): {e}", file=sys.stderr)
+                                    script = ScriptOutput(
+                                        script_path="",
+                                        technique_used="loop_detected",
+                                        parameters_set={},
+                                        validation_passed=False,
+                                        validation_errors=["Loop detected - agent made too many consecutive doc queries"]
+                                    )
+                                else:
+                                    raise  # Re-raise if it's a different error
                             print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
 
                     # Always capture script_path if available (for subsequent iterations)
