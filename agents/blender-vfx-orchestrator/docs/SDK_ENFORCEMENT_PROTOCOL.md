@@ -2,7 +2,7 @@
 
 **Purpose:** Ensure OpenAI Agents SDK documentation is ALWAYS consulted before making changes.
 
-**Current SDK Version:** v0.6.9 (2025-01-20)
+**Current SDK Version:** v0.6.9+ (2026-01-23)
 
 ---
 
@@ -39,6 +39,7 @@ mcp__openaiDeveloperDocs__fetch_openai_doc
 | Handoffs | https://github.com/openai/openai-agents-python/blob/main/docs/handoffs.md |
 | Tools | https://github.com/openai/openai-agents-python/blob/main/docs/tools.md |
 | Guardrails | https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md |
+| Sessions | https://github.com/openai/openai-agents-python/blob/main/docs/sessions/index.md |
 | Tracing | https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md |
 | Models | https://github.com/openai/openai-agents-python/blob/main/docs/models.md |
 
@@ -153,6 +154,24 @@ agent = Agent(
 result = await Runner.run(agent, prompt)
 output = result.final_output_as(MyOutput)  # Type-safe!
 ```
+
+### 7. SQLiteSession (Conversation Persistence)
+
+```python
+from agents import Agent, Runner, SQLiteSession
+
+# Create agent
+agent = Agent(name="Assistant", instructions="...")
+
+# Create persistent session
+session = SQLiteSession("conversation_123", "path/to/db.sqlite")
+
+# All Runner.run() calls with same session share conversation history
+result = await Runner.run(agent, "First message", session=session)
+result = await Runner.run(agent, "Second message", session=session)  # Remembers first message
+```
+
+**Key Benefit:** Agents automatically remember previous context without manual history management.
 
 ---
 

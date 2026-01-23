@@ -1,11 +1,11 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 3.0.0
+**Version:** 3.2.0
 **Last Updated:** 2026-01-23
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
 
-> **Architecture Note:** This system uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions. The deprecated handoff-based `create_asset()` method should NOT be used.
+> **Architecture Note:** This system uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions, protected by **RunHooks + Guardrails** for defense-in-depth validation. All agents share **SDK Session context** for conversation persistence. The deprecated handoff-based `create_asset()` method should NOT be used.
 
 ---
 
@@ -157,7 +157,96 @@ if escape_level >= 2:
         )
 ```
 
-### Principle 5: Record Everything for Future Sessions
+### Principle 5: Defense-in-Depth Validation
+
+The system uses two validation layers to ensure robust agent behavior:
+
+#### RunHooks (Tool-Level)
+
+RunHooks intercept tool calls and enforce requirements:
+
+```python
+# These are automatically applied in create_asset_pipeline()
+
+# Loop Detection
+if tool_call_count["semantic_search"] > 3:
+    raise LoopDetectedError("Tool called too many times")
+
+# Documentation Requirement
+if tool_name == "write_script" and not doc_query_made:
+    raise DocQueryRequiredError("Research required before scripting")
+```
+
+**Exceptions to Handle:**
+- `LoopDetectedError` - Stop and return best result
+- `DocQueryRequiredError` - Force research before continuing
+- `TurnBudgetExceededError` - Stop agent and return partial result
+
+#### Guardrails (Agent-Level)
+
+Guardrails validate agent inputs and outputs:
+
+**Input Guardrails:**
+- `require_research_context` - Script Writer must receive research findings
+- `validate_effect_type` - Must specify valid effect type
+- `check_budget_before_quality` - Block if budget exhausted
+
+**Output Guardrails:**
+- `validate_script_output` - Must have script_path, technique_used
+- `validate_quality_output` - Score 0-100, passed boolean, no critical issues if passed=True
+- `validate_technique_decision` - Must have selected_technique, reasoning
+- `validate_modification_decision` - Must have action, parameter_changes if modify_params
+- `validate_quality_decision` - passed/next_action must be consistent
+
+**Handling Guardrail Failures:**
+```python
+try:
+    result = await Runner.run(agent, prompt)
+except InputGuardrailTripwireTriggered as e:
+    # Input validation failed - check e.guardrail_result.output_info
+    print(f"Input validation failed: {e.guardrail_result.output_info['reason']}")
+except OutputGuardrailTripwireTriggered as e:
+    # Output validation failed - agent produced invalid output
+    print(f"Output validation failed: {e.guardrail_result.output_info['errors']}")
+```
+
+---
+
+### Principle 6: Conversation Context is Shared (SDK Sessions)
+
+All agents within a VFX session share **conversation context** via SDK Sessions. This means:
+
+1. **Agents can reference previous phases** - Script Writer can see Research Agent findings
+2. **Context persists across iterations** - Quality Analyst remembers previous evaluations
+3. **No manual history management** - SDK handles conversation threading automatically
+
+**How It Works:**
+
+```python
+# At pipeline start, an SDK session is created
+sdk_session = get_or_create_sdk_session(session_id)
+
+# All Runner.run() calls share this session
+result = await Runner.run(research_agent, prompt, session=sdk_session, ...)
+result = await Runner.run(script_writer, prompt, session=sdk_session, ...)
+# Script Writer automatically sees Research Agent's output!
+```
+
+**What You Can Reference:**
+
+| Agent | Can Reference |
+|-------|---------------|
+| TechniqueSelector | Research findings |
+| Script Writer | Research + Technique decision |
+| Quality Analyst | Script generated, execution results |
+| Learning Agent | Quality evaluation, iteration history |
+| QualityGateJudge | All previous phases in current iteration |
+
+**Important:** Session context is per-VFX-session, not global. Each asset generation gets its own conversation thread stored in `sessions/sdk/vfx_conversations.db`.
+
+---
+
+### Principle 7: Record Everything for Future Sessions
 
 After EVERY iteration, record:
 
@@ -392,6 +481,16 @@ Is there a known fix for this issue?
 | `FAILED` | Can retry with different parameters |
 | `MAX_ITERATIONS` | Return best result or retry with higher limit |
 
+### Enforcement Errors (RunHooks + Guardrails)
+
+| Error Type | Detection | Recovery |
+|------------|-----------|----------|
+| `LoopDetectedError` | RunHooks: Same tool >3x | Return best result, log warning |
+| `DocQueryRequiredError` | RunHooks: Script write without research | Force research phase, then retry |
+| `TurnBudgetExceededError` | RunHooks: Agent exceeded turns | Stop agent, use partial result |
+| `InputGuardrailTripwireTriggered` | Guardrails: Invalid agent input | Fix input and retry |
+| `OutputGuardrailTripwireTriggered` | Guardrails: Invalid agent output | Use fallback decision |
+
 ---
 
 ## Budget Management
@@ -547,6 +646,41 @@ if improvement >= 5.0:
         effect_type=effect_type,
         experiment_id=exp_id
     )
+```
+
+### Pitfall 5: Ignoring Guardrail Failures
+
+**WRONG:**
+```python
+# Just retry without understanding why it failed
+for attempt in range(3):
+    try:
+        result = await Runner.run(agent, prompt)
+        break
+    except:  # Catching all exceptions blindly
+        continue
+```
+
+**CORRECT:**
+```python
+try:
+    result = await Runner.run(agent, prompt)
+except InputGuardrailTripwireTriggered as e:
+    # Understand the specific failure
+    reason = e.guardrail_result.output_info.get("reason")
+    if "research context" in reason:
+        # Need to add research findings to prompt
+        prompt = f"{research_findings}\n\n{prompt}"
+        result = await Runner.run(agent, prompt)
+    elif "budget exhausted" in reason:
+        # Return best result, don't retry
+        return best_result
+except OutputGuardrailTripwireTriggered as e:
+    # Output was invalid - log and fallback
+    errors = e.guardrail_result.output_info.get("errors", [])
+    logger.warning(f"Agent output invalid: {errors}")
+    # Use fallback decision
+    decision = create_fallback_decision()
 ```
 
 ---

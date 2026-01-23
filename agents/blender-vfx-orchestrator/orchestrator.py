@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers
+from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession
 
 # Enable verbose logging for debugging agent interactions
 # Set AGENTS_DEBUG=1 to enable, or call enable_verbose_stdout_logging() directly
@@ -236,6 +236,37 @@ from utils import (
     create_session_from_request,
     resume_or_create_session,
 )
+
+# =============================================================================
+# SDK SESSION MANAGEMENT (Phase 4: Conversation Persistence)
+# =============================================================================
+
+# Directory for SDK session databases
+SDK_SESSIONS_DIR = Path(__file__).parent / "sessions" / "sdk"
+
+
+def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+    """
+    Get or create an SDK SQLiteSession for conversation persistence.
+
+    SDK Sessions automatically store conversation history across Runner.run() calls,
+    enabling agents to remember previous interactions within the same VFX session.
+
+    Args:
+        session_id: Unique identifier for the VFX session (e.g., "session_20260123_explosion_001")
+
+    Returns:
+        SQLiteSession instance for use with Runner.run()
+    """
+    # Ensure sessions directory exists
+    SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Create session database path
+    db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
+
+    # Create SQLiteSession with session_id as conversation identifier
+    return SQLiteSession(session_id, str(db_path))
+
 
 # =============================================================================
 # VISUALIZATION UTILITIES
@@ -1198,6 +1229,11 @@ If quality issues relate to parameters, ALWAYS include concrete fixes in paramet
         context = create_session_from_request(request, session_id)
         session = context.session
 
+        # Phase 4: Create SDK session for conversation persistence across agents
+        # All agents share the same session to maintain context awareness
+        sdk_session = get_or_create_sdk_session(session_id)
+        print(f"[Pipeline] SDK Session created: {session_id}", file=sys.stderr)
+
         print(f"\n{'='*70}", file=sys.stderr)
         print(f"PIPELINE ORCHESTRATION: {request.asset_name}", file=sys.stderr)
         print(f"Effect: {request.effect_type.value} | Max Iterations: {request.max_iterations}", file=sys.stderr)
@@ -1230,6 +1266,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                             self._research_agent,
                             research_prompt,
                             context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
                             hooks=phase0_research_hooks,
                             max_turns=8  # Limit research turns
                         )
@@ -1299,6 +1336,7 @@ Select the optimal technique and provide starting parameters."""
                             self._technique_coordinator,
                             technique_prompt,
                             context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
                             max_turns=6  # Coordinators should be fast
                         )
                     selected_technique = technique_result.final_output
@@ -1410,6 +1448,7 @@ Generate a complete, validated script using the selected technique. Return the s
                                     self._script_agent_standalone,
                                     script_prompt,
                                     context=context,
+                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                     hooks=script_hooks,
                                     max_turns=10
                                 )
@@ -1521,6 +1560,7 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                         self._modification_coordinator,
                                         mod_prompt,
                                         context=context,
+                                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                         max_turns=4  # Coordinators should be fast
                                     )
                                 mod_decision = mod_result.final_output
@@ -1659,6 +1699,7 @@ Use patterns from library if available."""
                                         self._script_agent_standalone,
                                         script_prompt,
                                         context=context,
+                                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                         hooks=iter_script_hooks,
                                         max_turns=10
                                     )
@@ -1799,6 +1840,7 @@ Run the script and report results."""
                                 self._executor_agent_standalone,
                                 exec_prompt,
                                 context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 hooks=exec_hooks,
                                 max_turns=6
                             )
@@ -1855,6 +1897,7 @@ Provide detailed feedback for improvement."""
                                 self._quality_agent_standalone,
                                 eval_prompt,
                                 context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 hooks=quality_hooks,
                                 max_turns=6
                             )
@@ -1979,6 +2022,7 @@ Primary Issue: {quality.primary_issue or 'None'}
                                 self._learning_agent_standalone,
                                 learn_prompt,
                                 context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 hooks=learning_hooks,
                                 max_turns=8
                             )
@@ -2041,6 +2085,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                                 self._quality_gate_coordinator,
                                 gate_prompt,
                                 context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 max_turns=3  # Quality gate should be very fast
                             )
                         gate_decision = gate_result.final_output
@@ -2106,6 +2151,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                     self._research_agent,
                                     switch_prompt,
                                     context=context,
+                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                     hooks=switch_research_hooks,
                                     max_turns=6
                                 )

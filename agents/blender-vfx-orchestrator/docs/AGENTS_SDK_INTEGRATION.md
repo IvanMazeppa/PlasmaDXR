@@ -1,5 +1,8 @@
 # OpenAI Agents SDK Integration Guide
 
+**Last Updated:** 2026-01-23
+**SDK Version:** 0.6.9+
+
 ## CRITICAL: Always Consult Official Documentation
 
 **Before making ANY changes to the multi-agent system, consult the official documentation:**
@@ -10,31 +13,53 @@
   - [Multi-Agent Patterns](https://github.com/openai/openai-agents-python/blob/main/docs/multi_agent.md)
   - [Tools Reference](https://github.com/openai/openai-agents-python/blob/main/docs/tools.md)
   - [Handoffs](https://github.com/openai/openai-agents-python/blob/main/docs/handoffs.md)
+  - [Guardrails](https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md)
+  - [Sessions](https://github.com/openai/openai-agents-python/blob/main/docs/sessions/index.md) ⭐ NEW
+  - [Tracing](https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md)
 
-The SDK is rapidly evolving. At time of writing, we're on **v0.6.8**. Check for updates regularly.
+The SDK is rapidly evolving. At time of writing, we're on **v0.6.9+**. Check for updates regularly.
 
 ---
 
 ## Architecture Overview
 
-The blender-vfx-orchestrator uses the OpenAI Agents SDK to coordinate multiple specialized agents:
+The blender-vfx-orchestrator uses the OpenAI Agents SDK with **code-based pipeline orchestration** and **agents-as-tools** pattern:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     VFX ORCHESTRATOR                            │
-│              (Central coordination agent)                       │
+│                 create_asset_pipeline() (Python)                │
+│                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━                 │
+│  - Deterministic state machine (Python controls flow)           │
+│  - Calls agents via Runner.run() with RunHooks                  │
+│  - Uses Coordinators for intelligent decisions                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Coordinator Agents (Decision Layer)                            │
+│  ┌────────────────┐ ┌──────────────────┐ ┌────────────────┐    │
+│  │TechniqueSelector│ │ModificationStrat.│ │QualityGateJudge│    │
+│  └────────────────┘ └──────────────────┘ └────────────────┘    │
+│                                                                 │
+│  Specialized Agents (Execution Layer)                           │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
+│  │Research│ │Script  │ │Executor│ │Quality │ │Learning│        │
+│  │Agent   │ │Writer  │ │        │ │Analyst │ │Agent   │        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│                                                                 │
+│  Enforcement Layer                                              │
+│  ┌────────────────────┐ ┌─────────────────────┐                │
+│  │ RunHooks           │ │ Guardrails          │                │
+│  │ (Tool-level)       │ │ (Agent-level)       │                │
+│  └────────────────────┘ └─────────────────────┘                │
+│                                                                 │
+│  Persistence Layer                                              │
+│  ┌─────────────────────────────────────────────┐               │
+│  │ SDK Session (SQLiteSession)                 │               │
+│  │ Shared conversation context across agents   │               │
+│  └─────────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-          ▼                   ▼                   ▼
-    ┌──────────┐       ┌──────────┐       ┌──────────┐
-    │ Script   │       │ Quality  │       │ Blender  │
-    │ Writer   │       │ Analyst  │       │ Docs     │
-    └──────────┘       └──────────┘       └──────────┘
 ```
 
-**All agents must be proper subagents under the orchestrator umbrella.**
+**Key Pattern:** Use `agents-as-tools` (NOT handoffs) for centralized control.
 
 ---
 
@@ -128,30 +153,41 @@ async def evaluate_render(render_path: str, ...) -> str:
 
 ## Key SDK Concepts
 
-### 1. Agents as Tools (`agent.as_tool()`)
+### 1. Agents as Tools (`agent.as_tool()`) ⭐ RECOMMENDED
 
-Convert an agent into a tool that another agent can invoke:
+Convert an agent into a tool that another agent can invoke. **This is the correct pattern for centralized control.**
 
 ```python
 quality_analyst = Agent(name="Quality Analyst", ...)
 orchestrator = Agent(
     name="Orchestrator",
-    tools=[quality_analyst.as_tool()]  # Agent becomes a tool
+    tools=[
+        quality_analyst.as_tool(
+            tool_name="evaluate_quality",
+            tool_description="Evaluate render quality using vision + ML metrics",
+        )
+    ]
 )
 ```
 
-### 2. Handoffs
+**Key Difference from Handoffs:**
+- `as_tool()`: Agent called as utility, control returns to caller ✅
+- Handoffs: New agent takes over conversation completely ❌
 
-Transfer control between agents:
+### 2. Handoffs (DEPRECATED for this project)
+
+> **Note:** Handoffs are deprecated in favor of agents-as-tools. The handoff-based `create_asset()` method should NOT be used.
+
+Transfer control between agents (for reference only):
 
 ```python
 from agents import handoff
 
+# ❌ NOT RECOMMENDED - use as_tool() instead
 orchestrator = Agent(
     name="Orchestrator",
     handoffs=[
         handoff(target=script_writer, description="Write Blender scripts"),
-        handoff(target=quality_analyst, description="Evaluate render quality"),
     ]
 )
 ```
@@ -166,6 +202,106 @@ async def my_tool(param: str) -> str:
     """Tool description (becomes the tool's docstring)."""
     return f"Result: {param}"
 ```
+
+### 4. Input/Output Guardrails ⭐ NEW
+
+Validate agent inputs and outputs at the agent level:
+
+```python
+from agents import Agent, input_guardrail, output_guardrail, GuardrailFunctionOutput
+
+@input_guardrail
+async def require_research_context(ctx, agent, input):
+    """Block if no research findings in prompt."""
+    if not has_research_indicators(input):
+        return GuardrailFunctionOutput(
+            tripwire_triggered=True,
+            output_info={"reason": "No research context found"}
+        )
+    return GuardrailFunctionOutput(
+        tripwire_triggered=False,
+        output_info={"status": "passed"}  # REQUIRED even for success
+    )
+
+@output_guardrail
+async def validate_quality_output(ctx, agent, output):
+    """Validate QualityOutput has required fields."""
+    if output.overall_score < 0 or output.overall_score > 100:
+        return GuardrailFunctionOutput(
+            tripwire_triggered=True,
+            output_info={"reason": "Score out of range 0-100"}
+        )
+    return GuardrailFunctionOutput(
+        tripwire_triggered=False,
+        output_info={"status": "passed"}
+    )
+
+agent = Agent(
+    name="Quality Analyst",
+    input_guardrails=[check_budget_before_quality],
+    output_guardrails=[validate_quality_output],
+)
+```
+
+**Critical Lesson Learned:**
+- `GuardrailFunctionOutput` REQUIRES `output_info` even when `tripwire_triggered=False`
+- The decorator returns `InputGuardrail`/`OutputGuardrail` objects, not functions
+- Access underlying function via `.guardrail_function` attribute for testing
+
+### 5. RunHooks (Lifecycle Callbacks) ⭐ NEW
+
+Intercept tool calls for enforcement:
+
+```python
+from agents import RunHooks
+
+class EnforcementHooks(RunHooks):
+    async def on_tool_start(self, context, agent, tool):
+        # Block infinite loops
+        if self._tool_counts[tool.name] > self.config.max_same_tool_calls:
+            raise LoopDetectedError(f"Tool {tool.name} called too many times")
+
+        # Require research before scripting
+        if tool.name in ["write_script", "modify_script"]:
+            if not self._doc_query_made:
+                raise DocQueryRequiredError("Research required before scripting")
+
+result = await Runner.run(agent, prompt, run_hooks=EnforcementHooks())
+```
+
+**Factory Functions in `hooks/enforcement_hooks.py`:**
+```python
+create_research_hooks()        # max_same_tool=3, max_turns=8
+create_script_writer_hooks()   # require_doc_query_before=[write_script, modify_script]
+create_quality_analyst_hooks() # max_same_tool=3, max_turns=6
+create_learning_agent_hooks()  # max_same_tool=3, max_turns=8
+```
+
+### 6. SQLiteSession (Conversation Persistence) ⭐ NEW
+
+Enable agents to remember previous conversation context:
+
+```python
+from agents import Agent, Runner, SQLiteSession
+
+# Create persistent session tied to VFX session ID
+session = SQLiteSession("session_20260123_explosion_001", "sessions/sdk/vfx_conversations.db")
+
+# All agents share the same session for context awareness
+result = await Runner.run(research_agent, "Research explosion effects", session=session)
+result = await Runner.run(script_writer, "Generate script based on research", session=session)
+# Script Writer can see what Research Agent found!
+```
+
+**Helper Function in `orchestrator.py`:**
+```python
+def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+    SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
+    return SQLiteSession(session_id, str(db_path))
+```
+
+**Key Benefit:** Agents automatically maintain context across pipeline phases without manual conversation history management.
 
 ---
 
@@ -252,12 +388,53 @@ echo "openai-agents>=0.6.8" >> requirements.txt
 
 ---
 
+---
+
+## Defense-in-Depth Pattern
+
+The system uses TWO validation layers for robust agent behavior:
+
+```
+Agent Input → Input Guardrails → Agent Reasoning → Tool Call
+                                                       ↓
+                                              RunHooks.on_tool_start()
+                                                       ↓
+                                                 Tool Execution
+                                                       ↓
+                                              RunHooks.on_tool_end()
+                                                       ↓
+Agent Output ← Output Guardrails ← Agent Response ←────┘
+```
+
+| Layer | Location | Purpose | Example |
+|-------|----------|---------|---------|
+| **RunHooks** | Tool level | Block problematic tool calls | Prevent script write without research |
+| **Guardrails** | Agent level | Validate I/O structure | Ensure valid TechniqueDecision output |
+
+---
+
 ## Summary
 
-1. **All agents must be subagents** under a central orchestrator
+1. **Use agents-as-tools** (NOT handoffs) for centralized control
 2. **Tools must run in-process** - no MCP subprocess calls
 3. **Use the two-layer pattern** for tools that call other tools
-4. **Consult official docs** before any architectural changes
-5. **Test after SDK updates** - the API evolves rapidly
+4. **Add guardrails** for agent input/output validation
+5. **Add RunHooks** for tool-level enforcement
+6. **Consult official docs** before any architectural changes
+7. **Test after SDK updates** - the API evolves rapidly
 
 **When in doubt, read the docs:** https://github.com/openai/openai-agents-python/tree/main/docs
+
+---
+
+## File Reference (Updated)
+
+| File | Purpose |
+|------|---------|
+| `orchestrator.py` | Main VFX orchestrator with pipeline and Coordinators |
+| `specialized_agents/` | Subagent definitions (7 agents) |
+| `specialized_agents/api_validator.py` | Blender 5.0 API validation |
+| `tools/asset_evaluator_tools.py` | Quality evaluation tools (in-process) |
+| `tools/blender_tools.py` | Blender script execution tools |
+| `hooks/enforcement_hooks.py` | RunHooks for loop/doc enforcement |
+| `guardrails/` | Input/output guardrails (9 guardrails) |

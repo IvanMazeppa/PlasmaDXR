@@ -1,26 +1,31 @@
-# Blender VFX Orchestrator - Agent Specification v2.0
+# Blender VFX Orchestrator - Agent Specification v3.0
 
-**Version:** 2.0.0
-**Date:** 2026-01-18
+**Version:** 3.0.0
+**Date:** 2026-01-23
 **Model:** GPT-5.2 with Reasoning (all agents)
-**SDK:** OpenAI Agents SDK
+**SDK:** OpenAI Agents SDK v0.6.9+
 
 ---
 
 ## Executive Summary
 
-The Blender VFX Orchestrator is an autonomous multi-agent system that generates high-quality volumetric VFX assets through iterative improvement. It coordinates 6 specialized agents using the OpenAI Agents SDK handoff mechanism, with 5 self-learning strategies for continuous improvement.
+The Blender VFX Orchestrator is an autonomous multi-agent system that generates high-quality volumetric VFX assets through iterative improvement. It uses a **code-based pipeline** with **agents-as-tools** pattern and **3 Coordinator agents** for intelligent decisions, coordinating 7 specialized agents with 5 self-learning strategies for continuous improvement.
+
+> **Architecture Note:** This system uses **agents-as-tools** pattern (NOT handoffs). The deprecated handoff-based `create_asset()` method should NOT be used. Use `create_vfx_asset()` which calls `create_asset_pipeline()`.
 
 ### Key Capabilities
 
 | Capability | Description |
 |------------|-------------|
 | **Autonomous Iteration** | Generates and refines scripts until quality thresholds met |
-| **Multi-Agent Coordination** | 6 specialized agents with handoff-based delegation |
+| **Multi-Agent Coordination** | 7 specialized agents + 3 Coordinators via agents-as-tools |
+| **Defense-in-Depth Validation** | RunHooks (tool-level) + Guardrails (agent-level) |
+| **Conversation Persistence** | SDK Sessions enable agents to share context across phases |
 | **Self-Learning** | 5 strategies for knowledge accumulation and reuse |
 | **Stuck Detection** | Escape velocity mechanism with 5 escalation levels |
 | **Session Persistence** | Recoverable sessions across context limits |
 | **Budget Enforcement** | $20/month limit with per-category tracking |
+| **API Validation** | Automatic Blender 5.0 API correction (Phase 1.5) |
 
 ---
 
@@ -29,46 +34,126 @@ The Blender VFX Orchestrator is an autonomous multi-agent system that generates 
 ### Agent Hierarchy
 
 ```
-BlenderVFXOrchestrator (GPT-5.2, coordinator)
-├── ScriptWriter (GPT-5.2)     - Blender Python script generation
-├── Executor (GPT-5.2)         - Script execution, error handling
-├── QualityAnalyst (GPT-5.2)   - ML-powered quality evaluation
-├── LearningAgent (GPT-5.2)    - Experiment tracking, knowledge base
-└── DocsExpert (GPT-5.2)       - Blender documentation search
+create_asset_pipeline() (Python-controlled)
+│
+├── Coordinator Agents (Decision-Making)
+│   ├── TechniqueSelector (GPT-5.2)      - Initial technique selection (Phase 0.5)
+│   ├── ModificationStrategist (GPT-5.2) - Modification strategy (Phase 1.1)
+│   └── QualityGateJudge (GPT-5.2)       - Quality gate decisions (Phase 5)
+│
+├── Specialized Agents (Execution)
+│   ├── ResearchAgent (GPT-5.2)     - Documentation & approach research
+│   ├── ScriptWriter (GPT-5.2)      - Blender Python script generation
+│   ├── APIValidator (GPT-5.2)      - Blender 5.0 API validation
+│   ├── Executor (GPT-5.2)          - Script execution, error handling
+│   ├── QualityAnalyst (GPT-5.2)    - ML-powered quality evaluation
+│   ├── LearningAgent (GPT-5.2)     - Experiment tracking, knowledge base
+│   └── DocsExpert (GPT-5.2)        - Blender documentation search
+│
+├── Enforcement Layer
+│   ├── RunHooks          - Tool-level enforcement (loop detection, doc requirements)
+│   └── Guardrails        - Agent-level validation (input/output validation)
+│
+└── Persistence Layer
+    └── SDK Sessions      - Conversation context shared across all agents (SQLiteSession)
 ```
 
-### Data Flow
+### Data Flow (Code-Based Pipeline)
 
 ```
-Request → Orchestrator
+Request → create_asset_pipeline()
               │
-              ├──[handoff]→ ScriptWriter ──→ Script
-              │                               │
-              ├──[handoff]→ Executor ─────────┤
-              │                               │
-              │                          Render Output
-              │                               │
-              ├──[handoff]→ QualityAnalyst ───┤
-              │                               │
-              │                          Quality Metrics
-              │                               │
-              ├──[if failed]→ LearningAgent ──┤
-              │                               │
-              ├──[if stuck]→ DocsExpert ──────┘
+              ├── [Phase 0] Research Agent ───────────────────→ ResearchFindings
               │
-              └──→ Session Complete / Max Iterations
+              ├── [Phase 0.5] TechniqueSelector Coordinator ──→ TechniqueDecision
+              │
+              ├── [Iteration Loop]
+              │   ├── [Phase 1.1] ModificationStrategist ─────→ ModificationDecision
+              │   ├── [Phase 1] Script Writer ────────────────→ Script
+              │   ├── [Phase 1.5] API Validator (inline) ─────→ Corrected Script
+              │   ├── [Phase 2] Executor ─────────────────────→ Render Output
+              │   ├── [Phase 3] Quality Analyst ──────────────→ Quality Metrics
+              │   ├── [Phase 4] Learning Agent ───────────────→ Experiment Record
+              │   └── [Phase 5] QualityGateJudge Coordinator ─→ QualityDecision
+              │       ├── passed=True ──→ Complete
+              │       └── passed=False ─→ Continue Loop
+              │
+              └── Session Complete / Max Iterations
 ```
+
+**Key Architectural Decisions:**
+- Python controls the pipeline sequence (deterministic)
+- Coordinators make intelligent decisions at specific points (LLM reasoning)
+- Defense-in-depth: RunHooks + Guardrails validate all agent interactions
 
 ---
 
 ## Agent Specifications
 
-### 1. Orchestrator (Main Coordinator)
+### Coordinator Agents (Decision-Making Layer)
+
+#### 1. TechniqueSelector Coordinator
 
 **Model:** `gpt-5.2` with `reasoning.effort="medium"`
-**Role:** Coordinates all specialized agents, manages iteration loop, enforces quality gates
+**Role:** Select initial technique based on research findings (Phase 0.5)
+**Output Type:** `TechniqueDecision`
+**Guardrails:** `validate_technique_decision` (output)
 
-#### Direct Tools (19 total)
+| Field | Type | Description |
+|-------|------|-------------|
+| `selected_technique` | str | Technique to use (e.g., "mantaflow_fire") |
+| `reasoning` | str | Why this technique was selected |
+| `key_parameters` | dict | Important parameters to set |
+| `alternative_techniques` | list | Fallback techniques if first fails |
+
+#### 2. ModificationStrategist Coordinator
+
+**Model:** `gpt-5.2` with `reasoning.effort="medium"`
+**Role:** Decide modification strategy for iteration 2+ (Phase 1.1)
+**Output Type:** `ModificationDecision`
+**Guardrails:** `validate_modification_decision` (output)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `action` | str | One of: `modify_params`, `switch_technique`, `continue` |
+| `parameter_changes` | dict | Parameters to change (if action=modify_params) |
+| `new_technique` | str | Technique to switch to (if action=switch_technique) |
+| `reasoning` | str | Explanation of the decision |
+| `confidence` | float | 0.0-1.0 confidence in this strategy |
+
+#### 3. QualityGateJudge Coordinator
+
+**Model:** `gpt-5.2` with `reasoning.effort="medium"`
+**Role:** Interpret quality results and decide next action (Phase 5)
+**Output Type:** `QualityDecision`
+**Guardrails:** `validate_quality_decision` (output)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `passed` | bool | Whether quality gate passed |
+| `should_continue` | bool | Whether to continue iterating |
+| `next_action` | str | One of: `complete`, `iterate`, `switch_technique`, `request_guidance` |
+| `escape_level` | int | Escalation level (0-4) |
+| `reasoning` | str | Explanation of the decision |
+
+---
+
+### Specialized Agents (Execution Layer)
+
+#### 1. Pipeline Orchestrator (Python-Controlled)
+
+**Implementation:** `create_asset_pipeline()` function
+**Role:** Coordinates all agents via deterministic Python code with Runner.run()
+
+**RunHooks Applied:**
+| Agent | Hook Factory | Purpose |
+|-------|--------------|---------|
+| Research | `create_research_hooks()` | Max 3 same-tool, 8 turns |
+| Script Writer | `create_script_writer_hooks()` | Requires doc query first |
+| Quality Analyst | `create_quality_analyst_hooks()` | Max 3 same-tool, 6 turns |
+| Learning Agent | `create_learning_agent_hooks()` | Max 3 same-tool, 8 turns |
+
+**Direct Tools Available to Coordinators (19 total):**
 
 | Category | Tools | Purpose |
 |----------|-------|---------|
@@ -77,24 +162,27 @@ Request → Orchestrator
 | **Code Patterns** | `record_code_pattern`, `search_code_patterns`, `get_pattern_code`, `report_pattern_outcome`, `get_pattern_library_stats`, `list_patterns_by_effect` | Strategy 4: Pattern memory |
 | **Knowledge Distillation** | `extract_successful_pattern`, `apply_pattern_to_script`, `analyze_script_for_patterns`, `compare_scripts` | Strategy 2: Auto-extraction |
 
-#### Handoffs (Delegations)
+**Agents-as-Tools (for Coordinators):**
 
-| Handoff | Target Agent | When Used |
-|---------|--------------|-----------|
-| `delegate_to_script_writer` | ScriptWriter | Generate/modify Blender scripts |
-| `delegate_to_executor` | Executor | Execute scripts, handle errors |
-| `delegate_to_quality_analyst` | QualityAnalyst | Evaluate render quality |
-| `delegate_to_learning_agent` | LearningAgent | Get fix suggestions, record outcomes |
-| `delegate_to_docs_expert` | DocsExpert | Search Blender documentation |
+| Tool Name | Target Agent | When Used |
+|-----------|--------------|-----------|
+| `research_approach` | ResearchAgent | Research best approach for effect type |
+| `write_script` | ScriptWriter | Generate/modify Blender scripts |
+| `execute_script` | Executor | Execute scripts, handle errors |
+| `evaluate_quality` | QualityAnalyst | Evaluate render quality |
+| `record_learning` | LearningAgent | Get fix suggestions, record outcomes |
+| `search_docs` | DocsExpert | Search Blender documentation |
 
 ---
 
-### 2. Script Writer
+#### 2. Script Writer
 
 **Model:** `gpt-5.2` with `reasoning.effort="high"`, `temperature=0.3`
 **Role:** Generate and modify Blender Python scripts for VFX effects
+**Guardrails:** `require_research_context`, `validate_effect_type` (input), `validate_script_output` (output)
+**RunHooks:** `create_script_writer_hooks()` - requires doc query before script generation
 
-#### Tools
+##### Tools
 
 | Tool | Source | Purpose |
 |------|--------|---------|
@@ -118,12 +206,49 @@ Request → Orchestrator
 
 ---
 
-### 3. Executor
+#### 3. API Validator (NEW in v3.0)
+
+**Model:** `gpt-5.2` with `reasoning.effort="medium"`
+**Role:** Validate Blender 5.0 API calls before execution (Phase 1.5)
+**Location:** `specialized_agents/api_validator.py`
+
+##### Known API Corrections
+
+| Deprecated API | Blender 5.0 Replacement |
+|----------------|------------------------|
+| `inputs["Smoke"]` | `inputs["Grid"]` |
+| `inputs["Smoke Color"]` | `inputs["Grid Color"]` |
+| `modifier.effector_weights` | `effector_weights` (direct) |
+| `flow_type` | `flow_behavior` |
+
+##### Tools
+
+| Tool | Purpose |
+|------|---------|
+| `extract_blender_api_calls` | Parse code for bpy.* API calls |
+| `check_known_api_changes` | Fast check against known breaking changes |
+| `validate_api_call_against_docs` | Verify against vector store (comprehensive) |
+| `format_validation_report` | Generate structured validation report |
+
+##### Integration
+
+```python
+# Phase 1.5: Between Script Generation and Execution
+if script.script_path:
+    api_validation = await validate_code_api(script_content)
+    if not api_validation.is_valid:
+        corrected_content = apply_known_corrections(script_content)
+        Path(corrected_path).write_text(corrected_content)
+```
+
+---
+
+#### 4. Executor
 
 **Model:** `gpt-5.2` with `reasoning.effort="medium"`
 **Role:** Execute Blender scripts and capture outputs
 
-#### Tools
+##### Tools
 
 | Tool | Source | Purpose |
 |------|--------|---------|
@@ -149,12 +274,14 @@ runs/
 
 ---
 
-### 4. Quality Analyst
+#### 5. Quality Analyst
 
 **Model:** `gpt-5.2` with `reasoning.effort="high"`
 **Role:** Evaluate render quality using vision and ML metrics
+**Guardrails:** `check_budget_before_quality` (input), `validate_quality_output` (output)
+**RunHooks:** `create_quality_analyst_hooks()` - max 3 same-tool calls, 6 turns
 
-#### Tools
+##### Tools
 
 | Tool | Source | Purpose |
 |------|--------|---------|
@@ -190,12 +317,13 @@ runs/
 
 ---
 
-### 5. Learning Agent
+#### 6. Learning Agent
 
 **Model:** `gpt-5.2` with `reasoning.effort="high"`
 **Role:** Maintain experiment knowledge, suggest fixes, record outcomes
+**RunHooks:** `create_learning_agent_hooks()` - max 3 same-tool calls, 8 turns
 
-#### Tools
+##### Tools
 
 | Tool | Source | Purpose |
 |------|--------|---------|
@@ -236,12 +364,12 @@ runs/
 
 ---
 
-### 6. Docs Expert
+#### 7. Docs Expert
 
 **Model:** `gpt-5.2` with `reasoning.effort="medium"`
 **Role:** Search Blender 5.0 documentation for solutions and alternatives
 
-#### Tools (14 total)
+##### Tools (14 total)
 
 | Category | Tools |
 |----------|-------|
@@ -250,6 +378,127 @@ runs/
 | **API Reference** | `list_api_modules`, `search_bpy_operators`, `search_bpy_types` |
 | **Navigation** | `browse_hierarchy`, `read_page` |
 | **Validation** | `validate_parameter_range`, `get_parameter_defaults` |
+
+---
+
+## Enforcement Layer
+
+### RunHooks (Tool-Level Enforcement)
+
+**Location:** `hooks/enforcement_hooks.py`
+
+RunHooks intercept tool calls to enforce requirements before execution:
+
+| Hook | Purpose | Trigger |
+|------|---------|---------|
+| `LoopDetectedError` | Stop infinite loops | Same tool called >3x |
+| `DocQueryRequiredError` | Require research first | `write_script`/`modify_script` without prior doc search |
+| `TurnBudgetExceededError` | Limit agent reasoning | Agent exceeds turn limit |
+
+**Factory Functions:**
+
+```python
+create_research_hooks()        # max_same_tool=3, max_turns=8
+create_script_writer_hooks()   # require_doc_query_before=[write_script, modify_script]
+create_quality_analyst_hooks() # max_same_tool=3, max_turns=6
+create_learning_agent_hooks()  # max_same_tool=3, max_turns=8
+```
+
+### Guardrails (Agent-Level Validation)
+
+**Location:** `guardrails/`
+
+Guardrails validate agent inputs and outputs at the agent level:
+
+#### Script Writer Guardrails
+
+| Guardrail | Type | Purpose |
+|-----------|------|---------|
+| `require_research_context` | Input | Blocks if no research findings in prompt |
+| `validate_effect_type` | Input | Ensures valid effect type specified |
+| `validate_script_output` | Output | Validates ScriptOutput has script_path, technique_used |
+
+#### Quality Analyst Guardrails
+
+| Guardrail | Type | Purpose |
+|-----------|------|---------|
+| `check_budget_before_quality` | Input | Blocks if budget exhausted (vision API is expensive) |
+| `validate_quality_output` | Output | Validates score range 0-100, passed boolean, critical issue consistency |
+
+#### Coordinator Guardrails
+
+| Guardrail | Type | Purpose |
+|-----------|------|---------|
+| `validate_technique_decision` | Output | Validates selected_technique, reasoning present |
+| `validate_modification_decision` | Output | Validates action, parameter_changes when modify_params |
+| `validate_quality_decision` | Output | Validates passed/next_action consistency |
+
+### Defense-in-Depth Pattern
+
+```
+Agent Input → Input Guardrails → Agent Reasoning → Tool Call
+                                                       ↓
+                                              RunHooks.on_tool_start()
+                                                       ↓
+                                                 Tool Execution
+                                                       ↓
+                                              RunHooks.on_tool_end()
+                                                       ↓
+Agent Output ← Output Guardrails ← Agent Response ←────┘
+```
+
+**Key Benefit:** Two validation layers catch issues at different points:
+- RunHooks: Block tools that violate requirements (e.g., script without research)
+- Guardrails: Validate agent I/O structure and consistency (e.g., invalid decision types)
+
+---
+
+## Persistence Layer
+
+### SDK Sessions (Conversation Context)
+
+**Location:** `sessions/sdk/vfx_conversations.db`
+
+SDK Sessions provide automatic conversation persistence across all agents in a pipeline run:
+
+```python
+from agents import SQLiteSession
+
+# Create session at pipeline start
+sdk_session = get_or_create_sdk_session(session_id)
+
+# All Runner.run() calls share the session
+result = await Runner.run(agent, prompt, session=sdk_session, ...)
+```
+
+**How Context Flows:**
+
+| Phase | Agent | Can See Previous |
+|-------|-------|------------------|
+| 0 | Research Agent | (starts fresh) |
+| 0.5 | TechniqueSelector | Research findings |
+| 1 | Script Writer | Research + technique decision |
+| 2 | Executor | Script generated |
+| 3 | Quality Analyst | Execution results |
+| 4 | Learning Agent | Quality evaluation |
+| 5 | QualityGateJudge | Full iteration context |
+
+**Key Benefits:**
+- Agents automatically reference previous phase outputs
+- No manual conversation threading required
+- Session persists to SQLite for durability
+- Each VFX asset gets its own conversation thread
+
+**Helper Function:**
+
+```python
+SDK_SESSIONS_DIR = Path(__file__).parent / "sessions" / "sdk"
+
+def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+    SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
+    return SQLiteSession(session_id, str(db_path))
+```
 
 ---
 
@@ -482,6 +731,14 @@ Recovery is automatic when calling `resume_session(session_id)`.
 | 1.1.0 | 2026-01-16 | Added Strategy 3, 5 (proactive research, escape velocity) |
 | 2.0.0 | 2026-01-17 | Added Strategy 1, 2, 4 (vector store, distillation, patterns) |
 | 2.0.1 | 2026-01-18 | Upgraded all agents to GPT-5.2 |
+| 3.0.0 | 2026-01-23 | **Major Architecture Update:** |
+|       |            | - Added 3 Coordinator agents (agents-as-tools pattern) |
+|       |            | - Added API Validator agent for Blender 5.0 API correction |
+|       |            | - Deprecated handoff-based `create_asset()` method |
+|       |            | - Added RunHooks for loop detection and doc requirements |
+|       |            | - Added 9 Input/Output Guardrails for agent validation |
+|       |            | - Full tracing with metadata for visibility |
+| 3.1.0 | 2026-01-23 | Added SDK Sessions for conversation persistence across agents |
 
 ---
 

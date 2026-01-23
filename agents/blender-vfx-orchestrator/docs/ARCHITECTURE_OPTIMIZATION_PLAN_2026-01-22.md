@@ -3,7 +3,7 @@
 **Date:** 2026-01-22
 **Author:** Ben + Claude
 **Status:** Active Implementation
-**Last Updated:** 2026-01-23 (Phase 1, 2, 3, 6, 7 complete)
+**Last Updated:** 2026-01-23 (Phase 1, 2, 3, 4, 6, 7 complete)
 
 ---
 
@@ -22,9 +22,9 @@ This document captures the comprehensive analysis of the Blender VFX Orchestrato
 | 1 | RunHooks for loop detection | ✅ **COMPLETE** | `hooks/enforcement_hooks.py` created |
 | 2 | Agents-as-tools pattern | ✅ **COMPLETE** | 3 Coordinator agents + as_tool() wrappers |
 | 3 | Input/Output guardrails | ✅ **COMPLETE** | `guardrails/` module with 9 guardrails |
+| 4 | SDK Sessions | ✅ **COMPLETE** | SQLiteSession on all Runner.run() calls |
 | 6 | API Validator agent | ✅ **COMPLETE** | `specialized_agents/api_validator.py` created |
 | 7 | Tracing everywhere | ✅ **COMPLETE** | 10+ trace() calls with metadata |
-| 4 | SDK Sessions | ⏳ Pending | Low priority |
 | 5 | Turn budget per agent | ⚠️ **PARTIAL** | Covered by RunHooks max_turns |
 
 ---
@@ -242,6 +242,62 @@ agent = Agent(
 
 ---
 
+### Phase 4: SDK Sessions for Conversation Persistence ✅
+
+**Implementation Date:** 2026-01-23
+
+**Files Modified:**
+- `orchestrator.py` - Added SQLiteSession integration
+
+**Implementation:**
+
+1. **Import SQLiteSession:**
+```python
+from agents import Agent, ModelSettings, Runner, ..., SQLiteSession
+```
+
+2. **Session Directory and Helper:**
+```python
+SDK_SESSIONS_DIR = Path(__file__).parent / "sessions" / "sdk"
+
+def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+    SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
+    return SQLiteSession(session_id, str(db_path))
+```
+
+3. **Pipeline Integration:**
+```python
+# At pipeline start
+sdk_session = get_or_create_sdk_session(session_id)
+
+# All 10 Runner.run() calls now include session parameter
+result = await Runner.run(
+    agent,
+    prompt,
+    context=context,
+    session=sdk_session,  # NEW: Shared conversation context
+    hooks=...,
+    max_turns=...
+)
+```
+
+**Agents Updated (10 Runner.run() calls):**
+- Research Agent (Phase 0)
+- TechniqueSelector Coordinator (Phase 0.5)
+- Script Writer - initial (Phase 1)
+- ModificationStrategist Coordinator (Phase 1.1)
+- Script Writer - modification (Phase 1)
+- Executor (Phase 2)
+- Quality Analyst (Phase 3)
+- Learning Agent (Phase 4)
+- QualityGateJudge Coordinator (Phase 5)
+- Research Agent - technique switch
+
+**Key Benefit:** Agents automatically share conversation context. Script Writer can reference Research findings. Quality Analyst knows what was generated. No manual conversation history threading required.
+
+---
+
 ## Current State Assessment
 
 ### What's Working Well
@@ -258,7 +314,8 @@ agent = Agent(
 | **API Validation** | ✅ Good | Blender 5.0 API corrections |
 | **Tracing** | ✅ Good | Full visibility with metadata |
 | **Agents-as-Tools Pattern** | ✅ Good | Coordinators use sub-agents via as_tool() |
-| **Input/Output Guardrails** | ✅ **NEW** | 9 guardrails validating agent inputs/outputs |
+| **Input/Output Guardrails** | ✅ Good | 9 guardrails validating agent inputs/outputs |
+| **SDK Sessions** | ✅ **NEW** | Conversation context shared across all agents |
 
 ### What's Still Not Working
 
@@ -532,30 +589,53 @@ CURRENT (After Phase 1, 2, 6, 7):
 
 ---
 
-### Phase 3: Add Input/Output Guardrails
+### Phase 3: Add Input/Output Guardrails ✅ COMPLETE
 
-**Effort:** 2 hours
+**Effort:** 2 hours (actual: ~2 hours)
 **Impact:** Validation layer for all agent inputs/outputs
 **Dependency:** Best done after Phase 2
 
-**Implementation:**
-- Create `guardrails/script_guardrails.py`
-- Add `require_research_context` input guardrail
-- Add `validate_script_output` output guardrail
-- Apply to Script Writer agent
+**Files Created:**
+- `guardrails/__init__.py`
+- `guardrails/script_guardrails.py`
+- `guardrails/quality_guardrails.py`
+- `guardrails/coordinator_guardrails.py`
+
+**Implementation Complete:** See "Phase 3: Input/Output Guardrails" in Completed Work Details above.
 
 ---
 
-### Phase 4: Implement SDK Sessions for Persistence
+### Phase 4: Implement SDK Sessions for Persistence ✅ COMPLETE
 
-**Effort:** 2 hours
-**Impact:** Conversation memory across runs
+**Effort:** 2 hours (actual: ~1 hour)
+**Impact:** Conversation memory across runs - agents remember previous interactions
 **Priority:** LOW - SessionManager already handles most state
 
-**Implementation:**
-- Add `SQLiteSession` to all `Runner.run()` calls
-- Create session database at `sessions/vfx_conversations.db`
-- Integrate with existing SessionManager
+**Implementation Complete:**
+- Added `SQLiteSession` import from agents SDK
+- Created `get_or_create_sdk_session()` helper function
+- Session database at `sessions/sdk/vfx_conversations.db`
+- All 10 `Runner.run()` calls in `create_asset_pipeline()` now include `session=sdk_session`
+
+**Key Changes to orchestrator.py:**
+```python
+from agents import Agent, ModelSettings, Runner, ..., SQLiteSession
+
+SDK_SESSIONS_DIR = Path(__file__).parent / "sessions" / "sdk"
+
+def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+    SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
+    return SQLiteSession(session_id, str(db_path))
+
+# In create_asset_pipeline():
+sdk_session = get_or_create_sdk_session(session_id)
+
+# All Runner.run() calls now include:
+result = await Runner.run(agent, prompt, context=context, session=sdk_session, ...)
+```
+
+**Benefit:** All agents within a VFX session share conversation context. Agents can reference what happened in previous phases (e.g., Quality Analyst can see what Script Writer generated).
 
 ---
 
@@ -603,13 +683,13 @@ CURRENT (After Phase 1, 2, 6, 7):
 | 1 | RunHooks for loop detection | 2h | ✅ COMPLETE | 🔴 CRITICAL |
 | 2 | Agents-as-tools pattern | 4h | ✅ COMPLETE | 🟡 HIGH |
 | 3 | Input/Output guardrails | 2h | ✅ COMPLETE | 🟡 HIGH |
+| 4 | SDK Sessions | 1h | ✅ COMPLETE | 🟢 MEDIUM |
 | 6 | API Validator agent | 3h | ✅ COMPLETE | 🔴 CRITICAL |
 | 7 | Tracing everywhere | 1h | ✅ COMPLETE | 🟡 HIGH |
-| 4 | SDK Sessions | 2h | ⏳ Pending | 🟢 MEDIUM |
 | 5 | Turn budget per agent | 1h | ⚠️ Partial | 🟢 LOW |
 
-**Completed:** 12 hours (Phase 1: 2h, Phase 2: 4h, Phase 3: 2h, Phase 6: 3h, Phase 7: 1h)
-**Remaining:** ~2 hours (Phase 4: 2h)
+**Completed:** 13 hours (Phase 1: 2h, Phase 2: 4h, Phase 3: 2h, Phase 4: 1h, Phase 6: 3h, Phase 7: 1h)
+**Remaining:** ~1 hour (Phase 5: optional, covered by RunHooks)
 
 ---
 
@@ -657,6 +737,13 @@ CURRENT (After Phase 1, 2, 6, 7):
 - Guardrails complement RunHooks: RunHooks operate at tool level, guardrails at agent level
 - Consistency checks (e.g., `passed=True` with critical issues) catch logical errors early
 - Defense-in-depth: RunHooks (Phase 1) + Guardrails (Phase 3) = robust validation
+
+### From Phase 4 (SDK Sessions)
+- `SQLiteSession(session_id, db_path)` enables conversation persistence across Runner.run() calls
+- All agents within a session share the same conversation history
+- Session data is stored in SQLite database for durability
+- Helper function pattern (`get_or_create_sdk_session()`) keeps code clean
+- Session complements SessionManager: SessionManager tracks VFX state, SDK Session tracks conversation context
 
 ---
 
