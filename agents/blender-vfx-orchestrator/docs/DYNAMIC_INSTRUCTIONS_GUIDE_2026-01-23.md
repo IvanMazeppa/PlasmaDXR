@@ -572,6 +572,13 @@ def my_instructions(ctx: RunContextWrapper[SharedContext], agent: Agent[SharedCo
 
 ## Changelog
 
+### v3.5.0 (2026-01-23) - Fallback Logging Implemented ✅
+
+- **QW-2 Complete:** Added `logging` module to `tools/dynamic_instructions.py`
+- All context extraction failures now logged via `logger.warning()`
+- Includes error details and which fallback value was used
+- Silent KB failures are now observable for debugging
+
 ### v3.4.0 (2026-01-23) - Dynamic Instructions Fully Implemented
 
 - Created standalone wrapper functions for all three agents

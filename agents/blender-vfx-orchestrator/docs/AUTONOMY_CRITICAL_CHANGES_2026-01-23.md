@@ -1,6 +1,19 @@
 # Autonomy‑Critical Changes (2026-01-23)
 
-**Purpose:** This document lays out the **specific changes** required for the system to *actually* perform the tasks end‑to‑end (not just appear to). The emphasis is on deterministic enforcement, not hopeful prompting. **No code changes yet** — this is the plan.
+**Purpose:** This document lays out the **specific changes** required for the system to *actually* perform the tasks end‑to‑end (not just appear to). The emphasis is on deterministic enforcement, not hopeful prompting.
+
+---
+
+## Implementation Status (Updated 2026-01-23)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 0 | ✅ COMPLETE | All 3 quick wins implemented |
+| Phase 1 | ✅ COMPLETE | Items 1-5, 8-9 fully implemented; 6-7 deferred |
+| Phase 1.5 | 🔄 PARTIAL | Learning Agent enhanced but not mandatory pre-generation |
+| Phase 2 | ⏳ PENDING | Pattern outcome reporting in place; reuse pending |
+| Phase 3 | ⏳ PENDING | Research output still free-text |
+| Phase 4 | ⏳ PENDING | Optional advanced features |
 
 ---
 
@@ -11,28 +24,43 @@ Right now the loop can run, but several **core autonomy mechanisms are either mi
 
 ---
 
-## Phase 0 — Quick Wins (Low risk, high leverage)
+## Phase 0 — Quick Wins (Low risk, high leverage) ✅ COMPLETE
 
-### QW‑1) Add budget checks before expensive phases
-**Why:** Prevents burning budget after it’s already exhausted.  
-**Impact:** Immediate cost safety.  
+### QW‑1) Add budget checks before expensive phases ✅
+**Why:** Prevents burning budget after it's already exhausted.
+**Impact:** Immediate cost safety.
 **Complexity:** Low.
 
-### QW‑2) Log dynamic‑instruction fallbacks
-**Why:** Silent KB failures kill learning; logging makes it visible.  
-**Impact:** Immediate observability.  
+**Implementation (2026-01-23):**
+- Added `BUDGET_EXHAUSTED` status to `SessionStatus` enum in `models/shared_context.py`
+- Added budget check before Phase 3 (Quality Evaluation) in `orchestrator.py`
+- Pipeline exits gracefully with last available score when budget exhausted
+
+### QW‑2) Log dynamic‑instruction fallbacks ✅
+**Why:** Silent KB failures kill learning; logging makes it visible.
+**Impact:** Immediate observability.
 **Complexity:** Low.
 
-### QW‑3) Reset stuck state on technique switch
-**Why:** New techniques shouldn’t inherit old failure streaks.  
-**Impact:** Immediate exploration benefit.  
+**Implementation (2026-01-23):**
+- Added `logging` module to `tools/dynamic_instructions.py`
+- All context extraction failures now logged via `logger.warning()`
+- Includes error details and which fallback was used
+
+### QW‑3) Reset stuck state on technique switch ✅
+**Why:** New techniques shouldn't inherit old failure streaks.
+**Impact:** Immediate exploration benefit.
 **Complexity:** Low.
+
+**Implementation (2026-01-23):**
+- Added `IssueTracker.reset()` method in `session_manager.py`
+- Added `SessionManager.reset_for_technique_switch()` method
+- Orchestrator calls reset when technique switch detected
 
 ---
 
-## Phase 1 — Make Autonomy Real (Deterministic loop control)
+## Phase 1 — Make Autonomy Real (Deterministic loop control) ✅ COMPLETE
 
-### 1) Mandatory Pre‑Iteration Research (Not Optional)
+### 1) Mandatory Pre‑Iteration Research (Not Optional) ✅
 
 ### Problem
 The pipeline does not call `pre_iteration_research()` before script modification. This means early warning signals are ignored, so the system repeats known failures before escalating.
@@ -42,6 +70,12 @@ Insert a **required** pre‑iteration research step for `iteration > 1`, **befor
 
 ### Why it matters
 This is the difference between a reactive loop and a *self‑correcting* loop. The system should proactively look for alternatives before wasting another iteration.
+
+**Implementation (2026-01-23):**
+- Added `pre_iteration_research_direct()` in `tools/proactive_research_tools.py` (callable without `@function_tool` wrapper)
+- Added Phase 0.9 in `orchestrator.py` that runs before Phase 1 when `iteration > 1`
+- Checks `warning_level` and handles `escape_action` (query_kb, force_technique_switch, increase_exploration, request_human_help)
+- Records baseline score before each iteration via `record_baseline()`
 
 ### Example (conceptual)
 ```
@@ -58,7 +92,7 @@ if iteration > 1:
 
 ---
 
-### 2) Escape Level Must Drive Decisions
+### 2) Escape Level Must Drive Decisions ✅
 
 ### Problem
 The quality gate produces an `escape_level`, but the **SessionManager context never includes it**, so downstream logic sees `escape_level=0` forever.
@@ -67,7 +101,16 @@ The quality gate produces an `escape_level`, but the **SessionManager context ne
 Persist the escape level into SessionManager (or a single shared stuck‑state) **immediately after** QualityGateJudge.
 
 ### Why it matters
-Without a live escape level, “stuck detection” is a mirage. The system can’t prove that it learns from repeated failures.
+Without a live escape level, "stuck detection" is a mirage. The system can't prove that it learns from repeated failures.
+
+**Implementation (2026-01-23):**
+- Added `stuck_state` field to `SharedContext` in `models/shared_context.py`
+- Orchestrator syncs escape level immediately after QualityGateJudge:
+  ```python
+  session.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
+  context.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
+  ```
+- Both `SessionState` and `SharedContext` now share live escape level
 
 ### Example (conceptual)
 ```
@@ -77,7 +120,7 @@ if gate_decision:
 
 ---
 
-### 3) Pattern Extraction Must Be Enforced by the Orchestrator
+### 3) Pattern Extraction Must Be Enforced by the Orchestrator ✅
 
 ### Problem
 The Learning Agent is instructed to extract patterns, but the pipeline does **nothing** with `learning.pattern_extracted` or `learning.pattern_id`.
@@ -88,7 +131,19 @@ After Learning Agent returns, the orchestrator must:
 2. Report pattern outcomes after execution.
 
 ### Why it matters
-Self‑improvement requires *persistent knowledge*. If success doesn’t create a reusable pattern, the system is not learning.
+Self‑improvement requires *persistent knowledge*. If success doesn't create a reusable pattern, the system is not learning.
+
+**Implementation (2026-01-23):**
+- Added `extracted_patterns: List[Dict]` field to `SessionState` in `models/shared_context.py`
+- Added `last_applied_pattern_id: Optional[str]` field to `SharedContext`
+- Orchestrator records extracted patterns after Learning Agent:
+  ```python
+  if learning.pattern_extracted and learning.pattern_id:
+      session.extracted_patterns.append({...})
+      context.last_applied_pattern_id = learning.pattern_id
+  ```
+- Added `_report_pattern_outcome_impl()` in `tools/code_pattern_tools.py` for direct orchestrator calls
+- Orchestrator reports pattern outcomes after quality evaluation
 
 ### Example (conceptual)
 ```
@@ -102,16 +157,23 @@ if script.pattern_id:
 
 ---
 
-### 4) Technique Switching Must Reset Stuck State
+### 4) Technique Switching Must Reset Stuck State ✅
 
 ### Problem
-When switching techniques, the system keeps the old issue streaks. This means a new technique inherits stale “stuck” penalties.
+When switching techniques, the system keeps the old issue streaks. This means a new technique inherits stale "stuck" penalties.
 
 ### Change
 Reset the issue tracker when a new technique is selected.
 
 ### Why it matters
 Exploration is impossible if every new idea is penalized by old failures. This is one of the biggest blockers to emergent behavior.
+
+**Implementation (2026-01-23):**
+- Added `IssueTracker.reset()` method in `session_manager.py`
+- Added `SessionManager.reset_for_technique_switch()` method
+- Resets: `issue_counts`, `issue_first_seen`, `consecutive_same_issue`, `last_primary_issue`
+- Orchestrator calls `session_mgr.reset_for_technique_switch()` when technique switch detected
+- New technique added to `techniques_tried` list to prevent re-trying
 
 ### Example (conceptual)
 ```
@@ -121,7 +183,7 @@ if switched_technique:
 
 ---
 
-### 5) Dynamic Instructions Must Never Fail Silently
+### 5) Dynamic Instructions Must Never Fail Silently ✅
 
 ### Problem
 Dynamic instructions swallow exceptions and fall back without logging. That makes KB‑injection failures invisible.
@@ -131,6 +193,15 @@ Add lightweight logging when context extraction fails, and fallback to a safe de
 
 ### Why it matters
 If KB‑injection fails, the system stops learning *silently*. Silent failure kills self‑improvement.
+
+**Implementation (2026-01-23):**
+- Added `import logging` and `logger = logging.getLogger(__name__)` to `tools/dynamic_instructions.py`
+- All 4 dynamic instruction functions now log warnings on context extraction failure:
+  - `dynamic_script_writer_instructions()`
+  - `dynamic_quality_analyst_instructions()`
+  - `dynamic_learning_instructions()`
+  - `dynamic_docs_expert_instructions()`
+- Log includes error details and fallback value used
 
 ### Example (conceptual)
 ```
@@ -143,7 +214,7 @@ except Exception as e:
 
 ---
 
-### 6) Do Not Bypass Enforcement When Modifying Scripts
+### 6) Do Not Bypass Enforcement When Modifying Scripts ⏳ DEFERRED
 
 ### Problem
 Direct `_modify_script_impl` bypasses RunHooks, guardrails, and tool tracing.
@@ -152,7 +223,9 @@ Direct `_modify_script_impl` bypasses RunHooks, guardrails, and tool tracing.
 Route *all* parameter modifications through a tool wrapper (function tool) so hooks and validation apply.
 
 ### Why it matters
-If enforcement can be bypassed, the system can’t be trusted to behave consistently.
+If enforcement can be bypassed, the system can't be trusted to behave consistently.
+
+**Status (2026-01-23):** Deferred to Phase 2. Current implementation still uses direct script generation through Script Writer agent, which is traced via SDK. Full enforcement through tool wrappers requires additional refactoring.
 
 ### Example (conceptual)
 ```
@@ -162,7 +235,7 @@ apply_modifications_tool(modifications=learning.parameter_modifications)
 
 ---
 
-### 7) Research Output Should Be Structured (Not Free‑Text)
+### 7) Research Output Should Be Structured (Not Free‑Text) ⏳ DEFERRED
 
 ### Problem
 Research output is free‑text and parsed with heuristics. This is fragile and prevents deterministic reuse.
@@ -175,11 +248,13 @@ Make Research Agent return a structured output schema:
 - `alternatives`
 
 ### Why it matters
-You can’t build a self‑improving system on free‑text heuristics.
+You can't build a self‑improving system on free‑text heuristics.
+
+**Status (2026-01-23):** Deferred to Phase 3. Requires defining Pydantic `AgentOutputSchema` and updating Research Agent. Current free-text output works but is fragile.
 
 ---
 
-### 8) Budget Enforcement Must Be Iteration‑Aware
+### 8) Budget Enforcement Must Be Iteration‑Aware ✅
 
 ### Problem
 Budget is checked once at the start, not before expensive steps.
@@ -190,9 +265,15 @@ Check budget before **each evaluation** or other costly phase.
 ### Why it matters
 The system may waste expensive calls after the budget is already exhausted.
 
+**Implementation (2026-01-23):**
+- Added budget check before Phase 3 (Quality Evaluation) in each iteration
+- Uses `self._budget_tracker.can_afford_evaluation()`
+- On exhaustion: sets `session.status = SessionStatus.BUDGET_EXHAUSTED` and exits loop gracefully
+- Logs warning: `"[Pipeline] BUDGET EXHAUSTED - using last available score"`
+
 ---
 
-### 9) Turn Limits for Sub‑Agents Must Be Guaranteed
+### 9) Turn Limits for Sub‑Agents Must Be Guaranteed ✅
 
 ### Problem
 `agent.as_tool()` does not accept `max_turns`. Any sub‑agent can loop longer than intended.
@@ -203,23 +284,44 @@ Replace `as_tool()` with `@function_tool` wrappers that call `Runner.run(..., ma
 ### Why it matters
 Turn limits enforce bounded reasoning and prevent runaway loops.
 
+**Implementation (2026-01-23):**
+- **Discovery:** SDK v0.6.9+ now supports `agent.as_tool(max_turns=X)` natively!
+- Refactored `create_agent_tool_wrappers()` to use native SDK pattern:
+  ```python
+  research_agent.as_tool(
+      tool_name="research_approach",
+      tool_description="Research best approach for effect type",
+      max_turns=4,
+  )
+  ```
+- Turn limits enforced: Research=4, Script=6, Executor=3, Quality=3, Learning=5
+- No custom `@function_tool` wrappers needed
+
 Reference: SDK tools docs: https://github.com/openai/openai-agents-python/blob/main/docs/tools.md
 
 ---
 
-### 10) “Self‑Improvement” Must Be Mechanical, Not Instructional
+### 10) "Self‑Improvement" Must Be Mechanical, Not Instructional ✅
 
 ### Problem
-Many learning behaviors are instructions only (e.g., “record pattern if improvement >= 5”). The pipeline doesn’t enforce them.
+Many learning behaviors are instructions only (e.g., "record pattern if improvement >= 5"). The pipeline doesn't enforce them.
 
 ### Change
-Move all “self‑learning” requirements into the orchestrator:
+Move all "self‑learning" requirements into the orchestrator:
 - enforce pattern extraction on improvement
 - enforce pattern outcome reporting
 - enforce pre‑iteration research
 
 ### Why it matters
 An autonomous system must not depend on LLM compliance for core logic.
+
+**Implementation (2026-01-23):**
+All three requirements now enforced by orchestrator, not LLM instructions:
+1. **Pattern extraction:** Orchestrator checks `learning.pattern_extracted` and records to `session.extracted_patterns`
+2. **Pattern outcome reporting:** Orchestrator calls `_report_pattern_outcome_impl()` after quality evaluation
+3. **Pre-iteration research:** Orchestrator calls `pre_iteration_research_direct()` before Phase 1 when `iteration > 1`
+
+Learning behaviors are now **deterministic pipeline steps**, not optional LLM responses.
 
 ---
 
@@ -302,43 +404,44 @@ if learning.uses_new_api:
 ## Implementation Map (Files & Hotspots)
 This is the exact place each phase likely touches.
 
-| Item | Primary Files | Likely Functions/Sections |
-|------|---------------|---------------------------|
-| QW‑1 Budget checks | `orchestrator.py` | Before Phase 3 evaluation, before API‑expensive tools |
-| QW‑2 Dynamic fallback logs | `tools/dynamic_instructions.py` | `dynamic_*_instructions()` context extraction |
-| QW‑3 Reset stuck state | `orchestrator.py`, `session_manager.py` | Technique switch branch; `IssueTracker` reset |
-| 1 Pre‑iteration research | `orchestrator.py` | Iteration loop before Phase 1 |
-| 2 Escape level sync | `orchestrator.py`, `session_manager.py` | Post‑QualityGateJudge; `get_context_for_agents()` |
-| 3 Pattern extraction enforcement | `orchestrator.py` | Post‑Learning Agent; post‑Quality eval |
-| 4 Reset stuck state | `session_manager.py` | Add `reset_issue_tracker()` helper |
-| 5 Dynamic instruction logging | `tools/dynamic_instructions.py` | Log fallback cause + effect type |
-| 6 Enforce tool wrapper for modifications | `orchestrator.py`, `tools/script_generator_tools.py` | Replace `_modify_script_impl` direct call |
-| 7 Structured research output | `specialized_agents/research_agent.py` (if exists), `orchestrator.py` | Add `AgentOutputSchema` |
-| 8 Iteration‑aware budget check | `orchestrator.py` | Guard before evaluation and possibly before execution |
-| 9 Sub‑agent max_turns | `orchestrator.py` | `create_agent_tool_wrappers()` or tool wrappers |
-| 10 Mechanical self‑learning | `orchestrator.py` | Enforce pattern extraction/outcome reporting |
-| LA‑1 Learning Agent as controller | `orchestrator.py`, `specialized_agents/learning_agent.py`, `tools/semantic_docs_tools.py` | Pre‑generation proposals + doc‑gated experiments |
-| 11 Pattern outcome reporting | `orchestrator.py`, `tools/code_pattern_tools.py` | Call `report_pattern_outcome()` |
-| 12 Reuse extracted patterns | `orchestrator.py` | Use `search_code_patterns`/`apply_pattern_to_script` |
-| 13 Research schema | `models/` (new), `orchestrator.py` | Pydantic output model |
-| 14 Prompt budgets | `specialized_agents/*`, `orchestrator.py` | Align `max_turns` + prompt text |
-| 15 Session compaction | `orchestrator.py`, `session_manager.py` | Summarize + rotate SDK sessions |
-| 16 Cross‑session bootstrap | `session_persistence.py`, `tools/experiment_tracker_tools.py` | Load past patterns/learnings |
+| Item | Status | Primary Files | Likely Functions/Sections |
+|------|--------|---------------|---------------------------|
+| QW‑1 Budget checks | ✅ | `orchestrator.py`, `models/shared_context.py` | Before Phase 3 evaluation; `BUDGET_EXHAUSTED` enum |
+| QW‑2 Dynamic fallback logs | ✅ | `tools/dynamic_instructions.py` | `dynamic_*_instructions()` with `logger.warning()` |
+| QW‑3 Reset stuck state | ✅ | `orchestrator.py`, `session_manager.py` | `reset_for_technique_switch()`; `IssueTracker.reset()` |
+| 1 Pre‑iteration research | ✅ | `orchestrator.py`, `tools/proactive_research_tools.py` | Phase 0.9; `pre_iteration_research_direct()` |
+| 2 Escape level sync | ✅ | `orchestrator.py`, `models/shared_context.py` | Post‑QualityGateJudge; `stuck_state` field |
+| 3 Pattern extraction enforcement | ✅ | `orchestrator.py`, `tools/code_pattern_tools.py` | `extracted_patterns` list; `_report_pattern_outcome_impl()` |
+| 4 Reset stuck state | ✅ | `session_manager.py` | `IssueTracker.reset()` helper |
+| 5 Dynamic instruction logging | ✅ | `tools/dynamic_instructions.py` | `logger.warning()` on fallback |
+| 6 Enforce tool wrapper for modifications | ⏳ | `orchestrator.py`, `tools/script_generator_tools.py` | Deferred to Phase 2 |
+| 7 Structured research output | ⏳ | `specialized_agents/research_agent.py`, `orchestrator.py` | Deferred to Phase 3 |
+| 8 Iteration‑aware budget check | ✅ | `orchestrator.py` | Guard before Phase 3 evaluation |
+| 9 Sub‑agent max_turns | ✅ | `orchestrator.py` | `as_tool(max_turns=X)` native SDK |
+| 10 Mechanical self‑learning | ✅ | `orchestrator.py` | Enforce pattern extraction/outcome reporting |
+| LA‑1 Learning Agent as controller | ⏳ | `orchestrator.py`, `specialized_agents/learning_agent.py` | Deferred to Phase 1.5 |
+| 11 Pattern outcome reporting | ✅ | `orchestrator.py`, `tools/code_pattern_tools.py` | `_report_pattern_outcome_impl()` |
+| 12 Reuse extracted patterns | ⏳ | `orchestrator.py` | Use `search_code_patterns`/`apply_pattern_to_script` |
+| 13 Research schema | ⏳ | `models/` (new), `orchestrator.py` | Pydantic output model |
+| 14 Prompt budgets | ✅ | `orchestrator.py` | `as_tool(max_turns=X)` aligns with prompt |
+| 15 Session compaction | ⏳ | `orchestrator.py`, `session_manager.py` | Summarize + rotate SDK sessions |
+| 16 Cross‑session bootstrap | ⏳ | `session_persistence.py`, `tools/experiment_tracker_tools.py` | Load past patterns/learnings |
 
 ---
 
 ## Rough Effort Estimates (Engineering Hours)
 These are conservative ranges assuming one developer familiar with the code.
 
-| Phase | Item Count | Estimated Effort |
-|-------|------------|------------------|
-| Phase 0 | 3 items | 2–4 hours |
-| Phase 1 | 10 items | 10–18 hours |
-| Phase 2 | 2 items | 4–6 hours |
-| Phase 3 | 2 items | 4–8 hours |
-| Phase 4 | 2 items | 6–12 hours |
+| Phase | Item Count | Status | Estimated Effort |
+|-------|------------|--------|------------------|
+| Phase 0 | 3 items | ✅ COMPLETE | 2–4 hours |
+| Phase 1 | 10 items | ✅ 8/10 COMPLETE | 10–18 hours |
+| Phase 2 | 2 items | ⏳ PENDING | 4–6 hours |
+| Phase 3 | 2 items | ⏳ PENDING | 4–8 hours |
+| Phase 4 | 2 items | ⏳ PENDING | 6–12 hours |
 
-**Total (all phases):** ~26–48 hours
+**Completed (Phase 0 + Phase 1):** ~12–22 hours equivalent
+**Remaining (Phase 2-4):** ~14–26 hours
 
 ---
 
@@ -444,6 +547,40 @@ def generate_candidate(seed: Candidate, variant_id: int) -> Candidate:
 ---
 
 ## Bottom Line
-If these phases are not implemented, the system will **look** active but won’t reliably self‑improve.  
+If these phases are not implemented, the system will **look** active but won't reliably self‑improve.
 If they are implemented, you get a loop that can *provably* learn, adapt, and escalate — the minimum required for real autonomy.
+
+---
+
+## Implementation Notes (2026-01-23)
+
+### Key SDK Discovery
+During implementation, discovered that **OpenAI Agents SDK v0.6.9+** now supports `agent.as_tool(max_turns=X)` natively. This eliminated the need for custom `@function_tool` wrappers as originally planned in item 9.
+
+### Pattern for Direct Callable Functions
+Several `@function_tool` decorated functions needed to be called directly by the orchestrator (not through agent context). Solution: create `*_direct()` or `*_impl()` versions without the decorator:
+
+```python
+# For agents (has @function_tool decorator)
+@function_tool
+def pre_iteration_research(wrapper: RunContextWrapper[SharedContext], ...) -> str:
+    return pre_iteration_research_direct(...)
+
+# For orchestrator (no decorator)
+def pre_iteration_research_direct(current_issue: str, ...) -> str:
+    # Actual implementation
+```
+
+### Files Modified
+- `orchestrator.py` - Major autonomy enforcement changes
+- `models/shared_context.py` - New fields and enum values
+- `session_manager.py` - New reset methods
+- `tools/dynamic_instructions.py` - Added logging
+- `tools/proactive_research_tools.py` - Added direct callable
+- `tools/code_pattern_tools.py` - Added `_impl` function
+
+### Tests Passing
+- `test_orchestrator_tools.py` - All passed
+- `test_self_learning_tools.py` - 4/4 passed
+- Import verification - All files compile
 

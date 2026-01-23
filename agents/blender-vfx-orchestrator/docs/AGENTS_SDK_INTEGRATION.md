@@ -3,6 +3,22 @@
 **Last Updated:** 2026-01-23
 **SDK Version:** 0.6.9+
 
+---
+
+## Implementation Status (Updated 2026-01-23)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Agents-as-tools pattern | ✅ COMPLETE | All sub-agents exposed via `as_tool()` |
+| Native `max_turns` enforcement | ✅ COMPLETE | Using SDK v0.6.9+ `as_tool(max_turns=X)` |
+| Two-layer tool pattern | ✅ COMPLETE | `_impl` + `@function_tool` wrapper |
+| RunHooks enforcement | ✅ PARTIAL | Hooks defined, not all wired |
+| Input/Output guardrails | ⏳ PENDING | Defined but not all agents use them |
+| SQLiteSession persistence | ⏳ PENDING | Helper exists, not fully integrated |
+| Handoffs deprecated | ✅ COMPLETE | Using code-based pipeline |
+
+---
+
 ## CRITICAL: Always Consult Official Documentation
 
 **Before making ANY changes to the multi-agent system, consult the official documentation:**
@@ -351,10 +367,24 @@ These items are **actionable gaps** between current usage and the SDK's document
 - **Impact:** Guardrails **will not** apply to `agent.as_tool()` or hosted tools.
 - **Recommendation:** Use RunHooks for cross-tool enforcement, and add tool guardrails only where applicable.
 
-### 3. `agent.as_tool()` cannot set `max_turns`
-- **SDK behavior:** `agent.as_tool()` does not accept `max_turns`. The SDK recommends a custom tool that calls `Runner.run()` if you need a specific turn budget.
-- **Recommendation:** Wrap agent tools when turn limits matter:
-  - **Source:** Agents SDK `docs/tools.md`
+### 3. `agent.as_tool()` now supports `max_turns` ✅ RESOLVED (SDK v0.6.9+)
+- **SDK behavior (Updated):** As of SDK v0.6.9+, `agent.as_tool()` now accepts `max_turns` directly:
+
+```python
+research_agent.as_tool(
+    tool_name="research_approach",
+    tool_description="Research best approach for effect type",
+    max_turns=4,  # NOW SUPPORTED NATIVELY
+)
+```
+
+- **Implementation (2026-01-23):** Orchestrator now uses native `as_tool(max_turns=X)`:
+  - Research: 4 turns
+  - Script Writer: 6 turns
+  - Executor: 3 turns
+  - Quality Analyst: 3 turns
+  - Learning: 5 turns
+- **Legacy note:** The custom wrapper approach (below) is still valid for additional custom logic:
 
 ```python
 @function_tool
