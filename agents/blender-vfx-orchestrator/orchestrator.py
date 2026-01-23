@@ -39,6 +39,9 @@ _agents_logger = logging.getLogger("openai.agents")
 # Session Manager for deterministic experiment state tracking
 from session_manager import SessionManager
 
+# Config system for preset-based agent settings
+from config import AgentConfigManager, get_config
+
 # ExperimentTracker baseline recording for Learning Agent compatibility
 from tools.experiment_tracker_tools import _record_baseline_impl as record_experiment_baseline
 # Proactive research for pre-iteration checks (direct callable, no tool wrapper)
@@ -102,7 +105,7 @@ class ScriptOutput(BaseModel):
     technique_used: str = Field(description="Technique/approach used in script generation")
     parameters_set: Dict[str, Any] = Field(default_factory=dict, description="Key parameters configured")
     validation_passed: bool = Field(default=True, description="Whether script validation passed")
-    validation_errors: List[str] = Field(default_factory=list, description="Any validation errors")
+    validation_errors: List[Any] = Field(default_factory=list, description="Any validation errors (strings or structured dicts)")
 
 
 class ExecutionOutput(BaseModel):
@@ -184,8 +187,10 @@ from models.shared_context import (
 )
 
 # Proactive research tools for Strategy 3: Early warning detection
+# NOTE: pre_iteration_research (direct callable) is imported at line 48 for pipeline use
+# Import the @function_tool version for agent tool lists
 from tools.proactive_research_tools import (
-    pre_iteration_research,
+    pre_iteration_research as pre_iteration_research_tool,  # @function_tool version for agents
     evaluate_escape_velocity,
     search_alternative_approaches,
 )
@@ -593,15 +598,15 @@ def create_coordinator_agent(
         search_blender_api_by_intent,
         search_code_patterns,
         list_patterns_by_effect,
-        pre_iteration_research,
+        pre_iteration_research_tool,
         evaluate_escape_velocity,
     ]
 
     return Agent[SharedContext](
         name="VFX Coordinator",
         instructions=COORDINATOR_INSTRUCTIONS,
-        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
-        model_settings=ModelSettings(verbosity="low"),
+        model=os.getenv("COORDINATOR_MODEL", get_config().preset.default_model),
+        model_settings=ModelSettings(verbosity="medium"),
         tools=agent_tools + research_tools,
     )
 
@@ -622,6 +627,12 @@ def create_technique_selection_coordinator(
     # Create turn-limited research wrapper
     research_tool = create_research_tool_wrapper(research_agent)
 
+    # Get config-based settings for coordinator
+    config = get_config()
+    settings = config.get_agent_settings("technique_coordinator")
+    model_settings_kwargs = settings.to_model_settings()
+    model_settings_kwargs["verbosity"] = "high" if settings.verbose else "medium"
+
     return Agent[SharedContext](
         name="Technique Selector",
         instructions="""You select the best technique for VFX effect generation.
@@ -641,8 +652,8 @@ Return a TechniqueDecision with:
 - key_parameters: Starting parameter values
 - alternative_techniques: Backup techniques if primary fails
 - research_summary: Summary of findings""",
-        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
-        model_settings=ModelSettings(verbosity="low"),
+        model=settings.model,
+        model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
             research_tool,  # Turn-limited wrapper (max_turns=4)
             semantic_search_blender_docs,
@@ -663,6 +674,12 @@ def create_modification_coordinator() -> Agent:
     Uses ModificationDecision structured output.
     Phase 3: Output guardrail validates ModificationDecision structure.
     """
+    # Get config-based settings for coordinator
+    config = get_config()
+    settings = config.get_agent_settings("modification_coordinator")
+    model_settings_kwargs = settings.to_model_settings()
+    model_settings_kwargs["verbosity"] = "high" if settings.verbose else "medium"
+
     return Agent[SharedContext](
         name="Modification Strategist",
         instructions="""You decide how to fix quality issues in VFX renders.
@@ -688,11 +705,11 @@ Return a ModificationDecision with:
 - new_technique: New technique name if switching
 - reasoning: Why this strategy
 - confidence: 0.0-1.0 confidence level""",
-        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
-        model_settings=ModelSettings(verbosity="low"),
+        model=settings.model,
+        model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
             search_code_patterns,
-            pre_iteration_research,
+            pre_iteration_research_tool,
             evaluate_escape_velocity,
         ],
         output_type=AgentOutputSchema(ModificationDecision, strict_json_schema=False),
@@ -709,6 +726,12 @@ def create_quality_gate_coordinator() -> Agent:
     Uses QualityDecision structured output.
     Phase 3: Output guardrail validates QualityDecision structure and consistency.
     """
+    # Get config-based settings for coordinator
+    config = get_config()
+    settings = config.get_agent_settings("quality_gate_coordinator")
+    model_settings_kwargs = settings.to_model_settings()
+    model_settings_kwargs["verbosity"] = "high" if settings.verbose else "medium"
+
     return Agent[SharedContext](
         name="Quality Gate Judge",
         instructions="""You interpret quality evaluation results and decide next action.
@@ -742,8 +765,8 @@ Return a QualityDecision with:
 - next_action: 'complete' | 'iterate' | 'switch_technique' | 'request_guidance'
 - escape_level: Current escape velocity (0-4)
 - reasoning: Explanation of decision""",
-        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
-        model_settings=ModelSettings(verbosity="low"),
+        model=settings.model,
+        model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
             evaluate_escape_velocity,
         ],
@@ -794,6 +817,31 @@ class BlenderVFXOrchestrator:
         self._persistence: SessionPersistence = get_persistence()
         self._initialized = False
 
+        # Config system for preset-based settings
+        self._config: AgentConfigManager = get_config()
+        print(f"[Orchestrator] Using preset: {self._config.preset.name} ({self._config.preset.description})", file=sys.stderr)
+
+    def _get_model_settings(self, agent_name: str) -> tuple[str, ModelSettings]:
+        """
+        Get model and ModelSettings for an agent from config.
+
+        Args:
+            agent_name: Name of agent (e.g., "script_writer", "research_agent")
+
+        Returns:
+            Tuple of (model_name, ModelSettings)
+        """
+        settings = self._config.get_agent_settings(agent_name)
+        model_settings_kwargs = settings.to_model_settings()
+
+        # Always set verbosity based on config
+        if settings.verbose:
+            model_settings_kwargs["verbosity"] = "high"
+        else:
+            model_settings_kwargs["verbosity"] = "medium"
+
+        return settings.model, ModelSettings(**model_settings_kwargs)
+
     async def initialize(self) -> None:
         """
         Initialize all specialized agents and create the orchestrator.
@@ -817,7 +865,7 @@ class BlenderVFXOrchestrator:
         # This breaks the circular dependency
         orchestrator_tools = [
             # Proactive research tools (Strategy 3)
-            pre_iteration_research,
+            pre_iteration_research_tool,
             evaluate_escape_velocity,
             search_alternative_approaches,
             # Semantic docs tools (Strategy 1)
@@ -842,8 +890,8 @@ class BlenderVFXOrchestrator:
         temp_orchestrator = Agent[SharedContext](
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
-            model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
-            model_settings=ModelSettings(verbosity="low"),
+            model=os.getenv("ORCHESTRATOR_MODEL", get_config().preset.default_model),
+            model_settings=ModelSettings(verbosity="medium"),
             tools=orchestrator_tools,
         )
 
@@ -984,8 +1032,8 @@ CRITICAL: After searching documentation, use return_to_orchestrator to hand off.
         self._orchestrator = Agent[SharedContext](
             name="Blender VFX Orchestrator",
             instructions=ORCHESTRATOR_INSTRUCTIONS,
-            model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
-            model_settings=ModelSettings(verbosity="low"),
+            model=os.getenv("ORCHESTRATOR_MODEL", get_config().preset.default_model),
+            model_settings=ModelSettings(verbosity="medium"),
             handoffs=handoffs_list,
             tools=orchestrator_tools,
         )
@@ -993,6 +1041,7 @@ CRITICAL: After searching documentation, use return_to_orchestrator to hand off.
         # Step 5: Create STANDALONE agents for code-based orchestration
         # These have NO handoffs - Python controls the pipeline sequence directly
         # Using structured outputs (output_type) for type-safe data passing between agents
+        research_model, research_settings = self._get_model_settings("research_agent")
         self._research_agent = Agent[SharedContext](
             name="Research Agent",
             instructions="""You are a Blender documentation research specialist.
@@ -1009,8 +1058,8 @@ Use your tools to gather information, then return a summary of your findings inc
 - recommended_approach: Best approach for the effect
 - key_parameters: Important parameter settings
 - warnings: Potential pitfalls to avoid""",
-            model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
-            model_settings=ModelSettings(verbosity="low"),
+            model=research_model,
+            model_settings=research_settings,
             # Note: Don't use output_type for tool-using agents - they output messages, not structured data
             tools=[
                 semantic_search_blender_docs,
@@ -1028,11 +1077,12 @@ Use your tools to gather information, then return a summary of your findings inc
         # Phase 3: Input/output guardrails for validation
         # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_script_writer_instructions + extras
         base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
+        script_model, script_settings = self._get_model_settings("script_writer")
         self._script_agent_standalone = Agent[SharedContext](
             name="Script Writer",
             instructions=dynamic_script_writer_standalone_instructions,  # Dynamic!
-            model=base_script_writer_standalone.model,
-            model_settings=base_script_writer_standalone.model_settings,
+            model=script_model,
+            model_settings=script_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
             tools=base_script_writer_standalone.tools,
             # Phase 3: Guardrails for Script Writer
@@ -1044,6 +1094,7 @@ Use your tools to gather information, then return a summary of your findings inc
 
         # Executor with structured output
         base_executor = create_executor()
+        executor_model, executor_settings = self._get_model_settings("executor")
         self._executor_agent_standalone = Agent[SharedContext](
             name="Executor",
             instructions=base_executor.instructions + """
@@ -1055,8 +1106,8 @@ After executing the script, return a structured ExecutionOutput with:
 - vdb_path: Path to VDB volume data (if generated)
 - error_message: Error details if execution failed
 - execution_time_seconds: How long execution took""",
-            model=base_executor.model,
-            model_settings=base_executor.model_settings,
+            model=executor_model,
+            model_settings=executor_settings,
             output_type=AgentOutputSchema(ExecutionOutput, strict_json_schema=False),
             tools=base_executor.tools,
         )
@@ -1066,11 +1117,12 @@ After executing the script, return a structured ExecutionOutput with:
         # Phase 3: Input/output guardrails for validation
         # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_quality_analyst_instructions + extras
         base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
+        quality_model, quality_settings = self._get_model_settings("quality_analyst")
         self._quality_agent_standalone = Agent[SharedContext](
             name="Quality Analyst",
             instructions=dynamic_quality_analyst_standalone_instructions,  # Dynamic!
-            model=base_quality_standalone.model,
-            model_settings=base_quality_standalone.model_settings,
+            model=quality_model,
+            model_settings=quality_settings,
             output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
             tools=base_quality_standalone.tools,
             # Phase 3: Guardrails for Quality Analyst
@@ -1084,11 +1136,12 @@ After executing the script, return a structured ExecutionOutput with:
         # Core of the self-learning system - processes physics observations via tools
         # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_learning_agent_instructions + extras
         base_learning_standalone = create_learning_agent(use_dynamic_instructions=False)
+        learning_model, learning_settings = self._get_model_settings("learning_agent")
         self._learning_agent_standalone = Agent[SharedContext](
             name="Learning Agent",
             instructions=dynamic_learning_agent_standalone_instructions,  # Dynamic!
-            model=base_learning_standalone.model,
-            model_settings=base_learning_standalone.model_settings,
+            model=learning_model,
+            model_settings=learning_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
             tools=base_learning_standalone.tools,
         )

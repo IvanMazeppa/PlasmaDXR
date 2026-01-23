@@ -278,6 +278,21 @@ obj.visible_shadow = False
 ### use_nodes Deprecated:
 `material.use_nodes = True` works but shows deprecation warning.
 
+### World May Not Exist (CRITICAL - Blender 5.0):
+In Blender 5.0, `scene.world` may be None when starting from a new/bare scene.
+**ALWAYS create world if missing** before setting world properties:
+```python
+def setup_world(scene):
+    # CRITICAL: Create world if it doesn't exist
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new(name="World")
+
+    world = scene.world
+    world.use_nodes = True
+    nt = world.node_tree
+    # ... setup nodes
+```
+
 ### CyclesRenderSettings.feature_set REMOVED (Blender 5.0):
 The `scene.cycles.feature_set = 'EXPERIMENTAL'` line is REMOVED in Blender 5.0.
 Experimental features like adaptive subdivision are always available now.
@@ -331,7 +346,7 @@ def setup_render(scene, frame_start=1, frame_end=50, out_path="/tmp/render.png")
     scene.frame_end = frame_end
 
     # USE EEVEE - Cycles crashes with Mantaflow volumes in Blender 5.0
-    scene.render.engine = 'BLENDER_EEVEE_NEXT'  # Blender 5.0 uses EEVEE Next
+    scene.render.engine = 'BLENDER_EEVEE'  # Blender 5.0 uses BLENDER_EEVEE
 
     # EEVEE volumetric settings
     scene.eevee.volumetric_tile_size = '4'  # Higher quality volumetrics
@@ -351,8 +366,37 @@ def setup_render(scene, frame_start=1, frame_end=50, out_path="/tmp/render.png")
     scene.render.image_settings.color_mode = 'RGBA'
     scene.render.filepath = out_path
 ```
-**CRITICAL**: For Mantaflow fire/smoke, ALWAYS use 'BLENDER_EEVEE_NEXT', NOT 'CYCLES'.
+**CRITICAL**: For Mantaflow fire/smoke, ALWAYS use 'BLENDER_EEVEE', NOT 'CYCLES'.
 EEVEE renders volumes reliably without crashes.
+
+### GPU CONFIGURATION FOR CYCLES (Non-Mantaflow effects):
+When using Cycles (sun, nebula, explosion effects WITHOUT Mantaflow), ALWAYS configure GPU:
+```python
+def setup_cycles_gpu():
+    """Configure Cycles to use GPU rendering."""
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    scene.cycles.device = 'GPU'
+
+    # Enable GPU compute device (try CUDA, then OPTIX, then METAL)
+    prefs = bpy.context.preferences.addons['cycles'].preferences
+    try:
+        prefs.compute_device_type = 'CUDA'
+    except Exception:
+        try:
+            prefs.compute_device_type = 'OPTIX'
+        except Exception:
+            try:
+                prefs.compute_device_type = 'METAL'
+            except Exception:
+                pass  # Fallback to CPU
+
+    # Refresh and enable all GPU devices
+    prefs.get_devices()
+    for device in prefs.devices:
+        device.use = True  # Enable all available devices
+```
+**CRITICAL**: Without this setup, Cycles runs on CPU which is 10-100x slower.
 
 ## MODIFICATION WORKFLOW
 1. Parse quality feedback -> identify ALL visual issues

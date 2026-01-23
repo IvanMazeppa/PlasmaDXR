@@ -217,5 +217,5 @@ def get_reasoning_settings(effort: str) -> ModelSettings:
     """
     return ModelSettings(
         reasoning=Reasoning(effort=effort),
-        verbosity="low"
+        verbosity="medium"
     )

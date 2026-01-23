@@ -1,0 +1,79 @@
+# VFX Orchestrator Agent Presets
+# Select preset via: ORCHESTRATOR_PRESET=quick_test
+#
+# Available models: gpt-5.2
+# Reasoning effort: none, low, medium, high
+# Note: temperature only works when reasoning_effort=none
+
+presets:
+  # Fast iteration - minimal cost, quick feedback
+  quick_test:
+    description: "Fast iteration with minimal cost"
+    default_model: gpt-5.2
+    reasoning_effort: none
+    temperature: 0.3
+    max_turns: 5
+    max_iterations: 2
+
+  # Standard development - balanced cost/quality
+  development:
+    description: "Balanced settings for development"
+    default_model: gpt-5.2
+    reasoning_effort: none
+    temperature: 0.5
+    max_turns: 10
+    max_iterations: 3
+
+  # Full quality - best results, higher cost
+  production:
+    description: "Maximum quality for final assets"
+    default_model: gpt-5.2
+    reasoning_effort: medium
+    temperature: 0.7
+    max_turns: 15
+    max_iterations: 5
+
+  # Budget saver - absolute minimum
+  budget_saver:
+    description: "Minimum cost, basic functionality"
+    default_model: gpt-5.2
+    reasoning_effort: none
+    temperature: 0.2
+    max_turns: 3
+    max_iterations: 1
+
+  # Debug mode - verbose, detailed tracing
+  debug:
+    description: "Verbose output for debugging"
+    default_model: gpt-5.2
+    reasoning_effort: low
+    temperature: 0.5
+    max_turns: 8
+    max_iterations: 2
+    verbose: true
+
+  # Reasoning mode - uses full reasoning for complex tasks
+  reasoning:
+    description: "Uses reasoning model for complex decisions"
+    default_model: gpt-5.2
+    reasoning_effort: medium
+    temperature: 1.0  # Ignored when reasoning enabled
+    max_turns: 10
+    max_iterations: 3
+
+# Per-agent overrides (applied on top of preset)
+# Use when specific agents need different settings
+agent_overrides:
+  # Script Writer benefits from slightly higher temp for creativity
+  script_writer:
+    temperature: 0.4
+
+  # Coordinators are quick decisions
+  technique_coordinator:
+    max_turns: 3
+
+  modification_coordinator:
+    max_turns: 3
+
+  quality_gate_coordinator:
+    max_turns: 3

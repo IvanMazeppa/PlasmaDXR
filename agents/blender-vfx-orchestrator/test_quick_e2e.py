@@ -1,4 +1,4 @@
-"""Quick 3-iteration E2E test to verify script modifications work."""
+"""Quick E2E test to verify orchestrator pipeline works."""
 
 import argparse
 import asyncio
@@ -9,13 +9,11 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-os.environ.setdefault('ORCHESTRATOR_MODEL', 'gpt-5.2')
 
 from models.shared_context import AssetRequest, EffectType, SharedContext
 from orchestrator import BlenderVFXOrchestrator, create_session_from_request, generate_session_id
+from config import AgentConfigManager
 from agents import enable_verbose_stdout_logging
-
-enable_verbose_stdout_logging()
 
 
 # Effect type configurations
@@ -43,12 +41,45 @@ EFFECT_CONFIGS = {
 }
 
 
-async def run_quick_test(name: str, effect: str, max_iterations: int = 3, timeout: int = 300):
+def list_presets():
+    """List available presets."""
+    config = AgentConfigManager.load_preset("development")  # Load any to get list
+    print("\nAvailable presets:")
+    print("-" * 50)
+    for name, desc in config.list_presets().items():
+        print(f"  {name:15} - {desc}")
+    print()
+
+
+async def run_quick_test(
+    name: str,
+    effect: str,
+    preset: str,
+    max_iterations: int = 3,
+    verbose: bool = False
+):
+    # Set preset via environment BEFORE importing orchestrator config
+    os.environ['ORCHESTRATOR_PRESET'] = preset
+
+    # Reset config to pick up new preset
+    from config.agent_config import reset_config
+    reset_config()
+
+    # Enable verbose logging if requested
+    if verbose:
+        enable_verbose_stdout_logging()
+
     print('=' * 70)
-    print('QUICK E2E TEST - 3 ITERATIONS - VERIFY SCRIPT MODIFICATIONS')
+    print(f'VFX ORCHESTRATOR E2E TEST')
+    print(f'Preset: {preset} | Effect: {effect} | Iterations: {max_iterations}')
     print('=' * 70)
 
     config = EFFECT_CONFIGS.get(effect.lower(), EFFECT_CONFIGS['sun'])
+
+    # Get max_iterations from preset if not overridden
+    preset_config = AgentConfigManager.load_preset(preset)
+    if max_iterations == 3:  # Default value, use preset
+        max_iterations = preset_config.get_max_iterations()
 
     request = AssetRequest(
         asset_name=name,
@@ -61,18 +92,19 @@ async def run_quick_test(name: str, effect: str, max_iterations: int = 3, timeou
         max_iterations=max_iterations,
     )
 
-    print(f'Running with max_iterations={request.max_iterations}')
-    print(f'Effect type: {request.effect_type.value}')
+    print(f'\nEffect: {request.effect_type.value}')
+    print(f'Max iterations: {request.max_iterations}')
+    print(f'Model: {preset_config.preset.default_model}')
+    print(f'Reasoning: {preset_config.preset.reasoning_effort}')
+    print()
 
     orchestrator = BlenderVFXOrchestrator()
     await orchestrator.initialize()
-    print('Orchestrator initialized')
 
     session_id = generate_session_id(request.asset_name)
-    context = create_session_from_request(request, session_id)
     print(f'Session: {session_id}')
 
-    print('Starting create_asset_pipeline...')
+    print('\nStarting create_asset_pipeline...\n')
     result = await orchestrator.create_asset_pipeline(request)
 
     print()
@@ -83,25 +115,49 @@ async def run_quick_test(name: str, effect: str, max_iterations: int = 3, timeou
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Quick E2E test for VFX orchestrator')
+    parser = argparse.ArgumentParser(
+        description='Quick E2E test for VFX orchestrator',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Quick test with budget_saver preset
+  python test_quick_e2e.py --preset budget_saver --effect fire
+
+  # Full quality test
+  python test_quick_e2e.py --preset production --effect sun --name sun_hq_v1
+
+  # List available presets
+  python test_quick_e2e.py --list-presets
+"""
+    )
     parser.add_argument('--name', type=str, default='quick_test_v1', help='Asset name')
     parser.add_argument('--effect', type=str, default='sun',
                         choices=['sun', 'fire', 'explosion', 'smoke', 'nebula'],
                         help='Effect type to test')
-    parser.add_argument('--iterations', type=int, default=3, help='Max iterations')
-    parser.add_argument('--timeout', type=int, default=300, help='Timeout in seconds')
+    parser.add_argument('--preset', type=str, default='quick_test',
+                        help='Config preset (quick_test, development, production, budget_saver, debug)')
+    parser.add_argument('--iterations', type=int, default=3, help='Max iterations (overrides preset)')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose SDK logging')
+    parser.add_argument('--list-presets', action='store_true', help='List available presets and exit')
 
     args = parser.parse_args()
+
+    if args.list_presets:
+        list_presets()
+        sys.exit(0)
 
     try:
         result = asyncio.run(run_quick_test(
             name=args.name,
             effect=args.effect,
+            preset=args.preset,
             max_iterations=args.iterations,
-            timeout=args.timeout
+            verbose=args.verbose
         ))
-        print(f'Final result: {result}')
+        print(f'\nFinal result: {result}')
+    except KeyboardInterrupt:
+        print('\nTest interrupted by user')
     except Exception as e:
-        print(f'ERROR: {e}')
+        print(f'\nERROR: {e}')
         import traceback
         traceback.print_exc()
