@@ -427,12 +427,14 @@ def create_research_hooks() -> EnforcementHooks:
     Create hooks optimized for research agents.
 
     More lenient on doc queries (they ARE the doc queries)
-    but strict on preventing infinite research loops.
+    but allows multiple parallel searches for complex topics.
+    Complex effects (waterfall, ocean) need searches for:
+    domain, flow, mesh, particles, materials, environment, etc.
     """
     config = EnforcementConfig(
-        max_same_tool_calls=3,  # Strict - research shouldn't repeat
-        max_turns=8,
-        hard_turn_limit=12,
+        max_same_tool_calls=6,  # Allow parallel searches for complex topics
+        max_turns=10,
+        hard_turn_limit=15,
         require_doc_query_before=[],  # Research agents ARE the doc queries
         raise_on_loop=True,
         raise_on_doc_missing=False,
@@ -444,20 +446,26 @@ def create_script_writer_hooks() -> EnforcementHooks:
     """
     Create hooks optimized for Script Writer agent.
 
-    Strict doc query requirement, moderate loop tolerance
-    (may need a few validation attempts).
+    Strict doc query requirement for NEW script generation, but modify_script
+    is exempt since:
+    1. It's called after write_script which already required doc query
+    2. Modifications are often based on API error feedback, not new research
+    3. The API Validator catches any API issues anyway
     """
     config = EnforcementConfig(
-        max_same_tool_calls=3,
-        max_turns=10,
-        hard_turn_limit=15,
+        max_same_tool_calls=6,  # Increased for complex effects
+        max_turns=12,
+        hard_turn_limit=18,
         require_doc_query_before=[
             "write_script",
             "generate_script",
-            "modify_script",
+            # NOTE: modify_script exempt - it's used for fixing API errors
+            # where the research was done in a previous iteration
         ],
         exempt_from_loop_detection=[
             "validate_script",  # May need multiple validation calls
+            "semantic_search_blender_docs",  # Complex effects need many doc searches
+            "search_blender_api_by_intent",  # Same - legitimate multiple searches
         ],
         raise_on_loop=True,
         raise_on_doc_missing=True,

@@ -99,6 +99,37 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "flow_behavior",
         "reason": "Renamed in Blender 5.0 FluidFlowSettings"
     },
+    # bpy.app.build_options changes (Blender 5.0)
+    "bpy.app.build_options.engines": {
+        "correction": "getattr(bpy.app.build_options, 'cycles', False)",
+        "reason": "bpy.app.build_options.engines removed in Blender 5.0. Check render engines via boolean attributes like 'cycles'"
+    },
+    "build_options.engines": {
+        "correction": "getattr(bpy.app.build_options, 'cycles', False)",
+        "reason": "bpy.app.build_options.engines removed in Blender 5.0"
+    },
+    # Common render engine check patterns
+    "'CYCLES' in bpy.app.build_options.engines": {
+        "correction": "getattr(bpy.app.build_options, 'cycles', False)",
+        "reason": "Use boolean attribute check instead of 'in engines' in Blender 5.0"
+    },
+    "\"CYCLES\" in bpy.app.build_options.engines": {
+        "correction": "getattr(bpy.app.build_options, 'cycles', False)",
+        "reason": "Use boolean attribute check instead of 'in engines' in Blender 5.0"
+    },
+    # CyclesRenderSettings removed attributes (Blender 5.0)
+    "volume_samples": {
+        "correction": "# volume_samples removed - Cycles uses automatic volume sampling in 5.0",
+        "reason": "CyclesRenderSettings.volume_samples removed in Blender 5.0. Volume sampling is now automatic."
+    },
+    "CyclesRenderSettings.volume_samples": {
+        "correction": "# volume_samples removed - Cycles uses automatic volume sampling in 5.0",
+        "reason": "CyclesRenderSettings.volume_samples removed in Blender 5.0. Volume sampling is now automatic."
+    },
+    ".volume_samples": {
+        "correction": "# volume_samples removed - Cycles uses automatic volume sampling in 5.0",
+        "reason": "scene.cycles.volume_samples removed in Blender 5.0. Volume sampling is now automatic."
+    },
 }
 
 # Known valid Blender 5.0 API patterns (don't warn about these)
@@ -167,6 +198,28 @@ def extract_api_calls_from_code(code: str) -> List[str]:
     # Pattern 7: modifier.effector_weights (deprecated pattern)
     if 'modifier.effector_weights' in code:
         api_calls.add('modifier.effector_weights')
+
+    # Pattern 8: bpy.app.* (application info/build options)
+    for match in re.finditer(r'bpy\.app\.(\w+)\.(\w+)', code):
+        api_calls.add(f"bpy.app.{match.group(1)}.{match.group(2)}")
+
+    # Pattern 9: bpy.app.build_options.engines (specific deprecated pattern)
+    if 'bpy.app.build_options.engines' in code or 'build_options.engines' in code:
+        api_calls.add('bpy.app.build_options.engines')
+
+    # Pattern 10: Check for "in engines" pattern (common mistake)
+    if re.search(r'in\s+bpy\.app\.build_options\.engines', code):
+        api_calls.add('"CYCLES" in bpy.app.build_options.engines')
+
+    # Pattern 11: CyclesRenderSettings.volume_samples (removed in 5.0)
+    if '.volume_samples' in code or 'volume_samples' in code:
+        api_calls.add('.volume_samples')
+
+    # Pattern 12: scene.cycles.* properties
+    for match in re.finditer(r'scene\.cycles\.(\w+)', code):
+        prop = match.group(1)
+        if prop == 'volume_samples':
+            api_calls.add('CyclesRenderSettings.volume_samples')
 
     return sorted(api_calls)
 

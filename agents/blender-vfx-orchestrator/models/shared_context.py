@@ -25,14 +25,22 @@ from pydantic import BaseModel, Field
 
 class EffectType(str, Enum):
     """Supported VFX effect types."""
+    # Pyro effects
     PYRO = "pyro"
     EXPLOSION = "explosion"
     FIRE = "fire"
     SMOKE = "smoke"
+    # Celestial effects
     NEBULA = "nebula"
     SUN = "sun"
     STAR = "star"
     SUPERNOVA = "supernova"
+    # Water/liquid effects
+    WATER = "water"
+    WATER_SPLASH = "water_splash"
+    OCEAN = "ocean"
+    WATERFALL = "waterfall"
+    RAIN = "rain"
 
 
 class SessionStatus(str, Enum):

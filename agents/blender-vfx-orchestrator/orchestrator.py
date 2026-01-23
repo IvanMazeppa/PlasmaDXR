@@ -115,6 +115,40 @@ class LearningOutput(BaseModel):
         description="Concrete parameter changes as {param_name: new_value}, e.g., {'temperature': 3.0, 'density': 5.0}"
     )
 
+
+# =============================================================================
+# COORDINATOR AGENT OUTPUT MODELS (Phase 2: Agents-as-Tools Pattern)
+# =============================================================================
+# These models define structured outputs for the Coordinator Agent's decisions.
+# The Coordinator is called at specific decision points in the pipeline, NOT for
+# every step. Python still controls the iteration loop.
+
+class TechniqueDecision(BaseModel):
+    """Output from Coordinator for initial technique selection."""
+    selected_technique: str = Field(description="The technique to use (e.g., 'mantaflow_fire', 'shader_based_volume')")
+    reasoning: str = Field(description="Why this technique was selected")
+    key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Starting parameters for the technique")
+    alternative_techniques: List[str] = Field(default_factory=list, description="Backup techniques if primary fails")
+    research_summary: str = Field(default="", description="Summary of research findings")
+
+
+class ModificationDecision(BaseModel):
+    """Output from Coordinator for parameter modification strategy."""
+    action: str = Field(description="Action to take: 'modify_params', 'switch_technique', 'continue'")
+    parameter_changes: Dict[str, Any] = Field(default_factory=dict, description="Concrete parameter changes")
+    new_technique: Optional[str] = Field(default=None, description="New technique if switching")
+    reasoning: str = Field(description="Why this modification strategy was chosen")
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this decision (0.0-1.0)")
+
+
+class QualityDecision(BaseModel):
+    """Output from Coordinator for quality gate interpretation."""
+    passed: bool = Field(description="Whether quality gate is passed")
+    should_continue: bool = Field(description="Whether to continue iterating")
+    next_action: str = Field(description="Next action: 'complete', 'iterate', 'switch_technique', 'request_guidance'")
+    escape_level: int = Field(ge=0, le=4, description="Current escape velocity level (0-4)")
+    reasoning: str = Field(description="Explanation of the quality decision")
+
 from models.shared_context import (
     AssetRequest,
     SessionState,
@@ -315,6 +349,290 @@ Complete: final score, iter count, output paths, techniques tried, cost
 
 
 # =============================================================================
+# COORDINATOR AGENT INSTRUCTIONS (Phase 2: Agents-as-Tools Pattern)
+# =============================================================================
+# The Coordinator Agent is called at DECISION POINTS only, not for every step.
+# Python controls the pipeline sequence; the Coordinator provides intelligent
+# decision-making for: technique selection, modification strategy, quality gates.
+
+COORDINATOR_INSTRUCTIONS = """## ROLE
+You are the Decision Coordinator for VFX asset generation. You are called at specific decision points to make intelligent choices about the pipeline direction.
+
+## YOUR TOOLS (Agents wrapped as tools)
+You have access to specialized agents as tools:
+- research_approach: Research best approach for effect type (Research Agent)
+- validate_blender_api: Validate Blender 5.0 API calls (API Validator)
+- generate_script: Generate or modify Blender Python script (Script Writer)
+- execute_script: Run Blender script and return results (Executor)
+- evaluate_render: Evaluate render quality with vision (Quality Analyst)
+- record_experiment: Record experiment and suggest fixes (Learning Agent)
+
+## DECISION TYPES
+
+### 1. TECHNIQUE_SELECTION (Iteration 1)
+You are asked to select the best technique for an effect type.
+- Use research_approach tool to gather information
+- Consider effect type, description, and available patterns
+- Return TechniqueDecision with selected_technique, reasoning, key_parameters
+
+### 2. MODIFICATION_STRATEGY (Iteration 2+)
+You are asked how to fix quality issues.
+- Analyze current quality feedback (score, issues, suggestions)
+- Check iteration history (what's been tried, what worked/failed)
+- Decide: modify_params OR switch_technique
+- Return ModificationDecision with action, parameter_changes, reasoning
+
+### 3. QUALITY_GATE (After each iteration)
+You are asked to interpret quality evaluation results.
+- Check if score >= threshold AND no critical issues
+- Determine escape_level based on iteration history
+- Return QualityDecision with passed, should_continue, next_action
+
+## CRITICAL RULES
+1. Use tools ONCE per decision - don't loop or retry
+2. Make decisive choices - avoid hedging or "it depends"
+3. If stuck (same issue 3+ times), recommend switch_technique
+4. Trust the Quality Analyst's assessment - don't second-guess scores
+5. Provide CONCRETE parameters when recommending modifications
+
+## ESCAPE VELOCITY LEVELS
+- L0 NORMAL: Standard parameter tweaks
+- L1 KNOWLEDGE_CHECK: Query patterns before modifying
+- L2 SWITCH_TECHNIQUE: Different approach needed
+- L3 MINE_DOCS: Search docs for novel approaches
+- L4 REQUEST_GUIDANCE: Human intervention needed
+
+Increase level when: same issue 2+ times, score plateau, repeated failures
+Decrease level when: 2 consecutive improvements of +5 score
+"""
+
+
+# =============================================================================
+# COORDINATOR AGENT FACTORY
+# =============================================================================
+
+def create_coordinator_agent(
+    research_agent: Agent,
+    script_agent: Agent,
+    executor_agent: Agent,
+    quality_agent: Agent,
+    learning_agent: Agent,
+) -> Agent:
+    """
+    Create the Coordinator Agent with all sub-agents wrapped as tools.
+
+    SDK Pattern: agent.as_tool() allows calling agents as utility functions
+    while keeping control with the Coordinator. This is the "Manager" pattern
+    from the SDK documentation.
+
+    Args:
+        research_agent: Research Agent instance
+        script_agent: Script Writer Agent instance
+        executor_agent: Executor Agent instance
+        quality_agent: Quality Analyst Agent instance
+        learning_agent: Learning Agent Agent instance
+
+    Returns:
+        Coordinator Agent with all sub-agents as tools
+    """
+    from specialized_agents.api_validator import get_api_validator_as_tool
+
+    # Wrap each agent as a tool
+    agent_tools = [
+        research_agent.as_tool(
+            tool_name="research_approach",
+            tool_description=(
+                "Research best approach for VFX effect type. Use at iteration 1 to find "
+                "optimal technique, parameters, and alternatives. Returns research summary."
+            ),
+        ),
+        get_api_validator_as_tool(),  # Already provides as_tool wrapper
+        script_agent.as_tool(
+            tool_name="generate_script",
+            tool_description=(
+                "Generate or modify Blender Python script for VFX effect. Provide effect_type, "
+                "description, and technique. Returns script_path, technique_used, parameters."
+            ),
+        ),
+        executor_agent.as_tool(
+            tool_name="execute_script",
+            tool_description=(
+                "Execute Blender script and render VFX asset. Provide script_path. "
+                "Returns success, render_path, vdb_path, execution_time."
+            ),
+        ),
+        quality_agent.as_tool(
+            tool_name="evaluate_render",
+            tool_description=(
+                "Evaluate render quality using vision and metrics. Provide render_path, "
+                "effect_type. Returns overall_score, passed, issues, suggestions."
+            ),
+        ),
+        learning_agent.as_tool(
+            tool_name="record_experiment",
+            tool_description=(
+                "Record experiment results and suggest next action. Provide iteration, "
+                "score, issues, params. Returns next_action, parameter_modifications."
+            ),
+        ),
+    ]
+
+    # Also include direct research tools for the Coordinator to use
+    research_tools = [
+        semantic_search_blender_docs,
+        find_alternative_approaches,
+        search_blender_api_by_intent,
+        search_code_patterns,
+        list_patterns_by_effect,
+        pre_iteration_research,
+        evaluate_escape_velocity,
+    ]
+
+    return Agent[SharedContext](
+        name="VFX Coordinator",
+        instructions=COORDINATOR_INSTRUCTIONS,
+        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
+        model_settings=ModelSettings(verbosity="low"),
+        tools=agent_tools + research_tools,
+    )
+
+
+def create_technique_selection_coordinator(
+    research_agent: Agent,
+) -> Agent:
+    """
+    Create a lightweight Coordinator for technique selection decisions only.
+
+    This is called at iteration 1 to select the initial technique.
+    Uses TechniqueDecision structured output.
+    """
+    return Agent[SharedContext](
+        name="Technique Selector",
+        instructions="""You select the best technique for VFX effect generation.
+
+## Your Task
+Given an effect type and description, research and select the optimal technique.
+
+## Process
+1. Use research_approach tool to gather information about the effect type
+2. Consider available code patterns and Blender API capabilities
+3. Select the technique with highest success probability
+
+## Output
+Return a TechniqueDecision with:
+- selected_technique: Name of technique (e.g., 'mantaflow_fire', 'shader_volume')
+- reasoning: Why this technique is best
+- key_parameters: Starting parameter values
+- alternative_techniques: Backup techniques if primary fails
+- research_summary: Summary of findings""",
+        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
+        model_settings=ModelSettings(verbosity="low"),
+        tools=[
+            research_agent.as_tool(
+                tool_name="research_approach",
+                tool_description="Research best approach for effect type",
+            ),
+            semantic_search_blender_docs,
+            search_code_patterns,
+            list_patterns_by_effect,
+        ],
+        output_type=AgentOutputSchema(TechniqueDecision, strict_json_schema=False),
+    )
+
+
+def create_modification_coordinator() -> Agent:
+    """
+    Create a lightweight Coordinator for modification strategy decisions.
+
+    This is called at iteration 2+ to decide how to fix quality issues.
+    Uses ModificationDecision structured output.
+    """
+    return Agent[SharedContext](
+        name="Modification Strategist",
+        instructions="""You decide how to fix quality issues in VFX renders.
+
+## Your Task
+Given quality feedback and iteration history, decide the modification strategy.
+
+## Input Context
+- Current score and target threshold
+- Primary issue identified
+- Previous iterations and what was tried
+- Consecutive same-issue count
+
+## Decision Logic
+1. If score is close to threshold (within 10): modify_params with targeted changes
+2. If same issue 3+ times: switch_technique to fundamentally different approach
+3. If score improving: continue with incremental param changes
+
+## Output
+Return a ModificationDecision with:
+- action: 'modify_params' | 'switch_technique' | 'continue'
+- parameter_changes: Dict of {param_name: new_value} - CONCRETE numbers
+- new_technique: New technique name if switching
+- reasoning: Why this strategy
+- confidence: 0.0-1.0 confidence level""",
+        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
+        model_settings=ModelSettings(verbosity="low"),
+        tools=[
+            search_code_patterns,
+            pre_iteration_research,
+            evaluate_escape_velocity,
+        ],
+        output_type=AgentOutputSchema(ModificationDecision, strict_json_schema=False),
+    )
+
+
+def create_quality_gate_coordinator() -> Agent:
+    """
+    Create a lightweight Coordinator for quality gate decisions.
+
+    This is called after quality evaluation to interpret results.
+    Uses QualityDecision structured output.
+    """
+    return Agent[SharedContext](
+        name="Quality Gate Judge",
+        instructions="""You interpret quality evaluation results and decide next action.
+
+## Your Task
+Determine if quality gate is passed and what action to take next.
+
+## Input Context
+- Quality score and threshold
+- Issues identified (critical vs minor)
+- Iteration count and history
+- Escape velocity level
+
+## Decision Logic
+1. PASSED: score >= threshold AND no critical issues (ZERO_LIGHTS, BLACK_SCREEN)
+2. If passed: next_action = 'complete'
+3. If not passed but improving: next_action = 'iterate'
+4. If stuck (same issue 3+ times): increase escape_level, next_action = 'switch_technique'
+5. If escape_level >= 4: next_action = 'request_guidance'
+
+## Critical Issues (auto-fail)
+- ZERO_LIGHTS_ACTIVE
+- BLACK_SCREEN
+- WHITE_SCREEN
+- CLIPPING_ARTIFACTS
+
+## Output
+Return a QualityDecision with:
+- passed: Whether quality gate is passed
+- should_continue: Whether to continue iterating
+- next_action: 'complete' | 'iterate' | 'switch_technique' | 'request_guidance'
+- escape_level: Current escape velocity (0-4)
+- reasoning: Explanation of decision""",
+        model=os.getenv("COORDINATOR_MODEL", "gpt-5.2"),
+        model_settings=ModelSettings(verbosity="low"),
+        tools=[
+            evaluate_escape_velocity,
+        ],
+        output_type=AgentOutputSchema(QualityDecision, strict_json_schema=False),
+    )
+
+
+# =============================================================================
 # ORCHESTRATOR CLASS
 # =============================================================================
 
@@ -344,6 +662,12 @@ class BlenderVFXOrchestrator:
         self._executor_agent_standalone: Optional[Agent] = None
         self._quality_agent_standalone: Optional[Agent] = None
         self._learning_agent_standalone: Optional[Agent] = None
+
+        # Phase 2: Coordinator agents for decision points (agents-as-tools pattern)
+        # These agents are called at specific decision points, NOT for every step
+        self._technique_coordinator: Optional[Agent] = None
+        self._modification_coordinator: Optional[Agent] = None
+        self._quality_gate_coordinator: Optional[Agent] = None
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
@@ -712,12 +1036,45 @@ If quality issues relate to parameters, ALWAYS include concrete fixes in paramet
             tools=base_learning_standalone.tools,
         )
 
+        # =============================================================
+        # Phase 2: Create Coordinator Agents (agents-as-tools pattern)
+        # =============================================================
+        # These lightweight coordinators are called at DECISION POINTS only.
+        # Python controls the pipeline; coordinators make intelligent choices.
+
+        print("[Orchestrator] Creating Phase 2 Coordinator agents...", file=sys.stderr)
+
+        # Technique Selection Coordinator (iteration 1)
+        self._technique_coordinator = create_technique_selection_coordinator(
+            research_agent=self._research_agent,
+        )
+
+        # Modification Strategy Coordinator (iteration 2+)
+        self._modification_coordinator = create_modification_coordinator()
+
+        # Quality Gate Coordinator (after each iteration)
+        self._quality_gate_coordinator = create_quality_gate_coordinator()
+
         self._initialized = True
-        print("[Orchestrator] Initialization complete (5 agents + 5 standalone ready)", file=sys.stderr)
+        print("[Orchestrator] Initialization complete (5 agents + 5 standalone + 3 coordinators ready)", file=sys.stderr)
 
     async def create_asset(self, request: AssetRequest) -> SessionState:
         """
-        Main entry point for asset generation.
+        DEPRECATED: Use create_asset_pipeline() instead.
+
+        This method uses the handoff-based architecture which has been superseded
+        by the code-based pipeline with Coordinator agents (Phase 2 of Architecture
+        Optimization Plan).
+
+        The handoff pattern is problematic because:
+        1. Handoffs transfer control completely to sub-agents
+        2. Relies on LLM instruction-following for workflow
+        3. Cannot enforce mechanical guardrails
+
+        Use create_asset_pipeline() for:
+        - Deterministic Python-controlled workflow
+        - Coordinator agents for intelligent decisions
+        - Mechanical enforcement via hooks
 
         Args:
             request: Asset generation request parameters
@@ -725,6 +1082,14 @@ If quality issues relate to parameters, ALWAYS include concrete fixes in paramet
         Returns:
             SessionState with final results
         """
+        import warnings
+        warnings.warn(
+            "create_asset() is deprecated. Use create_asset_pipeline() instead. "
+            "The handoff-based architecture has been superseded by the code-based "
+            "pipeline with Coordinator agents (Phase 2).",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not self._initialized:
             await self.initialize()
 
@@ -817,19 +1182,34 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 # Create research hooks for Phase 0
                 phase0_research_hooks = create_research_hooks()
                 try:
-                    research_result = await Runner.run(
-                        self._research_agent,
-                        research_prompt,
-                        context=context,
-                        hooks=phase0_research_hooks,
-                        max_turns=8  # Limit research turns
-                    )
+                    with trace(
+                        "Phase 0: Research",
+                        metadata={
+                            "phase": "research",
+                            "effect_type": request.effect_type.value,
+                            "iteration": 0,
+                        }
+                    ):
+                        research_result = await Runner.run(
+                            self._research_agent,
+                            research_prompt,
+                            context=context,
+                            hooks=phase0_research_hooks,
+                            max_turns=8  # Limit research turns
+                        )
                     # Research agent outputs text summary (no output_type for tool-using agents)
                     research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
                 except LoopDetectedError as e:
                     # Research got stuck - use partial results
                     print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
                     research_text = "Research incomplete due to loop - proceeding with default approach"
+                except Exception as e:
+                    # SDK wraps LoopDetectedError in UserError - check for it
+                    if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                        print(f"[Pipeline] WARN: Research loop detected (wrapped): {e}", file=sys.stderr)
+                        research_text = "Research incomplete due to loop - proceeding with default approach for this effect type"
+                    else:
+                        raise  # Re-raise other exceptions
                 print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
                 print(f"[Pipeline] Research hooks stats: {phase0_research_hooks.get_stats()}", file=sys.stderr)
 
@@ -848,6 +1228,58 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                             if a and len(a) > 10 and a not in session.alternative_approaches:
                                 session.alternative_approaches.append(a)
                     print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches", file=sys.stderr)
+
+                # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
+                # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
+                # the initial technique based on research findings.
+                print("[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
+                technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
+
+## Research Findings
+{research_text[:2000]}
+
+## Effect Parameters
+- Effect Type: {request.effect_type.value}
+- Description: {request.description}
+- Reference: {request.reference_path or "None"}
+- Quality Threshold: {request.quality_threshold}
+
+## Available Alternatives
+{chr(10).join(f'- {a}' for a in session.alternative_approaches[:5]) if session.alternative_approaches else 'None identified'}
+
+Select the optimal technique and provide starting parameters."""
+
+                selected_technique: Optional[TechniqueDecision] = None
+                try:
+                    with trace(
+                        "Phase 0.5: Technique Selection",
+                        metadata={
+                            "phase": "technique_selection",
+                            "effect_type": request.effect_type.value,
+                            "coordinator": "technique",
+                        }
+                    ):
+                        technique_result = await Runner.run(
+                            self._technique_coordinator,
+                            technique_prompt,
+                            context=context,
+                            max_turns=6  # Coordinators should be fast
+                        )
+                    selected_technique = technique_result.final_output
+                    print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
+                    print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
+
+                    # Store in session for use by Script Writer
+                    session.current_technique = selected_technique.selected_technique
+                    if selected_technique.alternative_techniques:
+                        for alt in selected_technique.alternative_techniques:
+                            if alt not in session.alternative_approaches:
+                                session.alternative_approaches.append(alt)
+
+                except Exception as e:
+                    print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
+                    # Fall back to default technique selection
+                    selected_technique = None
 
                 # ====== ITERATION LOOP ======
                 iteration = 0
@@ -868,6 +1300,17 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 quality_hooks = create_quality_analyst_hooks()
                 learning_hooks = create_learning_agent_hooks()
 
+                # Record initial baseline for iteration 1
+                # This fixes the "No baseline recorded" bug for single-iteration runs
+                # The baseline represents the "before any experiments" state
+                session_mgr.record_baseline(
+                    params={},  # No params before first iteration
+                    score=0.0,  # Score starts at 0
+                    script_path="",  # No script yet
+                    render_path=None
+                )
+                print(f"[Pipeline] Initial baseline recorded (score=0.0)", file=sys.stderr)
+
                 while iteration < request.max_iterations:
                     iteration += 1
                     session.current_iteration = iteration
@@ -887,10 +1330,24 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                     # ====== PHASE 1: SCRIPT GENERATION ======
                     print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
                     if iteration == 1:
+                        # Build script prompt with Coordinator's technique selection
+                        technique_guidance = ""
+                        starting_params = {}
+                        if selected_technique:
+                            technique_guidance = f"""
+## COORDINATOR SELECTED TECHNIQUE
+Technique: {selected_technique.selected_technique}
+Reasoning: {selected_technique.reasoning}
+Starting Parameters: {json.dumps(selected_technique.key_parameters, indent=2) if selected_technique.key_parameters else 'None specified'}
+
+YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selected this as optimal."""
+                            starting_params = selected_technique.key_parameters or {}
+
                         script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
+{technique_guidance}
 
 ## Research Findings
-{research_text}
+{research_text[:1500]}
 
 ## Parameters
 - Asset Name: {request.asset_name}
@@ -898,18 +1355,28 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 - Description: {request.description}
 - Resolution: {request.resolution}
 - Frames: {request.frame_start}-{request.frame_end}
+{f"- Starting Parameters: {json.dumps(starting_params, indent=2)}" if starting_params else ""}
 
-Generate a complete, validated script. Return the script_path in your output."""
+Generate a complete, validated script using the selected technique. Return the script_path in your output."""
 
                         # Run Script Writer for iteration 1 with enforcement hooks
                         try:
-                            script_result = await Runner.run(
-                                self._script_agent_standalone,
-                                script_prompt,
-                                context=context,
-                                hooks=script_hooks,
-                                max_turns=10
-                            )
+                            with trace(
+                                f"Phase 1: Script Writer (iter {iteration})",
+                                metadata={
+                                    "phase": "script_writer",
+                                    "effect_type": request.effect_type.value,
+                                    "iteration": iteration,
+                                    "is_initial": True,
+                                }
+                            ):
+                                script_result = await Runner.run(
+                                    self._script_agent_standalone,
+                                    script_prompt,
+                                    context=context,
+                                    hooks=script_hooks,
+                                    max_turns=10
+                                )
                             script: ScriptOutput = script_result.final_output
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
@@ -971,13 +1438,93 @@ Generate a complete, validated script. Return the script_path in your output."""
                             else:
                                 print(f"[Pipeline] Direct modification FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
 
-                        # If no direct modifications (or they failed), use Script Writer
+                        # If no direct modifications (or they failed), consult Modification Coordinator
+                        if not direct_modification_success:
+                            # ====== PHASE 1.1: MODIFICATION STRATEGY (Coordinator Decision) ======
+                            # Phase 2 Enhancement: Use Modification Coordinator to decide strategy
+                            print(f"[Pipeline] PHASE 1.1: Modification Strategy (Coordinator)", file=sys.stderr)
+
+                            mod_decision: Optional[ModificationDecision] = None
+                            ctx = session_mgr.get_context_for_agents()
+                            iteration_summary = session_mgr.get_iteration_summary()
+
+                            mod_prompt = f"""Decide modification strategy for iteration {iteration}.
+
+## Current State
+- Current Score: {previous_score:.1f}
+- Target Score: {request.quality_threshold}
+- Primary Issue: {quality.primary_issue if quality else 'Unknown'}
+- Consecutive Same Issue: {ctx.get('consecutive_same_issue', 0)}
+
+## Quality Feedback
+{quality.vision_assessment if quality else 'No assessment'}
+Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'}
+
+## Iteration History
+{iteration_summary}
+
+## Techniques Tried
+{', '.join(session_mgr.techniques_tried) if session_mgr.techniques_tried else 'None'}
+
+## Available Alternatives
+{', '.join(session.alternative_approaches[:3]) if session.alternative_approaches else 'None'}
+
+Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parameter values."""
+
+                            try:
+                                with trace(
+                                    f"Phase 1.1: Modification Strategy (iter {iteration})",
+                                    metadata={
+                                        "phase": "modification_strategy",
+                                        "effect_type": request.effect_type.value,
+                                        "iteration": iteration,
+                                        "coordinator": "modification",
+                                    }
+                                ):
+                                    mod_result = await Runner.run(
+                                        self._modification_coordinator,
+                                        mod_prompt,
+                                        context=context,
+                                        max_turns=4  # Coordinators should be fast
+                                    )
+                                mod_decision = mod_result.final_output
+                                print(f"[Pipeline] Coordinator decision: {mod_decision.action}", file=sys.stderr)
+                                print(f"[Pipeline] Reasoning: {mod_decision.reasoning[:60]}...", file=sys.stderr)
+
+                                # If Coordinator provides parameter changes, try direct modification
+                                if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
+                                    print(f"[Pipeline] Coordinator provided params: {mod_decision.parameter_changes}", file=sys.stderr)
+                                    output_name = f"{request.asset_name}_iter{iteration}_coordfix"
+
+                                    modify_result_json = _modify_script_impl(
+                                        script_path=previous_script.script_path,
+                                        modifications=mod_decision.parameter_changes,
+                                        output_name=output_name
+                                    )
+                                    modify_result = json.loads(modify_result_json)
+
+                                    if modify_result.get("success") and modify_result.get("modified_path"):
+                                        print(f"[Pipeline] Coordinator modification SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
+                                        script = ScriptOutput(
+                                            script_path=modify_result["modified_path"],
+                                            technique_used=previous_script.technique_used + " (coord-modified)",
+                                            key_parameters=mod_decision.parameter_changes,
+                                            validation_passed=True,
+                                            validation_errors=[],
+                                        )
+                                        direct_modification_success = True
+
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Modification Coordinator failed: {e}", file=sys.stderr)
+                                # Fall through to Script Writer
+                                mod_decision = None
+
+                        # If still no success, use Script Writer
                         if not direct_modification_success:
                             # Include quality feedback and learning suggestions
                             feedback_parts = []
 
                             # Add iteration history from SessionManager (prevents repeating failures)
-                            iteration_summary = session_mgr.get_iteration_summary()
                             if iteration_summary:
                                 feedback_parts.append(iteration_summary)
 
@@ -1062,13 +1609,23 @@ Use patterns from library if available."""
                             # Create fresh hooks for this iteration (reset counters)
                             iter_script_hooks = create_script_writer_hooks()
                             try:
-                                script_result = await Runner.run(
-                                    self._script_agent_standalone,
-                                    script_prompt,
-                                    context=context,
-                                    hooks=iter_script_hooks,
-                                    max_turns=10
-                                )
+                                with trace(
+                                    f"Phase 1: Script Writer (iter {iteration})",
+                                    metadata={
+                                        "phase": "script_writer",
+                                        "effect_type": request.effect_type.value,
+                                        "iteration": iteration,
+                                        "is_modification": True,
+                                        "previous_score": previous_score,
+                                    }
+                                ):
+                                    script_result = await Runner.run(
+                                        self._script_agent_standalone,
+                                        script_prompt,
+                                        context=context,
+                                        hooks=iter_script_hooks,
+                                        max_turns=10
+                                    )
                                 # Structured output: ScriptOutput
                                 script = script_result.final_output
                             except LoopDetectedError as e:
@@ -1193,13 +1750,22 @@ Run the script and report results."""
                         raise_on_doc_missing=False,
                     ))
                     try:
-                        exec_result = await Runner.run(
-                            self._executor_agent_standalone,
-                            exec_prompt,
-                            context=context,
-                            hooks=exec_hooks,
-                            max_turns=6
-                        )
+                        with trace(
+                            f"Phase 2: Executor (iter {iteration})",
+                            metadata={
+                                "phase": "executor",
+                                "effect_type": request.effect_type.value,
+                                "iteration": iteration,
+                                "script_path": script.script_path,
+                            }
+                        ):
+                            exec_result = await Runner.run(
+                                self._executor_agent_standalone,
+                                exec_prompt,
+                                context=context,
+                                hooks=exec_hooks,
+                                max_turns=6
+                            )
                         # Structured output: ExecutionOutput
                         execution: ExecutionOutput = exec_result.final_output
                     except LoopDetectedError as e:
@@ -1240,13 +1806,22 @@ Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
 
                     try:
-                        eval_result = await Runner.run(
-                            self._quality_agent_standalone,
-                            eval_prompt,
-                            context=context,
-                            hooks=quality_hooks,
-                            max_turns=6
-                        )
+                        with trace(
+                            f"Phase 3: Quality Analyst (iter {iteration})",
+                            metadata={
+                                "phase": "quality_analyst",
+                                "effect_type": request.effect_type.value,
+                                "iteration": iteration,
+                                "render_path": execution.render_path,
+                            }
+                        ):
+                            eval_result = await Runner.run(
+                                self._quality_agent_standalone,
+                                eval_prompt,
+                                context=context,
+                                hooks=quality_hooks,
+                                max_turns=6
+                            )
                         # Structured output: QualityOutput
                         quality = eval_result.final_output
                     except LoopDetectedError as e:
@@ -1353,13 +1928,24 @@ Primary Issue: {quality.primary_issue or 'None'}
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
                     try:
-                        learn_result = await Runner.run(
-                            self._learning_agent_standalone,
-                            learn_prompt,
-                            context=context,
-                            hooks=learning_hooks,
-                            max_turns=8
-                        )
+                        with trace(
+                            f"Phase 4: Learning Agent (iter {iteration})",
+                            metadata={
+                                "phase": "learning_agent",
+                                "effect_type": request.effect_type.value,
+                                "iteration": iteration,
+                                "score": quality.overall_score,
+                                "passed": quality.passed,
+                                "primary_issue": quality.primary_issue,
+                            }
+                        ):
+                            learn_result = await Runner.run(
+                                self._learning_agent_standalone,
+                                learn_prompt,
+                                context=context,
+                                hooks=learning_hooks,
+                                max_turns=8
+                            )
                         # Structured output: LearningOutput
                         learning = learn_result.final_output
                     except LoopDetectedError as e:
@@ -1375,14 +1961,81 @@ Primary Issue: {quality.primary_issue or 'None'}
                     print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
                     print(f"[Pipeline] Learning hooks stats: {learning_hooks.get_stats()}", file=sys.stderr)
 
-                    # ====== QUALITY GATE ======
-                    if quality.passed or learning.next_action == 'complete':
+                    # ====== QUALITY GATE (Coordinator Decision) ======
+                    # Phase 2 Enhancement: Use Quality Gate Coordinator for intelligent decision
+                    print(f"[Pipeline] PHASE 5: Quality Gate (Coordinator)", file=sys.stderr)
+
+                    gate_decision: Optional[QualityDecision] = None
+                    ctx = session_mgr.get_context_for_agents()
+
+                    gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
+
+## Quality Results
+- Score: {quality.overall_score:.1f}
+- Threshold: {request.quality_threshold}
+- Passed (simple check): {quality.passed}
+- Primary Issue: {quality.primary_issue or 'None'}
+- All Issues: {', '.join(quality.issues[:5]) if quality.issues else 'None'}
+
+## Iteration Context
+- Current Iteration: {iteration}
+- Max Iterations: {request.max_iterations}
+- Consecutive Same Issue: {ctx.get('consecutive_same_issue', 0)}
+- Best Score So Far: {session.best_score:.1f}
+- Current Escape Level: {ctx.get('escape_level', 0)}
+
+## Learning Agent Recommendation
+Next Action: {learning.next_action}
+Reasoning: {learning.suggested_modifications[0] if learning.suggested_modifications else 'No reasoning provided'}
+
+Decide: Is quality gate PASSED? What is the next action?"""
+
+                    try:
+                        with trace(
+                            f"Phase 5: Quality Gate (iter {iteration})",
+                            metadata={
+                                "phase": "quality_gate",
+                                "effect_type": request.effect_type.value,
+                                "iteration": iteration,
+                                "coordinator": "quality_gate",
+                                "score": quality.overall_score,
+                            }
+                        ):
+                            gate_result = await Runner.run(
+                                self._quality_gate_coordinator,
+                                gate_prompt,
+                                context=context,
+                                max_turns=3  # Quality gate should be very fast
+                            )
+                        gate_decision = gate_result.final_output
+                        print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
+                        print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
+
+                    except Exception as e:
+                        print(f"[Pipeline] WARN: Quality Gate Coordinator failed: {e}", file=sys.stderr)
+                        # Fall back to simple quality check
+                        gate_decision = None
+
+                    # Determine if passed based on Coordinator or simple check
+                    if gate_decision:
+                        is_passed = gate_decision.passed
+                        next_action = gate_decision.next_action
+                    else:
+                        is_passed = quality.passed or learning.next_action == 'complete'
+                        next_action = learning.next_action
+
+                    if is_passed or next_action == 'complete':
                         print(f"\n[Pipeline] ✓ QUALITY GATE PASSED at iteration {iteration}", file=sys.stderr)
                         session.status = SessionStatus.PASSED
                         break
 
-                    # Handle technique switching - either from Learning Agent OR SessionManager detection
-                    should_switch = learning.next_action == 'switch_technique' or session_mgr.should_switch_technique()
+                    # Handle technique switching - either from Coordinator OR SessionManager detection
+                    should_switch = (
+                        next_action == 'switch_technique'
+                        or (gate_decision and gate_decision.escape_level >= 2)
+                        or learning.next_action == 'switch_technique'
+                        or session_mgr.should_switch_technique()
+                    )
                     if should_switch:
                         consecutive = session_mgr.issue_tracker.consecutive_same_issue
                         print(f"[Pipeline] STUCK DETECTED: same issue {consecutive}x - re-running Research Agent", file=sys.stderr)
@@ -1403,13 +2056,23 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
 
                         switch_research_hooks = create_research_hooks()
                         try:
-                            research_result = await Runner.run(
-                                self._research_agent,
-                                switch_prompt,
-                                context=context,
-                                hooks=switch_research_hooks,
-                                max_turns=6
-                            )
+                            with trace(
+                                f"Technique Switch Research (iter {iteration})",
+                                metadata={
+                                    "phase": "technique_switch",
+                                    "effect_type": request.effect_type.value,
+                                    "iteration": iteration,
+                                    "consecutive_same_issue": consecutive,
+                                    "techniques_tried": list(session_mgr.techniques_tried),
+                                }
+                            ):
+                                research_result = await Runner.run(
+                                    self._research_agent,
+                                    switch_prompt,
+                                    context=context,
+                                    hooks=switch_research_hooks,
+                                    max_turns=6
+                                )
                             research_text = str(research_result.final_output) if research_result.final_output else research_text
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
@@ -1702,7 +2365,8 @@ async def create_vfx_asset(
     )
 
     orchestrator = await get_orchestrator()
-    return await orchestrator.create_asset(request)
+    # Phase 2: Use the pipeline-based orchestration with Coordinators
+    return await orchestrator.create_asset_pipeline(request)
 
 
 async def resume_vfx_session(session_id: str) -> SessionState:
