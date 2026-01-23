@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-01-23T07:14:00.267698",
+  "effect_type": "explosion",
+  "observation": "Final render frame appears essentially black/empty; no visible smoke density or flame emission from the Mantaflow explosion setup.",
+  "expected_behavior": "A small fiery explosion should show a bright emissive fireball core with surrounding smoke volume at the chosen frame (e.g., frame ~12).",
+  "actual_behavior": "No discernible volume, flame, glow, or silhouette; image reads as a blank/black frame.",
+  "suspected_parameters": {
+    "shader_emission_strength": "too low or not connected",
+    "color_management_exposure": "too low",
+    "domain_cache": "empty or not baked/loaded",
+    "render_layer_comp": "alpha/premultiply issue",
+    "flow_use_inflow_keys": "not emitting as expected"
+  },
+  "severity": "high",
+  "render_path": "/tmp/trace_test_v1.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/trace_test_v1_explosion.py",
+  "iteration": 1,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "flow.density",
+    "flow.temperature",
+    "shader.emission_strength",
+    "render.film_transparent",
+    "scene.exposure",
+    "domain.cache_frame_start",
+    "domain.cache_frame_end"
+  ],
+  "correlation_confidence": 0.6,
+  "recommended_fix": "1) Debug visibility first: set film_transparent=False and raise exposure by +4 stops (temporarily) to confirm the volume exists. 2) Increase flow density to 5.0 and temperature to 8.0 for a stronger impulse. 3) Increase emissive output: multiply Flame->Emission Strength by ~8x (e.g., 25 -> 200) or set emission_strength to ~80-120. 4) Verify cache frames 1-30 contain density/flame/temperature at frame 12.",
+  "analysis_notes": "Render emptiness can be caused by either no sim data (inflow not emitting / cache empty / wrong frame range) or data present but underexposed and/or emissive too weak, especially with transparent film over a black background.",
+  "analyzed_at": "2026-01-23T07:15:13.804576"
+}

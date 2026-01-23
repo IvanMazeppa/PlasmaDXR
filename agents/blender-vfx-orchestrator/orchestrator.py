@@ -38,6 +38,9 @@ _agents_logger = logging.getLogger("openai.agents")
 
 # Session Manager for deterministic experiment state tracking
 from session_manager import SessionManager
+
+# ExperimentTracker baseline recording for Learning Agent compatibility
+from tools.experiment_tracker_tools import _record_baseline_impl as record_experiment_baseline
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -70,7 +73,7 @@ from guardrails import (
     validate_quality_decision,
 )
 from agents.extensions import handoff_filters
-from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX, prompt_with_handoff_instructions
+# Removed unused handoff prompt imports - standalone agents don't use handoffs
 from openai.types.shared import Reasoning
 
 
@@ -920,7 +923,7 @@ CRITICAL: After searching documentation, use return_to_orchestrator to hand off.
         # Using structured outputs (output_type) for type-safe data passing between agents
         self._research_agent = Agent[SharedContext](
             name="Research Agent",
-            instructions=prompt_with_handoff_instructions("""You are a Blender documentation research specialist.
+            instructions="""You are a Blender documentation research specialist.
 
 Your job is to research the best approach for creating a VFX effect BEFORE any script generation.
 
@@ -933,7 +936,7 @@ Your job is to research the best approach for creating a VFX effect BEFORE any s
 Use your tools to gather information, then return a summary of your findings including:
 - recommended_approach: Best approach for the effect
 - key_parameters: Important parameter settings
-- warnings: Potential pitfalls to avoid"""),
+- warnings: Potential pitfalls to avoid""",
             model=os.getenv("ORCHESTRATOR_MODEL", "gpt-5.2"),
             model_settings=ModelSettings(verbosity="low"),
             # Note: Don't use output_type for tool-using agents - they output messages, not structured data
@@ -954,7 +957,7 @@ Use your tools to gather information, then return a summary of your findings inc
         base_script_writer_standalone = create_script_writer(use_dynamic_instructions=False)
         self._script_agent_standalone = Agent[SharedContext](
             name="Script Writer",
-            instructions=prompt_with_handoff_instructions(base_script_writer_standalone.instructions + """
+            instructions=base_script_writer_standalone.instructions + """
 
 ## EFFICIENCY REQUIREMENT - CRITICAL
 You have LIMITED turns (max 10). Be efficient:
@@ -979,7 +982,7 @@ After generating and validating the script, return a structured ScriptOutput wit
 - validation_passed: Whether validation succeeded
 - validation_errors: Any validation errors encountered
 
-IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely."""),
+IMPORTANT: Always return the script_path even if validation fails. Do NOT loop indefinitely.""",
             model=base_script_writer_standalone.model,
             model_settings=base_script_writer_standalone.model_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
@@ -995,7 +998,7 @@ IMPORTANT: Always return the script_path even if validation fails. Do NOT loop i
         base_executor = create_executor()
         self._executor_agent_standalone = Agent[SharedContext](
             name="Executor",
-            instructions=prompt_with_handoff_instructions(base_executor.instructions + """
+            instructions=base_executor.instructions + """
 
 ## Output Requirements
 After executing the script, return a structured ExecutionOutput with:
@@ -1003,7 +1006,7 @@ After executing the script, return a structured ExecutionOutput with:
 - render_path: Path to the rendered output image/sequence
 - vdb_path: Path to VDB volume data (if generated)
 - error_message: Error details if execution failed
-- execution_time_seconds: How long execution took"""),
+- execution_time_seconds: How long execution took""",
             model=base_executor.model,
             model_settings=base_executor.model_settings,
             output_type=AgentOutputSchema(ExecutionOutput, strict_json_schema=False),
@@ -1017,7 +1020,7 @@ After executing the script, return a structured ExecutionOutput with:
         base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
         self._quality_agent_standalone = Agent[SharedContext](
             name="Quality Analyst",
-            instructions=prompt_with_handoff_instructions(base_quality_standalone.instructions + """
+            instructions=base_quality_standalone.instructions + """
 
 ## SELF-LEARNING: Physics Observation
 When you observe unexpected physical behavior, use observe_physics_anomaly() to record it.
@@ -1038,7 +1041,7 @@ After evaluating render quality, return a structured QualityOutput with:
 - vision_assessment: Detailed visual quality description
 - reference_similarity: Similarity to reference image (if available)
 
-Be a STRICT judge - only pass renders that truly meet quality standards."""),
+Be a STRICT judge - only pass renders that truly meet quality standards.""",
             model=base_quality_standalone.model,
             model_settings=base_quality_standalone.model_settings,
             output_type=AgentOutputSchema(QualityOutput, strict_json_schema=False),
@@ -1056,7 +1059,7 @@ Be a STRICT judge - only pass renders that truly meet quality standards."""),
         base_learning_standalone = create_learning_agent(use_dynamic_instructions=False)
         self._learning_agent_standalone = Agent[SharedContext](
             name="Learning Agent",
-            instructions=prompt_with_handoff_instructions(base_learning_standalone.instructions + """
+            instructions=base_learning_standalone.instructions + """
 
 ## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
 You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
@@ -1092,11 +1095,18 @@ Return a structured LearningOutput with:
 - parameter_modifications: Dict[str, Any] - CONCRETE VALUES for direct script modification
 
 CRITICAL FOR parameter_modifications:
-Provide ACTUAL NUMBERS, not descriptions. Example:
-  {"temperature": 3.0, "density": 5.0, "blackbody_intensity": 2.0, "beta": 0.0}
+Provide ACTUAL NUMBERS, not descriptions.
+
+## ISSUE → PARAMETER MAPPING (use these as starting points):
+- "overexposed/clipped" → {"blackbody_intensity": 2.0, "emission_strength": 5.0}
+- "too dark" → {"blackbody_intensity": 8.0, "emission_strength": 15.0}
+- "static/no animation" → {"temperature": 3.0, "fuel_amount": 2.0}
+- "no surface detail" → {"noise_strength": 2.0, "flame_vorticity": 0.8}
+- "rises/sinks in space" → {"beta": 0.0, "alpha": 0.0}
+- "no corona/glow" → {"emission_strength": 20.0}
 
 These values are applied DIRECTLY to the Blender script's Config class.
-If quality issues relate to parameters, ALWAYS include concrete fixes in parameter_modifications."""),
+If quality issues relate to parameters, ALWAYS include concrete fixes in parameter_modifications.""",
             model=base_learning_standalone.model,
             model_settings=base_learning_standalone.model_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
@@ -1240,7 +1250,7 @@ If quality issues relate to parameters, ALWAYS include concrete fixes in paramet
         print(f"{'='*70}\n", file=sys.stderr)
 
         try:
-            with trace(f"VFX Pipeline: {request.asset_name}"):
+            with trace(f"VFX Pipeline: {request.asset_name}", group_id=session.session_id):
                 # ====== PHASE 0: RESEARCH (once at start) ======
                 print("[Pipeline] PHASE 0: Research", file=sys.stderr)
                 research_prompt = f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
@@ -1254,22 +1264,14 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 # Create research hooks for Phase 0
                 phase0_research_hooks = create_research_hooks()
                 try:
-                    with trace(
-                        "Phase 0: Research",
-                        metadata={
-                            "phase": "research",
-                            "effect_type": request.effect_type.value,
-                            "iteration": "0",
-                        }
-                    ):
-                        research_result = await Runner.run(
-                            self._research_agent,
-                            research_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            hooks=phase0_research_hooks,
-                            max_turns=8  # Limit research turns
-                        )
+                    research_result = await Runner.run(
+                        self._research_agent,
+                        research_prompt,
+                        context=context,
+                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                        hooks=phase0_research_hooks,
+                        max_turns=8  # Limit research turns
+                    )
                     # Research agent outputs text summary (no output_type for tool-using agents)
                     research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
                 except LoopDetectedError as e:
@@ -1324,21 +1326,13 @@ Select the optimal technique and provide starting parameters."""
 
                 selected_technique: Optional[TechniqueDecision] = None
                 try:
-                    with trace(
-                        "Phase 0.5: Technique Selection",
-                        metadata={
-                            "phase": "technique_selection",
-                            "effect_type": request.effect_type.value,
-                            "coordinator": "technique",
-                        }
-                    ):
-                        technique_result = await Runner.run(
-                            self._technique_coordinator,
-                            technique_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            max_turns=6  # Coordinators should be fast
-                        )
+                    technique_result = await Runner.run(
+                        self._technique_coordinator,
+                        technique_prompt,
+                        context=context,
+                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                        max_turns=6  # Coordinators should be fast
+                    )
                     selected_technique = technique_result.final_output
                     print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
                     print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
@@ -1435,23 +1429,14 @@ Generate a complete, validated script using the selected technique. Return the s
 
                         # Run Script Writer for iteration 1 with enforcement hooks
                         try:
-                            with trace(
-                                f"Phase 1: Script Writer (iter {iteration})",
-                                metadata={
-                                    "phase": "script_writer",
-                                    "effect_type": request.effect_type.value,
-                                    "iteration": str(iteration),
-                                    "is_initial": "true",
-                                }
-                            ):
-                                script_result = await Runner.run(
-                                    self._script_agent_standalone,
-                                    script_prompt,
-                                    context=context,
-                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                    hooks=script_hooks,
-                                    max_turns=15
-                                )
+                            script_result = await Runner.run(
+                                self._script_agent_standalone,
+                                script_prompt,
+                                context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                hooks=script_hooks,
+                                max_turns=15
+                            )
                             script: ScriptOutput = script_result.final_output
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
@@ -1547,22 +1532,13 @@ Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'
 Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parameter values."""
 
                             try:
-                                with trace(
-                                    f"Phase 1.1: Modification Strategy (iter {iteration})",
-                                    metadata={
-                                        "phase": "modification_strategy",
-                                        "effect_type": request.effect_type.value,
-                                        "iteration": str(iteration),
-                                        "coordinator": "modification",
-                                    }
-                                ):
-                                    mod_result = await Runner.run(
-                                        self._modification_coordinator,
-                                        mod_prompt,
-                                        context=context,
-                                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                        max_turns=4  # Coordinators should be fast
-                                    )
+                                mod_result = await Runner.run(
+                                    self._modification_coordinator,
+                                    mod_prompt,
+                                    context=context,
+                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                    max_turns=4  # Coordinators should be fast
+                                )
                                 mod_decision = mod_result.final_output
                                 print(f"[Pipeline] Coordinator decision: {mod_decision.action}", file=sys.stderr)
                                 print(f"[Pipeline] Reasoning: {mod_decision.reasoning[:60]}...", file=sys.stderr)
@@ -1685,24 +1661,14 @@ Use patterns from library if available."""
                             # Create fresh hooks for this iteration (reset counters)
                             iter_script_hooks = create_script_writer_hooks()
                             try:
-                                with trace(
-                                    f"Phase 1: Script Writer (iter {iteration})",
-                                    metadata={
-                                        "phase": "script_writer",
-                                        "effect_type": request.effect_type.value,
-                                        "iteration": str(iteration),
-                                        "is_modification": "true",
-                                        "previous_score": previous_score,
-                                    }
-                                ):
-                                    script_result = await Runner.run(
-                                        self._script_agent_standalone,
-                                        script_prompt,
-                                        context=context,
-                                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                        hooks=iter_script_hooks,
-                                        max_turns=15
-                                    )
+                                script_result = await Runner.run(
+                                    self._script_agent_standalone,
+                                    script_prompt,
+                                    context=context,
+                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                    hooks=iter_script_hooks,
+                                    max_turns=15
+                                )
                                 # Structured output: ScriptOutput
                                 script = script_result.final_output
                             except LoopDetectedError as e:
@@ -1827,23 +1793,14 @@ Run the script and report results."""
                         raise_on_doc_missing=False,
                     ))
                     try:
-                        with trace(
-                            f"Phase 2: Executor (iter {iteration})",
-                            metadata={
-                                "phase": "executor",
-                                "effect_type": request.effect_type.value,
-                                "iteration": str(iteration),
-                                "script_path": script.script_path,
-                            }
-                        ):
-                            exec_result = await Runner.run(
-                                self._executor_agent_standalone,
-                                exec_prompt,
-                                context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                hooks=exec_hooks,
-                                max_turns=6
-                            )
+                        exec_result = await Runner.run(
+                            self._executor_agent_standalone,
+                            exec_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            hooks=exec_hooks,
+                            max_turns=6
+                        )
                         # Structured output: ExecutionOutput
                         execution: ExecutionOutput = exec_result.final_output
                     except LoopDetectedError as e:
@@ -1884,23 +1841,14 @@ Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
 
                     try:
-                        with trace(
-                            f"Phase 3: Quality Analyst (iter {iteration})",
-                            metadata={
-                                "phase": "quality_analyst",
-                                "effect_type": request.effect_type.value,
-                                "iteration": str(iteration),
-                                "render_path": execution.render_path,
-                            }
-                        ):
-                            eval_result = await Runner.run(
-                                self._quality_agent_standalone,
-                                eval_prompt,
-                                context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                hooks=quality_hooks,
-                                max_turns=6
-                            )
+                        eval_result = await Runner.run(
+                            self._quality_agent_standalone,
+                            eval_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            hooks=quality_hooks,
+                            max_turns=6
+                        )
                         # Structured output: QualityOutput
                         quality = eval_result.final_output
                     except LoopDetectedError as e:
@@ -1978,6 +1926,20 @@ Provide detailed feedback for improvement."""
                     # ====== PHASE 4: LEARNING ======
                     print(f"[Pipeline] PHASE 4: Learning Agent", file=sys.stderr)
 
+                    # Sync baseline to ExperimentTracker (for Learning Agent's record_experiment_result)
+                    # This fixes the "No baseline recorded" error in the Learning Agent
+                    try:
+                        baseline_params = json.dumps(script.key_parameters or {})
+                        baseline_scores = json.dumps({"overall": previous_score})
+                        record_experiment_baseline(
+                            params=baseline_params,
+                            scores=baseline_scores,
+                            render_path=execution.render_path or "",
+                            effect_type=request.effect_type.value
+                        )
+                    except Exception as e:
+                        print(f"[Pipeline] WARN: Baseline sync failed: {e}", file=sys.stderr)
+
                     # Get context from SessionManager for informed decisions
                     learn_ctx = session_mgr.get_context_for_agents()
                     iteration_history = session_mgr.get_iteration_summary()
@@ -2007,25 +1969,14 @@ Primary Issue: {quality.primary_issue or 'None'}
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
                     try:
-                        with trace(
-                            f"Phase 4: Learning Agent (iter {iteration})",
-                            metadata={
-                                "phase": "learning_agent",
-                                "effect_type": request.effect_type.value,
-                                "iteration": str(iteration),
-                                "score": quality.overall_score,
-                                "passed": quality.passed,
-                                "primary_issue": quality.primary_issue,
-                            }
-                        ):
-                            learn_result = await Runner.run(
-                                self._learning_agent_standalone,
-                                learn_prompt,
-                                context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                hooks=learning_hooks,
-                                max_turns=8
-                            )
+                        learn_result = await Runner.run(
+                            self._learning_agent_standalone,
+                            learn_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            hooks=learning_hooks,
+                            max_turns=8
+                        )
                         # Structured output: LearningOutput
                         learning = learn_result.final_output
                     except LoopDetectedError as e:
@@ -2071,23 +2022,13 @@ Reasoning: {learning.suggested_modifications[0] if learning.suggested_modificati
 Decide: Is quality gate PASSED? What is the next action?"""
 
                     try:
-                        with trace(
-                            f"Phase 5: Quality Gate (iter {iteration})",
-                            metadata={
-                                "phase": "quality_gate",
-                                "effect_type": request.effect_type.value,
-                                "iteration": str(iteration),
-                                "coordinator": "quality_gate",
-                                "score": quality.overall_score,
-                            }
-                        ):
-                            gate_result = await Runner.run(
-                                self._quality_gate_coordinator,
-                                gate_prompt,
-                                context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                max_turns=3  # Quality gate should be very fast
-                            )
+                        gate_result = await Runner.run(
+                            self._quality_gate_coordinator,
+                            gate_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            max_turns=3  # Quality gate should be very fast
+                        )
                         gate_decision = gate_result.final_output
                         print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
                         print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
@@ -2137,24 +2078,14 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
 
                         switch_research_hooks = create_research_hooks()
                         try:
-                            with trace(
-                                f"Technique Switch Research (iter {iteration})",
-                                metadata={
-                                    "phase": "technique_switch",
-                                    "effect_type": request.effect_type.value,
-                                    "iteration": str(iteration),
-                                    "consecutive_same_issue": consecutive,
-                                    "techniques_tried": list(session_mgr.techniques_tried),
-                                }
-                            ):
-                                research_result = await Runner.run(
-                                    self._research_agent,
-                                    switch_prompt,
-                                    context=context,
-                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                    hooks=switch_research_hooks,
-                                    max_turns=6
-                                )
+                            research_result = await Runner.run(
+                                self._research_agent,
+                                switch_prompt,
+                                context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                hooks=switch_research_hooks,
+                                max_turns=6
+                            )
                             research_text = str(research_result.final_output) if research_result.final_output else research_text
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
@@ -2217,7 +2148,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
         # gpt-5.2 with high reasoning effort needs more turns than default 10
         # Using trace() for end-to-end observability across resumed iterations
         try:
-            with trace(f"VFX Resume: {session.session_id}"):
+            with trace(f"VFX Resume: {session.session_id}", group_id=session.session_id):
                 result = await Runner.run(
                     self._orchestrator,
                     prompt,

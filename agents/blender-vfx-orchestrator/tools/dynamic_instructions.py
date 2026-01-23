@@ -173,78 +173,61 @@ ALWAYS include:
 scene.render.filepath = "/tmp/sun_render.png"  # MUST be absolute path
 bpy.ops.render.render(write_still=True)  # CRITICAL: actually renders the image
 print(f"Rendered to: {scene.render.filepath}")
+
+# ALWAYS save .blend file for inspection/rebaking
+blend_path = scene.render.filepath.replace('.png', '.blend')
+bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+print(f"Saved .blend to: {blend_path}")
 ```
 
-## CRITICAL: BLENDER 5.0 ONLY - NO BACKWARDS COMPATIBILITY
+## CRITICAL: BLENDER 5.0 ONLY
 We use Blender 5.0.1. Generate code for THIS VERSION ONLY.
 
-**FORBIDDEN PATTERNS - NEVER USE:**
-- `if hasattr(obj, 'old_attr'):` for version detection
-- `set_attr_if_exists()` helper functions
-- Try/except blocks to catch version differences
-- Comments like "# Blender 3.x / 4.x" or "# older versions"
-- Fallback chains: `if not set_X(): set_Y()`
+**QUERY DOCS FIRST** if unsure about any API. Use exact Blender 5.0 property names.
 
-**CORRECT APPROACH:**
-1. QUERY DOCS FIRST if unsure about the API
-2. Use the EXACT Blender 5.0 property name - no guessing
-3. If a property doesn't exist, that's a BUG - don't hide it with hasattr()
+## KNOWN BLENDER 5.0 API CHANGES
+Handle these SPECIFIC changes (verified for Blender 5.0):
 
-## BLENDER 5.0 API CHANGES
-These API changes WILL cause errors if not handled:
-
-### Principled BSDF Socket Renames (MUST use .get() with fallback):
+### Principled BSDF Socket Renames:
 - 'Specular' -> 'Specular IOR Level'
 - 'Subsurface' -> 'Subsurface Weight'
 - 'Transmission' -> 'Transmission Weight'
 - 'Emission' -> 'Emission Color' (also add 'Emission Strength')
 - 'Clearcoat' -> 'Coat Weight'
 
-SAFE PATTERN for Principled BSDF:
+Pattern for Principled BSDF sockets:
 ```python
-# Always use .get() with fallback for renamed sockets
+# Use .get() for these SPECIFIC renamed sockets:
 bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
 bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
 ```
 
-### Compositor node_tree (MUST guard):
+### Compositor Setup:
 ```python
 scene.use_nodes = True
-if hasattr(scene, 'node_tree') and scene.node_tree is not None:
+if scene.node_tree is not None:
     nt = scene.node_tree
     # ... compositor setup
-else:
-    print("WARNING: Compositor not available")
 ```
 
 ### Object Visibility (cycles_visibility REMOVED):
 ```python
-# Old: obj.cycles_visibility.shadow = False
-# New:
-if hasattr(obj, 'visible_shadow'):
-    obj.visible_shadow = False
+# Use direct property (Blender 5.0):
+obj.visible_shadow = False
+obj.visible_diffuse = False
 ```
 
-### Emission Shader (NO Normal input):
-Emission shaders don't have Normal input. Never connect bump/normal to Emission.
+### Emission Shader:
+Emission shaders have NO Normal input. Never connect bump/normal to Emission.
 
 ### Material shadow_method REMOVED:
 ```python
-# mat.shadow_method = 'NONE'  # REMOVED in Blender 5.0
-# Use object-level shadow control instead:
-if hasattr(obj, 'visible_shadow'):
-    obj.visible_shadow = False
+# Use object-level shadow control:
+obj.visible_shadow = False
 ```
 
 ### use_nodes Deprecated:
-`material.use_nodes = True` triggers deprecation warning but still works for now.
-
-### GENERAL RULE: Always use hasattr() guards
-For ANY property that might be version-dependent, use hasattr:
-```python
-if hasattr(obj, 'some_property'):
-    obj.some_property = value
-```
+`material.use_nodes = True` works but shows deprecation warning.
 
 ## MODIFICATION WORKFLOW
 1. Parse quality feedback -> identify ALL visual issues
@@ -346,12 +329,27 @@ When Quality Analyst reports physics anomalies via observe_physics_anomaly():
   Example: {"temperature": 3.0, "density": 5.0, "blackbody_intensity": 2.0}
   CRITICAL: Include ACTUAL NUMBERS, not descriptions. These are applied directly to scripts.
 
-## PARAMETER RECOMMENDATIONS
-When recommending parameter changes, ALWAYS provide:
-1. suggested_modifications: Human-readable explanation of what/why
-2. parameter_modifications: Machine-readable {param: value} dict with EXACT values
+## ISSUE → PARAMETER MAPPING
+When Quality Analyst reports these issues, output these parameter_modifications:
 
-Common Blender Mantaflow parameters:
+| Issue | parameter_modifications |
+|-------|------------------------|
+| "overexposed/clipped/white" | {"blackbody_intensity": 2.0, "emission_strength": 5.0} |
+| "too dark/underexposed" | {"blackbody_intensity": 8.0, "emission_strength": 15.0} |
+| "static/no animation" | {"temperature": 3.0, "fuel_amount": 2.0} |
+| "no surface detail" | {"noise_strength": 2.0, "flame_vorticity": 0.8} |
+| "blob/not spherical" | {"domain_scale": 2.0} |
+| "rises/sinks in space" | {"beta": 0.0, "alpha": 0.0} |
+| "too fast" | {"time_scale": 0.3, "burning_rate": 0.5} |
+| "too slow" | {"time_scale": 2.0, "burning_rate": 2.0} |
+| "no corona/glow" | {"emission_strength": 20.0, "corona_radius": 1.5} |
+| "fuzzy/soft edges" | {"density": 8.0, "scatter_anisotropy": 0.8} |
+
+CRITICAL: Always populate parameter_modifications with CONCRETE values.
+If unsure, use get_parameter_knowledge() to find optimal ranges.
+
+## PARAMETER RANGES
+Mantaflow simulation:
 - temperature: -10.0 to 10.0 (flow temperature)
 - density: 0.0 to 10.0 (volume density)
 - fuel_amount: 0.0 to 10.0 (fuel for fire)
@@ -362,9 +360,10 @@ Common Blender Mantaflow parameters:
 - alpha: -5.0 to 5.0 (thermal buoyancy - use 0.0 for space)
 - resolution_max: 32 to 512 (simulation resolution)
 
-Shader parameters (Principled Volume):
+Shader (Principled Volume):
 - blackbody_intensity: 0.0 to 20.0 (emission brightness)
 - emission_strength: 0.0 to 100.0 (glow intensity)
+- scatter_anisotropy: -1.0 to 1.0 (scattering direction)
 """
 
 
