@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -46,8 +47,12 @@ from config import AgentConfigManager, get_config
 from tools.experiment_tracker_tools import _record_baseline_impl as record_experiment_baseline
 # Proactive research for pre-iteration checks (direct callable, no tool wrapper)
 from tools.proactive_research_tools import pre_iteration_research_direct as pre_iteration_research
-# Pattern outcome reporting
+# Pattern outcome reporting and pattern search (direct callable for Phase 2 self-learning reuse)
 from tools.code_pattern_tools import _report_pattern_outcome_impl as report_pattern_outcome
+from tools.code_pattern_tools import search_patterns_impl as search_patterns_direct
+# Knowledge base query for doc-grounded learnings (direct callable for Phase 2)
+from tools.experiment_tracker_tools import _query_knowledge_base_impl as query_knowledge_direct
+from tools.experiment_tracker_tools import _suggest_experiments_impl as suggest_experiments_direct
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -1417,6 +1422,11 @@ Select the optimal technique and provide starting parameters."""
                     session.current_iteration = iteration
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{request.max_iterations} ======", file=sys.stderr)
 
+                    # Phase 2: Initialize self-learning variables for this iteration
+                    # These will be populated in Phase 0.95 for iteration 2+
+                    pattern_to_apply = None
+                    kb_suggestions = []
+
                     # Record baseline BEFORE making changes (iteration 2+)
                     # This fixes the "record_baseline never called" bug
                     if iteration > 1 and previous_script and previous_script.script_path:
@@ -1458,6 +1468,63 @@ Select the optimal technique and provide starting parameters."""
                         except Exception as e:
                             print(f"[Pipeline] WARN: Pre-iteration research failed: {e}", file=sys.stderr)
                             # Continue without pre-research
+
+                        # ====== PHASE 0.95: SELF-LEARNING REUSE (Phase 2 Implementation) ======
+                        # Search patterns and knowledge base BEFORE modifications
+                        # This makes extracted patterns influence future iterations
+                        # (pattern_to_apply and kb_suggestions initialized at iteration start)
+
+                        if quality and quality.primary_issue:
+                            print(f"[Pipeline] PHASE 0.95: Self-Learning Reuse", file=sys.stderr)
+
+                            # Step 1: Search code patterns for matching fixes
+                            try:
+                                matching_patterns = search_patterns_direct(
+                                    issue=quality.primary_issue,
+                                    effect_type=request.effect_type.value,
+                                    min_confidence=50.0  # Only consider patterns with reasonable confidence
+                                )
+                                if matching_patterns:
+                                    # Find highest confidence pattern
+                                    best_pattern = max(matching_patterns, key=lambda p: p.confidence)
+                                    print(f"[Pipeline] Pattern found: {best_pattern.name} (confidence={best_pattern.confidence:.0f}%)", file=sys.stderr)
+
+                                    # Apply if confidence >= 70 (high confidence threshold)
+                                    if best_pattern.confidence >= 70:
+                                        pattern_to_apply = best_pattern
+                                        print(f"[Pipeline] HIGH CONFIDENCE pattern - will apply: {best_pattern.pattern_id}", file=sys.stderr)
+                                        # Store pattern ID for outcome tracking
+                                        context.pending_pattern_id = best_pattern.pattern_id
+                                        context.pending_pattern_name = best_pattern.name
+                                    else:
+                                        print(f"[Pipeline] Pattern confidence too low ({best_pattern.confidence:.0f}%), skipping auto-apply", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Pattern search failed: {e}", file=sys.stderr)
+
+                            # Step 2: Query knowledge base for doc-grounded learnings
+                            try:
+                                kb_result = query_knowledge_direct(quality.primary_issue)
+                                import json as _json
+                                kb_data = _json.loads(kb_result)
+                                if kb_data.get("results"):
+                                    kb_suggestions = kb_data["results"][:3]  # Top 3 learnings
+                                    print(f"[Pipeline] Knowledge base: {len(kb_suggestions)} relevant learnings found", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Knowledge base query failed: {e}", file=sys.stderr)
+
+                            # Step 3: Get experiment suggestions (combines patterns + KB)
+                            try:
+                                suggestions_result = suggest_experiments_direct(
+                                    issue=quality.primary_issue,
+                                    current_params=json.dumps(previous_params) if previous_params else "{}",
+                                    current_scores=json.dumps({"overall": previous_score})
+                                )
+                                import json as _json
+                                suggestions_data = _json.loads(suggestions_result)
+                                if suggestions_data.get("suggestions"):
+                                    print(f"[Pipeline] Experiment suggestions: {len(suggestions_data['suggestions'])} available", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Experiment suggestions failed: {e}", file=sys.stderr)
 
                     # ====== PHASE 1: SCRIPT GENERATION ======
                     print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
@@ -1541,9 +1608,71 @@ Generate a complete, validated script using the selected technique. Return the s
                         direct_modification_success = False
                         script: Optional[ScriptOutput] = None
 
+                        # ====== PHASE 1.0.1: PATTERN APPLICATION (Phase 2 Self-Learning) ======
+                        # Apply high-confidence pattern if found in Phase 0.95
+                        if pattern_to_apply and previous_script and previous_script.script_path:
+                            print(f"[Pipeline] PHASE 1.0.1: Applying pattern '{pattern_to_apply.name}'", file=sys.stderr)
+                            print(f"[Pipeline] Pattern code:\n{pattern_to_apply.code_snippet[:200]}...", file=sys.stderr)
+
+                            # Parse the pattern's code_snippet to extract parameters
+                            # Pattern code_snippet format: "domain.dissolve_speed = 5\ndomain.flame_smoke = 3.0"
+                            pattern_params = {}
+                            try:
+                                for line in pattern_to_apply.code_snippet.strip().split('\n'):
+                                    line = line.strip()
+                                    if '=' in line and not line.startswith('#'):
+                                        # Extract parameter name and value
+                                        # Handle patterns like "domain.param = value" or "obj.param = value"
+                                        match = re.match(r'(?:\w+\.)?(\w+)\s*=\s*(.+)', line)
+                                        if match:
+                                            param_name = match.group(1)
+                                            value_str = match.group(2).strip()
+                                            # Try to parse the value
+                                            try:
+                                                if value_str.lower() == 'true':
+                                                    pattern_params[param_name] = True
+                                                elif value_str.lower() == 'false':
+                                                    pattern_params[param_name] = False
+                                                elif '.' in value_str:
+                                                    pattern_params[param_name] = float(value_str)
+                                                else:
+                                                    pattern_params[param_name] = int(value_str)
+                                            except ValueError:
+                                                pattern_params[param_name] = value_str
+
+                                if pattern_params:
+                                    print(f"[Pipeline] Pattern parameters extracted: {pattern_params}", file=sys.stderr)
+                                    output_name = f"{request.asset_name}_iter{iteration}_pattern"
+
+                                    modify_result_json = _modify_script_impl(
+                                        script_path=previous_script.script_path,
+                                        modifications=pattern_params,
+                                        output_name=output_name
+                                    )
+                                    modify_result = json.loads(modify_result_json)
+
+                                    if modify_result.get("success") and modify_result.get("modified_path"):
+                                        print(f"[Pipeline] Pattern application SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
+                                        script = ScriptOutput(
+                                            script_path=modify_result["modified_path"],
+                                            technique_used=previous_script.technique_used + f" (pattern:{pattern_to_apply.pattern_id})",
+                                            parameters_set=pattern_params,
+                                            validation_passed=True,
+                                            validation_errors=[],
+                                        )
+                                        direct_modification_success = True
+                                        # Mark that we applied this pattern (for outcome tracking)
+                                        context.last_applied_pattern_id = pattern_to_apply.pattern_id
+                                    else:
+                                        print(f"[Pipeline] Pattern application FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
+                                else:
+                                    print(f"[Pipeline] WARN: Could not extract parameters from pattern", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Pattern parsing failed: {e}", file=sys.stderr)
+
                         # Check for concrete parameter modifications from Learning Agent
                         # If provided, apply directly without going through Script Writer interpretation
-                        if learning and learning.parameter_modifications and previous_script and previous_script.script_path:
+                        if not direct_modification_success and learning and learning.parameter_modifications and previous_script and previous_script.script_path:
                             print(f"[Pipeline] Applying {len(learning.parameter_modifications)} parameter modifications directly", file=sys.stderr)
                             print(f"[Pipeline] Modifications: {learning.parameter_modifications}", file=sys.stderr)
 
@@ -1669,6 +1798,16 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                             if ctx.get("stuck_issues"):
                                 feedback_parts.append(f"## STUCK: These issues persist - try different approach")
                                 feedback_parts.append(f"- {', '.join(ctx['stuck_issues'])}")
+
+                            # Phase 2: Include knowledge base learnings from Phase 0.95
+                            if kb_suggestions:
+                                feedback_parts.append("## Knowledge Base Learnings (from previous experiments)")
+                                for kb_entry in kb_suggestions[:3]:
+                                    if isinstance(kb_entry, dict):
+                                        kb_text = kb_entry.get('learning', kb_entry.get('text', str(kb_entry)))
+                                    else:
+                                        kb_text = str(kb_entry)
+                                    feedback_parts.append(f"- {kb_text[:150]}...")
 
                             if quality:
                                 feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
@@ -2132,16 +2271,20 @@ Primary Issue: {quality.primary_issue or 'None'}
                         # Store pattern_id to report outcome after next execution
                         context.last_applied_pattern_id = learning.pattern_id
 
-                    # Report outcome for previously applied pattern
+                    # ====== PHASE 4.6: PATTERN OUTCOME REPORTING (Phase 2 Self-Learning) ======
+                    # Report outcome for previously applied pattern with improvement score
                     if hasattr(context, 'last_applied_pattern_id') and context.last_applied_pattern_id:
                         try:
                             score_improvement = quality.overall_score - previous_score if quality else 0
                             pattern_success = score_improvement > 0
-                            report_pattern_outcome(
-                                context.last_applied_pattern_id,
-                                success=pattern_success
+                            outcome_result = report_pattern_outcome(
+                                pattern_id=context.last_applied_pattern_id,
+                                success=pattern_success,
+                                improvement=score_improvement,  # Include actual improvement value
+                                notes=f"Issue: {quality.primary_issue or 'unknown'}, Score: {quality.overall_score:.1f}"
                             )
-                            print(f"[Pipeline] Pattern outcome reported: {context.last_applied_pattern_id} success={pattern_success}", file=sys.stderr)
+                            print(f"[Pipeline] Pattern outcome reported: {context.last_applied_pattern_id}", file=sys.stderr)
+                            print(f"[Pipeline]   success={pattern_success}, improvement={score_improvement:+.1f}", file=sys.stderr)
                             context.last_applied_pattern_id = None  # Clear after reporting
                         except Exception as e:
                             print(f"[Pipeline] WARN: Pattern outcome report failed: {e}", file=sys.stderr)

@@ -11,7 +11,7 @@
 | Phase 0 | ✅ COMPLETE | All 3 quick wins implemented |
 | Phase 1 | ✅ COMPLETE | Items 1-5, 8-9 fully implemented; 6-7 deferred |
 | Phase 1.5 | 🔄 PARTIAL | Learning Agent enhanced but not mandatory pre-generation |
-| Phase 2 | ⏳ PENDING | Pattern outcome reporting in place; reuse pending |
+| Phase 2 | ✅ COMPLETE | Pattern search, reuse, KB query, and outcome reporting |
 | Phase 3 | ⏳ PENDING | Research output still free-text |
 | Phase 4 | ⏳ PENDING | Optional advanced features |
 
@@ -357,17 +357,54 @@ if learning.uses_new_api:
 
 ---
 
-## Phase 2 — Self‑Improvement Plumbing (Persistence + reuse)
+## Phase 2 — Self‑Improvement Plumbing (Persistence + reuse) ✅ COMPLETE
 
-### 11) Report pattern outcomes consistently
-**Why:** The pattern library needs negative feedback to evolve.  
-**Impact:** Prevents repeating bad “learned” fixes.  
+### 11) Report pattern outcomes consistently ✅
+**Why:** The pattern library needs negative feedback to evolve.
+**Impact:** Prevents repeating bad "learned" fixes.
 **Complexity:** Medium.
 
-### 12) Use extracted patterns in later iterations
-**Why:** Self‑improvement requires reuse of successful patterns.  
-**Impact:** Converts learning into better outcomes.  
+**Implementation (2026-01-23):**
+- Enhanced `report_pattern_outcome()` call to include improvement score and notes
+- Orchestrator reports outcomes after each iteration in Phase 4.6
+- Outcome includes: `success`, `improvement`, `notes` (issue and score)
+- Pattern confidence/success_rate now properly updated based on outcomes
+
+### 12) Use extracted patterns in later iterations ✅
+**Why:** Self‑improvement requires reuse of successful patterns.
+**Impact:** Converts learning into better outcomes.
 **Complexity:** Medium.
+
+**Implementation (2026-01-23):**
+- Added Phase 0.95: Self-Learning Reuse (between pre_iteration_research and Script Generation)
+- Searches code patterns for matching issues: `search_patterns_direct()`
+- Queries knowledge base for doc-grounded learnings: `query_knowledge_direct()`
+- Gets experiment suggestions: `suggest_experiments_direct()`
+- Auto-applies high-confidence patterns (>= 70%) in Phase 1.0.1
+- Pattern parameters extracted from code_snippet and applied via `_modify_script_impl()`
+- KB suggestions included in Script Writer prompt for lower-confidence matches
+- Pattern application tracked via `context.last_applied_pattern_id` for outcome reporting
+
+### Example (conceptual)
+```python
+# Phase 0.95: Search for matching patterns
+if quality and quality.primary_issue:
+    matching_patterns = search_patterns_direct(issue=quality.primary_issue, ...)
+    if matching_patterns:
+        best = max(matching_patterns, key=lambda p: p.confidence)
+        if best.confidence >= 70:
+            pattern_to_apply = best
+
+# Phase 1.0.1: Apply high-confidence pattern
+if pattern_to_apply:
+    pattern_params = parse_pattern_code(pattern_to_apply.code_snippet)
+    modify_script(previous_script, pattern_params)
+    context.last_applied_pattern_id = pattern_to_apply.pattern_id
+
+# Phase 4.6: Report outcome
+if context.last_applied_pattern_id:
+    report_pattern_outcome(context.last_applied_pattern_id, success, improvement)
+```
 
 ---
 
@@ -420,8 +457,8 @@ This is the exact place each phase likely touches.
 | 9 Sub‑agent max_turns | ✅ | `orchestrator.py` | `as_tool(max_turns=X)` native SDK |
 | 10 Mechanical self‑learning | ✅ | `orchestrator.py` | Enforce pattern extraction/outcome reporting |
 | LA‑1 Learning Agent as controller | ⏳ | `orchestrator.py`, `specialized_agents/learning_agent.py` | Deferred to Phase 1.5 |
-| 11 Pattern outcome reporting | ✅ | `orchestrator.py`, `tools/code_pattern_tools.py` | `_report_pattern_outcome_impl()` |
-| 12 Reuse extracted patterns | ⏳ | `orchestrator.py` | Use `search_code_patterns`/`apply_pattern_to_script` |
+| 11 Pattern outcome reporting | ✅ | `orchestrator.py`, `tools/code_pattern_tools.py` | Phase 4.6; `report_pattern_outcome()` with improvement |
+| 12 Reuse extracted patterns | ✅ | `orchestrator.py`, `tools/experiment_tracker_tools.py` | Phase 0.95 + 1.0.1; `search_patterns_direct()`, `query_knowledge_direct()` |
 | 13 Research schema | ⏳ | `models/` (new), `orchestrator.py` | Pydantic output model |
 | 14 Prompt budgets | ✅ | `orchestrator.py` | `as_tool(max_turns=X)` aligns with prompt |
 | 15 Session compaction | ⏳ | `orchestrator.py`, `session_manager.py` | Summarize + rotate SDK sessions |
@@ -436,12 +473,12 @@ These are conservative ranges assuming one developer familiar with the code.
 |-------|------------|--------|------------------|
 | Phase 0 | 3 items | ✅ COMPLETE | 2–4 hours |
 | Phase 1 | 10 items | ✅ 8/10 COMPLETE | 10–18 hours |
-| Phase 2 | 2 items | ⏳ PENDING | 4–6 hours |
+| Phase 2 | 2 items | ✅ COMPLETE | 4–6 hours |
 | Phase 3 | 2 items | ⏳ PENDING | 4–8 hours |
 | Phase 4 | 2 items | ⏳ PENDING | 6–12 hours |
 
-**Completed (Phase 0 + Phase 1):** ~12–22 hours equivalent
-**Remaining (Phase 2-4):** ~14–26 hours
+**Completed (Phase 0 + Phase 1 + Phase 2):** ~16–28 hours equivalent
+**Remaining (Phase 3-4):** ~10–20 hours
 
 ---
 
@@ -583,4 +620,53 @@ def pre_iteration_research_direct(current_issue: str, ...) -> str:
 - `test_orchestrator_tools.py` - All passed
 - `test_self_learning_tools.py` - 4/4 passed
 - Import verification - All files compile
+
+---
+
+## Phase 2 Implementation Notes (2026-01-23)
+
+### New Pipeline Phases Added
+Two new phases inserted into the iteration loop:
+
+1. **Phase 0.95: Self-Learning Reuse** - After pre_iteration_research, before script generation
+   - Searches code patterns: `search_patterns_direct(issue, effect_type)`
+   - Queries knowledge base: `query_knowledge_direct(issue)`
+   - Gets experiment suggestions: `suggest_experiments_direct(issue, params, scores)`
+   - Sets `pattern_to_apply` if high-confidence match found (>= 70%)
+
+2. **Phase 1.0.1: Pattern Application** - Before Learning Agent modifications
+   - Applies high-confidence patterns via `_modify_script_impl()`
+   - Parses pattern code_snippet to extract parameters
+   - Tracks applied pattern ID for outcome reporting
+
+3. **Phase 4.6: Pattern Outcome Reporting** - After pattern extraction
+   - Reports success/failure with improvement score
+   - Updates pattern confidence and success_rate in library
+
+### New Direct Callable Imports
+```python
+from tools.code_pattern_tools import search_patterns_impl as search_patterns_direct
+from tools.experiment_tracker_tools import _query_knowledge_base_impl as query_knowledge_direct
+from tools.experiment_tracker_tools import _suggest_experiments_impl as suggest_experiments_direct
+```
+
+### Data Flow
+```
+[Quality Issue] → Phase 0.95 → [Pattern/KB Search]
+                      ↓
+              [High-confidence pattern?]
+                 YES ↓        NO ↓
+           Phase 1.0.1    Script Writer
+           (apply pattern)  (with KB suggestions)
+                      ↓
+              [Quality Evaluation]
+                      ↓
+              Phase 4.6 → [Report outcome to pattern library]
+```
+
+### Key Design Decisions
+1. **70% confidence threshold** - Only auto-apply patterns with high success probability
+2. **Lower-confidence patterns** - Included in Script Writer prompt as suggestions
+3. **KB suggestions** - Always included to provide doc-grounded context
+4. **Pattern outcome tracking** - Uses `context.last_applied_pattern_id` to correlate
 
