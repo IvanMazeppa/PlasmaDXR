@@ -63,7 +63,7 @@ create_asset_pipeline() (Python-controlled)
 ```
 Request → create_asset_pipeline()
               │
-              ├── [Phase 0] Research Agent ───────────────────→ ResearchFindings
+              ├── [Phase 0] Research Agent ───────────────────→ ResearchOutput (Phase 3: Pydantic)
               │
               ├── [Phase 0.5] TechniqueSelector Coordinator ──→ TechniqueDecision
               │
@@ -172,6 +172,42 @@ Request → create_asset_pipeline()
 | `evaluate_quality` | QualityAnalyst | Evaluate render quality |
 | `record_learning` | LearningAgent | Doc-grounded proposals + record outcomes |
 | `search_docs` | DocsExpert | Search Blender documentation |
+
+---
+
+#### 1. Research Agent (Phase 3: Structured Output)
+
+**Model:** `gpt-5.2` with `reasoning.effort="medium"`
+**Role:** Research best approach for VFX effect BEFORE script generation (Phase 0)
+**Output Type:** `ResearchOutput` (Pydantic schema)
+**RunHooks:** `create_research_hooks()` - max 3 same-tool calls, 4 turns
+
+##### Turn Budget
+| Target | Hard Limit | Usage |
+|--------|------------|-------|
+| 4 turns | 4 turns | Aligned with prompt budget (Phase 3) |
+
+##### Tools
+
+| Tool | Source | Purpose |
+|------|--------|---------|
+| `semantic_search_blender_docs` | semantic-docs | Search Blender 5.0 documentation |
+| `find_alternative_approaches` | semantic-docs | Find alternative techniques |
+| `search_blender_api_by_intent` | semantic-docs | Find APIs by description |
+| `search_code_patterns` | code-patterns | Find proven code patterns |
+| `list_patterns_by_effect` | code-patterns | List patterns by effect type |
+
+##### Output Schema (ResearchOutput)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `recommended_approach` | str | Yes | Best approach from documentation |
+| `key_parameters` | Dict[str, Any] | No | Recommended parameter values |
+| `api_modules` | List[str] | No | Blender API modules to use |
+| `code_patterns` | List[{pattern_id, issue, code_snippet}] | No | Proven patterns from library |
+| `warnings` | List[str] | No | Potential pitfalls to avoid |
+| `alternative_approaches` | List[str] | No | Backup approaches if primary fails |
+| `doc_refs` | List[str] | Yes | Blender 5.0 doc references (Phase 3) |
 
 ---
 

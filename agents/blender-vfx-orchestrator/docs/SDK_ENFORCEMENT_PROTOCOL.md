@@ -279,4 +279,50 @@ query-docs:
 
 ---
 
+## Phase 3: Structured Inputs/Outputs and Turn Budget Alignment
+
+### ResearchOutput Schema (Phase 3 Addition)
+
+The Research Agent now uses structured output for deterministic results:
+
+```python
+from pydantic import BaseModel, Field
+from agents import Agent, AgentOutputSchema
+
+class ResearchOutput(BaseModel):
+    """Output from Research Agent - provides starting parameters for script generation."""
+    recommended_approach: str = Field(description="Best approach from documentation")
+    key_parameters: Dict[str, Any] = Field(default_factory=dict)
+    api_modules: List[str] = Field(default_factory=list)
+    code_patterns: List[Dict[str, str]] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    alternative_approaches: List[str] = Field(default_factory=list)
+    doc_refs: List[str] = Field(default_factory=list, description="REQUIRED: Blender 5.0 doc refs")
+
+research_agent = Agent(
+    name="Research Agent",
+    instructions="...",
+    output_type=AgentOutputSchema(ResearchOutput, strict_json_schema=False),
+    tools=[...],
+)
+
+# Usage in pipeline:
+result = await Runner.run(research_agent, prompt, max_turns=4)
+research_output: ResearchOutput = result.final_output
+```
+
+### Turn Budget Alignment
+
+| Agent | Prompt Target | Hard Limit | Notes |
+|-------|---------------|------------|-------|
+| Research | 4 turns | 4 turns | Phase 3: Aligned |
+| Script Writer | 5 turns | 15 turns | Allows validation retries |
+| Quality Analyst | 3 turns | 6 turns | Allows reference comparison |
+| Learning Agent | 3-4 turns | 8 turns | Allows pattern extraction |
+| TechniqueSelector | 3 turns | 6 turns | Coordinator |
+| ModificationStrategist | 2 turns | 4 turns | Coordinator |
+| QualityGateJudge | 2 turns | 3 turns | Coordinator |
+
+---
+
 *This protocol is non-negotiable. SDK docs are the source of truth.*

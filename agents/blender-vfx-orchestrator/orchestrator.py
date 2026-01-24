@@ -95,13 +95,18 @@ from openai.types.shared import Reasoning
 # These enable type-safe data passing between agents in the pipeline.
 
 class ResearchOutput(BaseModel):
-    """Output from Research Agent - provides starting parameters for script generation."""
-    recommended_approach: str = Field(description="Best approach for the effect type")
-    key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Recommended parameter values")
-    api_modules: List[str] = Field(default_factory=list, description="Blender API modules to use")
-    code_patterns: List[Dict[str, str]] = Field(default_factory=list, description="Proven patterns from library")
-    warnings: List[str] = Field(default_factory=list, description="Potential pitfalls to avoid")
+    """Output from Research Agent - provides starting parameters for script generation.
+
+    Phase 3: Structured schema for deterministic research outputs.
+    All fields must be populated from actual tool results, not invented.
+    """
+    recommended_approach: str = Field(description="Best approach for the effect type (from documentation)")
+    key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Recommended parameter values (from patterns or docs)")
+    api_modules: List[str] = Field(default_factory=list, description="Blender API modules to use (e.g., bpy.types.FluidDomainSettings)")
+    code_patterns: List[Dict[str, str]] = Field(default_factory=list, description="Proven patterns from library: [{pattern_id, issue, code_snippet}]")
+    warnings: List[str] = Field(default_factory=list, description="Potential pitfalls to avoid (from knowledge base)")
     alternative_approaches: List[str] = Field(default_factory=list, description="Backup approaches if primary fails")
+    doc_refs: List[str] = Field(default_factory=list, description="Blender 5.0 documentation references used (URLs or section names)")
 
 
 class ScriptOutput(BaseModel):
@@ -1049,23 +1054,30 @@ CRITICAL: After searching documentation, use return_to_orchestrator to hand off.
         research_model, research_settings = self._get_model_settings("research_agent")
         self._research_agent = Agent[SharedContext](
             name="Research Agent",
-            instructions="""You are a Blender documentation research specialist.
+            instructions="""ROLE: Blender documentation research specialist.
+INPUTS: effect_type, description.
+TOOLS: semantic_search_blender_docs, find_alternative_approaches, search_blender_api_by_intent, search_code_patterns, list_patterns_by_effect.
+TURNS: MAX 4.
 
-Your job is to research the best approach for creating a VFX effect BEFORE any script generation.
+## Tool Order
+T1: semantic_search_blender_docs(effect_type + "best practices")
+T2: search_code_patterns(issue="", effect_type=effect_type) OR list_patterns_by_effect(effect_type)
+T3: search_blender_api_by_intent(intent="create {effect_type} effect", domain="Mantaflow")
+T4: Return ResearchOutput
 
-## Research Steps
-1. Search documentation for best practices for the effect type
-2. Find proven code patterns from the pattern library
-3. Search Blender API by intent to find the right modules/functions
-4. Identify alternative approaches if the standard one is unclear
+## Output Contract (ResearchOutput)
+- recommended_approach: str (from docs search - REQUIRED)
+- key_parameters: dict (from patterns or docs)
+- api_modules: list[str] (from API search)
+- code_patterns: list[{pattern_id, issue, code_snippet}] (from pattern search)
+- warnings: list[str] (from docs or knowledge base)
+- alternative_approaches: list[str] (from find_alternative_approaches)
+- doc_refs: list[str] (Blender 5.0 doc references - REQUIRED)
 
-Use your tools to gather information, then return a summary of your findings including:
-- recommended_approach: Best approach for the effect
-- key_parameters: Important parameter settings
-- warnings: Potential pitfalls to avoid""",
+STOP after T4. Do NOT retry tools. Return structured output only.""",
             model=research_model,
             model_settings=research_settings,
-            # Note: Don't use output_type for tool-using agents - they output messages, not structured data
+            output_type=AgentOutputSchema(ResearchOutput, strict_json_schema=False),
             tools=[
                 semantic_search_blender_docs,
                 find_alternative_approaches,
@@ -1301,6 +1313,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 
                 # Create research hooks for Phase 0
                 phase0_research_hooks = create_research_hooks()
+                research_output: Optional[ResearchOutput] = None
                 try:
                     research_result = await Runner.run(
                         self._research_agent,
@@ -1308,10 +1321,20 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                         context=context,
                         session=sdk_session,  # Phase 4: SDK session for conversation persistence
                         hooks=phase0_research_hooks,
-                        max_turns=8  # Limit research turns
+                        max_turns=4  # Phase 3: Aligned with prompt turn budget
                     )
-                    # Research agent outputs text summary (no output_type for tool-using agents)
-                    research_text = str(research_result.final_output) if research_result.final_output else "No research findings"
+                    # Phase 3: Structured output - ResearchOutput schema
+                    research_output = research_result.final_output
+                    if research_output:
+                        # Build text summary from structured output for downstream use
+                        research_text = f"""## Research Summary
+Recommended Approach: {research_output.recommended_approach}
+Key Parameters: {research_output.key_parameters}
+API Modules: {', '.join(research_output.api_modules) if research_output.api_modules else 'None'}
+Warnings: {'; '.join(research_output.warnings) if research_output.warnings else 'None'}
+Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 'None'}"""
+                    else:
+                        research_text = "No research findings"
                 except LoopDetectedError as e:
                     # Research got stuck - use partial results
                     print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
@@ -1329,18 +1352,12 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 # Store research in session for persistence and handoff to Script Writer
                 session.research_text = research_text
 
-                # Extract alternative approaches from research text (look for bullet points/lists)
-                import re
-                alt_pattern = r'(?:alternative|backup|other|also consider)[s]?[:\s]+([^\n]+(?:\n[-•*]\s*[^\n]+)*)'
-                alt_matches = re.findall(alt_pattern, research_text.lower())
-                if alt_matches:
-                    for match in alt_matches:
-                        approaches = re.split(r'[-•*\n,]', match)
-                        for a in approaches:
-                            a = a.strip()
-                            if a and len(a) > 10 and a not in session.alternative_approaches:
-                                session.alternative_approaches.append(a)
-                    print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches", file=sys.stderr)
+                # Phase 3: Use structured output directly instead of regex parsing
+                if research_output and research_output.alternative_approaches:
+                    for approach in research_output.alternative_approaches:
+                        if approach and approach not in session.alternative_approaches:
+                            session.alternative_approaches.append(approach)
+                    print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches (structured)", file=sys.stderr)
 
                 # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
                 # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
@@ -2272,17 +2289,14 @@ Primary Issue: {quality.primary_issue or 'None'}
                         session.extracted_patterns.append({
                             "pattern_id": learning.pattern_id,
                             "iteration": iteration,
-                            "score_delta": quality.overall_score - previous_score if quality else 0,
+                            "score_delta": quality.overall_score - baseline_score_snapshot if quality else 0,
                         })
-
-                        # Store pattern_id to report outcome after next execution
-                        context.last_applied_pattern_id = learning.pattern_id
 
                     # ====== PHASE 4.6: PATTERN OUTCOME REPORTING (Phase 2 Self-Learning) ======
                     # Report outcome for previously applied pattern with improvement score
                     if hasattr(context, 'last_applied_pattern_id') and context.last_applied_pattern_id:
                         try:
-                            score_improvement = quality.overall_score - previous_score if quality else 0
+                            score_improvement = quality.overall_score - baseline_score_snapshot if quality else 0
                             pattern_success = score_improvement > 0
                             outcome_result = report_pattern_outcome(
                                 pattern_id=context.last_applied_pattern_id,
@@ -2397,9 +2411,19 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 context=context,
                                 session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 hooks=switch_research_hooks,
-                                max_turns=6
+                                max_turns=4  # Phase 3: Aligned with prompt turn budget
                             )
-                            research_text = str(research_result.final_output) if research_result.final_output else research_text
+                            # Phase 3: Structured output
+                            switch_research: Optional[ResearchOutput] = research_result.final_output
+                            if switch_research:
+                                research_text = f"""## Research Summary (Technique Switch)
+Recommended Approach: {switch_research.recommended_approach}
+Key Parameters: {switch_research.key_parameters}
+Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 'None'}"""
+                                # Add new alternatives
+                                for approach in switch_research.alternative_approaches:
+                                    if approach and approach not in session.alternative_approaches:
+                                        session.alternative_approaches.append(approach)
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
                             # Keep existing research_text if new research loops

@@ -1,15 +1,19 @@
 # VFX Orchestrator Agent Presets
 # Select preset via: ORCHESTRATOR_PRESET=quick_test
 #
-# Available models: gpt-5.2
+# Available models:
+#   gpt-5.1-mini  - Fast, cost-effective (best for quick tests)
+#   gpt-5.1-nano  - Fastest, lowest cost (basic tasks only)
+#   gpt-5.2       - Full capability (production quality)
+#
 # Reasoning effort: none, low, medium, high
 # Note: temperature only works when reasoning_effort=none
 
 presets:
   # Fast iteration - minimal cost, quick feedback
   quick_test:
-    description: "Fast iteration with minimal cost"
-    default_model: gpt-5.2
+    description: "Fast iteration with minimal cost (gpt-5.1-mini)"
+    default_model: gpt-5.1-mini
     reasoning_effort: none
     temperature: 0.3
     max_turns: 5
@@ -17,8 +21,8 @@ presets:
 
   # Standard development - balanced cost/quality
   development:
-    description: "Balanced settings for development"
-    default_model: gpt-5.2
+    description: "Balanced settings for development (gpt-5.1-mini)"
+    default_model: gpt-5.1-mini
     reasoning_effort: none
     temperature: 0.5
     max_turns: 10
@@ -26,7 +30,7 @@ presets:
 
   # Full quality - best results, higher cost
   production:
-    description: "Maximum quality for final assets"
+    description: "Maximum quality for final assets (gpt-5.2)"
     default_model: gpt-5.2
     reasoning_effort: medium
     temperature: 0.7
@@ -35,8 +39,8 @@ presets:
 
   # Budget saver - absolute minimum
   budget_saver:
-    description: "Minimum cost, basic functionality"
-    default_model: gpt-5.2
+    description: "Minimum cost, basic functionality (gpt-5.1-nano)"
+    default_model: gpt-5.1-nano
     reasoning_effort: none
     temperature: 0.2
     max_turns: 3
@@ -44,9 +48,9 @@ presets:
 
   # Debug mode - verbose, detailed tracing
   debug:
-    description: "Verbose output for debugging"
-    default_model: gpt-5.2
-    reasoning_effort: low
+    description: "Verbose output for debugging (gpt-5.1-mini)"
+    default_model: gpt-5.1-mini
+    reasoning_effort: none
     temperature: 0.5
     max_turns: 8
     max_iterations: 2
@@ -54,7 +58,7 @@ presets:
 
   # Reasoning mode - uses full reasoning for complex tasks
   reasoning:
-    description: "Uses reasoning model for complex decisions"
+    description: "Uses reasoning model for complex decisions (gpt-5.2)"
     default_model: gpt-5.2
     reasoning_effort: medium
     temperature: 1.0  # Ignored when reasoning enabled

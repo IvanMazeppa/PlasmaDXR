@@ -95,16 +95,27 @@ T3: If score delta >= 5 -> extract_successful_pattern.
 Return LearningOutput.
 ```
 
-### Research Agent
+### Research Agent (Phase 3: Structured Output)
 ```
 ROLE: Produce structured research summary.
-TOOLS: semantic_search_blender_docs, search_blender_api_by_intent, search_code_patterns, find_alternative_approaches.
-TURNS: MAX 4.
+TOOLS: semantic_search_blender_docs, search_blender_api_by_intent, search_code_patterns, find_alternative_approaches, list_patterns_by_effect.
+TURNS: MAX 4 (aligned with max_turns=4).
 
-T1: semantic_search_blender_docs.
-T2: search_blender_api_by_intent for unknown APIs.
-T3: search_code_patterns (optional).
-T4: Return ResearchOutput (structured).
+T1: semantic_search_blender_docs(effect_type + "best practices").
+T2: search_code_patterns(issue="", effect_type=effect_type) OR list_patterns_by_effect.
+T3: search_blender_api_by_intent(intent="create {effect_type} effect").
+T4: Return ResearchOutput (Pydantic structured output).
+
+OUTPUT (ResearchOutput - Phase 3 schema):
+- recommended_approach: str (from docs - REQUIRED)
+- key_parameters: Dict[str, Any] (from patterns/docs)
+- api_modules: List[str] (from API search)
+- code_patterns: List[{pattern_id, issue, code_snippet}]
+- warnings: List[str] (from knowledge base)
+- alternative_approaches: List[str] (from find_alternative_approaches)
+- doc_refs: List[str] (Blender 5.0 doc refs - REQUIRED)
+
+STOP after T4. Uses AgentOutputSchema(ResearchOutput, strict_json_schema=False).
 ```
 
 ## Instruction Hygiene Checklist
@@ -120,4 +131,30 @@ T4: Return ResearchOutput (structured).
 3) Replace `prompt_with_handoff_instructions()` for standalone agents with plain instructions.
 4) Align `ScriptOutput` fields everywhere (`parameters_set` or `key_parameters`, not both).
 5) Re-enable dynamic instructions and keep them short (append-only).
+
+---
+
+## Phase 3 Implementation Status (2026-01-24)
+
+### ✅ Completed
+
+| Item | Description |
+|------|-------------|
+| ResearchOutput schema | Added `doc_refs` field, enforced via `output_type=AgentOutputSchema(ResearchOutput)` |
+| Research agent structured output | Uses `output_type` for deterministic Pydantic output |
+| Turn budget alignment | Prompt budgets now show Target/Hard Limit (e.g., "Target: 4 | Limit: 4") |
+| Regex parsing eliminated | Alternative approaches from structured `research_output.alternative_approaches` |
+| Documentation updated | AGENT_SPECIFICATION.md, SDK_ENFORCEMENT_PROTOCOL.md, this file |
+
+### Turn Budget Summary (Phase 3 Aligned)
+
+| Agent | Prompt Target | Hard Limit (max_turns) | Aligned? |
+|-------|---------------|------------------------|----------|
+| Research | 4 | 4 | ✅ Yes |
+| Script Writer | 5 | 15 | ✅ Documented (retries) |
+| Quality Analyst | 3 | 6 | ✅ Documented (retries) |
+| Learning Agent | 3-4 | 8 | ✅ Documented (patterns) |
+| TechniqueSelector | 3 | 6 | ✅ Coordinator |
+| ModificationStrategist | 2 | 4 | ✅ Coordinator |
+| QualityGateJudge | 2 | 3 | ✅ Coordinator |
 

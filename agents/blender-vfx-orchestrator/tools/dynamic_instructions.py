@@ -144,12 +144,14 @@ Do NOT use templates. Generate code that implements what the RESEARCH describes.
 - DO NOT make 3+ consecutive doc queries - this will cause a loop error
 - The Research Agent already did extensive documentation research for you
 
-## TURN BUDGET: MAX 5 TURNS
+## TURN BUDGET
+Target: 5 turns | Hard limit: 15 turns (allows validation retries)
 T1: (Optional) 1-2 doc queries ONLY if critical API is unclear
 T2: WRITE complete Blender Python code - DO THIS QUICKLY
 T3: write_script(code=YOUR_CODE, output_name=..., technique_name=...)
 T4: validate_script(script_path)
-T5: Return ScriptOutput
+T5: If validation passes -> Return ScriptOutput
+T5-15: If validation fails -> modify_script + validate_script (up to 5 retries) -> Return ScriptOutput
 
 ## CRITICAL: NO TEMPLATES
 - Do NOT call recommend_technique or list_techniques
@@ -182,20 +184,34 @@ ALWAYS include:
 - import bpy
 - Scene cleanup
 - Camera setup
-- Render settings with OUTPUT PATH (absolute path like /tmp/render.png)
+- Render settings with OUTPUT_DIR variable (populated from asset name)
 - **RENDER CALL AT THE END** - without this, no image is produced!
 
 ```python
+# At the TOP of script - define output paths from asset name:
+ASSET_NAME = "explosion_v1"  # Use the asset name from the request
+OUTPUT_DIR = f"/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/{ASSET_NAME}"
+RENDER_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.png"
+BLEND_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.blend"
+CACHE_DIR = f"{OUTPUT_DIR}/cache"
+
+# Create directories
+from pathlib import Path
+Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+
 # At the end of main():
-scene.render.filepath = "/tmp/sun_render.png"  # MUST be absolute path
+scene.render.filepath = RENDER_PATH
 bpy.ops.render.render(write_still=True)  # CRITICAL: actually renders the image
 print(f"Rendered to: {scene.render.filepath}")
 
 # ALWAYS save .blend file for inspection/rebaking
-blend_path = scene.render.filepath.replace('.png', '.blend')
-bpy.ops.wm.save_as_mainfile(filepath=blend_path)
-print(f"Saved .blend to: {blend_path}")
+bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
+print(f"Saved .blend to: {BLEND_PATH}")
 ```
+
+**IMPORTANT**: Replace "explosion_v1" with the actual asset name from the request.
+The asset name is provided in the prompt (e.g., "Asset Name: shakedown_123456").
 
 ## CRITICAL: BLENDER 5.0 ONLY
 We use Blender 5.0.1. Generate code for THIS VERSION ONLY.
@@ -316,22 +332,32 @@ mat.cycles.displacement_method = 'DISPLACEMENT'
 import bpy
 from pathlib import Path
 
+# ASSET PATHS - use asset name from request, NOT /tmp/
+ASSET_NAME = "fire_explosion_v1"  # Replace with actual asset name from request
+OUTPUT_DIR = f"/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/{ASSET_NAME}"
+CACHE_DIR = f"{OUTPUT_DIR}/cache"
+RENDER_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.png"
+BLEND_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.blend"
+
 def setup_mantaflow_scene():
     # Complete pattern for Mantaflow VFX with CLI rendering
     scene = bpy.context.scene
+
+    # 0. CREATE OUTPUT DIRECTORIES
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+    Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
     # 1. WORLD: Create if missing (CLI starts with no world)
     if scene.world is None:
         scene.world = bpy.data.worlds.new(name="World")
 
     # 2. CACHE: Use absolute paths (// paths fail in CLI)
-    cache_dir = "/tmp/mantaflow_cache"  # Or any absolute path
-    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    # Use CACHE_DIR from asset folder, NOT /tmp/
 
     # 3. DOMAIN: Configure with absolute cache path
     domain = bpy.context.active_object  # Your domain object
     settings = domain.modifiers["Fluid"].domain_settings
-    settings.cache_directory = cache_dir
+    settings.cache_directory = CACHE_DIR  # Asset folder, not /tmp/
     settings.cache_data_format = 'OPENVDB'  # Best for volumetrics
 
     # 4. GPU: Configure Cycles with GPU (10-100x faster than CPU)
@@ -426,7 +452,8 @@ Return ScriptOutput with: script_path, technique_used, key_parameters, validatio
 QUALITY_ANALYST_BASE_INSTRUCTIONS = """## ROLE
 Evaluate VFX render quality. Be a STRICT judge - only pass renders that truly meet standards.
 
-## TURN BUDGET: MAX 3 TURNS
+## TURN BUDGET
+Target: 3 turns | Hard limit: 6 turns (allows reference comparison retries)
 T1: analyze_with_vision + find_reference_images (parallel)
 T2: compare_to_reference (if reference available)
 T3: Return QualityOutput
@@ -464,10 +491,12 @@ Return QualityOutput with:
 LEARNING_AGENT_BASE_INSTRUCTIONS = """## ROLE
 Record experiments, extract patterns, suggest fixes from accumulated knowledge.
 
-## TURN BUDGET: MAX 3 TURNS
+## TURN BUDGET
+Target: 3 turns | Hard limit: 8 turns (allows pattern extraction if successful)
 T1: query_knowledge_base + search_code_patterns (parallel)
 T2: record_experiment_result (ONCE)
-T3: Return LearningOutput
+T3: If score_delta >= 5: extract_successful_pattern -> Return LearningOutput
+T3: Otherwise: Return LearningOutput
 
 CRITICAL: Call record_experiment_result ONCE. Never retry on error.
 
@@ -811,8 +840,9 @@ Be a STRICT judge - only pass renders that truly meet quality standards."""
 # Extra instructions for Learning Agent standalone agent
 _LEARNING_AGENT_STANDALONE_EXTRAS = """
 
-## CRITICAL: TURN BUDGET (MAX 8 TURNS - HARD LIMIT)
-You MUST complete in 3-4 turns or the pipeline FAILS. Follow this EXACT sequence:
+## TURN BUDGET
+Target: 3-4 turns | Hard limit: 8 turns
+Follow this EXACT sequence:
 
 Turn 1: Query knowledge (query_knowledge_base) + check pending observations (get_pending_observations)
 Turn 2: Record experiment (record_experiment_result) - CALL EXACTLY ONCE

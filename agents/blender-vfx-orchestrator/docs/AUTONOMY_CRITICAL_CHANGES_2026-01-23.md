@@ -11,7 +11,7 @@
 | Phase 0 | ✅ COMPLETE | All 3 quick wins implemented |
 | Phase 1 | ✅ COMPLETE | Items 1-5, 8-9 fully implemented; 6-7 deferred |
 | Phase 1.5 | 🔄 PARTIAL | Learning Agent enhanced but not mandatory pre-generation |
-| Phase 2 | ✅ COMPLETE | Pattern search, reuse, KB query, and outcome reporting |
+| Phase 2 | ✅ COMPLETE | Pattern reuse + KB query wired; outcome reporting hotfix applied |
 | Phase 3 | ⏳ PENDING | Research output still free-text |
 | Phase 4 | ⏳ PENDING | Optional advanced features |
 
@@ -369,6 +369,10 @@ if learning.uses_new_api:
 - Orchestrator reports outcomes after each iteration in Phase 4.6
 - Outcome includes: `success`, `improvement`, `notes` (issue and score)
 - Pattern confidence/success_rate now properly updated based on outcomes
+
+**Hotfix (2026-01-23):**
+- Outcome improvement now uses the **baseline snapshot**, not the already-updated score.
+- Extracted patterns no longer overwrite the **last applied** pattern ID.
 
 ### 12) Use extracted patterns in later iterations ✅
 **Why:** Self‑improvement requires reuse of successful patterns.

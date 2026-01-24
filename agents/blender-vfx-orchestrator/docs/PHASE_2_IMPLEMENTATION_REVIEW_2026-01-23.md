@@ -5,11 +5,11 @@ Goal: review Phase 2 (self‑learning reuse + pattern outcomes) with a focus on 
 ---
 
 ## Summary (Brutal Truth)
-Phase 2 is **wired**, but two mechanical bugs make the learning signal unreliable:
-1) Pattern outcomes are computed against a score that has already been updated (delta ≈ 0).
-2) The “applied pattern” ID is overwritten by “extracted pattern” ID, so outcomes can be misattributed.
+Phase 2 is **wired**, and two critical mechanical bugs were found and **fixed**:
+1) Pattern outcomes were computed after `previous_score` was updated (delta ≈ 0).
+2) Extracted patterns were overwriting the applied‑pattern ID (misattributed outcomes).
 
-This means pattern confidence updates can be wrong even when the run succeeds.
+Remaining risk: **pattern parameter parsing is too naive** for real Blender scripts.
 
 ---
 
@@ -37,7 +37,7 @@ Outcome reporting uses `previous_score` after it has already been updated:
                             )
 ```
 
-**Fix:** Use a frozen baseline snapshot (already captured as `baseline_score_snapshot`) for improvement.
+**Fix (APPLIED 2026-01-23):** Use `baseline_score_snapshot` for improvement.
 
 ---
 
@@ -62,9 +62,10 @@ Outcome reporting uses `previous_score` after it has already been updated:
 
 **Impact:** A newly extracted pattern can be reported as “applied” and scored immediately, which corrupts the pattern library.
 
-**Fix:** Use separate fields:
-- `last_applied_pattern_id` → only when pattern is applied
-- `last_extracted_pattern_id` → when a new pattern is extracted
+**Fix (APPLIED 2026-01-23):** Extracted patterns no longer overwrite `last_applied_pattern_id`.
+
+Optional hardening:
+- Add `last_extracted_pattern_id` if you want explicit audit separation.
 
 ---
 
@@ -95,7 +96,31 @@ The parser only captures `(\w+)` assignments; it will fail on nested attributes 
 ---
 
 ## Suggested Next Fixes (Minimal)
-1. Use `baseline_score_snapshot` for pattern outcome improvement.
-2. Split `last_applied_pattern_id` vs `last_extracted_pattern_id`.
-3. Store structured parameter changes inside pattern objects (or parse with AST).
+1. Store structured parameter changes inside pattern objects (or parse with AST).
+2. Optional: add `last_extracted_pattern_id` for explicit audit trails.
+
+---
+
+## Phase 3 Implementation Complete (2026-01-24)
+
+Phase 3 has been implemented with the following changes:
+
+### ResearchOutput Structured Schema
+- Added `doc_refs: List[str]` field (required) for Blender 5.0 documentation references
+- Research Agent now uses `output_type=AgentOutputSchema(ResearchOutput, strict_json_schema=False)`
+- Pipeline uses structured output directly instead of regex parsing for alternatives
+
+### Turn Budget Alignment
+- Prompt turn budgets now show "Target: X | Hard limit: Y"
+- Research Agent: Target 4, Limit 4 (aligned)
+- Script Writer: Target 5, Limit 15 (allows retries - documented)
+- Quality Analyst: Target 3, Limit 6 (allows retries - documented)
+- Learning Agent: Target 3-4, Limit 8 (allows pattern extraction - documented)
+
+### Files Modified
+- `orchestrator.py`: ResearchOutput schema, research agent output_type, pipeline structured output handling
+- `tools/dynamic_instructions.py`: Turn budget documentation alignment
+- `docs/AGENT_SPECIFICATION.md`: Added Research Agent spec with output schema
+- `docs/SDK_ENFORCEMENT_PROTOCOL.md`: Added Phase 3 section
+- `docs/PROMPT_SYSTEM_OPTIMIZATION_2026-01-23.md`: Phase 3 status table
 
