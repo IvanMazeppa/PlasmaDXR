@@ -2077,6 +2077,12 @@ Run the script and report results."""
 
                     print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
 
+                    # Capture baseline snapshot BEFORE quality evaluation updates previous_score
+                    # This fixes the "record_baseline not called" bug where baseline was using current score
+                    baseline_score_snapshot = previous_score
+                    baseline_params_snapshot = dict(previous_params) if previous_params else {}
+                    baseline_render_snapshot = session.final_render_path if session.iterations else None
+
                     # ====== PHASE 3: QUALITY EVALUATION (LLM-as-Judge) ======
                     # QW-1: Budget check before expensive vision evaluation
                     if not self._budget_tracker.can_afford_evaluation():
@@ -2190,16 +2196,17 @@ Provide detailed feedback for improvement."""
                     print(f"[Pipeline] PHASE 4: Learning Agent", file=sys.stderr)
 
                     # Sync baseline to ExperimentTracker (for Learning Agent's record_experiment_result)
-                    # This fixes the "No baseline recorded" error in the Learning Agent
+                    # Uses the snapshot captured BEFORE quality evaluation updated previous_score
                     try:
-                        baseline_params = json.dumps(script.parameters_set if hasattr(script, 'parameters_set') else {})
-                        baseline_scores = json.dumps({"overall": previous_score})
+                        baseline_params_json = json.dumps(baseline_params_snapshot)
+                        baseline_scores_json = json.dumps({"overall": baseline_score_snapshot})
                         record_experiment_baseline(
-                            params=baseline_params,
-                            scores=baseline_scores,
-                            render_path=execution.render_path or "",
+                            params=baseline_params_json,
+                            scores=baseline_scores_json,
+                            render_path=baseline_render_snapshot or execution.render_path or "",
                             effect_type=request.effect_type.value
                         )
+                        print(f"[Pipeline] Baseline recorded: score={baseline_score_snapshot:.1f}", file=sys.stderr)
                     except Exception as e:
                         print(f"[Pipeline] WARN: Baseline sync failed: {e}", file=sys.stderr)
 
