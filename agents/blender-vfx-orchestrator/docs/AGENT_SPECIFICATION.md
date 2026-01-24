@@ -553,14 +553,24 @@ def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
 
 ### Strategy 1: Vector Store for Blender Documentation
 
-**Status:** Implemented
-**Vector Store ID:** `vs_696acc41b74c8191a8d6f614c0223923`
-**Documents:** 4,225 files indexed
+**Status:** Implemented (v2 - Two-Store Architecture)
+
+**Vector Stores:**
+- **Manual Store:** `vs_6975104199c08191acb1495c86d581ce` - Conceptual docs (physics, tutorials)
+- **API Store:** `vs_697512bf81c481919ae3b7a8ffb8223a` - Python API reference (bpy.types, bpy.ops)
+
+**Documents:** ~17,430 chunks indexed (section-aware chunking)
 
 Uses OpenAI vector stores for semantic search over Blender documentation. Unlike keyword search, finds conceptually related content (e.g., searching "turbulence" also finds "vorticity", "noise_strength").
 
+**Architecture:**
+- Intent-based routing auto-detects whether to search Manual or API store
+- Each chunk has standardized headers: `DocType`, `DocPath`, `DocVersion`, `ChunkId`
+- Returns stable `doc_refs` for agent citations and guardrail validation
+
 **Tools:**
-- `semantic_search_blender_docs(query, max_results, include_code_examples)`
+- `semantic_search_blender_docs(query, max_results, include_code_examples, intent)`
+- `blender_doc_search_bundle(effect_type, description, intent, domain, max_results)`
 - `find_alternative_approaches(current_approach, issue, effect_type, exclude_techniques)`
 - `search_blender_api_by_intent(intent, domain)`
 
@@ -700,7 +710,8 @@ class StuckDetectionState:
 | `DOC_EXPERT_MODEL` | `gpt-5.2` | Docs expert model |
 | `MONTHLY_BUDGET_USD` | `20` | Monthly budget limit |
 | `STATE_DIR` | `build/orchestrator_state` | Session persistence directory |
-| `BLENDER_DOCS_VECTOR_STORE_ID` | (required) | OpenAI vector store ID |
+| `BLENDER_MANUAL_VECTOR_STORE_ID` | `vs_6975104199c08191acb1495c86d581ce` | Manual docs vector store |
+| `BLENDER_API_VECTOR_STORE_ID` | `vs_697512bf81c481919ae3b7a8ffb8223a` | API docs vector store |
 
 ### Budget Allocation
 

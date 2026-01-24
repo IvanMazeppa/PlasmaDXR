@@ -257,6 +257,46 @@ if mod_decision.fix_type == "api_pattern":
 
 ---
 
+## SDK Trace Alignment Addendum (2026-01-24)
+
+This addendum treats the Agents SDK docs as the source of truth for tracing
+behavior and explains gaps between local JSONL tracing and SDK-native tracing.
+
+### Findings (SDK-Referenced)
+1) **SDK tracing is not the primary spine.** The local JSONL flow tracker is
+   useful, but the SDK expects `trace()` + `Runner.run()` to be the canonical
+   record (see `docs/tracing.md` in the SDK).
+2) **Doc-query detection likely undercounts.** Any hook that only flags
+   `semantic_search_blender_docs` will miss `blender_doc_search_bundle`,
+   causing false "no doc query" records.
+3) **Modification output contract is not enforced by guardrails.**
+   The SDK supports output guardrails and structured outputs to enforce
+   machine-parseable parameter changes (see `docs/guardrails.md` and
+   `docs/tools.md` in the SDK).
+4) **No correlation key between local JSONL and SDK traces.** Without a shared
+   `group_id`, it is hard to match local flow events to SDK trace spans.
+
+### Recommended Changes (SDK-First)
+- Wrap every pipeline run with:
+  ```python
+  from agents import trace
+
+  with trace("VFX Pipeline", group_id=session_id):
+      result = await Runner.run(agent, prompt, max_turns=...)
+  ```
+- Update doc-query detection to include `blender_doc_search_bundle`.
+- Add an output guardrail to enforce **flat, exact Config keys** for
+  `parameter_changes` from the Modification Coordinator.
+- Add `group_id` (session_id) into each JSONL flow record so it can be
+  correlated to SDK trace spans.
+
+### Changes Applied In This Document
+- Added SDK-aligned findings and recommendations (this addendum).
+- Documented required `trace()` + `group_id` usage per SDK docs.
+- Documented doc-query detection update for the new bundled tool.
+
+---
+
 ## Verification Commands
 
 ```bash

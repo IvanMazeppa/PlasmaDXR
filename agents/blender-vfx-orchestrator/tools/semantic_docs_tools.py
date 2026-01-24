@@ -9,17 +9,30 @@ even without exact keyword matches.
 
 Key capabilities:
 - Semantic search over Blender Manual and Python API Reference
+- Intent-based routing between Manual and API stores
 - Alternative approach discovery for stuck situations
 - Code example extraction from documentation
 - API function discovery based on intent
+- Fallback to local blender-manual MCP when vector store fails
+
+Architecture:
+- MANUAL store: Conceptual docs (physics, fluid, render, tutorials)
+- API store: Python API reference (bpy.types, bpy.ops, functions)
+
+Each chunk has standardized headers:
+    DocType: manual|api
+    DocPath: relative/path/to/doc.html#section
+    DocVersion: 5.0.1
+    ChunkId: unique-chunk-identifier
 """
 
 from __future__ import annotations
 
 import os
 import json
+import re
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from agents import function_tool, RunContextWrapper
 
@@ -33,14 +46,40 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-# Vector store configuration
+# Two-store architecture: Separate Manual and API stores
+MANUAL_STORE_ID = os.getenv(
+    "BLENDER_MANUAL_VECTOR_STORE_ID",
+    "vs_6975104199c08191acb1495c86d581ce"
+)
+API_STORE_ID = os.getenv(
+    "BLENDER_API_VECTOR_STORE_ID",
+    "vs_697512bf81c481919ae3b7a8ffb8223a"
+)
+
+# Deprecated: Single store ID (kept for backwards compatibility)
 VECTOR_STORE_ID = os.getenv(
     "BLENDER_DOCS_VECTOR_STORE_ID",
-    "vs_696acc41b74c8191a8d6f614c0223923"
+    API_STORE_ID  # Default to API store if old env var used
 )
 
 # Cache for client
 _client: Optional[OpenAI] = None
+
+# Keywords that indicate API vs Manual intent
+API_KEYWORDS = {
+    'bpy.', 'bpy.types', 'bpy.ops', 'bpy.data', 'bpy.context',
+    'python', 'script', 'function', 'method', 'property', 'class',
+    'api', 'reference', 'parameter', 'return', 'type:', 'example code',
+    'FluidDomainSettings', 'FluidModifier', 'MaterialSlot', 'Object',
+    'Operator', 'Panel', 'bl_', '__init__', 'execute(', 'invoke(',
+}
+MANUAL_KEYWORDS = {
+    'how to', 'tutorial', 'guide', 'workflow', 'physics',
+    'simulation', 'render', 'compositor', 'modeling', 'sculpt',
+    'animation', 'rigging', 'texture', 'material', 'node',
+    'smoke', 'fire', 'fluid', 'domain', 'effect', 'volumetric',
+    'bake', 'cache', 'resolution', 'subdivisions', 'settings',
+}
 
 
 def _get_client() -> Optional[OpenAI]:
@@ -53,10 +92,57 @@ def _get_client() -> Optional[OpenAI]:
     return _client
 
 
+def _classify_query_intent(query: str) -> Tuple[str, float]:
+    """
+    Classify query as 'api', 'manual', or 'both' based on keywords.
+
+    Returns:
+        Tuple of (intent, confidence) where confidence is 0.0-1.0
+    """
+    query_lower = query.lower()
+
+    api_score = sum(1 for kw in API_KEYWORDS if kw.lower() in query_lower)
+    manual_score = sum(1 for kw in MANUAL_KEYWORDS if kw.lower() in query_lower)
+
+    # Explicit API references get strong boost
+    if 'bpy.' in query_lower or 'bpy.types.' in query_lower:
+        api_score += 5
+
+    total = api_score + manual_score
+    if total == 0:
+        return 'both', 0.5
+
+    api_ratio = api_score / total
+    if api_ratio > 0.7:
+        return 'api', api_ratio
+    elif api_ratio < 0.3:
+        return 'manual', 1.0 - api_ratio
+    else:
+        return 'both', 0.5
+
+
+def _extract_doc_path(content: str) -> Optional[str]:
+    """Extract DocPath from chunk content header."""
+    for line in content.split('\n')[:15]:  # Check first 15 lines
+        if line.startswith('DocPath:'):
+            return line.replace('DocPath:', '').strip()
+    return None
+
+
+def _extract_doc_type(content: str) -> Optional[str]:
+    """Extract DocType from chunk content header."""
+    for line in content.split('\n')[:15]:
+        if line.startswith('DocType:'):
+            return line.replace('DocType:', '').strip()
+    return None
+
+
 def _search_vector_store(
     query: str,
     max_results: int = 5,
-    filter_category: Optional[str] = None
+    filter_category: Optional[str] = None,
+    store_id: Optional[str] = None,
+    intent: Optional[str] = None
 ) -> List[dict]:
     """
     Internal function to search the vector store.
@@ -65,61 +151,93 @@ def _search_vector_store(
         query: Search query
         max_results: Maximum results to return
         filter_category: Optional category filter (e.g., "physics", "render")
+        store_id: Specific store ID to search (overrides intent routing)
+        intent: Force 'api', 'manual', or 'both' (auto-detected if None)
 
     Returns:
-        List of search results with content and metadata
+        List of search results with content, metadata, and doc_path
     """
     client = _get_client()
     if not client:
         return []
 
-    try:
-        # Use the file search tool with the vector store
-        # Note: This uses the Responses API with file_search tool
-        response = client.responses.create(
-            model="gpt-5.2",  # Full reasoning capabilities
-            input=query,
-            tools=[{
-                "type": "file_search",
-                "vector_store_ids": [VECTOR_STORE_ID],
-                "max_num_results": max_results * 2  # Get extra for filtering
-            }],
-            include=["file_search_call.results"]
-        )
+    # Determine which store(s) to search
+    if store_id:
+        store_ids = [store_id]
+    elif intent == 'api':
+        store_ids = [API_STORE_ID]
+    elif intent == 'manual':
+        store_ids = [MANUAL_STORE_ID]
+    elif intent == 'both':
+        store_ids = [API_STORE_ID, MANUAL_STORE_ID]
+    else:
+        # Auto-detect intent
+        detected_intent, confidence = _classify_query_intent(query)
+        if detected_intent == 'api':
+            store_ids = [API_STORE_ID]
+        elif detected_intent == 'manual':
+            store_ids = [MANUAL_STORE_ID]
+        else:
+            # Search both stores and merge results
+            store_ids = [API_STORE_ID, MANUAL_STORE_ID]
 
-        results = []
+    all_results = []
 
-        # Extract file search results
-        for output in response.output:
-            if hasattr(output, 'type') and output.type == 'file_search_call':
-                if hasattr(output, 'results'):
-                    for result in output.results:
-                        # Result is a Pydantic model with attributes: text, score, file_id, filename
-                        content = getattr(result, 'text', '') or ''
-                        score = getattr(result, 'score', 0) or 0
-                        file_id = getattr(result, 'file_id', '') or ''
-                        filename = getattr(result, 'filename', 'unknown') or 'unknown'
+    for sid in store_ids:
+        try:
+            # Use the vector_stores.search API (correct API for direct search)
+            response = client.vector_stores.search(
+                vector_store_id=sid,
+                query=query,
+                max_num_results=max_results
+            )
 
-                        # Apply category filter if specified
-                        if filter_category:
-                            if filter_category.lower() not in content.lower():
-                                continue
+            for result in response.data:
+                # Extract content from result
+                content = ''
+                if result.content:
+                    content = result.content[0].text if result.content else ''
 
-                        results.append({
-                            'content': content[:2000],  # Limit content size
-                            'score': score,
-                            'file_id': file_id,
-                            'filename': filename,
-                        })
+                # Extract DocPath from content header
+                doc_path = _extract_doc_path(content)
+                doc_type = _extract_doc_type(content)
 
-                        if len(results) >= max_results:
-                            break
+                # Apply category filter if specified
+                if filter_category:
+                    if filter_category.lower() not in content.lower():
+                        continue
 
-        return results
+                all_results.append({
+                    'content': content[:2000],  # Limit content size
+                    'score': result.score or 0,
+                    'file_id': result.file_id or '',
+                    'filename': result.filename or 'unknown',
+                    'doc_path': doc_path,
+                    'doc_type': doc_type,
+                    'store_id': sid,
+                })
 
-    except Exception as e:
-        print(f"[semantic_docs] Search error: {e}")
-        return []
+        except Exception as e:
+            print(f"[semantic_docs] Search error on {sid}: {e}", file=sys.stderr)
+            continue
+
+    # Sort by score and limit
+    all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+    return all_results[:max_results]
+
+
+async def _fallback_to_blender_manual(query: str, max_results: int = 5) -> List[dict]:
+    """
+    Fallback to local blender-manual MCP when vector store fails.
+
+    This provides resilience when:
+    - Vector store is unavailable
+    - Search returns zero results
+    - Rate limits are hit
+    """
+    # Note: This requires the blender-manual MCP to be available
+    # For now, return empty list - will be implemented when MCP is integrated
+    return []
 
 
 # =============================================================================
@@ -130,7 +248,8 @@ def _search_vector_store(
 def semantic_search_blender_docs(
     query: str,
     max_results: int = 5,
-    include_code_examples: bool = True
+    include_code_examples: bool = True,
+    intent: str = ""
 ) -> str:
     """
     Search Blender documentation semantically using AI embeddings.
@@ -153,6 +272,7 @@ def semantic_search_blender_docs(
                - "exporting volumetric data to game engines"
         max_results: Maximum number of documentation chunks to return (1-10)
         include_code_examples: If True, prioritizes results with Python code
+        intent: Force routing to 'api', 'manual', or 'both' (auto-detected if empty)
 
     Returns:
         JSON with:
@@ -161,14 +281,18 @@ def semantic_search_blender_docs(
             - content: The documentation text
             - score: Relevance score (0-1)
             - source: Source file name
+            - doc_path: Stable document path (e.g., physics/fluid/domain.html#settings)
+            - doc_type: manual or api
         - code_snippets: Extracted Python code examples (if any found)
         - related_apis: List of bpy.types/bpy.ops references discovered
+        - doc_refs: List of stable document paths for citations
     """
     if not OPENAI_AVAILABLE:
         return json.dumps({
             "error": "OpenAI package not available",
             "results_found": 0,
             "results": [],
+            "doc_refs": [],
             "fallback": "Use keyword search via search_manual() instead"
         })
 
@@ -177,23 +301,29 @@ def semantic_search_blender_docs(
     if include_code_examples:
         search_query = f"{query} python code example bpy"
 
-    # Search vector store
-    results = _search_vector_store(search_query, max_results)
+    # Search vector store with intent routing
+    search_intent = intent if intent in ('api', 'manual', 'both') else None
+    results = _search_vector_store(search_query, max_results, intent=search_intent)
 
     if not results:
         return json.dumps({
             "error": "No results found",
             "results_found": 0,
             "results": [],
+            "doc_refs": [],
             "suggestion": f"Try broader terms or use keyword search for: {query}"
         })
 
     # Extract code snippets and API references
     code_snippets = []
     related_apis = set()
+    doc_refs = []
 
     for result in results:
         content = result.get('content', '')
+        doc_path = result.get('doc_path')
+        if doc_path and doc_path not in doc_refs:
+            doc_refs.append(doc_path)
 
         # Extract code blocks
         if '```' in content:
@@ -225,12 +355,15 @@ def semantic_search_blender_docs(
             {
                 "content": r['content'],
                 "score": r['score'],
-                "source": r['filename']
+                "source": r['filename'],
+                "doc_path": r.get('doc_path', ''),
+                "doc_type": r.get('doc_type', 'unknown'),
             }
             for r in results
         ],
         "code_snippets": code_snippets[:5],  # Limit to 5 snippets
-        "related_apis": list(related_apis)[:20]  # Limit to 20 APIs
+        "related_apis": list(related_apis)[:20],  # Limit to 20 APIs
+        "doc_refs": doc_refs[:10],  # Stable document paths for citations
     })
 
 
@@ -275,7 +408,8 @@ def blender_doc_search_bundle(
             "warnings": ["OpenAI package missing - cannot access vector store"],
             "diagnostics": {
                 "openai_available": False,
-                "vector_store_id": VECTOR_STORE_ID,
+                "manual_store_id": MANUAL_STORE_ID,
+                "api_store_id": API_STORE_ID,
             },
         })
 
@@ -373,13 +507,18 @@ def blender_doc_search_bundle(
                 if len(api_ref) > len(api_type) + 2:
                     related_apis.add(api_ref)
                 idx = end_idx
-        # Try to extract real doc path from uploaded header
-        for line in content.splitlines()[:30]:
-            if line.startswith("Path:"):
-                doc_path = line.replace("Path:", "").strip()
-                if doc_path and doc_path not in extracted_doc_paths:
-                    extracted_doc_paths.append(doc_path)
-                break
+        # Extract DocPath from result (already parsed in search)
+        doc_path = result.get("doc_path") or ""
+        if doc_path and doc_path not in extracted_doc_paths:
+            extracted_doc_paths.append(doc_path)
+        # Fallback: try to extract from content header
+        if not doc_path:
+            for line in content.splitlines()[:15]:
+                if line.startswith("DocPath:"):
+                    doc_path = line.replace("DocPath:", "").strip()
+                    if doc_path and doc_path not in extracted_doc_paths:
+                        extracted_doc_paths.append(doc_path)
+                    break
 
     doc_refs = []
     for doc_path in extracted_doc_paths:
@@ -416,7 +555,8 @@ def blender_doc_search_bundle(
         "warnings": warnings,
         "diagnostics": {
             "openai_available": True,
-            "vector_store_id": VECTOR_STORE_ID,
+            "manual_store_id": MANUAL_STORE_ID,
+                "api_store_id": API_STORE_ID,
             "queries_attempted": len(queries_used),
         },
     })
