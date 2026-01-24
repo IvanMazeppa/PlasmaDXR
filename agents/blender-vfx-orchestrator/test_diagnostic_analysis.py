@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from orchestrator import create_vfx_asset
 from models.shared_context import AssetRequest, EffectType
-from hooks import DiagnosticHooks
 
 
 async def run_diagnostic_analysis(
@@ -43,33 +42,31 @@ async def run_diagnostic_analysis(
     print(f"Max Iterations: {max_iterations}")
     print()
 
-    # Create diagnostic hooks
+    # Create diagnostic trace paths
     timestamp = datetime.now().strftime("%H%M%S")
-    log_file = output_log or f"diagnostic_trace_{timestamp}.jsonl"
-    diag_hooks = DiagnosticHooks(
-        log_file=log_file,
-        verbose=True,
-        track_patterns=True,
-    )
+    log_file = output_log or f"traces/diagnostic_trace_{timestamp}.jsonl"
 
     print(f"Diagnostic log: {log_file}")
+    print(f"Flow tracker: traces/communication_flow.jsonl")
     print()
 
     # Asset name
     asset_name = f"diagnostic_{timestamp}_{effect_type}"
 
-    print("Starting asset generation...")
+    print("Starting asset generation with LOCAL TRACING ENABLED...")
     print("-" * 60)
 
     try:
-        # Use the high-level create_vfx_asset function
-        # This handles all the setup internally
+        # Use the high-level create_vfx_asset function with diagnostics enabled
+        # This enables local AI-parseable trace logging
         session = await create_vfx_asset(
             asset_name=asset_name,
             description=f"A vibrant {effect_type} effect for diagnostic analysis - BE CREATIVE AND UNIQUE",
             effect_type=effect_type,
             quality_threshold=50.0,  # Lower threshold to allow iterations
             max_iterations=max_iterations,
+            enable_diagnostics=True,  # Enable local trace logging
+            diagnostic_log=log_file,
         )
 
         print("-" * 60)
@@ -93,37 +90,75 @@ async def run_diagnostic_analysis(
     finally:
         # Print diagnostic summary
         print()
-        diag_hooks.print_summary()
 
-        # Get pattern report
-        report = diag_hooks.get_pattern_report()
+        # Try to read flow tracker data
+        flow_log = Path("traces/communication_flow.jsonl")
+        if flow_log.exists():
+            print("=" * 60)
+            print("COMMUNICATION FLOW ANALYSIS (AI-PARSEABLE)")
+            print("=" * 60)
+            print(f"Flow log: {flow_log}")
+            lines = flow_log.read_text().strip().split('\n')
+            if lines and lines[0]:
+                import json
+                flows = [json.loads(line) for line in lines if line.strip()]
+                print(f"Total flow events: {len(flows)}")
+
+                # Analyze breakdowns
+                breakdowns = [f for f in flows if f.get("event") == "flow_complete" and not f.get("success")]
+                successes = [f for f in flows if f.get("event") == "flow_complete" and f.get("success")]
+
+                print(f"Successful flows: {len(successes)}")
+                print(f"Breakdown flows: {len(breakdowns)}")
+
+                if breakdowns:
+                    print("\n⚠️ COMMUNICATION BREAKDOWNS DETECTED:")
+                    for bd in breakdowns[:5]:
+                        print(f"  Coordinator: {bd.get('coordinator', '?')}")
+                        print(f"  Decision: {bd.get('decision', '?')}")
+                        print(f"  Parameters: {bd.get('parameters', {})}")
+                        print(f"  Modify Result: {bd.get('modify_result', {})}")
+                        print()
+            print()
+
+        # Diagnostic hooks summary if available
+        diag_log = Path(log_file)
 
         print("\nDETAILED PATTERN REPORT:")
         print("-" * 40)
 
-        if report["repeated_prompts"]:
-            print("\n🔴 REPEATED PROMPTS (potential loop/template issue):")
-            for p in report["repeated_prompts"]:
-                print(f"  [{p['count']}x] {p['preview'][:80]}...")
+        if diag_log.exists():
+            import json
+            diag_lines = diag_log.read_text().strip().split('\n')
+            diag_events = [json.loads(line) for line in diag_lines if line.strip()]
 
-        if report["repeated_tool_calls"]:
-            print("\n🔴 REPEATED TOOL CALLS (potential stuck agent):")
-            for t in report["repeated_tool_calls"]:
-                print(f"  [{t['count']}x] {t['tool']}")
+            # Count pattern types
+            pattern_events = [e for e in diag_events if e.get("type") == "pattern_detected"]
+            repeated_prompts = [e for e in pattern_events if e.get("pattern_type") == "repeated_prompt"]
+            repeated_tools = [e for e in pattern_events if e.get("pattern_type") == "repeated_tool_call"]
+            repeated_outputs = [e for e in pattern_events if e.get("pattern_type") == "repeated_output"]
 
-        if report["repeated_outputs"]:
-            print("\n🔴 REPEATED OUTPUTS (potential training data reversion):")
-            for o in report["repeated_outputs"]:
-                print(f"  [{o['count']}x] {o['type']}: {o['preview'][:60]}...")
+            print(f"\nDiagnostic trace: {log_file} ({len(diag_events)} events)")
 
-        # Check if log file has events
-        log_path = Path(log_file)
-        if log_path.exists():
-            line_count = sum(1 for _ in open(log_path))
-            print(f"\nDiagnostic trace: {log_file} ({line_count} events)")
+            if repeated_prompts:
+                print("\n🔴 REPEATED PROMPTS (potential loop/template issue):")
+                for p in repeated_prompts[:5]:
+                    print(f"  [{p.get('count', '?')}x] {p.get('preview', '?')[:80]}...")
+
+            if repeated_tools:
+                print("\n🔴 REPEATED TOOL CALLS (potential stuck agent):")
+                for t in repeated_tools[:5]:
+                    print(f"  [{t.get('count', '?')}x] {t.get('tool_name', '?')}")
+
+            if repeated_outputs:
+                print("\n🔴 REPEATED OUTPUTS (potential training data reversion):")
+                for o in repeated_outputs[:5]:
+                    print(f"  [{o.get('count', '?')}x] {o.get('output_type', '?')}: {o.get('preview', '?')[:60]}...")
+
+            if not pattern_events:
+                print("\n✓ No repeated patterns detected")
         else:
-            print(f"\nNote: Diagnostic hooks weren't integrated into pipeline.")
-            print("To fully trace, hooks need to be passed to Runner.run() calls.")
+            print(f"\nNote: Diagnostic log not found at {log_file}")
 
         # Analysis suggestions
         print("\n" + "=" * 60)

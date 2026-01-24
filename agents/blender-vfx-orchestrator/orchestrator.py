@@ -62,6 +62,8 @@ from hooks import (
     LoopDetectedError,
     DocQueryRequiredError,
     TurnBudgetExceededError,
+    CommunicationFlowTracker,
+    DiagnosticHooks,
 )
 from hooks.enforcement_hooks import (
     create_research_hooks,
@@ -832,6 +834,13 @@ class BlenderVFXOrchestrator:
         # Config system for preset-based settings
         self._config: AgentConfigManager = get_config()
         print(f"[Orchestrator] Using preset: {self._config.preset.name} ({self._config.preset.description})", file=sys.stderr)
+
+        # Local tracing for AI-parseable analysis
+        # Tracks Coordinator → modify_script communication flow
+        self._flow_tracker = CommunicationFlowTracker(
+            log_file=str(Path(__file__).parent / "traces" / "communication_flow.jsonl")
+        )
+        self._diagnostic_hooks: Optional[DiagnosticHooks] = None
 
     def _get_model_settings(self, agent_name: str) -> tuple[str, ModelSettings]:
         """
@@ -1774,6 +1783,14 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                     print(f"[Pipeline] Coordinator provided params: {mod_decision.parameter_changes}", file=sys.stderr)
                                     output_name = f"{request.asset_name}_iter{iteration}_coordfix"
 
+                                    # Record Coordinator output for flow tracking
+                                    self._flow_tracker.record_coordinator_output(
+                                        coordinator="ModificationCoordinator",
+                                        decision=mod_decision.action,
+                                        parameters=mod_decision.parameter_changes,
+                                        reasoning=mod_decision.reasoning[:200] if mod_decision.reasoning else ""
+                                    )
+
                                     modify_result_json = _modify_script_impl(
                                         script_path=previous_script.script_path,
                                         modifications=mod_decision.parameter_changes,
@@ -1784,6 +1801,13 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                     # Track changes made for communication breakdown detection
                                     changes_made = modify_result.get("changes_made", [])
                                     params_changed = modify_result.get("parameters_changed", {})
+
+                                    # Record modify result for flow tracking
+                                    self._flow_tracker.record_modify_result(
+                                        changes_made=changes_made,
+                                        success=modify_result.get("success", False) and len(changes_made) > 0,
+                                        error=modify_result.get("error", "")
+                                    )
 
                                     if modify_result.get("success") and modify_result.get("modified_path"):
                                         print(f"[Pipeline] Coordinator modification SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
@@ -2706,6 +2730,8 @@ async def create_vfx_asset(
     frame_end: int = 50,
     quality_threshold: float = 60.0,
     max_iterations: int = 5,
+    enable_diagnostics: bool = False,
+    diagnostic_log: Optional[str] = None,
 ) -> SessionState:
     """
     Convenience function to create a VFX asset.
@@ -2719,6 +2745,8 @@ async def create_vfx_asset(
         frame_end: Animation end frame
         quality_threshold: Minimum quality score to pass
         max_iterations: Maximum iteration attempts
+        enable_diagnostics: Enable diagnostic hooks for local AI-parseable traces
+        diagnostic_log: Path for diagnostic log file (default: traces/diagnostic_{asset_name}.jsonl)
 
     Returns:
         SessionState with results
@@ -2740,8 +2768,36 @@ async def create_vfx_asset(
     )
 
     orchestrator = await get_orchestrator()
+
+    # Enable diagnostic hooks if requested
+    if enable_diagnostics:
+        log_path = diagnostic_log or str(
+            Path(__file__).parent / "traces" / f"diagnostic_{asset_name}.jsonl"
+        )
+        orchestrator._diagnostic_hooks = DiagnosticHooks(
+            log_file=log_path,
+            verbose=True,
+            track_patterns=True,
+        )
+        print(f"[Orchestrator] Diagnostics enabled: {log_path}", file=sys.stderr)
+
     # Phase 2: Use the pipeline-based orchestration with Coordinators
-    return await orchestrator.create_asset_pipeline(request)
+    result = await orchestrator.create_asset_pipeline(request)
+
+    # Print diagnostic summary if enabled
+    if enable_diagnostics and orchestrator._diagnostic_hooks:
+        orchestrator._diagnostic_hooks.print_summary()
+        print(f"\n[Orchestrator] Flow tracker analysis:", file=sys.stderr)
+        flow_analysis = orchestrator._flow_tracker.analyze()
+        print(f"  Total flows: {flow_analysis['total_flows']}", file=sys.stderr)
+        print(f"  Successful: {flow_analysis['successful']}", file=sys.stderr)
+        print(f"  Breakdowns: {flow_analysis['breakdowns']}", file=sys.stderr)
+        if flow_analysis['breakdown_details']:
+            print(f"  Breakdown details:", file=sys.stderr)
+            for bd in flow_analysis['breakdown_details'][:3]:
+                print(f"    - {bd['coordinator']}: {bd['decision']} -> {bd['parameters']}", file=sys.stderr)
+
+    return result
 
 
 async def resume_vfx_session(session_id: str) -> SessionState:
