@@ -2,6 +2,10 @@
 Agent Configuration Manager.
 
 Loads presets from YAML and provides agent-specific settings with overrides.
+
+GPT-5 Parameter Compatibility (from OpenAI Platform docs):
+- gpt-5.2/gpt-5.1: temperature/top_p/logprobs ONLY supported with reasoning_effort=none
+- gpt-5/gpt-5-mini/gpt-5-nano: NO temperature support, use text.verbosity and max_output_tokens
 """
 
 from __future__ import annotations
@@ -20,28 +24,60 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path(__file__).parent
 PRESETS_FILE = CONFIG_DIR / "presets.yaml"
 
+# Models that support temperature (only with reasoning_effort=none)
+TEMPERATURE_SUPPORTED_MODELS = {"gpt-5.2", "gpt-5.1"}
+
+# Models that DON'T support temperature at all
+NO_TEMPERATURE_MODELS = {"gpt-5", "gpt-5-mini", "gpt-5-nano"}
+
 
 @dataclass
 class AgentSettings:
     """Settings for a single agent."""
     model: str = "gpt-5.2"
-    reasoning_effort: str = "none"  # none, low, medium, high
-    temperature: float = 0.5
+    reasoning_effort: str = "none"  # none, low, medium, high, xhigh
+    temperature: Optional[float] = None  # Only for gpt-5.2/5.1 with reasoning=none
+    verbosity: str = "medium"  # low, medium, high - for text output control
+    max_output_tokens: Optional[int] = None
     max_turns: int = 10
     verbose: bool = False
 
     def to_model_settings(self) -> Dict[str, Any]:
-        """Convert to SDK ModelSettings kwargs."""
+        """
+        Convert to SDK ModelSettings kwargs.
+
+        Handles parameter compatibility based on model type:
+        - gpt-5.2/gpt-5.1: temperature only with reasoning_effort=none
+        - gpt-5/gpt-5-mini/gpt-5-nano: use text.verbosity, max_output_tokens
+        """
         settings = {}
 
-        # GPT-5.2 constraint: temperature/top_p/logprobs only work with reasoning=none
-        uses_reasoning = self.reasoning_effort != "none" and self.model.startswith("gpt-5")
+        # Determine model category
+        model_supports_temperature = any(
+            self.model.startswith(m) for m in TEMPERATURE_SUPPORTED_MODELS
+        )
+        model_no_temperature = any(
+            self.model == m or self.model.startswith(m + "-")
+            for m in NO_TEMPERATURE_MODELS
+        )
 
-        if uses_reasoning:
+        # Handle reasoning effort
+        if self.reasoning_effort != "none":
             settings["reasoning"] = {"effort": self.reasoning_effort}
-            # Cannot use temperature with reasoning enabled
-        else:
-            settings["temperature"] = self.temperature
+
+        # Handle temperature (only for gpt-5.2/5.1 with reasoning=none)
+        if model_supports_temperature and self.reasoning_effort == "none":
+            if self.temperature is not None:
+                settings["temperature"] = self.temperature
+
+        # Handle text verbosity (alternative to temperature for gpt-5-mini/nano)
+        if model_no_temperature or self.reasoning_effort != "none":
+            if self.verbosity:
+                settings["text"] = {"verbosity": self.verbosity}
+
+        # Handle max_output_tokens
+        if self.max_output_tokens:
+            settings["max_output_tokens"] = self.max_output_tokens
 
         return settings
 
@@ -53,7 +89,9 @@ class PresetConfig:
     description: str = ""
     default_model: str = "gpt-5.2"
     reasoning_effort: str = "none"
-    temperature: float = 0.5
+    temperature: Optional[float] = None
+    verbosity: str = "medium"
+    max_output_tokens: Optional[int] = None
     max_turns: int = 10
     max_iterations: int = 3
     verbose: bool = False
@@ -64,9 +102,11 @@ class PresetConfig:
         return cls(
             name=name,
             description=data.get("description", ""),
-            default_model=data.get("default_model", "gpt-4.1"),
+            default_model=data.get("default_model", "gpt-5.2"),
             reasoning_effort=data.get("reasoning_effort", "none"),
-            temperature=data.get("temperature", 0.5),
+            temperature=data.get("temperature"),  # None if not specified
+            verbosity=data.get("verbosity", "medium"),
+            max_output_tokens=data.get("max_output_tokens"),
             max_turns=data.get("max_turns", 10),
             max_iterations=data.get("max_iterations", 3),
             verbose=data.get("verbose", False),
@@ -161,6 +201,8 @@ class AgentConfigManager:
             model=self.preset.default_model,
             reasoning_effort=self.preset.reasoning_effort,
             temperature=self.preset.temperature,
+            verbosity=self.preset.verbosity,
+            max_output_tokens=self.preset.max_output_tokens,
             max_turns=self.preset.max_turns,
             verbose=self.preset.verbose,
         )
@@ -174,6 +216,10 @@ class AgentConfigManager:
                 settings.reasoning_effort = overrides["reasoning_effort"]
             if "temperature" in overrides:
                 settings.temperature = overrides["temperature"]
+            if "verbosity" in overrides:
+                settings.verbosity = overrides["verbosity"]
+            if "max_output_tokens" in overrides:
+                settings.max_output_tokens = overrides["max_output_tokens"]
             if "max_turns" in overrides:
                 settings.max_turns = overrides["max_turns"]
             if "verbose" in overrides:
@@ -241,6 +287,8 @@ if __name__ == "__main__":
     print(f"  Model: {config.preset.default_model}")
     print(f"  Reasoning: {config.preset.reasoning_effort}")
     print(f"  Temperature: {config.preset.temperature}")
+    print(f"  Verbosity: {config.preset.verbosity}")
+    print(f"  Max Output Tokens: {config.preset.max_output_tokens}")
     print(f"  Max Turns: {config.preset.max_turns}")
     print(f"  Max Iterations: {config.preset.max_iterations}")
 
@@ -249,9 +297,10 @@ if __name__ == "__main__":
                   "quality_analyst", "learning_agent",
                   "technique_coordinator", "modification_coordinator"]:
         settings = config.get_agent_settings(agent)
+        model_settings = settings.to_model_settings()
         print(f"  {agent}:")
-        print(f"    model={settings.model}, reasoning={settings.reasoning_effort}, "
-              f"temp={settings.temperature}, turns={settings.max_turns}")
+        print(f"    model={settings.model}, reasoning={settings.reasoning_effort}")
+        print(f"    SDK settings: {model_settings}")
 
     print(f"\nAvailable Presets:")
     for name, desc in config.list_presets().items():

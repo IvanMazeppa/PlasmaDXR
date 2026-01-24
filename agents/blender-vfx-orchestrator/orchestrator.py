@@ -72,6 +72,8 @@ from hooks.enforcement_hooks import (
 
 # Phase 3: Input/Output Guardrails for agent validation
 from guardrails import (
+    # Research Agent guardrails
+    validate_research_output,
     # Script Writer guardrails
     require_research_context,
     validate_effect_type,
@@ -1085,6 +1087,8 @@ STOP after T4. Do NOT retry tools. Return structured output only.""",
                 search_code_patterns,
                 list_patterns_by_effect,
             ],
+            # Phase 3: Output guardrail to enforce doc_refs
+            output_guardrails=[validate_research_output],
         )
 
         # Script Writer with structured output

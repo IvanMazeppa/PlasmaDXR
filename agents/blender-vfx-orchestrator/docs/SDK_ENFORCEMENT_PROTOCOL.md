@@ -311,6 +311,9 @@ result = await Runner.run(research_agent, prompt, max_turns=4)
 research_output: ResearchOutput = result.final_output
 ```
 
+**Enforcement (Phase 3):**
+- `doc_refs` must be non-empty; enforced by `validate_research_output` output guardrail.
+
 ### Turn Budget Alignment
 
 | Agent | Prompt Target | Hard Limit | Notes |

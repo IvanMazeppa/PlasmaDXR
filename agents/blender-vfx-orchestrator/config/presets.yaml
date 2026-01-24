@@ -1,30 +1,36 @@
 # VFX Orchestrator Agent Presets
 # Select preset via: ORCHESTRATOR_PRESET=quick_test
 #
-# Available models:
-#   gpt-5.1-mini  - Fast, cost-effective (best for quick tests)
-#   gpt-5.1-nano  - Fastest, lowest cost (basic tasks only)
-#   gpt-5.2       - Full capability (production quality)
+# Available models (from OpenAI Platform docs):
+#   gpt-5.2       - Latest, supports temperature ONLY when reasoning_effort=none
+#   gpt-5-mini    - Fast, cost-effective (NO temperature support)
+#   gpt-5-nano    - Fastest, lowest cost (NO temperature support)
 #
-# Reasoning effort: none, low, medium, high
-# Note: temperature only works when reasoning_effort=none
+# Parameter compatibility:
+#   - temperature/top_p/logprobs: ONLY gpt-5.2/gpt-5.1 with reasoning_effort=none
+#   - gpt-5-mini/gpt-5-nano: Use text.verbosity and max_output_tokens instead
+#
+# Reasoning effort: none, low, medium, high, xhigh
 
 presets:
   # Fast iteration - minimal cost, quick feedback
   quick_test:
-    description: "Fast iteration with minimal cost (gpt-5.1-mini)"
-    default_model: gpt-5.1-mini
-    reasoning_effort: none
-    temperature: 0.3
+    description: "Fast iteration with minimal cost (gpt-5-mini)"
+    default_model: gpt-5-mini
+    reasoning_effort: low
+    # No temperature - gpt-5-mini doesn't support it
+    verbosity: medium
+    max_output_tokens: 2000
     max_turns: 5
     max_iterations: 2
 
   # Standard development - balanced cost/quality
   development:
-    description: "Balanced settings for development (gpt-5.1-mini)"
-    default_model: gpt-5.1-mini
-    reasoning_effort: none
-    temperature: 0.5
+    description: "Balanced settings for development (gpt-5-mini)"
+    default_model: gpt-5-mini
+    reasoning_effort: medium
+    verbosity: medium
+    max_output_tokens: 4000
     max_turns: 10
     max_iterations: 3
 
@@ -33,44 +39,59 @@ presets:
     description: "Maximum quality for final assets (gpt-5.2)"
     default_model: gpt-5.2
     reasoning_effort: medium
-    temperature: 0.7
+    # No temperature when using reasoning
+    verbosity: high
+    max_output_tokens: 8000
     max_turns: 15
     max_iterations: 5
 
   # Budget saver - absolute minimum
   budget_saver:
-    description: "Minimum cost, basic functionality (gpt-5.1-nano)"
-    default_model: gpt-5.1-nano
-    reasoning_effort: none
-    temperature: 0.2
+    description: "Minimum cost, basic functionality (gpt-5-nano)"
+    default_model: gpt-5-nano
+    reasoning_effort: low
+    verbosity: low
+    max_output_tokens: 1000
     max_turns: 3
     max_iterations: 1
 
   # Debug mode - verbose, detailed tracing
   debug:
-    description: "Verbose output for debugging (gpt-5.1-mini)"
-    default_model: gpt-5.1-mini
-    reasoning_effort: none
-    temperature: 0.5
+    description: "Verbose output for debugging (gpt-5-mini)"
+    default_model: gpt-5-mini
+    reasoning_effort: low
+    verbosity: high
+    max_output_tokens: 4000
     max_turns: 8
     max_iterations: 2
     verbose: true
 
   # Reasoning mode - uses full reasoning for complex tasks
   reasoning:
-    description: "Uses reasoning model for complex decisions (gpt-5.2)"
+    description: "Uses high reasoning for complex decisions (gpt-5.2)"
     default_model: gpt-5.2
-    reasoning_effort: medium
-    temperature: 1.0  # Ignored when reasoning enabled
+    reasoning_effort: high
+    verbosity: medium
+    max_output_tokens: 8000
+    max_turns: 10
+    max_iterations: 3
+
+  # Creative mode - gpt-5.2 with temperature (reasoning=none)
+  creative:
+    description: "Creative mode with temperature control (gpt-5.2, no reasoning)"
+    default_model: gpt-5.2
+    reasoning_effort: none
+    temperature: 0.7
+    max_output_tokens: 4000
     max_turns: 10
     max_iterations: 3
 
 # Per-agent overrides (applied on top of preset)
 # Use when specific agents need different settings
 agent_overrides:
-  # Script Writer benefits from slightly higher temp for creativity
+  # Script Writer benefits from higher verbosity for code
   script_writer:
-    temperature: 0.4
+    verbosity: high
 
   # Coordinators are quick decisions
   technique_coordinator:

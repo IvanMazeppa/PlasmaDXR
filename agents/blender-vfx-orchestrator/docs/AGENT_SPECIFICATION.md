@@ -180,7 +180,8 @@ Request → create_asset_pipeline()
 **Model:** `gpt-5.2` with `reasoning.effort="medium"`
 **Role:** Research best approach for VFX effect BEFORE script generation (Phase 0)
 **Output Type:** `ResearchOutput` (Pydantic schema)
-**RunHooks:** `create_research_hooks()` - max 3 same-tool calls, 4 turns
+**Guardrails:** `validate_research_output` (output)
+**RunHooks:** `create_research_hooks()` - max 4 same-tool calls, 4 turns
 
 ##### Turn Budget
 | Target | Hard Limit | Usage |

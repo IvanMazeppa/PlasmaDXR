@@ -111,7 +111,7 @@ OUTPUT (ResearchOutput - Phase 3 schema):
 - key_parameters: Dict[str, Any] (from patterns/docs)
 - api_modules: List[str] (from API search)
 - code_patterns: List[{pattern_id, issue, code_snippet}]
-- warnings: List[str] (from knowledge base)
+- warnings: List[str] (from docs/patterns; knowledge base if available)
 - alternative_approaches: List[str] (from find_alternative_approaches)
 - doc_refs: List[str] (Blender 5.0 doc refs - REQUIRED)
 

@@ -292,7 +292,25 @@ obj.visible_shadow = False
 ```
 
 ### use_nodes Deprecated:
-`material.use_nodes = True` works but shows deprecation warning.
+`material.use_nodes = True` works but shows deprecation warning. Skip these lines entirely.
+
+### ColorRamp.elements.clear() REMOVED (Blender 5.0):
+The `color_ramp.elements.clear()` method does NOT exist. Remove elements individually:
+```python
+# OLD (FAILS in Blender 5.0):
+ramp.color_ramp.elements.clear()  # AttributeError: 'bpy_prop_collection' has no attribute 'clear'
+
+# NEW (Blender 5.0) - Remove elements by index:
+while len(ramp.color_ramp.elements) > 1:  # Keep at least 1 element
+    ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
+
+# OR: Just set positions/colors on existing elements:
+ramp.color_ramp.elements[0].position = 0.0
+ramp.color_ramp.elements[0].color = (1.0, 0.0, 0.0, 1.0)
+# Add new elements with .new(position)
+ramp.color_ramp.elements.new(0.5)
+ramp.color_ramp.elements[1].color = (1.0, 1.0, 0.0, 1.0)
+```
 
 ### World May Not Exist (CRITICAL - Blender 5.0):
 In Blender 5.0, `scene.world` may be None when starting from a new/bare scene.

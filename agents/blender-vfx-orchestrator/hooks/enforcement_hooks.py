@@ -466,11 +466,11 @@ def create_research_hooks() -> EnforcementHooks:
     domain, flow, mesh, particles, materials, environment, etc.
     """
     config = EnforcementConfig(
-        max_same_tool_calls=6,  # Allow parallel searches for complex topics
-        max_consecutive_same_tool=4,  # But not 4+ in a row without processing
-        max_exempt_tool_calls=10,
-        max_turns=10,
-        hard_turn_limit=15,
+        max_same_tool_calls=4,  # Phase 3: tighter research budget
+        max_consecutive_same_tool=3,
+        max_exempt_tool_calls=6,
+        max_turns=4,
+        hard_turn_limit=6,
         require_doc_query_before=[],  # Research agents ARE the doc queries
         raise_on_loop=True,
         raise_on_doc_missing=False,

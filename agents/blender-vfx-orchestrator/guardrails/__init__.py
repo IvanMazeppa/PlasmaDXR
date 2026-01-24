@@ -48,6 +48,10 @@ from guardrails.script_guardrails import (
     validate_script_output,
 )
 
+from guardrails.research_guardrails import (
+    validate_research_output,
+)
+
 from guardrails.quality_guardrails import (
     check_budget_before_quality,
     validate_quality_output,
@@ -60,6 +64,8 @@ from guardrails.coordinator_guardrails import (
 )
 
 __all__ = [
+    # Research Agent guardrails
+    "validate_research_output",
     # Script Writer guardrails
     "require_research_context",
     "validate_effect_type",
