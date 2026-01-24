@@ -123,6 +123,9 @@ async def run_diagnostic_analysis(
 
         # Diagnostic hooks summary if available
         diag_log = Path(log_file)
+        repeated_prompts = []
+        repeated_tools = []
+        repeated_outputs = []
 
         print("\nDETAILED PATTERN REPORT:")
         print("-" * 40)
@@ -165,19 +168,22 @@ async def run_diagnostic_analysis(
         print("ANALYSIS SUGGESTIONS")
         print("=" * 60)
 
-        if len(report.get("repeated_prompts", [])) > 0:
-            print("⚠️  Repeated prompts detected - check if the same prompt")
-            print("   structure is being sent to agents across iterations.")
+        if diag_log.exists():
+            if repeated_prompts:
+                print("⚠️  Repeated prompts detected - check if the same prompt")
+                print("   structure is being sent to agents across iterations.")
 
-        if len(report.get("repeated_tool_calls", [])) > 0:
-            print("⚠️  Repeated tool calls detected - agents may be stuck")
-            print("   in a pattern. Check enforcement hooks configuration.")
+            if repeated_tools:
+                print("⚠️  Repeated tool calls detected - agents may be stuck")
+                print("   in a pattern. Check enforcement hooks configuration.")
 
-        if len(report.get("repeated_outputs", [])) > 0:
-            print("⚠️  Repeated outputs detected - this could indicate:")
-            print("   1. Training data patterns overriding instructions")
-            print("   2. Insufficient variety in prompts/research")
-            print("   3. Legacy code paths being triggered")
+            if repeated_outputs:
+                print("⚠️  Repeated outputs detected - this could indicate:")
+                print("   1. Training data patterns overriding instructions")
+                print("   2. Insufficient variety in prompts/research")
+                print("   3. Legacy code paths being triggered")
+        else:
+            print("No diagnostic data available - run with OPENAI_API_KEY set")
 
         # Check generated scripts for similarity
         print("\n" + "=" * 60)

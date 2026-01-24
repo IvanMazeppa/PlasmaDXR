@@ -116,12 +116,42 @@ while len(\1) > 1:
         r".use_dissolve =",
         "use_dissolve_smoke → use_dissolve"
     ),
+    # Fluid domain adaptive flag renamed
+    (
+        r"\.adaptive_domain\s*=",
+        r".use_adaptive_domain =",
+        "adaptive_domain → use_adaptive_domain"
+    ),
+    # Fix accidental double-prefix from corrections
+    (
+        r"\.use_use_adaptive_domain\s*=",
+        r".use_adaptive_domain =",
+        "use_use_adaptive_domain → use_adaptive_domain"
+    ),
+    # Invalid flow behavior enum (GAS -> INFLOW)
+    (
+        r"flow_behavior\s*=\s*['\"]GAS['\"]",
+        r"flow_behavior = 'INFLOW'",
+        "flow_behavior GAS → INFLOW"
+    ),
+    # Invalid flow type enum (GAS -> FIRE)
+    (
+        r"flow_type\s*=\s*['\"]GAS['\"]",
+        r"flow_type = 'FIRE'",
+        "flow_type GAS → FIRE"
+    ),
 
     # Fluid behavior constants changed
     (
         r"flow_behavior\s*=\s*['\"]INFLOW_OUTFLOW['\"]",
         r"flow_behavior = 'INFLOW'",
         "INFLOW_OUTFLOW → INFLOW"
+    ),
+    # FluidDomainSettings.use_caching removed in Blender 5.0
+    (
+        r"(?m)^.*\.use_caching\s*=\s*.*$",
+        r"# Blender 5.0: use_caching removed (line deleted)",
+        "use_caching removed"
     ),
 ]
 

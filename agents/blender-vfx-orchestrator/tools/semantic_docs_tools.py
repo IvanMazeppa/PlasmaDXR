@@ -235,6 +235,194 @@ def semantic_search_blender_docs(
 
 
 @function_tool
+def blender_doc_search_bundle(
+    effect_type: str,
+    description: str = "",
+    intent: str = "",
+    domain: str = "Mantaflow",
+    max_results: int = 6
+) -> str:
+    """
+    Multi-query Blender 5.0 doc search with internal fallbacks.
+
+    This reduces tool-call count by batching multiple queries into ONE tool call.
+    Use when you need robust doc grounding without hitting turn limits.
+
+    Args:
+        effect_type: Effect type (fire, explosion, smoke, etc.)
+        description: Natural language request/goal
+        intent: Specific intent to search (optional)
+        domain: Domain focus (default: Mantaflow)
+        max_results: Max results to return (1-10)
+
+    Returns:
+        JSON with:
+        - queries_used: list of queries executed
+        - results_found: number of results
+        - results: list of doc chunks (content, score, source, query)
+        - code_snippets: extracted Python snippets (if any)
+        - related_apis: bpy.* references discovered
+        - doc_refs: list of source filenames
+        - warnings: list of warnings (if any)
+        - diagnostics: status info
+    """
+    if not OPENAI_AVAILABLE:
+        return json.dumps({
+            "error": "OpenAI package not available",
+            "results_found": 0,
+            "results": [],
+            "doc_refs": ["doc_search_unavailable"],
+            "warnings": ["OpenAI package missing - cannot access vector store"],
+            "diagnostics": {
+                "openai_available": False,
+                "vector_store_id": VECTOR_STORE_ID,
+            },
+        })
+
+    queries = []
+    if description:
+        queries.append(description)
+    if effect_type:
+        queries.append(f"{effect_type} {domain} simulation Blender 5.0")
+        queries.append(f"{effect_type} smoke fire pyro mantaflow settings")
+        queries.append(f"{effect_type} volumetric shader principled volume")
+    if intent:
+        queries.append(f"{intent} bpy python")
+
+    queries.append(f"{domain} cache settings bpy.types.FluidDomainSettings")
+    queries.append("Blender 5.0 Mantaflow domain settings")
+
+    # De-duplicate while preserving order
+    queries = [q.strip() for q in queries if q and q.strip()]
+    seen_queries = set()
+    ordered_queries = []
+    for q in queries:
+        if q.lower() in seen_queries:
+            continue
+        seen_queries.add(q.lower())
+        ordered_queries.append(q)
+
+    results = []
+    seen_results = set()
+    queries_used = []
+
+    for q in ordered_queries:
+        batch = _search_vector_store(q, max_results=max_results)
+        queries_used.append(q)
+        for r in batch:
+            key = (
+                r.get("file_id", ""),
+                r.get("filename", ""),
+                (r.get("content", "") or "")[:120],
+            )
+            if key in seen_results:
+                continue
+            seen_results.add(key)
+            r["query"] = q
+            results.append(r)
+        if len(results) >= max_results:
+            break
+
+    # Final fallback if nothing found
+    warnings = []
+    if not results:
+        warnings.append("No doc results from bundled queries. Check vector store ID or coverage.")
+        fallback_queries = [
+            "bpy.types.FluidDomainSettings",
+            "bpy.ops.fluid.bake",
+            "Blender 5.0 manual fluid simulation",
+        ]
+        for q in fallback_queries:
+            batch = _search_vector_store(q, max_results=max_results)
+            queries_used.append(q)
+            for r in batch:
+                key = (
+                    r.get("file_id", ""),
+                    r.get("filename", ""),
+                    (r.get("content", "") or "")[:120],
+                )
+                if key in seen_results:
+                    continue
+                seen_results.add(key)
+                r["query"] = q
+                results.append(r)
+            if results:
+                break
+
+    # Extract code snippets and API references
+    code_snippets = []
+    related_apis = set()
+    extracted_doc_paths = []
+    for result in results:
+        content = result.get("content", "") or ""
+        if "```" in content:
+            parts = content.split("```")
+            for i, part in enumerate(parts):
+                if i % 2 == 1:
+                    code_snippets.append(part.strip()[:500])
+        for api_type in ["bpy.types.", "bpy.ops.", "bpy.data.", "bpy.context."]:
+            idx = 0
+            while True:
+                idx = content.find(api_type, idx)
+                if idx == -1:
+                    break
+                end_idx = idx + len(api_type)
+                while end_idx < len(content) and (content[end_idx].isalnum() or content[end_idx] in "._"):
+                    end_idx += 1
+                api_ref = content[idx:end_idx]
+                if len(api_ref) > len(api_type) + 2:
+                    related_apis.add(api_ref)
+                idx = end_idx
+        # Try to extract real doc path from uploaded header
+        for line in content.splitlines()[:30]:
+            if line.startswith("Path:"):
+                doc_path = line.replace("Path:", "").strip()
+                if doc_path and doc_path not in extracted_doc_paths:
+                    extracted_doc_paths.append(doc_path)
+                break
+
+    doc_refs = []
+    for doc_path in extracted_doc_paths:
+        if doc_path not in doc_refs:
+            doc_refs.append(doc_path)
+    for r in results:
+        filename = r.get("filename", "") or ""
+        if filename and filename not in doc_refs:
+            doc_refs.append(filename)
+
+    if not doc_refs:
+        doc_refs = ["doc_search_empty"]
+
+    return json.dumps({
+        "effect_type": effect_type,
+        "queries_used": queries_used,
+        "results_found": len(results),
+        "results": [
+            {
+                "content": r.get("content", ""),
+                "score": r.get("score", 0),
+                "source": r.get("filename", "unknown"),
+                "doc_path": next(
+                    (p for p in extracted_doc_paths if p in (r.get("content", "") or "")),
+                    ""
+                ),
+                "query": r.get("query", ""),
+            }
+            for r in results[:max_results]
+        ],
+        "code_snippets": code_snippets[:5],
+        "related_apis": list(related_apis)[:20],
+        "doc_refs": doc_refs[:10],
+        "warnings": warnings,
+        "diagnostics": {
+            "openai_available": True,
+            "vector_store_id": VECTOR_STORE_ID,
+            "queries_attempted": len(queries_used),
+        },
+    })
+
+
+@function_tool
 def find_alternative_approaches(
     wrapper: RunContextWrapper[SharedContext],
     current_approach: str,

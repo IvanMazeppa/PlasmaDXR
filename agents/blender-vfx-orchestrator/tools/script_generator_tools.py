@@ -774,6 +774,28 @@ def _modify_script_impl(
         for param, value in modifications.items():
             param_upper = param.upper()
 
+            # Handle explicit deletion directives (e.g., "settings.use_caching (delete this line)")
+            if isinstance(value, str) and any(
+                marker in value.lower()
+                for marker in ("delete this line", "remove this line", "delete line", "remove line")
+            ):
+                # Extract target token to remove
+                target = value.split("(")[0].strip()
+                target = target if target else param
+
+                lines = content.split("\n")
+                removed_any = False
+                for i, line in enumerate(lines):
+                    if target in line and not line.strip().startswith("#"):
+                        lines[i] = f"# REMOVED: {line.strip()}"
+                        removed_any = True
+
+                if removed_any:
+                    content = "\n".join(lines)
+                    changes_made.append(f"REMOVED line containing '{target}'")
+                    params_changed[param] = {"from": target, "to": "REMOVED"}
+                    continue
+
             # First, find the Config class boundaries
             config_class_pattern = r"(class Config:.*?)((?=\ndef\s|\nclass\s|\Z))"
             config_match = re.search(config_class_pattern, content, re.DOTALL)

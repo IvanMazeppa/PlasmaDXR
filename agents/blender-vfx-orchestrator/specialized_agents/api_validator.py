@@ -94,10 +94,15 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "effector_weights",
         "reason": "effector_weights moved from modifier to domain settings in 5.0"
     },
-    # FluidFlowSettings changes
-    "flow_type": {
-        "correction": "flow_behavior",
-        "reason": "Renamed in Blender 5.0 FluidFlowSettings"
+    # FluidDomainSettings.use_caching removed (Blender 5.0)
+    ".use_caching": {
+        "correction": "# use_caching removed in Blender 5.0 - delete this line",
+        "reason": "FluidDomainSettings.use_caching was removed in Blender 5.0"
+    },
+    # FluidDomainSettings.adaptive_domain renamed (Blender 5.0)
+    ".adaptive_domain": {
+        "correction": ".use_adaptive_domain",
+        "reason": "FluidDomainSettings.adaptive_domain renamed to use_adaptive_domain in Blender 5.0"
     },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {

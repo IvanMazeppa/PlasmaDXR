@@ -62,6 +62,7 @@ from .proactive_research_tools import (
 
 from .semantic_docs_tools import (
     semantic_search_blender_docs,
+    blender_doc_search_bundle,
     find_alternative_approaches,
     search_blender_api_by_intent,
     # Direct callable versions
@@ -129,6 +130,7 @@ __all__ = [
     "search_alternative_approaches",
     # Semantic Docs (Strategy 1)
     "semantic_search_blender_docs",
+    "blender_doc_search_bundle",
     "find_alternative_approaches",
     "search_blender_api_by_intent",
     "semantic_search_impl",

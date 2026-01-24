@@ -75,6 +75,10 @@ from tools.physics_observation_tools import (
     get_physics_patterns,
 )
 
+# Doc mining tools (optional fallback when KB is empty)
+from tools.semantic_docs_tools import (
+    blender_doc_search_bundle,
+)
 # Import dynamic instructions for self-learning
 from tools.dynamic_instructions import (
     dynamic_learning_agent_instructions,
@@ -166,6 +170,8 @@ class LearningAgent:
                 get_pending_observations,
                 correlate_observation,
                 get_physics_patterns,
+                # Doc mining fallback (used only when KB is empty)
+                blender_doc_search_bundle,
             ],
         )
 

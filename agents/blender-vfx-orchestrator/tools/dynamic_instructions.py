@@ -523,6 +523,13 @@ CRITICAL: Call record_experiment_result ONCE. Never retry on error.
 2. query_knowledge_base(issue) -> check past learnings
 3. get_parameter_knowledge(param) -> accumulated wisdom
 
+## DOC MINING (ONLY IF KB EMPTY)
+If query_knowledge_base returns 0 results for the issue, call:
+blender_doc_search_bundle(effect_type, description, intent=issue) ONCE.
+Use doc_refs/related_apis to guide suggested_modifications.
+If you discover a durable rule, record it with add_manual_learning().
+Do NOT loop on doc search.
+
 ## AFTER EXPERIMENT
 record_experiment_result() with:
 - issue_addressed, parameters_changed, score_before/after

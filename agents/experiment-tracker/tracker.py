@@ -123,6 +123,7 @@ class ExperimentTracker:
                 for warning in knowledge.get("warnings", []):
                     self.add_manual_learning(
                         parameter=f"{effect_type}_general",
+                        rule="",
                         warning=warning
                     )
 
@@ -144,6 +145,7 @@ class ExperimentTracker:
                         warning = f"Issue: {issue.get('symptom')} | Cause: {issue.get('cause')} | Fix: {issue.get('fix')}"
                         self.add_manual_learning(
                             parameter=f"{effect_type}_issues",
+                            rule="",
                             warning=warning
                         )
 

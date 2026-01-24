@@ -211,9 +211,8 @@ from tools.proactive_research_tools import (
 
 # Semantic docs tools for Strategy 1: Vector Store for Blender Documentation
 from tools.semantic_docs_tools import (
-    semantic_search_blender_docs,
+    blender_doc_search_bundle,
     find_alternative_approaches,
-    search_blender_api_by_intent,
 )
 
 # Code pattern tools for Strategy 4: Code Pattern Memory
@@ -357,9 +356,8 @@ CRITICAL: After each handoff returns, IMMEDIATELY proceed to next step. NO extra
 
 ## PHASE 0: RESEARCH (iter=1 only)
 Use tools DIRECTLY (no handoffs):
-1. semantic_search_blender_docs("{effect_type} simulation best practices")
+1. blender_doc_search_bundle(effect_type, description, intent="create {effect_type} effect")
 2. search_code_patterns("initial generation", effect_type)
-3. search_blender_api_by_intent("create {effect_type} with density/emission", "fluid")
 
 Then handoff to Script Writer with research findings.
 
@@ -405,7 +403,7 @@ L4 REQUEST_GUIDANCE: report exhausted, request human input
 Step-down: 2 consecutive +5 score iterations → escape_level can decrease
 
 ## TOOLS
-Research: semantic_search_blender_docs, find_alternative_approaches, search_blender_api_by_intent
+Research: blender_doc_search_bundle, find_alternative_approaches
 Patterns: search_code_patterns, record_code_pattern, get_pattern_code, report_pattern_outcome
 Distillation: extract_successful_pattern, apply_pattern_to_script, analyze_script_for_patterns
 Escape: pre_iteration_research, evaluate_escape_velocity, search_alternative_approaches
@@ -607,9 +605,8 @@ def create_coordinator_agent(
 
     # Also include direct research tools for the Coordinator to use
     research_tools = [
-        semantic_search_blender_docs,
+        blender_doc_search_bundle,
         find_alternative_approaches,
-        search_blender_api_by_intent,
         search_code_patterns,
         list_patterns_by_effect,
         pre_iteration_research_tool,
@@ -670,7 +667,7 @@ Return a TechniqueDecision with:
         model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
             research_tool,  # Turn-limited wrapper (max_turns=4)
-            semantic_search_blender_docs,
+            blender_doc_search_bundle,
             search_code_patterns,
             list_patterns_by_effect,
         ],
@@ -890,9 +887,8 @@ class BlenderVFXOrchestrator:
             evaluate_escape_velocity,
             search_alternative_approaches,
             # Semantic docs tools (Strategy 1)
-            semantic_search_blender_docs,
+            blender_doc_search_bundle,
             find_alternative_approaches,
-            search_blender_api_by_intent,
             # Code pattern tools (Strategy 4)
             record_code_pattern,
             search_code_patterns,
@@ -1067,32 +1063,29 @@ CRITICAL: After searching documentation, use return_to_orchestrator to hand off.
             name="Research Agent",
             instructions="""ROLE: Blender documentation research specialist.
 INPUTS: effect_type, description.
-TOOLS: semantic_search_blender_docs, find_alternative_approaches, search_blender_api_by_intent, search_code_patterns, list_patterns_by_effect.
+TOOLS: blender_doc_search_bundle, search_code_patterns, list_patterns_by_effect.
 TURNS: MAX 4.
 
 ## Tool Order
-T1: semantic_search_blender_docs(effect_type + "best practices")
-T2: search_code_patterns(issue="", effect_type=effect_type) OR list_patterns_by_effect(effect_type)
-T3: search_blender_api_by_intent(intent="create {effect_type} effect", domain="Mantaflow")
-T4: Return ResearchOutput
+T1: blender_doc_search_bundle(effect_type, description, intent="create {effect_type} effect")
+T2: list_patterns_by_effect(effect_type) OR search_code_patterns(issue="", effect_type=effect_type)
+T3: Return ResearchOutput
 
 ## Output Contract (ResearchOutput)
 - recommended_approach: str (from docs search - REQUIRED)
 - key_parameters: dict (from patterns or docs)
-- api_modules: list[str] (from API search)
+- api_modules: list[str] (from doc bundle related_apis)
 - code_patterns: list[{pattern_id, issue, code_snippet}] (from pattern search)
-- warnings: list[str] (from docs or knowledge base)
-- alternative_approaches: list[str] (from find_alternative_approaches)
+- warnings: list[str] (from doc bundle warnings or patterns)
+- alternative_approaches: list[str] (optional; leave empty if not found)
 - doc_refs: list[str] (Blender 5.0 doc references - REQUIRED)
 
-STOP after T4. Do NOT retry tools. Return structured output only.""",
+STOP after T3. Do NOT retry tools. Return structured output only.""",
             model=research_model,
             model_settings=research_settings,
             output_type=AgentOutputSchema(ResearchOutput, strict_json_schema=False),
             tools=[
-                semantic_search_blender_docs,
-                find_alternative_approaches,
-                search_blender_api_by_intent,
+                blender_doc_search_bundle,
                 search_code_patterns,
                 list_patterns_by_effect,
             ],
