@@ -315,8 +315,86 @@ cat diagnostic_trace_*.jsonl | jq '.type' | sort | uniq -c
 
 ---
 
+## Issue 5: Coordinator → modify_script Communication Breakdown (FIXED)
+
+### Symptom
+Modification Coordinator correctly diagnoses issues (e.g., "ColorRamp.elements.clear() doesn't exist") and provides fix parameters, but the fixes are never applied. Same error repeats every iteration.
+
+### Root Cause
+`_modify_script_impl` can ONLY modify **Config class parameters** (like `TURBULENCE = 3.5`). It uses regex patterns that look for:
+```python
+class Config:
+    PARAM_NAME = value
+```
+
+When Coordinator outputs API fixes like `{"fix_clear": "use while loop"}`, modify_script finds no matching pattern and makes zero changes.
+
+### Fixes Applied
+
+#### A. Pre-Execution API Fixer (`tools/blender_api_fixer.py`)
+Auto-fixes known Blender 5.0 API issues BEFORE script execution:
+
+```python
+# Known patterns that are auto-fixed:
+- ColorRamp.elements.clear() → while loop removal
+- .lamp → .light
+- scene.update() → depsgraph.update()
+- obj.select = True → obj.select_set(True)
+- import_scene.obj → wm.obj_import
+- And 10+ more patterns
+```
+
+Integrated into `blender_executor_tools.py` - runs before every Blender execution.
+
+#### B. Communication Breakdown Detection (`orchestrator.py`)
+Added explicit logging when Coordinator params don't match Config patterns:
+
+```
+[Pipeline] ⚠️ COORDINATOR→MODIFY BREAKDOWN DETECTED:
+  Coordinator params: {'fix_clear': 'while_loop'}
+  Changes made: NONE
+  → Coordinator likely provided API fixes that require code changes, not Config params
+```
+
+#### C. CommunicationFlowTracker (`hooks/diagnostic_hooks.py`)
+New tracker class that records the full Coordinator → modify_script flow and analyzes breakdown patterns.
+
+---
+
+## Files Modified (Session 2026-01-24)
+
+| File | Changes |
+|------|---------|
+| `orchestrator.py` | Fixed record_baseline timing, added breakdown detection |
+| `tools/dynamic_instructions.py` | Changed /tmp to asset folder structure |
+| `tools/blender_api_fixer.py` | **NEW** - Auto-fix Blender 5.0 API patterns |
+| `tools/blender_executor_tools.py` | Integrated API fixer before execution |
+| `config/presets.yaml` | Updated to gpt-5-mini, gpt-5-nano, gpt-5.2 |
+| `config/agent_config.py` | Added GPT-5 parameter compatibility handling |
+| `hooks/__init__.py` | Export CommunicationFlowTracker |
+| `hooks/diagnostic_hooks.py` | Added CommunicationFlowTracker and flow analysis |
+| `docs/WORKFLOW_AUDIT_ROOT_CAUSE_2026-01-24.md` | **NEW** - Root cause analysis |
+
+---
+
+## Verification Commands
+
+```bash
+# Test API fixer on a script
+python -m tools.blender_api_fixer /path/to/script.py
+
+# Check for known issues without fixing
+python -m tools.blender_api_fixer /path/to/script.py --check-only
+
+# Run diagnostic test with breakdown detection
+python test_diagnostic_analysis.py --effect fire --iterations 2
+```
+
+---
+
 ## Revision History
 
 | Date | Author | Changes |
 |------|--------|---------|
 | 2026-01-24 | Claude/Ben | Initial documentation of issues and fixes |
+| 2026-01-24 | Claude | Added root cause analysis, API fixer, breakdown detection |

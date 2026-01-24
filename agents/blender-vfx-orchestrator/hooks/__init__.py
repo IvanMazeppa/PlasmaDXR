@@ -19,6 +19,7 @@ from .diagnostic_hooks import (
     PromptFingerprint,
     ToolCallPattern,
     OutputPattern,
+    CommunicationFlowTracker,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "PromptFingerprint",
     "ToolCallPattern",
     "OutputPattern",
+    "CommunicationFlowTracker",
 ]

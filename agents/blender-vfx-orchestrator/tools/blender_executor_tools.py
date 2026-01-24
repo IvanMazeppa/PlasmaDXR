@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -507,6 +508,21 @@ async def _execute_blender_script_impl(
             "log_files": [],
             "errors": []
         })
+
+    # PRE-EXECUTION FIX: Apply known Blender 5.0 API fixes
+    # This breaks the infinite loop when Coordinator diagnoses API issues
+    # that _modify_script_impl cannot fix (it only handles Config class params)
+    try:
+        from tools.blender_api_fixer import validate_and_fix_script
+        fix_result = validate_and_fix_script(str(script))
+        if fix_result.get("fixed"):
+            print(f"[Executor] Applied {len(fix_result['fixes_applied'])} API fixes before execution", file=sys.stderr)
+            for fix in fix_result.get("fixes_applied", []):
+                print(f"  - {fix}", file=sys.stderr)
+    except ImportError:
+        pass  # Fixer not available, continue without
+    except Exception as e:
+        print(f"[Executor] WARN: API fixer failed: {e}", file=sys.stderr)
 
     # Check Blender executable
     if not Path(BLENDER_EXE).exists():

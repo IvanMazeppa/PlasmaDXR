@@ -1781,8 +1781,13 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                     )
                                     modify_result = json.loads(modify_result_json)
 
+                                    # Track changes made for communication breakdown detection
+                                    changes_made = modify_result.get("changes_made", [])
+                                    params_changed = modify_result.get("parameters_changed", {})
+
                                     if modify_result.get("success") and modify_result.get("modified_path"):
                                         print(f"[Pipeline] Coordinator modification SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
+                                        print(f"[Pipeline] Changes applied: {changes_made}", file=sys.stderr)
                                         script = ScriptOutput(
                                             script_path=modify_result["modified_path"],
                                             technique_used=previous_script.technique_used + " (coord-modified)",
@@ -1791,6 +1796,19 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                             validation_errors=[],
                                         )
                                         direct_modification_success = True
+                                    else:
+                                        # COMMUNICATION BREAKDOWN DETECTION
+                                        # Coordinator provided params but modify_script couldn't apply them
+                                        print(f"[Pipeline] ⚠️ COORDINATOR→MODIFY BREAKDOWN DETECTED:", file=sys.stderr)
+                                        print(f"  Coordinator params: {mod_decision.parameter_changes}", file=sys.stderr)
+                                        print(f"  Changes made: {changes_made if changes_made else 'NONE'}", file=sys.stderr)
+                                        print(f"  Error: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
+                                        print(f"  → Coordinator likely provided API fixes that require code changes, not Config params", file=sys.stderr)
+
+                                        # Check if this looks like an API fix vs parameter change
+                                        for param_key in mod_decision.parameter_changes.keys():
+                                            if any(kw in param_key.lower() for kw in ['clear', 'remove', 'replace', 'fix', 'update']):
+                                                print(f"  → HINT: '{param_key}' looks like an API fix, not a numeric parameter", file=sys.stderr)
 
                             except Exception as e:
                                 print(f"[Pipeline] WARN: Modification Coordinator failed: {e}", file=sys.stderr)

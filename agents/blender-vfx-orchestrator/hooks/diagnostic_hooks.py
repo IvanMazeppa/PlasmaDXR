@@ -336,3 +336,178 @@ class DiagnosticHooks(RunHooks):
                 for o in self.output_patterns.values() if o.count > 1
             ],
         }
+
+    def analyze_coordinator_flow(self) -> Dict[str, Any]:
+        """
+        Analyze communication between Coordinators and modify_script.
+
+        This specifically looks for the pattern:
+        1. Coordinator outputs a decision with parameter_changes
+        2. modify_script is called with those parameters
+        3. modify_script returns zero changes_made
+
+        This indicates the communication breakdown where Coordinator
+        diagnoses API fixes that modify_script can't apply.
+        """
+        coordinator_decisions = []
+        modify_calls = []
+
+        for event in self.events:
+            # Track Coordinator outputs
+            if event.get("type") == "agent_end" and "Coordinator" in event.get("agent_name", ""):
+                coordinator_decisions.append({
+                    "timestamp": event["timestamp"],
+                    "agent": event["agent_name"],
+                    "output_type": event.get("output_type", "?"),
+                    "output_preview": event.get("output_hash", "")[:8],
+                })
+
+            # Track modify_script calls
+            if event.get("type") == "tool_call" and "modify" in event.get("tool_name", "").lower():
+                modify_calls.append({
+                    "timestamp": event["timestamp"],
+                    "tool": event.get("tool_name"),
+                    "args_hash": event.get("args_hash", ""),
+                })
+
+        # Detect potential breakdown: Coordinator decision followed by modify with no success
+        breakdown_candidates = []
+        for i, coord in enumerate(coordinator_decisions):
+            # Look for modify_script calls shortly after
+            for mod in modify_calls:
+                if mod["timestamp"] > coord["timestamp"]:
+                    breakdown_candidates.append({
+                        "coordinator": coord["agent"],
+                        "coord_time": coord["timestamp"],
+                        "modify_time": mod["timestamp"],
+                        "tool": mod["tool"],
+                    })
+                    break
+
+        return {
+            "coordinator_decisions": len(coordinator_decisions),
+            "modify_script_calls": len(modify_calls),
+            "potential_breakdowns": breakdown_candidates,
+            "recommendation": (
+                "Check if Coordinator outputs contain 'replace' or 'fix' language "
+                "that modify_script cannot handle (it only modifies Config class params)."
+                if breakdown_candidates else
+                "No obvious Coordinator → modify_script flow detected."
+            )
+        }
+
+
+class CommunicationFlowTracker:
+    """
+    Tracks the flow of information between agents to detect breakdowns.
+
+    Usage:
+        tracker = CommunicationFlowTracker()
+
+        # In orchestrator, after Coordinator decision:
+        tracker.record_coordinator_output(
+            coordinator="ModificationCoordinator",
+            decision="modify_params",
+            parameters={"fix_clear": "while_loop"}
+        )
+
+        # After modify_script call:
+        tracker.record_modify_result(
+            changes_made=["TURBULENCE: 2.5 -> 3.0"],
+            success=True
+        )
+
+        # Analyze
+        report = tracker.analyze()
+    """
+
+    def __init__(self, log_file: Optional[str] = None):
+        self.log_file = Path(log_file) if log_file else None
+        self.flows: List[Dict[str, Any]] = []
+        self._current_flow: Optional[Dict[str, Any]] = None
+
+    def record_coordinator_output(
+        self,
+        coordinator: str,
+        decision: str,
+        parameters: Dict[str, Any],
+        reasoning: str = ""
+    ):
+        """Record a Coordinator's output."""
+        self._current_flow = {
+            "timestamp": datetime.now().isoformat(),
+            "coordinator": coordinator,
+            "decision": decision,
+            "parameters": parameters,
+            "reasoning": reasoning[:200],
+            "modify_result": None,
+            "success": None,
+        }
+
+        if self.log_file:
+            with open(self.log_file, "a") as f:
+                f.write(json.dumps({
+                    "event": "coordinator_output",
+                    **self._current_flow
+                }) + "\n")
+
+    def record_modify_result(
+        self,
+        changes_made: List[str],
+        success: bool,
+        error: str = ""
+    ):
+        """Record the result of modify_script."""
+        if self._current_flow:
+            self._current_flow["modify_result"] = {
+                "changes_made": changes_made,
+                "success": success,
+                "error": error,
+            }
+            self._current_flow["success"] = success and len(changes_made) > 0
+
+            # Detect breakdown
+            if self._current_flow["parameters"] and len(changes_made) == 0:
+                print(f"[FLOW TRACKER] ⚠️ BREAKDOWN DETECTED:", file=sys.stderr)
+                print(f"  Coordinator: {self._current_flow['coordinator']}", file=sys.stderr)
+                print(f"  Decision: {self._current_flow['decision']}", file=sys.stderr)
+                print(f"  Parameters: {self._current_flow['parameters']}", file=sys.stderr)
+                print(f"  Changes Made: NONE", file=sys.stderr)
+                print(f"  -> Coordinator output likely contains API fixes that modify_script cannot apply", file=sys.stderr)
+
+            self.flows.append(self._current_flow)
+            self._current_flow = None
+
+            if self.log_file:
+                with open(self.log_file, "a") as f:
+                    f.write(json.dumps({
+                        "event": "flow_complete",
+                        **self.flows[-1]
+                    }) + "\n")
+
+    def analyze(self) -> Dict[str, Any]:
+        """Analyze all flows for patterns."""
+        total = len(self.flows)
+        successful = sum(1 for f in self.flows if f.get("success"))
+        breakdowns = [f for f in self.flows if f.get("parameters") and not f.get("success")]
+
+        return {
+            "total_flows": total,
+            "successful": successful,
+            "breakdowns": len(breakdowns),
+            "success_rate": f"{successful/total*100:.1f}%" if total > 0 else "N/A",
+            "breakdown_details": [
+                {
+                    "coordinator": b["coordinator"],
+                    "decision": b["decision"],
+                    "parameters": b["parameters"],
+                }
+                for b in breakdowns
+            ],
+            "recommendation": (
+                "HIGH BREAKDOWN RATE - Coordinator outputs are not being applied. "
+                "Check if parameters contain code patterns vs Config values."
+                if len(breakdowns) > total * 0.5 and total > 0 else
+                "Flow appears healthy."
+            )
+        }
