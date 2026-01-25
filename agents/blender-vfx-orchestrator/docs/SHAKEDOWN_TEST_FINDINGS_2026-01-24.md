@@ -1,5 +1,7 @@
 # Shakedown Test Findings (2026-01-24)
 
+> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+
 Test: `run_shakedown.sh fire` (2 iterations, preset `quick_test`)
 
 ---

@@ -1,5 +1,7 @@
 # Architecture Failure Analysis (2026-01-25)
 
+> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+
 ## Executive Summary
 The workflow is failing for architectural (not incidental) reasons. The system allows
 the Script Writer to generate Blender API attribute names without mandatory,
@@ -94,6 +96,37 @@ Not yet verified (blocked by early stop):
 - Baseline sync + experiment recording
 - Vision model usage in Quality Analyst
 - Budget guardrail behavior during quality eval
+
+### Latest Practical Test (Post-fix, 2026-01-25 21:05)
+Run: `ORCHESTRATOR_PRESET=quick_test ORCHESTRATOR_MODEL=gpt-5-mini VERBOSE_TRACING=1 VERBOSE_TRACE_FILE=traces/e2e_test_verbose_water_20260125_210557.jsonl python3 test_e2e_orchestrator.py`
+
+1) **Script Writer now performs a doc tool call before scripting** (enforcement working).
+```29:34:agents/blender-vfx-orchestrator/traces/e2e_test_verbose_water_20260125_210557.jsonl
+{"event_type": "span_start", "name": "search_blender_api_by_intent", ...}
+{"event_type": "span_end", "name": "search_blender_api_by_intent", ...}
+{"event_type": "span_start", "name": "write_script", ...}
+{"event_type": "span_end", "name": "write_script", ...}
+```
+
+2) **Doc grounding still weak: API search returns unrelated docs.**
+The bundled API search returns genindex hits and unrelated API docs, and
+`search_blender_api_by_intent` for domain resolution yields Material preview/object location.
+```6:6:agents/blender-vfx-orchestrator/traces/e2e_test_verbose_water_20260125_210557.jsonl
+{"event_type": "span_end", "name": "blender_doc_search_bundle", ... "results": [{"source": "b26_blender_python_reference_5_0_genindex-all_html_f_1.md", ...}], ...}
+```
+```29:30:agents/blender-vfx-orchestrator/traces/e2e_test_verbose_water_20260125_210557.jsonl
+{"event_type": "span_end", "name": "search_blender_api_by_intent", ... "apis": [{"api_path": "bpy.types.Material.html", ...}, {"api_path": "bpy.types.Object.location", ...}]}
+```
+
+3) **Execution still fails on an invalid attribute (`bake_frame_start`).**
+This indicates the validator still allows unknown attributes and doc grounding
+is not attribute-level (architecture problem persists).
+```48:52:agents/blender-vfx-orchestrator/traces/e2e_test_verbose_water_20260125_210557.jsonl
+{"event_type": "span_end", "name": "execute_blender_script", ... "AttributeError: 'FluidDomainSettings' object has no attribute 'bake_frame_start'"}
+{"event_type": "span_end", "name": "parse_blender_errors", ... "message": "'FluidDomainSettings' object has no attribute 'bake_frame_start'"}
+```
+
+4) **Minor:** Deprecation warning for `World.use_nodes` appears during execution (low priority).
 
 ### Attribute Hallucination (Trace)
 Multiple runs fail with `AttributeError` for plausible but nonexistent properties:
@@ -315,3 +348,59 @@ Without a mandatory attribute‑verification gate, the workflow will keep genera
 valid‑looking but invalid code and will never converge. The proposed redesign
 forces doc‑grounded attributes at every stage and aligns enforcement with SDK
 guardrails/RunHooks patterns.
+
+---
+
+## Phase 3 Fixes Applied (2026-01-25 19:10)
+
+### New Hallucinated Attributes Discovered
+
+E2E tests on 2026-01-25 revealed two additional hallucinated attributes:
+
+| Attribute | Error | Correct |
+|-----------|-------|---------|
+| `timesteps_per_frame` | AttributeError | `timesteps_maximum` |
+| `time_scale` | AttributeError | `timesteps_maximum` or `cfl_condition` |
+| `noise_scale = 1.0` | TypeError (expected int) | `noise_scale = 1` |
+
+### API Validator Updates
+
+**File:** `specialized_agents/api_validator.py`
+
+Added to `KNOWN_API_CHANGES` dictionary:
+
+```python
+# LLM HALLUCINATED ATTRIBUTES (Phase 3: 2026-01-25)
+".timesteps_per_frame": {"correction": ".timesteps_maximum", ...},
+"timesteps_per_frame": {"correction": "timesteps_maximum", ...},
+".time_scale": {"correction": "# DELETE - use cfl_condition or timesteps_maximum", ...},
+"time_scale": {"correction": "# time_scale removed - use timesteps_maximum or cfl_condition", ...},
+
+# TYPE WARNINGS (Phase 3: 2026-01-25)
+"noise_scale = 1.0": {"correction": "noise_scale = 1  # Must be int, not float", ...},
+"noise_scale = 2.0": {"correction": "noise_scale = 2  # Must be int, not float", ...},
+"noise_scale = 0.5": {"correction": "noise_scale = 1  # Must be int >= 1, not float", ...},
+```
+
+### Documentation Updates
+
+- `VERSION_TRUTH.md`: Added new invalid attributes and TYPE REQUIREMENTS section
+- `CRITICAL_AUDIT_LLM_HALLUCINATION_2026-01-25.md`: Added new hallucinated attributes
+- `SDK_ENFORCEMENT_PROTOCOL.md`: Phase 3 section with ResearchOutput schema
+
+### SDK Reference (Mandatory)
+
+Per OpenAI Agents SDK docs (https://github.com/openai/openai-agents-python/tree/main/docs):
+
+- **Structured output**: `output_type=AgentOutputSchema(ResearchOutput)` enforces Pydantic schema
+- **RunHooks**: Enforce doc query before script generation
+- **Guardrails**: `validate_research_output` output guardrail ensures `doc_refs` populated
+
+### Test Results
+
+| Run | Trace ID | Error |
+|-----|----------|-------|
+| 18:25 | `trace_888d9b8c...` | `noise_scale` float→int |
+| 19:10 | `trace_f1a1efd2...` | `timesteps_per_frame` AttributeError |
+
+Both errors now covered by `KNOWN_API_CHANGES` auto-correction.

@@ -150,6 +150,45 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": ".velocity_factor",
         "reason": "FluidFlowSettings.velocity does not exist. Use velocity_factor, velocity_normal, velocity_random, or use_initial_velocity."
     },
+    # =============================================================================
+    # LLM HALLUCINATED ATTRIBUTES (Phase 3: 2026-01-25)
+    # These are attributes that LLMs commonly hallucinate but DO NOT EXIST
+    # =============================================================================
+    # FluidDomainSettings.timesteps_per_frame does NOT exist
+    ".timesteps_per_frame": {
+        "correction": ".timesteps_maximum",
+        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_maximum (int 1-100) or cfl_condition (float 0-10) for simulation stability."
+    },
+    "timesteps_per_frame": {
+        "correction": "timesteps_maximum",
+        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_maximum (int 1-100) or cfl_condition (float 0-10) for simulation stability."
+    },
+    # FluidDomainSettings.time_scale does NOT exist (common hallucination)
+    ".time_scale": {
+        "correction": ".time_scale = # DELETE - use cfl_condition or timesteps_maximum instead",
+        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_maximum or cfl_condition."
+    },
+    "time_scale": {
+        "correction": "# time_scale removed - use timesteps_maximum or cfl_condition",
+        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_maximum or cfl_condition."
+    },
+    # =============================================================================
+    # TYPE WARNINGS (Phase 3: 2026-01-25)
+    # These attributes EXIST but have specific type requirements that LLMs miss
+    # =============================================================================
+    # FluidDomainSettings.noise_scale expects INT, not float
+    "noise_scale = 1.0": {
+        "correction": "noise_scale = 1  # Must be int, not float",
+        "reason": "TYPE ERROR: noise_scale expects int, not float. Use int(value) or integer literals."
+    },
+    "noise_scale = 2.0": {
+        "correction": "noise_scale = 2  # Must be int, not float",
+        "reason": "TYPE ERROR: noise_scale expects int, not float. Use int(value) or integer literals."
+    },
+    "noise_scale = 0.5": {
+        "correction": "noise_scale = 1  # Must be int >= 1, not float",
+        "reason": "TYPE ERROR: noise_scale expects int >= 1, not float. Minimum value is 1."
+    },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {
         "correction": "getattr(bpy.app.build_options, 'cycles', False)",

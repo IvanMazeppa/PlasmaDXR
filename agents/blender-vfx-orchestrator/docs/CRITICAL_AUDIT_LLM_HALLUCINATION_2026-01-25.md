@@ -1,5 +1,7 @@
 # CRITICAL AUDIT: LLM Attribute Hallucination in Script Writer
 
+> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+
 **Date:** 2026-01-25
 **Status:** CRITICAL - Blocking all progress
 **Author:** Claude (Audit conducted with Ben)
@@ -17,6 +19,9 @@ The Script Writer agent is **hallucinating Blender API attribute names** instead
 | `resolution_divisions` | `resolution_max` | Completely different word |
 | `use_dissolve` | `use_dissolve_smoke` | Truncated/simplified name |
 | `absolute_density` | `density` or `use_absolute` | Combined two concepts incorrectly |
+| `timesteps_per_frame` | `timesteps_maximum` | **NEW 2026-01-25** - doesn't exist |
+| `time_scale` | `timesteps_maximum` or `cfl_condition` | **NEW 2026-01-25** - doesn't exist |
+| `noise_scale = 1.0` | `noise_scale = 1` (int) | **NEW 2026-01-25** - type error |
 
 These aren't typos - they're **semantically plausible fabrications**.
 
@@ -374,6 +379,46 @@ CRITICAL: Before writing ANY code that accesses bpy.types attributes:
 2. **Short-term:** Re-enable `require_doc_query_before` enforcement
 3. **Medium-term:** Create `verify_blender_attribute` tool with mandatory usage
 4. **Long-term:** Build comprehensive Blender 5.0 API validation layer
+
+---
+
+## Fixes Applied (2026-01-25 Phase 3)
+
+### API Validator Updates
+**File:** `specialized_agents/api_validator.py`
+
+Added to `KNOWN_API_CHANGES` dictionary:
+
+```python
+# LLM HALLUCINATED ATTRIBUTES (Phase 3: 2026-01-25)
+".timesteps_per_frame": {
+    "correction": ".timesteps_maximum",
+    "reason": "HALLUCINATED: timesteps_per_frame does not exist."
+},
+".time_scale": {
+    "correction": "# DELETE - use cfl_condition or timesteps_maximum",
+    "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist."
+},
+
+# TYPE WARNINGS (Phase 3: 2026-01-25)
+"noise_scale = 1.0": {
+    "correction": "noise_scale = 1  # Must be int, not float",
+    "reason": "TYPE ERROR: noise_scale expects int, not float."
+},
+```
+
+### VERSION_TRUTH.md Updates
+Added to invalid attributes table:
+- `timesteps_per_frame` → `timesteps_maximum`
+- `time_scale` → `timesteps_maximum` or `cfl_condition`
+
+Added new TYPE REQUIREMENTS section documenting integer-only attributes.
+
+### SDK Reference (Mandatory)
+Per SDK_ENFORCEMENT_PROTOCOL.md, all fixes must reference OpenAI Agents SDK patterns:
+- SDK docs: https://github.com/openai/openai-agents-python/tree/main/docs
+- Pattern used: `KNOWN_API_CHANGES` dict for auto-correction in validation phase
+- RunHooks enforce doc queries before script writing (existing infrastructure)
 
 ---
 

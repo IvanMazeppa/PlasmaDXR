@@ -1,5 +1,7 @@
 # Tracing Shakedown Tasklist (2026-01-25)
 
+> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+
 ## Purpose
 Convert the latest tracing shakedown findings into a concrete, ordered tasklist
 with quick wins and code snippets. Code changes listed below have now been applied.

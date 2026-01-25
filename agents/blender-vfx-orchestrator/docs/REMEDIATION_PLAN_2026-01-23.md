@@ -1,5 +1,7 @@
 # Remediation Plan (2026-01-23)
 
+> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+
 Purpose: actionable, ordered fixes to stabilize the Agents SDK workflow and unlock self-learning behavior without changing architecture.
 
 ## Priority 0 (Stop-the-bleed)

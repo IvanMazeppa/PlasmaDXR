@@ -10,12 +10,13 @@ Tests:
 
 Verbose Tracing:
     Set VERBOSE_TRACING=1 to enable detailed trace output.
-    Logs are written to traces/verbose_{timestamp}.jsonl
+    Optionally set VERBOSE_TRACE_FILE to control the log path.
 """
 
 import asyncio
 import os
 import sys
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env
@@ -36,8 +37,12 @@ from agents import Runner, trace
 # Enable verbose tracing if requested
 if os.environ.get("VERBOSE_TRACING", "").lower() in ("1", "true", "yes"):
     from tracing import enable_verbose_tracing
+    log_file = os.environ.get("VERBOSE_TRACE_FILE")
+    if not log_file:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = f"traces/e2e_test_verbose_{timestamp}.jsonl"
     enable_verbose_tracing(
-        log_file="traces/e2e_test_verbose.jsonl",
+        log_file=log_file,
         console_output=True,
         include_span_data=True,
     )
