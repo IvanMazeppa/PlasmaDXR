@@ -33,8 +33,8 @@ from scripts.chunk_blender_docs import (
 )
 
 # Default store IDs (can be overridden via args)
-MANUAL_STORE_ID = "vs_6975104199c08191acb1495c86d581ce"
-API_STORE_ID = "vs_697512bf81c481919ae3b7a8ffb8223a"
+MANUAL_STORE_ID = "vs_697564fbfc0c8191b2e44aa47dbaf482"  # Production (2026-01-25)
+API_STORE_ID = "vs_697571f0275c8191910fea0f2c8bdd3a"      # Production (2026-01-25)
 
 # Aggressive parallelism settings
 BATCH_SIZE = 500  # OpenAI max

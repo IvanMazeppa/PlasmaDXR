@@ -7,6 +7,10 @@ Tests:
 3. RunContextWrapper auto-population in tools
 4. Blender manual tool integration
 5. Full asset generation workflow
+
+Verbose Tracing:
+    Set VERBOSE_TRACING=1 to enable detailed trace output.
+    Logs are written to traces/verbose_{timestamp}.jsonl
 """
 
 import asyncio
@@ -28,6 +32,16 @@ os.environ.setdefault("ORCHESTRATOR_MODEL", "gpt-5.2")
 from models.shared_context import AssetRequest, EffectType, SharedContext
 from orchestrator import BlenderVFXOrchestrator, create_session_from_request, generate_session_id
 from agents import Runner, trace
+
+# Enable verbose tracing if requested
+if os.environ.get("VERBOSE_TRACING", "").lower() in ("1", "true", "yes"):
+    from tracing import enable_verbose_tracing
+    enable_verbose_tracing(
+        log_file="traces/e2e_test_verbose.jsonl",
+        console_output=True,
+        include_span_data=True,
+    )
+    print("[E2E TEST] Verbose tracing ENABLED", file=sys.stderr)
 
 
 async def test_orchestrator_e2e():
@@ -81,7 +95,7 @@ async def test_orchestrator_e2e():
     print()
     
     try:
-        result = await orchestrator.create_asset(request)
+        result = await orchestrator.create_asset_pipeline(request)
         
         print()
         print("[4/4] Results:")

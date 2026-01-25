@@ -28,14 +28,14 @@ except ImportError:
     print("Error: openai package not installed")
     sys.exit(1)
 
-# Vector store IDs
+# Vector store IDs (Production - 2026-01-25)
 MANUAL_STORE_ID = os.getenv(
     "BLENDER_MANUAL_VECTOR_STORE_ID",
-    "vs_6975104199c08191acb1495c86d581ce"
+    "vs_697564fbfc0c8191b2e44aa47dbaf482"
 )
 API_STORE_ID = os.getenv(
     "BLENDER_API_VECTOR_STORE_ID",
-    "vs_697512bf81c481919ae3b7a8ffb8223a"
+    "vs_697571f0275c8191910fea0f2c8bdd3a"
 )
 
 # Test queries for each store

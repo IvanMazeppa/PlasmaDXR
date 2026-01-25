@@ -192,6 +192,16 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "# .feature_set removed in Blender 5.0",
         "reason": "CyclesRenderSettings.feature_set removed in Blender 5.0."
     },
+    # CRITICAL: Fluid modifier setup sequence (Blender 5.0)
+    # domain_settings is None until fluid_type='DOMAIN' is set
+    "mod.domain_settings.domain_type": {
+        "correction": "mod.fluid_type = 'DOMAIN'; mod.domain_settings.domain_type",
+        "reason": "CRITICAL: In Blender 5.0, you MUST set mod.fluid_type='DOMAIN' BEFORE accessing domain_settings. The domain_settings attribute is None until fluid_type is set."
+    },
+    "modifier.domain_settings": {
+        "correction": "modifier.fluid_type = 'DOMAIN' # Set first, then access modifier.domain_settings",
+        "reason": "CRITICAL: In Blender 5.0, domain_settings is None until fluid_type='DOMAIN' is set on the FLUID modifier."
+    },
 }
 
 # =============================================================================
@@ -323,6 +333,25 @@ def extract_api_calls_from_code(code: str) -> List[str]:
         api_calls.add(f".outputs['{letter}']")
     if ".inputs['Image']" in code:
         api_calls.add(".inputs['Image']")
+
+    # Pattern 15: CRITICAL - Detect domain_settings access without fluid_type='DOMAIN'
+    # This is a sequence issue: domain_settings is None until fluid_type is set
+    if '.domain_settings' in code:
+        # Check if fluid_type = 'DOMAIN' is set BEFORE accessing domain_settings
+        fluid_type_set = re.search(r"\.fluid_type\s*=\s*['\"]DOMAIN['\"]", code)
+
+        # Match patterns like:
+        # - mod.domain_settings.xxx
+        # - xxx = mod.domain_settings
+        # - modifiers["Fluid"].domain_settings
+        domain_settings_access = re.search(
+            r"(\w+\.domain_settings[.\[\]]|=\s*\w+\.domain_settings\s*$|modifiers\[.+\]\.domain_settings)",
+            code,
+            re.MULTILINE
+        )
+
+        if domain_settings_access and not fluid_type_set:
+            api_calls.add("mod.domain_settings.domain_type")
 
     return sorted(api_calls)
 

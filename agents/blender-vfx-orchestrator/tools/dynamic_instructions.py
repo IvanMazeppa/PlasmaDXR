@@ -345,6 +345,28 @@ mat.cycles.displacement_method = 'DISPLACEMENT'
 
 **Mantaflow works perfectly with Cycles and GPU rendering.** Use it for fire, smoke, explosions.
 
+### CRITICAL: Fluid Modifier Setup Order (Blender 5.0)
+**You MUST set `fluid_type='DOMAIN'` BEFORE accessing `domain_settings`!**
+
+```python
+# WRONG - domain_settings is None, causes AttributeError:
+mod = domain.modifiers.new(name='Fluid', type='FLUID')
+mod.domain_settings.resolution_max = 128  # ERROR: 'NoneType' has no attribute 'resolution_max'
+
+# CORRECT - Set fluid_type first, then access domain_settings:
+mod = domain.modifiers.new(name='Fluid', type='FLUID')
+mod.fluid_type = 'DOMAIN'  # REQUIRED - makes domain_settings available
+mod.domain_settings.domain_type = 'GAS'  # Now this works
+mod.domain_settings.resolution_max = 128  # And this works too
+```
+
+The same applies to Flow emitters:
+```python
+mod = emitter.modifiers.new(name='Fluid', type='FLUID')
+mod.fluid_type = 'FLOW'  # REQUIRED - makes flow_settings available
+mod.flow_settings.flow_type = 'BOTH'  # Now this works
+```
+
 ### Complete Mantaflow + Cycles Setup Pattern:
 ```python
 import bpy
@@ -373,8 +395,12 @@ def setup_mantaflow_scene():
     # Use CACHE_DIR from asset folder, NOT /tmp/
 
     # 3. DOMAIN: Configure with absolute cache path
+    # CRITICAL: You MUST set fluid_type='DOMAIN' BEFORE accessing domain_settings!
+    # Without this, domain_settings is None and you'll get AttributeError
     domain = bpy.context.active_object  # Your domain object
-    settings = domain.modifiers["Fluid"].domain_settings
+    domain.modifiers["Fluid"].fluid_type = 'DOMAIN'  # SET THIS FIRST!
+    settings = domain.modifiers["Fluid"].domain_settings  # Now this exists
+    settings.domain_type = 'GAS'  # For smoke/fire simulations
     settings.cache_directory = CACHE_DIR  # Asset folder, not /tmp/
     settings.cache_data_format = 'OPENVDB'  # Best for volumetrics
 
@@ -418,6 +444,8 @@ def bake_mantaflow(domain_obj):
 ### Common CLI Errors and Fixes:
 | Error | Cause | Fix |
 |-------|-------|-----|
+| `'NoneType' has no attribute 'resolution_max'` | domain_settings is None | Set `fluid_type='DOMAIN'` BEFORE accessing domain_settings |
+| `'NoneType' has no attribute 'domain_type'` | domain_settings is None | Set `fluid_type='DOMAIN'` BEFORE accessing domain_settings |
 | `'NoneType' has no attribute 'use_nodes'` | scene.world is None | Create world first |
 | `Permission denied: '//vdb_cache'` | Relative path | Use absolute path |
 | `can't clean grid cache` | Missing depsgraph update | Call `view_layer.update()` |

@@ -14,6 +14,27 @@ The Blender VFX Orchestrator is an autonomous multi-agent system built on the **
 
 ---
 
+## Roadmap (Updated 2026-01-25)
+
+### Phase 4 Decision Gate (Do NOT start until these pass)
+1) **Modification contract enforced** (flat Config keys only)  
+2) **Doc grounding reliable** (`doc_refs` resolve to real `DocPath`)  
+3) **Trace correlation working** (`group_id=session_id` for SDK trace + local JSONL)
+
+### Next Best Path (Autonomy‑First)
+1) **Planner–Executor–Verifier core**  
+   - Use coordinators as Planner, Quality Analyst as Verifier.
+2) **Beam search as exploration layer (N=2–3, K=1)**  
+   - Low‑cost branching; not the end state.
+3) **Bandit technique selection**  
+   - Prevent technique lock‑in.
+4) **Small population (3–5 scripts)**  
+   - Add only after beam search shows consistent gains.
+5) **Phase 4 (session compaction + cross‑session bootstrap)**  
+   - Start only after the gate above passes.
+
+---
+
 ## Current Architecture
 
 ```

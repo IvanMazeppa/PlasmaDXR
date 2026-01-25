@@ -1,0 +1,25 @@
+{
+  "pattern_id": "pat_c77bd3352eb1",
+  "name": "simple_rising_smoke_column_v1",
+  "issue_category": "initial_generation_simple_rising_smoke_column",
+  "code_snippet": "# Key changes applied in test_smoke_e2e script\n# - domain.resolution_max = 48\n# - flow.flow_settings.flow_type = 'SMOKE'\n# - Principled Volume material for smoke\n# (See full script at scripts/test_smoke_e2e_iter1.py)",
+  "effect_types": [
+    "pyro"
+  ],
+  "context_before": "No prior script",
+  "context_after": "scripts/test_smoke_e2e_iter1.py",
+  "parameters_affected": [
+    "resolution_max",
+    "flow_type"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 62.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "test_smoke_e2e_20260125_032043"
+  ],
+  "created_at": "2026-01-25T03:22:35.219935",
+  "updated_at": "2026-01-25T03:22:35.219943"
+}

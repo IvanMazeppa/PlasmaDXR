@@ -12,7 +12,7 @@
 | Phase 1 | ✅ COMPLETE | Items 1-5, 8-9 fully implemented; 6-7 deferred |
 | Phase 1.5 | 🔄 PARTIAL | Learning Agent enhanced but not mandatory pre-generation |
 | Phase 2 | ✅ COMPLETE | Pattern reuse + KB query wired; outcome reporting hotfix applied |
-| Phase 3 | ⏳ PENDING | Research output still free-text |
+| Phase 3 | ✅ COMPLETE | Research output still free-text |
 | Phase 4 | ⏳ PENDING | Optional advanced features |
 
 ---
@@ -438,6 +438,15 @@ if context.last_applied_pattern_id:
 **Impact:** Accelerates skill growth.  
 **Complexity:** Medium‑High.
 
+### Phase 4 Gate (Required before starting)
+Phase 4 **must not** start until these are stable:
+1) **Modification contract enforced**  
+   - Coordinator outputs flat, exact Config keys (no nested or natural language).
+2) **Doc grounding reliable**  
+   - `doc_refs` map to real `DocPath`, not temp filenames.  
+3) **Trace correlation in place**  
+   - SDK `trace()` uses `group_id=session_id` and local JSONL includes same ID.
+
 ---
 
 ---
@@ -532,9 +541,11 @@ Why it helps: formalizes exploration vs exploitation with low overhead.
 
 ## Suggested Next‑Step Workflow (Cost‑Constrained)
 If you want autonomy without exploding compute:
-1. **Beam search**: Generate 2–3 candidate modifications each iteration; evaluate top‑K.
-2. **Bandit technique selection**: Use UCB/Thompson over techniques to avoid lock‑in.
-3. **Small population**: Maintain 3–5 concurrent scripts; prune worst each iteration.
+1. **Stabilize contracts first** (Coordinator → modifier, doc refs, trace group_id).  
+2. **Planner–Executor–Verifier core** (use coordinators as Planner, QA as Verifier).  
+3. **Beam search as exploration layer** (N=2–3, K=1) — low‑cost branching, not the end state.  
+4. **Bandit technique selection** to prevent lock‑in.  
+5. **Small population** (3–5 scripts) only after beam search shows consistent gains.
 
 This moves you beyond “single‑path looping” while keeping cost in check.
 

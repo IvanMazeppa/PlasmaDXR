@@ -34,7 +34,7 @@ NO_TEMPERATURE_MODELS = {"gpt-5", "gpt-5-mini", "gpt-5-nano"}
 @dataclass
 class AgentSettings:
     """Settings for a single agent."""
-    model: str = "gpt-5.2"
+    model: str = "gpt-5-nano"
     reasoning_effort: str = "none"  # none, low, medium, high, xhigh
     temperature: Optional[float] = None  # Only for gpt-5.2/5.1 with reasoning=none
     verbosity: str = "medium"  # low, medium, high - for text output control
@@ -87,7 +87,7 @@ class PresetConfig:
     """Configuration from a preset."""
     name: str
     description: str = ""
-    default_model: str = "gpt-5.2"
+    default_model: str = "gpt-5-nano"
     reasoning_effort: str = "none"
     temperature: Optional[float] = None
     verbosity: str = "medium"

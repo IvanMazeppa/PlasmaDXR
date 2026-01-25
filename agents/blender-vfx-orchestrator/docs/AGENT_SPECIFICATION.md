@@ -556,8 +556,8 @@ def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
 **Status:** Implemented (v2 - Two-Store Architecture)
 
 **Vector Stores:**
-- **Manual Store:** `vs_6975104199c08191acb1495c86d581ce` - Conceptual docs (physics, tutorials)
-- **API Store:** `vs_697512bf81c481919ae3b7a8ffb8223a` - Python API reference (bpy.types, bpy.ops)
+- **Manual Store:** `vs_697564fbfc0c8191b2e44aa47dbaf482` - Conceptual docs (physics, tutorials)
+- **API Store:** `vs_697571f0275c8191910fea0f2c8bdd3a` - Python API reference (bpy.types, bpy.ops)
 
 **Documents:** ~17,430 chunks indexed (section-aware chunking)
 
@@ -710,8 +710,8 @@ class StuckDetectionState:
 | `DOC_EXPERT_MODEL` | `gpt-5.2` | Docs expert model |
 | `MONTHLY_BUDGET_USD` | `20` | Monthly budget limit |
 | `STATE_DIR` | `build/orchestrator_state` | Session persistence directory |
-| `BLENDER_MANUAL_VECTOR_STORE_ID` | `vs_6975104199c08191acb1495c86d581ce` | Manual docs vector store |
-| `BLENDER_API_VECTOR_STORE_ID` | `vs_697512bf81c481919ae3b7a8ffb8223a` | API docs vector store |
+| `BLENDER_MANUAL_VECTOR_STORE_ID` | `vs_697564fbfc0c8191b2e44aa47dbaf482` | Manual docs vector store |
+| `BLENDER_API_VECTOR_STORE_ID` | `vs_697571f0275c8191910fea0f2c8bdd3a` | API docs vector store |
 
 ### Budget Allocation
 

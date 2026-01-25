@@ -46,7 +46,7 @@ def setup_world(scene):
     if scene.world is None:
         scene.world = bpy.data.worlds.new(name="World")
     world = scene.world
-    world.use_nodes = True  # Deprecated in 5.0, but still works
+    world.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
     # Simple dark HDRI-like background using background node
     nt = world.node_tree
     for n in nt.nodes:
@@ -178,7 +178,7 @@ def create_flow_emitter():
 # Create a simple Principled Volume material for the domain
 def create_smoke_material(obj):
     mat = bpy.data.materials.new(name='SmokeVolume')
-    mat.use_nodes = True  # Deprecated in 5.0, but still works
+    mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
 
