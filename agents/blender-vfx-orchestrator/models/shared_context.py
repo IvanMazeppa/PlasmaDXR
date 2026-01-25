@@ -807,6 +807,14 @@ class SharedContext(BaseModel):
         default=None,
         description="Pattern ID to report outcome for after next iteration"
     )
+    pending_pattern_id: Optional[str] = Field(
+        default=None,
+        description="Pattern ID that will be applied in this iteration"
+    )
+    pending_pattern_name: Optional[str] = Field(
+        default=None,
+        description="Pattern name that will be applied in this iteration"
+    )
 
     @classmethod
     def from_request(cls, request: AssetRequest, session_id: str) -> "SharedContext":

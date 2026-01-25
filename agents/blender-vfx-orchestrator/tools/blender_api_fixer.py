@@ -110,11 +110,11 @@ while len(\1) > 1:
         "scene.update() → depsgraph.update()"
     ),
 
-    # Fluid modifier domain_settings.use_dissolve_smoke
+    # FluidDomainSettings.use_dissolve does NOT EXIST - correct is use_dissolve_smoke
     (
-        r"\.use_dissolve_smoke\s*=",
-        r".use_dissolve =",
-        "use_dissolve_smoke → use_dissolve"
+        r"\.use_dissolve\s*=",
+        r".use_dissolve_smoke =",
+        "use_dissolve → use_dissolve_smoke (typo fix)"
     ),
     # Fluid domain adaptive flag renamed
     (
@@ -158,6 +158,41 @@ while len(\1) > 1:
         r"(?m)^.*\.noise_res_factor\s*=\s*.*$",
         r"# Blender 5.0: noise_res_factor removed (line deleted)",
         "noise_res_factor removed"
+    ),
+    # bpy.ops.fluid.free_all() fails on fresh scenes with "grids still in use"
+    # Remove this call entirely - just bake directly
+    (
+        r"(?m)^\s*bpy\.ops\.fluid\.free_all\(\)\s*#?.*$",
+        r"# Blender 5.0: free_all() removed - causes 'grids still in use' on fresh scenes",
+        "free_all() removed (grids in use error)"
+    ),
+    # Also catch the with context override version
+    (
+        r"(?m)^\s*with\s+bpy\.context\.temp_override.*:\s*\n\s*bpy\.ops\.fluid\.free_all\(\)",
+        r"# Blender 5.0: free_all() removed - causes 'grids still in use' on fresh scenes",
+        "free_all() with override removed"
+    ),
+    # FluidDomainSettings.resolution_divisions does NOT exist - use resolution_max
+    (
+        r"\.resolution_divisions\b",
+        r".resolution_max",
+        "resolution_divisions → resolution_max"
+    ),
+    (
+        r"['\"]resolution_divisions['\"]",
+        r"'resolution_max'",
+        "resolution_divisions key → resolution_max"
+    ),
+    # LLM TYPO: use_adaptive_time_steps → use_adaptive_timesteps (no underscore between time/steps)
+    (
+        r"\.use_adaptive_time_steps\b",
+        r".use_adaptive_timesteps",
+        "use_adaptive_time_steps → use_adaptive_timesteps (typo fix)"
+    ),
+    (
+        r"['\"]use_adaptive_time_steps['\"]",
+        r"'use_adaptive_timesteps'",
+        "use_adaptive_time_steps key → use_adaptive_timesteps (typo fix)"
     ),
 ]
 

@@ -109,6 +109,33 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "# noise_res_factor removed in Blender 5.0 - delete this line",
         "reason": "FluidDomainSettings.noise_res_factor removed in Blender 5.0"
     },
+    # FluidDomainSettings.resolution_divisions does NOT exist - use resolution_max
+    ".resolution_divisions": {
+        "correction": ".resolution_max",
+        "reason": "FluidDomainSettings.resolution_divisions does not exist. Use resolution_max instead."
+    },
+    "resolution_divisions": {
+        "correction": "resolution_max",
+        "reason": "FluidDomainSettings.resolution_divisions does not exist. Use resolution_max instead."
+    },
+    # LLM TYPO: use_adaptive_time_steps → use_adaptive_timesteps (no underscore)
+    ".use_adaptive_time_steps": {
+        "correction": ".use_adaptive_timesteps",
+        "reason": "TYPO: use_adaptive_time_steps does not exist. Correct spelling is use_adaptive_timesteps (no underscore between time and steps)."
+    },
+    "use_adaptive_time_steps": {
+        "correction": "use_adaptive_timesteps",
+        "reason": "TYPO: use_adaptive_time_steps does not exist. Correct spelling is use_adaptive_timesteps (no underscore between time and steps)."
+    },
+    # FluidDomainSettings.use_dissolve does NOT exist - correct is use_dissolve_smoke
+    ".use_dissolve": {
+        "correction": ".use_dissolve_smoke",
+        "reason": "use_dissolve does not exist. Use use_dissolve_smoke for gas domain dissolve. Related: use_dissolve_smoke_log for logarithmic dissolve."
+    },
+    "use_dissolve": {
+        "correction": "use_dissolve_smoke",
+        "reason": "use_dissolve does not exist. Use use_dissolve_smoke for gas domain dissolve. Related: use_dissolve_smoke_log for logarithmic dissolve."
+    },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {
         "correction": "getattr(bpy.app.build_options, 'cycles', False)",

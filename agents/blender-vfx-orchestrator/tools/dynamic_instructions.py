@@ -439,7 +439,18 @@ def bake_mantaflow(domain_obj):
 2. ✅ **Absolute cache paths** - Never use `//` relative paths
 3. ✅ **Depsgraph update** - Call `view_layer.update()` before bake
 4. ✅ **GPU configured** - Set `cycles.device = 'GPU'` + preferences
-5. ✅ **No free_all()** - Skip on fresh scenes, just bake directly
+5. ✅ **No free_all()** - NEVER call `bpy.ops.fluid.free_all()` - causes "grids still in use" crash
+
+### CRITICAL: DO NOT USE free_all()
+```python
+# WRONG - causes "can't clean grid cache, grids still in use" crash
+bpy.ops.fluid.free_all()
+bpy.ops.fluid.bake_data()
+
+# CORRECT - just bake directly, skip free_all entirely
+bpy.context.view_layer.update()  # Update depsgraph first
+bpy.ops.fluid.bake_data()        # Bake directly without free_all
+```
 
 ### Noise/Upres (Blender 5.0)
 - **DO NOT** use `dsettings.noise_res_factor` (removed in 5.0)
@@ -457,8 +468,20 @@ def bake_mantaflow(domain_obj):
 | `'NoneType' has no attribute 'domain_type'` | domain_settings is None | Set `fluid_type='DOMAIN'` BEFORE accessing domain_settings |
 | `'NoneType' has no attribute 'use_nodes'` | scene.world is None | Create world first |
 | `Permission denied: '//vdb_cache'` | Relative path | Use absolute path |
-| `can't clean grid cache` | Missing depsgraph update | Call `view_layer.update()` |
+| `can't clean grid cache, grids still in use` | Using `free_all()` | **REMOVE** `bpy.ops.fluid.free_all()` - just bake directly |
+| `'FluidDomainSettings' has no attribute 'use_adaptive_time_steps'` | **TYPO** | Correct spelling: `use_adaptive_timesteps` (no underscore between time/steps) |
+| `'FluidDomainSettings' has no attribute 'resolution_divisions'` | Wrong attribute | Use `resolution_max` instead |
 | Render very slow | CPU rendering | Configure GPU preferences |
+
+### ⚠️ COMMON LLM TYPOS - VERIFY SPELLING!
+These attributes are frequently misspelled. **ALWAYS double-check**:
+| WRONG (typo) | CORRECT |
+|--------------|---------|
+| `use_adaptive_time_steps` | `use_adaptive_timesteps` |
+| `resolution_divisions` | `resolution_max` |
+| `use_dissolve` | `use_dissolve_smoke` (also: `use_dissolve_smoke_log`) |
+| `flame_smoke_color` | `flame_smoke` |
+| `noise_res_factor` | REMOVED in Blender 5.0 |
 
 ### GPU CONFIGURATION FOR CYCLES (REQUIRED FOR ALL EFFECTS):
 **ALWAYS use Cycles with GPU** for best quality. Configure GPU properly:
