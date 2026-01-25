@@ -1,6 +1,6 @@
 # OpenAI Agents SDK Integration Guide
 
-**Last Updated:** 2026-01-23
+**Last Updated:** 2026-01-26
 **SDK Version:** 0.7.0
 
 ---
@@ -12,8 +12,8 @@
 | Agents-as-tools pattern | ✅ COMPLETE | All sub-agents exposed via `as_tool()` |
 | Native `max_turns` enforcement | ✅ COMPLETE | Using SDK v0.7.0 `as_tool(max_turns=X)` |
 | Two-layer tool pattern | ✅ COMPLETE | `_impl` + `@function_tool` wrapper |
-| RunHooks enforcement | ✅ PARTIAL | Hooks defined, not all wired |
-| Input/Output guardrails | ⏳ PENDING | Defined but not all agents use them |
+| RunHooks enforcement | ✅ IN USE | Hooks wired for Research, Script Writer, QA |
+| Input/Output guardrails | ⚠️ PARTIAL | Script Writer + QA covered; extend to all agents |
 | SQLiteSession persistence | ⏳ PENDING | Helper exists, not fully integrated |
 | Handoffs deprecated | ✅ COMPLETE | Using code-based pipeline |
 
@@ -46,7 +46,7 @@
   - [Sessions](https://github.com/openai/openai-agents-python/blob/main/docs/sessions/index.md) ⭐ NEW
   - [Tracing](https://github.com/openai/openai-agents-python/blob/main/docs/tracing.md)
 
-The SDK is rapidly evolving. At time of writing, we're on **v0.6.9+**. Check for updates regularly.
+The SDK is rapidly evolving. At time of writing, we're on **v0.7.0**. Check for updates regularly.
 
 ---
 
@@ -277,10 +277,10 @@ agent = Agent(
 )
 ```
 
-**Critical Lesson Learned:**
-- `GuardrailFunctionOutput` REQUIRES `output_info` even when `tripwire_triggered=False`
-- The decorator returns `InputGuardrail`/`OutputGuardrail` objects, not functions
-- Access underlying function via `.guardrail_function` attribute for testing
+**Critical Notes (SDK):**
+- `GuardrailFunctionOutput` must include `output_info` even when passing.
+- Guardrails raise tripwire exceptions when triggered.
+- The decorator returns `InputGuardrail`/`OutputGuardrail` objects; access `.guardrail_function` for testing.
 
 ### 5. RunHooks (Lifecycle Callbacks) ⭐ NEW
 
@@ -300,7 +300,7 @@ class EnforcementHooks(RunHooks):
             if not self._doc_query_made:
                 raise DocQueryRequiredError("Research required before scripting")
 
-result = await Runner.run(agent, prompt, run_hooks=EnforcementHooks())
+result = await Runner.run(agent, prompt, hooks=EnforcementHooks())
 ```
 
 **Factory Functions in `hooks/enforcement_hooks.py`:**
@@ -310,6 +310,22 @@ create_script_writer_hooks()   # require_doc_query_before=[write_script, modify_
 create_quality_analyst_hooks() # max_same_tool=3, max_turns=6
 create_learning_agent_hooks()  # max_same_tool=3, max_turns=8
 ```
+
+### 5.1 ModelSettings: tool_choice + parallel_tool_calls
+Use `ModelSettings.tool_choice` to force a specific tool when required:
+
+```python
+from agents import ModelSettings
+
+agent = Agent(
+    name="Doc-First Agent",
+    instructions="Always query docs before code.",
+    tools=[blender_doc_search_bundle, write_script],
+    model_settings=ModelSettings(tool_choice="blender_doc_search_bundle")
+)
+```
+
+Use `parallel_tool_calls=False` to restrict to one tool call per turn when you need deterministic ordering.
 
 ### 6. SQLiteSession (Conversation Persistence) ⭐ NEW
 
@@ -471,7 +487,7 @@ pip show openai-agents
 pip install --upgrade openai-agents
 
 # Pin in requirements.txt
-echo "openai-agents>=0.6.8" >> requirements.txt
+echo "openai-agents>=0.7.0" >> requirements.txt
 ```
 
 **Always test after SDK updates** - the API surface may change.

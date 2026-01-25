@@ -1,7 +1,7 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 3.4.0
-**Last Updated:** 2026-01-23
+**Version:** 3.4.1
+**Last Updated:** 2026-01-26
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
 
@@ -608,7 +608,7 @@ Is there a known fix for this issue?
 |-----------|---------------|
 | Script generation (GPT-5.2) | $0.05-0.15 |
 | Error handling (GPT-5.2) | $0.02-0.05 |
-| Quality evaluation (vision) | $0.10-0.30 |
+| Quality evaluation (vision, gpt-5-mini) | $0.05-0.20 |
 | Documentation search | $0.02-0.05 |
 | **Total per iteration** | **$0.20-0.55** |
 
@@ -619,13 +619,16 @@ Is there a known fix for this issue?
 if not budget_tracker.can_afford_evaluation():
     raise BudgetExceededError("Monthly budget exhausted")
 
+# Remaining budget helper (BudgetTracker does not expose get_remaining)
+remaining = max(0.0, budget_tracker.monthly_limit - budget_tracker.get_spent())
+
 # At 80% budget
-if budget_tracker.get_remaining() < budget_tracker.monthly_limit * 0.2:
+if remaining < budget_tracker.monthly_limit * 0.2:
     # Switch to reduced evaluation profile
     evaluation_profile = "quick"
 
 # At 100% budget
-if budget_tracker.get_remaining() <= 0:
+if remaining <= 0:
     # Return best result immediately
     return best_result
 ```
@@ -999,6 +1002,23 @@ Fields persisted:
 - `orchestrator.py` - Standalone agents use dynamic instruction functions
 - `docs/SDK_ENFORCEMENT_PROTOCOL.md` - Added section 8: Dynamic Instructions
 - `docs/DYNAMIC_INSTRUCTIONS_GUIDE_2026-01-23.md` - Updated with implementation details
+
+---
+
+### v3.4.1 (2026-01-26) - SDK Enforcement + Budget Fixes
+
+**Doc-Query Enforcement Enabled:**
+- Script Writer must perform a doc query before `write_script`/`modify_script`.
+- Enforced via RunHooks (`require_doc_query_before`).
+
+**SDK v0.7.0 Alignment:**
+- `agent.as_tool(max_turns=...)` is supported natively; wrappers only needed for custom logic.
+
+**Budget Guardrail Consistency:**
+- Budget checks use `get_spent()` + `monthly_limit` (no `get_remaining()`).
+
+**Vision Model Default:**
+- Vision evaluation defaults to `gpt-5-mini` (override via `VISION_MODEL` env var).
 
 ---
 
