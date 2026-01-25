@@ -218,6 +218,16 @@ async def validate_modification_decision(
             )
         elif not isinstance(parameter_changes, dict):
             errors.append(f"parameter_changes must be dict, got {type(parameter_changes)}")
+        else:
+            nested_keys = [
+                key for key, value in parameter_changes.items()
+                if isinstance(value, (dict, list))
+            ]
+            if nested_keys:
+                errors.append(
+                    "parameter_changes must be flat (no nested dict/list). "
+                    f"Nested keys: {nested_keys}"
+                )
 
     if action == "switch_technique":
         if not new_technique:

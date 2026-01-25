@@ -2,7 +2,7 @@
 
 ## Purpose
 Convert the latest tracing shakedown findings into a concrete, ordered tasklist
-with quick wins and code snippets. No code changes are applied yet.
+with quick wins and code snippets. Code changes listed below have now been applied.
 
 ## Evidence (latest run)
 - Execution failure: "FluidDomainSettings object has no attribute 'noise_res_factor'"
@@ -16,7 +16,7 @@ with quick wins and code snippets. No code changes are applied yet.
 ## Quick Wins (same day)
 
 ### QW1. Block/remove `noise_res_factor` at validation time
-- [ ] Add a KNOWN_API_CHANGES entry so the validator flags/removes it
+- [x] Add a KNOWN_API_CHANGES entry so the validator flags/removes it
 - Why: API validator currently returns 10/10 valid even with a removed attr
 - Target: `agents/blender-vfx-orchestrator/specialized_agents/api_validator.py`
 
@@ -30,7 +30,7 @@ Suggested snippet:
 ```
 
 ### QW2. Auto-strip `noise_res_factor` before execution
-- [ ] Add a pre-execution fixer rule to remove the line
+- [x] Add a pre-execution fixer rule to remove the line
 - Why: Prevents repeat crashes if the validator misses it
 - Target: `agents/blender-vfx-orchestrator/tools/blender_api_fixer.py`
 
@@ -45,7 +45,7 @@ Suggested snippet:
 ```
 
 ### QW3. Update Script Writer guidance for noise/upres
-- [ ] Explicitly forbid noise_res_factor and show the correct bake flow
+- [x] Explicitly forbid noise_res_factor and show the correct bake flow
 - Why: Prevents the error from being generated at the source
 - Target: `agents/blender-vfx-orchestrator/tools/dynamic_instructions.py`
 
@@ -62,7 +62,7 @@ Suggested snippet:
 ```
 
 ### QW4. Fix doc query detection for the new bundle tool
-- [ ] Add blender_doc_search_bundle to doc_query_tools
+- [x] Add blender_doc_search_bundle to doc_query_tools
 - Why: Hooks currently report doc_query_made=False even when bundle runs
 - Target: `agents/blender-vfx-orchestrator/hooks/enforcement_hooks.py`
 
@@ -83,7 +83,7 @@ doc_query_tools: List[str] = field(default_factory=lambda: [
 ## Short-Term (1-2 days)
 
 ### ST1. Enforce flat parameter_changes in Modification Coordinator
-- [ ] Reject nested/prose structures in `validate_modification_decision`
+- [x] Reject nested/prose structures in `validate_modification_decision`
 - Why: `_modify_script_impl` can only apply flat key/value pairs; nested dicts
   result in changes_made: []
 - Target: `agents/blender-vfx-orchestrator/guardrails/coordinator_guardrails.py`
@@ -134,4 +134,4 @@ Note: Only use if guardrail is not enough; guardrail is the preferred fix.
 
 ## Status Notes
 - Doc refs now resolve to real DocPath values. Keep this behavior.
-- API validator still misses noise_res_factor, so it needs explicit blocking.
+- API validator now blocks noise_res_factor (fix applied).

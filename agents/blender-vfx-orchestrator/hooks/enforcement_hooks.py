@@ -139,6 +139,7 @@ class EnforcementConfig:
     doc_query_tools: List[str] = field(default_factory=lambda: [
         "semantic_search_blender_docs",
         "search_blender_api_by_intent",
+        "blender_doc_search_bundle",
         "find_alternative_approaches",
         "search_code_patterns",
         "query_docs",  # context7

@@ -104,6 +104,11 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": ".use_adaptive_domain",
         "reason": "FluidDomainSettings.adaptive_domain renamed to use_adaptive_domain in Blender 5.0"
     },
+    # FluidDomainSettings.noise_res_factor removed (Blender 5.0)
+    ".noise_res_factor": {
+        "correction": "# noise_res_factor removed in Blender 5.0 - delete this line",
+        "reason": "FluidDomainSettings.noise_res_factor removed in Blender 5.0"
+    },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {
         "correction": "getattr(bpy.app.build_options, 'cycles', False)",

@@ -441,6 +441,15 @@ def bake_mantaflow(domain_obj):
 4. ✅ **GPU configured** - Set `cycles.device = 'GPU'` + preferences
 5. ✅ **No free_all()** - Skip on fresh scenes, just bake directly
 
+### Noise/Upres (Blender 5.0)
+- **DO NOT** use `dsettings.noise_res_factor` (removed in 5.0)
+- Use:
+  - `dsettings.use_noise = True`
+  - `dsettings.noise_strength = 0.7`
+  - `dsettings.noise_scale = 1.0`
+  - `bpy.ops.fluid.bake_data()`
+  - `bpy.ops.fluid.bake_noise()`
+
 ### Common CLI Errors and Fixes:
 | Error | Cause | Fix |
 |-------|-------|-----|

@@ -153,6 +153,12 @@ while len(\1) > 1:
         r"# Blender 5.0: use_caching removed (line deleted)",
         "use_caching removed"
     ),
+    # FluidDomainSettings.noise_res_factor removed in Blender 5.0
+    (
+        r"(?m)^.*\.noise_res_factor\s*=\s*.*$",
+        r"# Blender 5.0: noise_res_factor removed (line deleted)",
+        "noise_res_factor removed"
+    ),
 ]
 
 
