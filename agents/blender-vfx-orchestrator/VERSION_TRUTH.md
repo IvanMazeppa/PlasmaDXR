@@ -130,6 +130,13 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `noise_res_factor` | REMOVED | Doesn't exist in 5.0 |
 | `use_caching` | REMOVED | Doesn't exist in 5.0 |
 
+### CyclesRenderSettings - INVALID ATTRIBUTES
+| Wrong | Correct | Notes |
+|-------|---------|-------|
+| `preview_adaptive_sampling` | `use_preview_adaptive_sampling` | Missing `use_` prefix |
+| `bake_frame_start` | N/A | Use `scene.frame_start` instead |
+| `bake_frame_end` | N/A | Use `scene.frame_end` instead |
+
 ### Shader Nodes - CORRECT NAMES
 | Old (2.8-4.x) | New (5.0) |
 |---------------|-----------|

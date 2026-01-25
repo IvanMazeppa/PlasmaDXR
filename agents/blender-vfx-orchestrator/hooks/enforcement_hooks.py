@@ -515,6 +515,36 @@ def create_script_writer_hooks() -> EnforcementHooks:
     return EnforcementHooks(config)
 
 
+def create_fallback_script_writer_hooks() -> EnforcementHooks:
+    """
+    Create hooks for Script Writer when running as FALLBACK from Spec-First pipeline.
+
+    CRITICAL DIFFERENCE from create_script_writer_hooks():
+    - NO doc query requirement because Research Agent already queried docs
+    - The Spec-First pipeline failed AFTER research, so we trust the context
+
+    This prevents the "Cannot call 'write_script' without first querying documentation"
+    error when falling back from a failed API Spec Agent.
+    """
+    config = EnforcementConfig(
+        max_same_tool_calls=6,  # Standard limit for non-exempt tools
+        max_consecutive_same_tool=5,  # No tool should be called 5+ times in a row
+        max_exempt_tool_calls=10,  # Hard ceiling even for doc searches
+        max_turns=12,
+        hard_turn_limit=18,
+        require_doc_query_before=[],  # NO requirement - research already done
+        exempt_from_loop_detection=[
+            "validate_script",  # May need multiple validation calls
+            "semantic_search_blender_docs",  # Still allow doc searches if needed
+            "search_blender_api_by_intent",  # Same
+            "blender_doc_search_bundle",  # Bundled doc search
+        ],
+        raise_on_loop=True,
+        raise_on_doc_missing=False,  # Explicitly disabled for fallback
+    )
+    return EnforcementHooks(config)
+
+
 def create_quality_analyst_hooks() -> EnforcementHooks:
     """
     Create hooks optimized for Quality Analyst agent.
@@ -572,12 +602,17 @@ def create_api_spec_hooks() -> EnforcementHooks:
     - T3: Search operations
     - T4: Return APISpec
 
+    IMPORTANT: The SDK may execute multiple tool calls in parallel within a
+    single turn. For complex effects (pyro, ocean, etc.), the agent may need
+    to verify 15-30+ attributes simultaneously. The limits below accommodate
+    legitimate parallel batching while still preventing infinite loops.
+
     SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
     """
     config = EnforcementConfig(
-        max_same_tool_calls=6,  # May need multiple searches per attribute type
-        max_consecutive_same_tool=4,  # Allow back-to-back doc searches
-        max_exempt_tool_calls=10,  # Hard ceiling
+        max_same_tool_calls=10,  # Standard limit for non-exempt tools
+        max_consecutive_same_tool=60,  # High limit for parallel batch searches (may need 2-3 batches)
+        max_exempt_tool_calls=60,  # Match consecutive limit for exempt tools
         max_turns=6,
         hard_turn_limit=8,
         require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces

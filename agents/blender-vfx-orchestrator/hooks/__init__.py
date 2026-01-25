@@ -15,6 +15,7 @@ from .enforcement_hooks import (
     # Specialized hook factories
     create_research_hooks,
     create_script_writer_hooks,
+    create_fallback_script_writer_hooks,
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
     create_api_spec_hooks,
@@ -39,6 +40,7 @@ __all__ = [
     # Specialized hook factories
     "create_research_hooks",
     "create_script_writer_hooks",
+    "create_fallback_script_writer_hooks",
     "create_quality_analyst_hooks",
     "create_learning_agent_hooks",
     "create_api_spec_hooks",

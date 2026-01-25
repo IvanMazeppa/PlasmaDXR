@@ -68,6 +68,7 @@ from hooks import (
 from hooks.enforcement_hooks import (
     create_research_hooks,
     create_script_writer_hooks,
+    create_fallback_script_writer_hooks,
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
     create_api_spec_hooks,
@@ -265,8 +266,8 @@ from specialized_agents.docs_expert import create_docs_expert
 # These agents replace direct Script Writer usage with a two-phase approach:
 # 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
 # 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
-from specialized_agents.api_spec_agent import create_api_spec_agent, format_api_spec_for_prompt
-from specialized_agents.code_writer_agent import create_code_writer_agent
+from specialized_agents.api_spec_agent import create_api_spec_agent
+from specialized_agents.code_writer_agent import create_code_writer_agent, format_api_spec_for_prompt
 # API Validator for Blender 5.0 API validation (Phase 6 of Architecture Optimization)
 # Validates API calls in generated scripts BEFORE execution to catch errors at source
 from specialized_agents.api_validator import (
@@ -1042,9 +1043,10 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
         """
         Run the original Script Writer as fallback.
 
-        This is used when the Spec-First pipeline fails or is disabled.
+        This is used when the Spec-First pipeline fails.
+        Uses fallback hooks that don't require doc queries (research already done).
         """
-        script_hooks = create_script_writer_hooks()
+        script_hooks = create_fallback_script_writer_hooks()
 
         script_prompt = f"""Generate a Blender Python script for {effect_type} VFX.
 

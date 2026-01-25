@@ -23,7 +23,9 @@ from agents.agent_output import AgentOutputSchema
 
 if TYPE_CHECKING:
     from agents import RunContextWrapper
-    from models.shared_context import SharedContext
+
+# Import SharedContext for Agent generic typing
+from models.shared_context import SharedContext
 
 # Import the APISpec model
 from models.api_spec import APISpec
