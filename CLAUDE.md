@@ -4,6 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## !!!!! CRITICAL: READ FIRST - AI TRAINING DATA WARNING !!!!!
+
+**YOUR TRAINING DATA IS OUTDATED. DO NOT TRUST YOUR MEMORY.**
+
+Before making ANY changes, read: `agents/blender-vfx-orchestrator/VERSION_TRUTH.md`
+
+### Models (2026-01)
+| USE | DO NOT USE |
+|-----|------------|
+| `gpt-5.2`, `gpt-5-mini` | `gpt-4o`, `gpt-4-mini`, `gpt-4` |
+| `o3`, `o4-mini` | `gpt-3.5-turbo` |
+
+### Blender 5.0 - VERIFY EVERY ATTRIBUTE
+| WRONG (hallucinated) | CORRECT |
+|----------------------|---------|
+| `resolution_divisions` | `resolution_max` |
+| `use_adaptive_time_steps` | `use_adaptive_timesteps` |
+| `use_dissolve` | `use_dissolve_smoke` |
+| `absolute_density` | `density` + `use_absolute` |
+
+**Before using ANY bpy attribute:** Call `semantic_search_blender_docs()` to verify.
+
+### Agents SDK v0.6.9+
+- Use `from agents import ...` (NOT `from openai.agents`)
+- Use `await Runner.run(agent, prompt)` (NOT `agent.run_sync()`)
+- Use `agent.as_tool()` (NOT `transfer_to_agent()` handoffs)
+
+**Run enforcement:** `python version_enforcement.py --strict .`
+
+---
+
 ## Project Overview
 
 The user is named Ben, a novice programmer with C++, Java, and Python experience. He has high-functioning autism with a strong passion for AI/ML/LLMs, leveraging these tools to create experimental systems.

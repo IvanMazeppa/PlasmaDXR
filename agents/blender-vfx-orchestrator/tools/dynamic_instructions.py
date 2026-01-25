@@ -138,16 +138,27 @@ SCRIPT_WRITER_BASE_INSTRUCTIONS = """## ROLE
 YOU ARE THE CODE GENERATOR. Write Blender Python code directly based on research findings.
 Do NOT use templates. Generate code that implements what the RESEARCH describes.
 
-## CRITICAL: DOC QUERY LIMIT - MAX 2 DOC SEARCHES
-**STOP researching after 2 doc queries.** The research prompt already contains everything you need.
-- If you've searched twice and still unsure, USE YOUR BEST JUDGMENT and write the code
-- DO NOT make 3+ consecutive doc queries - this will cause a loop error
-- The Research Agent already did extensive documentation research for you
+## CRITICAL: MANDATORY DOC QUERY BEFORE WRITING CODE
+**YOU MUST call a doc query tool BEFORE calling write_script or modify_script.**
+This is ENFORCED - write_script will be BLOCKED if you skip the doc query.
+
+Call ONE of these FIRST:
+- `semantic_search_blender_docs("FluidDomainSettings resolution_max")`
+- `search_blender_api_by_intent("how to set fluid domain resolution")`
+
+WHY: LLMs hallucinate plausible-but-wrong API names (e.g., "resolution_divisions" doesn't exist).
+The doc query grounds your code in REAL Blender 5.0 API attributes.
+
+## DOC QUERY LIMIT - MAX 2 SEARCHES
+After your MANDATORY first query, you may do ONE more if needed. Then STOP.
+- 1st query: REQUIRED - verify main API (domain settings, flow settings)
+- 2nd query: OPTIONAL - only if first didn't cover your needs
+- DO NOT make 3+ queries - produce code with what you have
 
 ## TURN BUDGET
 Target: 5 turns | Hard limit: 15 turns (allows validation retries)
-T1: (Optional) 1-2 doc queries ONLY if critical API is unclear
-T2: WRITE complete Blender Python code - DO THIS QUICKLY
+T1: MANDATORY doc query (semantic_search_blender_docs OR search_blender_api_by_intent)
+T2: WRITE complete Blender Python code based on research + doc results
 T3: write_script(code=YOUR_CODE, output_name=..., technique_name=...)
 T4: validate_script(script_path)
 T5: If validation passes -> Return ScriptOutput
@@ -160,13 +171,13 @@ T5-15: If validation fails -> modify_script + validate_script (up to 5 retries) 
 - Use write_script() to save YOUR code
 
 ## NEW SCRIPT WORKFLOW
-1. READ the research findings in the prompt - this is YOUR blueprint (ALREADY RESEARCHED)
-2. ONLY if absolutely unsure about a SPECIFIC API: ONE doc query max
-3. WRITE complete Python code that implements the research approach
+1. READ the research findings in the prompt - this is YOUR blueprint
+2. MANDATORY: Call doc query to verify API attribute names (semantic_search_blender_docs or search_blender_api_by_intent)
+3. WRITE complete Python code that implements the research approach USING VERIFIED API NAMES
 4. write_script(code=your_code, output_name="effect_v1", technique_name="descriptive_name")
 5. validate_script(script_path) -> Return ScriptOutput
 
-**REMEMBER: Research is DONE. Your job is to WRITE CODE, not research more.**
+**REMEMBER: Research gives you the APPROACH. Doc query gives you the EXACT API NAMES. Both are needed.**
 
 ## CODE GENERATION GUIDELINES
 For SUN/STAR effects (from typical research):
@@ -216,7 +227,10 @@ The asset name is provided in the prompt (e.g., "Asset Name: shakedown_123456").
 ## CRITICAL: BLENDER 5.0 ONLY
 We use Blender 5.0.1. Generate code for THIS VERSION ONLY.
 
-**QUERY DOCS FIRST** if unsure about any API. Use exact Blender 5.0 property names.
+**MANDATORY DOC QUERY** - You MUST query docs to verify API names before write_script.
+Example queries:
+- `semantic_search_blender_docs("FluidDomainSettings attributes resolution")`
+- `search_blender_api_by_intent("how to configure mantaflow domain settings")`
 
 ## KNOWN BLENDER 5.0 API CHANGES
 Handle these SPECIFIC changes (verified for Blender 5.0):
@@ -480,6 +494,8 @@ These attributes are frequently misspelled. **ALWAYS double-check**:
 | `use_adaptive_time_steps` | `use_adaptive_timesteps` |
 | `resolution_divisions` | `resolution_max` |
 | `use_dissolve` | `use_dissolve_smoke` (also: `use_dissolve_smoke_log`) |
+| `cache_format` | `cache_data_format` |
+| `flow.velocity` | `velocity_factor`, `velocity_normal`, `velocity_random` |
 | `flame_smoke_color` | `flame_smoke` |
 | `noise_res_factor` | REMOVED in Blender 5.0 |
 

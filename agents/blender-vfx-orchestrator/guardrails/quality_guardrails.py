@@ -70,9 +70,9 @@ async def check_budget_before_quality(
                 file=sys.stderr
             )
             return GuardrailFunctionOutput(
-        tripwire_triggered=False,
-        output_info={"status": "passed"}
-    )
+                tripwire_triggered=False,
+                output_info={"status": "passed"}
+            )
 
         # Get budget tracker from context or utils
         if hasattr(shared_context, "budget_tracker"):
@@ -82,42 +82,50 @@ async def check_budget_before_quality(
             from utils import get_budget_tracker
             budget_tracker = get_budget_tracker()
 
+        if hasattr(budget_tracker, "get_spent"):
+            spent = budget_tracker.get_spent()
+        elif hasattr(budget_tracker, "state") and hasattr(budget_tracker.state, "total_spent"):
+            spent = budget_tracker.state.total_spent()
+        else:
+            spent = 0.0
+        remaining = max(0.0, budget_tracker.monthly_limit - spent)
+
         if not budget_tracker.can_afford_evaluation():
             print(
                 f"[Guardrail] check_budget_before_quality TRIGGERED: "
-                f"Budget exhausted (spent: ${budget_tracker.total_spent:.2f})",
+                f"Budget exhausted (spent: ${spent:.2f})",
                 file=sys.stderr
             )
             return GuardrailFunctionOutput(
                 tripwire_triggered=True,
                 output_info={
                     "reason": "Budget exhausted - cannot perform quality evaluation",
-                    "total_spent": budget_tracker.total_spent,
+                    "total_spent": spent,
                     "monthly_limit": budget_tracker.monthly_limit,
-                    "remaining": budget_tracker.get_remaining(),
+                    "remaining": remaining,
                     "hint": "Return best result so far without further evaluation",
                 }
             )
 
         # Check if at 80% budget - warn but don't block
-        remaining_pct = budget_tracker.get_remaining() / budget_tracker.monthly_limit
+        remaining_pct = remaining / budget_tracker.monthly_limit if budget_tracker.monthly_limit else 0.0
         if remaining_pct < 0.2:
             print(
                 f"[Guardrail] check_budget_before_quality WARNING: "
                 f"Budget at {(1-remaining_pct)*100:.0f}% "
-                f"(remaining: ${budget_tracker.get_remaining():.2f})",
+                f"(remaining: ${remaining:.2f})",
                 file=sys.stderr
             )
 
         print(
             f"[Guardrail] check_budget_before_quality PASSED: "
-            f"Budget OK (remaining: ${budget_tracker.get_remaining():.2f})",
+            f"Budget OK (remaining: ${remaining:.2f})",
             file=sys.stderr
         )
         return GuardrailFunctionOutput(
-        tripwire_triggered=False,
-        output_info={"status": "passed"}
-    )
+            tripwire_triggered=False,
+            output_info={"status": "passed"}
+        )
 
     except Exception as e:
         # Fail open on errors - let the agent run

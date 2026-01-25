@@ -2260,7 +2260,7 @@ Provide detailed feedback for improvement."""
                             params=baseline_params_json,
                             scores=baseline_scores_json,
                             render_path=baseline_render_snapshot or execution.render_path or "",
-                            effect_type=request.effect_type.value
+                            script_path=script.script_path or ""
                         )
                         print(f"[Pipeline] Baseline recorded: score={baseline_score_snapshot:.1f}", file=sys.stderr)
                     except Exception as e:

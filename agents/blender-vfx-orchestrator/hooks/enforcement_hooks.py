@@ -483,11 +483,10 @@ def create_script_writer_hooks() -> EnforcementHooks:
     """
     Create hooks optimized for Script Writer agent.
 
-    Doc query requirement REMOVED for write_script because:
-    1. The Research Agent already did extensive documentation research
-    2. Research findings are passed in the prompt to Script Writer
-    3. Script Writer should write code based on that research, not re-research
-    4. The API Validator (Phase 1.5) catches any API issues anyway
+    Doc query requirement ENFORCED for write_script/modify_script because:
+    1. Research results are high-level and do not guarantee attribute validity
+    2. Script Writer must ground attribute usage in API docs
+    3. Validation alone is too late to prevent hallucinated attributes
 
     Loop detection: Doc search tools are exempt from the normal limit (6),
     but they still have:
@@ -501,14 +500,14 @@ def create_script_writer_hooks() -> EnforcementHooks:
         max_turns=12,
         hard_turn_limit=18,
         require_doc_query_before=[
-            # NOTE: write_script and generate_script NO LONGER require doc query
-            # because Research Agent already did the documentation research
-            # and the API Validator (Phase 1.5) catches API issues
+            "write_script",
+            "modify_script",
         ],
         exempt_from_loop_detection=[
             "validate_script",  # May need multiple validation calls
             "semantic_search_blender_docs",  # Complex effects need many doc searches
             "search_blender_api_by_intent",  # Same - legitimate multiple searches
+            "blender_doc_search_bundle",  # Bundled doc search should be exempt
         ],
         raise_on_loop=True,
         raise_on_doc_missing=True,

@@ -9,7 +9,7 @@ Architecture:
 - @function_tool wrappers: Exposed to agents (call the _impl functions)
 
 Tools:
-- analyze_with_vision: GPT-5.2 native vision analysis (PRIMARY)
+- analyze_with_vision: GPT-5-mini native vision analysis (PRIMARY)
 - find_reference_images: Direct filesystem search for references
 - compare_to_reference: Vision-based comparison against reference
 - evaluate_render: Vision-based quality scoring
@@ -41,6 +41,7 @@ RENDER_DIRS = [
     PROJECT_ROOT / "build" / "renders",
     PROJECT_ROOT / "evaluation_outputs",
 ]
+VISION_MODEL = os.getenv("VISION_MODEL", "gpt-5-mini")
 
 
 # =============================================================================
@@ -173,12 +174,12 @@ Provide specific, actionable comparison notes."""
         "text": "\n\nRespond with valid JSON only. Include: overall_assessment (string), score (int 0-100), issues (array of objects with category/severity/description), strengths (array of strings), suggestions (array of strings)."
     })
 
-    # Call OpenAI Responses API with GPT-5.2
+    # Call OpenAI Responses API with configured vision model
     try:
         client = OpenAI()
 
         response = client.responses.create(
-            model="gpt-5.2",
+            model=VISION_MODEL,
             input=[{"role": "user", "content": content}],
         )
 
@@ -197,7 +198,7 @@ Provide specific, actionable comparison notes."""
                 "raw_response": True
             }
 
-        result["vision_model"] = "gpt-5.2"
+        result["vision_model"] = VISION_MODEL
         result["analysis_type"] = analysis_type
         return json.dumps(result, indent=2)
 
@@ -602,9 +603,9 @@ async def analyze_with_vision(
     custom_prompt: str = ""
 ) -> str:
     """
-    Analyze a render using GPT-5.2's native vision capabilities.
+    Analyze a render using GPT-5-mini's native vision capabilities.
 
-    This is the PRIMARY quality analysis tool - uses GPT-5.2 vision to directly
+    This is the PRIMARY quality analysis tool - uses GPT-5-mini vision to directly
     "see" the render and provide intelligent, context-aware quality assessment.
     More intelligent than ML metrics for nuanced visual issues.
 

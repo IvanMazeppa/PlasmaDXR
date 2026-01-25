@@ -38,7 +38,7 @@ scene.frame_end = 24
 if scene.world is None:
     scene.world = bpy.data.worlds.new(name="World")
 world = scene.world
-world.use_nodes = True
+world.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
 
 # Simple HDRI-like background (very dim)
 wn = world.node_tree
@@ -121,9 +121,9 @@ flow.flow_source = 'MESH'
 # Enable initial velocity and set upward velocity
 flow.use_initial_velocity = True
 # In Blender 5.0 Mantaflow, velocity factors are set via separate props; set velocity vectors on object
-# We'll key a custom velocity via object property: use flow_settings.velocity_factor if available
+# We'll key a custom velocity via object property: use flow_settings.velocity_factor_factor_factor_factor_factor if available
 try:
-    flow.velocity_factor = 1.0
+    flow.velocity_factor_factor_factor_factor_factor = 1.0
 except Exception:
     pass
 # Apply an initial upward velocity by giving the emitter an animation of location (simple approach)

@@ -136,6 +136,20 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "use_dissolve_smoke",
         "reason": "use_dissolve does not exist. Use use_dissolve_smoke for gas domain dissolve. Related: use_dissolve_smoke_log for logarithmic dissolve."
     },
+    # FluidDomainSettings.cache_format does NOT exist - correct is cache_data_format
+    ".cache_format": {
+        "correction": ".cache_data_format",
+        "reason": "cache_format does not exist. Correct attribute is cache_data_format (with 'data' in the name)."
+    },
+    "cache_format": {
+        "correction": "cache_data_format",
+        "reason": "cache_format does not exist. Correct attribute is cache_data_format (with 'data' in the name)."
+    },
+    # FluidFlowSettings.velocity does NOT exist - use velocity_factor, velocity_normal, etc.
+    ".velocity": {
+        "correction": ".velocity_factor",
+        "reason": "FluidFlowSettings.velocity does not exist. Use velocity_factor, velocity_normal, velocity_random, or use_initial_velocity."
+    },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {
         "correction": "getattr(bpy.app.build_options, 'cycles', False)",

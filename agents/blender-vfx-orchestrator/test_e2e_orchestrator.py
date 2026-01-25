@@ -117,8 +117,11 @@ async def test_orchestrator_e2e():
             print("Iteration History:")
             for it in result.iterations:
                 print(f"  [{it.iteration}] Score: {it.score:.1f}, Passed: {it.passed}")
-                if it.primary_issue:
-                    print(f"      Issue: {it.primary_issue}")
+                primary_issue = getattr(it, "primary_issue", None)
+                if not primary_issue and hasattr(it, "quality"):
+                    primary_issue = getattr(it.quality, "primary_issue", None)
+                if primary_issue:
+                    print(f"      Issue: {primary_issue}")
         
         print()
         print("=" * 70)

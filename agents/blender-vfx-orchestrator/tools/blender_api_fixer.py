@@ -194,6 +194,25 @@ while len(\1) > 1:
         r"'use_adaptive_timesteps'",
         "use_adaptive_time_steps key → use_adaptive_timesteps (typo fix)"
     ),
+    # LLM TRUNCATION: cache_format → cache_data_format (missing 'data' part)
+    (
+        r"\.cache_format\b",
+        r".cache_data_format",
+        "cache_format → cache_data_format (typo fix)"
+    ),
+    (
+        r"['\"]cache_format['\"]",
+        r"'cache_data_format'",
+        "cache_format key → cache_data_format (typo fix)"
+    ),
+    # LLM HALLUCINATION: FluidFlowSettings.velocity does NOT exist
+    # Correct attributes: velocity_factor, velocity_normal, velocity_random, use_initial_velocity
+    # Note: Use negative lookbehind to avoid double-applying (velocity_factor → velocity_factor_factor)
+    (
+        r"(flow_settings|flow)\.velocity(?!_)\s*=",
+        r"\1.velocity_factor =",
+        "velocity → velocity_factor (FluidFlowSettings)"
+    ),
 ]
 
 

@@ -504,34 +504,76 @@ def blender_doc_search_bundle(
             },
         })
 
-    queries = []
-    if description:
-        queries.append(description)
-    if effect_type:
-        queries.append(f"{effect_type} {domain} simulation Blender 5.0")
-        queries.append(f"{effect_type} smoke fire pyro mantaflow settings")
-        queries.append(f"{effect_type} volumetric shader principled volume")
-    if intent:
-        queries.append(f"{intent} bpy python")
+    manual_queries = []
+    api_queries = []
 
-    queries.append(f"{domain} cache settings bpy.types.FluidDomainSettings")
-    queries.append("Blender 5.0 Mantaflow domain settings")
+    if description:
+        manual_queries.append(description)
+    if effect_type:
+        manual_queries.append(f"{effect_type} {domain} simulation Blender 5.0")
+        manual_queries.append(f"{effect_type} smoke fire pyro mantaflow settings")
+        manual_queries.append(f"{effect_type} volumetric shader principled volume")
+    if intent:
+        manual_queries.append(f"{intent} bpy python")
+
+    # Always include direct API queries so attributes are grounded in API docs
+    api_queries.extend([
+        "bpy.types.FluidDomainSettings",
+        "bpy.types.FluidFlowSettings",
+        "bpy.ops.fluid.bake",
+    ])
+    if domain:
+        api_queries.append(f"{domain} bpy.types.FluidDomainSettings")
+    if intent:
+        api_queries.append(f"{intent} bpy.types")
+    if effect_type and effect_type.lower() in {"smoke", "fire", "explosion", "pyro"}:
+        api_queries.extend([
+            "bpy.types.FluidDomainSettings.resolution_max",
+            "bpy.types.FluidFlowSettings.flow_behavior",
+            "bpy.ops.fluid.bake_data",
+            "bpy.ops.fluid.bake_noise",
+        ])
+
+    manual_queries.append(f"{domain} cache settings bpy.types.FluidDomainSettings")
+    manual_queries.append("Blender 5.0 Mantaflow domain settings")
 
     # De-duplicate while preserving order
-    queries = [q.strip() for q in queries if q and q.strip()]
-    seen_queries = set()
-    ordered_queries = []
-    for q in queries:
-        if q.lower() in seen_queries:
-            continue
-        seen_queries.add(q.lower())
-        ordered_queries.append(q)
+    def _dedupe_queries(items: list[str]) -> list[str]:
+        items = [q.strip() for q in items if q and q.strip()]
+        seen = set()
+        ordered = []
+        for q in items:
+            key = q.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(q)
+        return ordered
 
-    results = []
+    api_queries = _dedupe_queries(api_queries)
+    manual_queries = _dedupe_queries(manual_queries)
+
+    api_results = []
+    general_results = []
     seen_results = set()
     queries_used = []
 
-    for q in ordered_queries:
+    for q in api_queries:
+        batch = _search_vector_store(q, max_results=max_results, intent="api")
+        queries_used.append(q)
+        for r in batch:
+            key = (
+                r.get("file_id", ""),
+                r.get("filename", ""),
+                (r.get("content", "") or "")[:120],
+            )
+            if key in seen_results:
+                continue
+            seen_results.add(key)
+            r["query"] = q
+            api_results.append(r)
+
+    for q in manual_queries:
         batch = _search_vector_store(q, max_results=max_results)
         queries_used.append(q)
         for r in batch:
@@ -544,9 +586,11 @@ def blender_doc_search_bundle(
                 continue
             seen_results.add(key)
             r["query"] = q
-            results.append(r)
-        if len(results) >= max_results:
+            general_results.append(r)
+        if len(api_results) + len(general_results) >= max_results:
             break
+
+    results = (api_results + general_results)[:max_results]
 
     # Final fallback if nothing found
     warnings = []
@@ -573,6 +617,8 @@ def blender_doc_search_bundle(
                 results.append(r)
             if results:
                 break
+    elif not api_results:
+        warnings.append("No API doc results returned; API store coverage may be missing.")
 
     # Extract code snippets and API references
     code_snippets = []
@@ -632,7 +678,7 @@ def blender_doc_search_bundle(
                 "content": r.get("content", ""),
                 "score": r.get("score", 0),
                 "source": r.get("filename", "unknown"),
-                "doc_path": next(
+                "doc_path": r.get("doc_path") or next(
                     (p for p in extracted_doc_paths if p in (r.get("content", "") or "")),
                     ""
                 ),
