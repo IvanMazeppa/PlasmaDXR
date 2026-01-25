@@ -47,6 +47,12 @@ The SDK docs do not show a separate `span()` API, so the safe approach is:
 
 Avoid nested `trace()` for phase metadata. It will fragment traces.
 
+## SDK Trace Alignment (2026-01-24)
+- **Never nest `trace()` calls.** Use a single outer trace per pipeline run.
+- **Always set `group_id=session_id`** so multiple runs and any side‑logs can be correlated.
+- If you emit local JSONL flow logs, **include the same `group_id`** in each record.
+- If doc‑query detection is used in hooks, ensure it includes **`blender_doc_search_bundle`** (new bundled doc tool).
+
 ## Secondary Option (Not Ideal, But Useful)
 If you insist on keeping per‑phase traces, use a **shared `group_id`** for every trace in the same session. This won’t give a single flow row, but you can filter/group related traces in the dashboard.
 

@@ -49,11 +49,11 @@ except ImportError:
 # Two-store architecture: Separate Manual and API stores
 MANUAL_STORE_ID = os.getenv(
     "BLENDER_MANUAL_VECTOR_STORE_ID",
-    "vs_6975104199c08191acb1495c86d581ce"
+    "vs_697564fbfc0c8191b2e44aa47dbaf482"  # New individual-file store (2026-01-25)
 )
 API_STORE_ID = os.getenv(
     "BLENDER_API_VECTOR_STORE_ID",
-    "vs_697512bf81c481919ae3b7a8ffb8223a"
+    "vs_697571f0275c8191910fea0f2c8bdd3a"  # New clean individual-file store (2026-01-25)
 )
 
 # Deprecated: Single store ID (kept for backwards compatibility)
@@ -64,6 +64,11 @@ VECTOR_STORE_ID = os.getenv(
 
 # Cache for client
 _client: Optional[OpenAI] = None
+
+# File search fallback controls (SDK tool path)
+FILE_SEARCH_FALLBACK_ENABLED = os.getenv("DOCS_FILE_SEARCH_FALLBACK", "true").lower() in ("1", "true", "yes")
+FILE_SEARCH_FALLBACK_MIN_SCORE = float(os.getenv("DOCS_FILE_SEARCH_MIN_SCORE", "0.15"))
+DOCS_SEARCH_MODEL = os.getenv("DOCS_SEARCH_MODEL", "gpt-5.2")
 
 # Keywords that indicate API vs Manual intent
 API_KEYWORDS = {
@@ -221,9 +226,95 @@ def _search_vector_store(
             print(f"[semantic_docs] Search error on {sid}: {e}", file=sys.stderr)
             continue
 
+    # Fallback to SDK file_search if results are empty or weak
+    top_score = all_results[0].get("score", 0) if all_results else 0
+    if FILE_SEARCH_FALLBACK_ENABLED and (not all_results or top_score < FILE_SEARCH_FALLBACK_MIN_SCORE):
+        file_search_results = _file_search_vector_store(
+            query=query,
+            store_ids=store_ids,
+            max_results=max_results,
+            filter_category=filter_category
+        )
+        if file_search_results:
+            all_results = _merge_results(all_results, file_search_results, max_results)
+
     # Sort by score and limit
     all_results.sort(key=lambda x: x.get('score', 0), reverse=True)
     return all_results[:max_results]
+
+
+def _file_search_vector_store(
+    query: str,
+    store_ids: List[str],
+    max_results: int,
+    filter_category: Optional[str]
+) -> List[dict]:
+    """
+    Use the SDK file_search tool as a fallback retrieval path.
+    """
+    client = _get_client()
+    if not client:
+        return []
+
+    try:
+        response = client.responses.create(
+            model=DOCS_SEARCH_MODEL,
+            input=query,
+            tools=[{
+                "type": "file_search",
+                "vector_store_ids": store_ids,
+                "max_num_results": max_results * 2
+            }],
+            include=["file_search_call.results"]
+        )
+    except Exception as e:
+        print(f"[semantic_docs] file_search error: {e}", file=sys.stderr)
+        return []
+
+    results: List[dict] = []
+    for output in response.output:
+        if getattr(output, "type", "") != "file_search_call":
+            continue
+        for result in getattr(output, "results", []) or []:
+            content = getattr(result, "text", "") or ""
+            if filter_category and filter_category.lower() not in content.lower():
+                continue
+            doc_path = _extract_doc_path(content)
+            doc_type = _extract_doc_type(content)
+            results.append({
+                "content": content[:2000],
+                "score": getattr(result, "score", 0) or 0,
+                "file_id": getattr(result, "file_id", "") or "",
+                "filename": getattr(result, "filename", "unknown") or "unknown",
+                "doc_path": doc_path,
+                "doc_type": doc_type,
+                "store_id": "file_search",
+            })
+
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return results[:max_results]
+
+
+def _merge_results(primary: List[dict], secondary: List[dict], max_results: int) -> List[dict]:
+    """
+    Merge and de-duplicate results from multiple retrieval paths.
+    """
+    merged = []
+    seen = set()
+
+    for item in primary + secondary:
+        key = (
+            item.get("file_id", ""),
+            item.get("filename", ""),
+            (item.get("content", "") or "")[:120],
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+
+    merged.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return merged[:max_results]
 
 
 async def _fallback_to_blender_manual(query: str, max_results: int = 5) -> List[dict]:

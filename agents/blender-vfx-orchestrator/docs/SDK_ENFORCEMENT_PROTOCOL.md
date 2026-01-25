@@ -63,6 +63,10 @@ with trace("Workflow Name", group_id=session_id):
 # View traces: https://platform.openai.com/traces
 ```
 
+**Trace Rules (SDK‑Aligned):**
+- **Do NOT nest `trace()` calls.** Use one outer trace per pipeline run.
+- Use `group_id=session_id` to correlate any local logs or side‑channels.
+
 ### 2. Handoffs (Agent Transfer)
 
 ```python
