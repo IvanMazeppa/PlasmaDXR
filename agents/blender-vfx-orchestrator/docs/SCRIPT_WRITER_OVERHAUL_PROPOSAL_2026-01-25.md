@@ -271,8 +271,16 @@ async def validate_api_spec(ctx, agent, output: APISpec) -> GuardrailFunctionOut
     for attr in output.domain_attributes + output.flow_attributes:
         if not attr.doc_ref:
             errors.append(f"{attr.object_type}.{attr.attribute_name}: missing doc_ref")
-        elif "blender" not in attr.doc_ref.lower():
-            errors.append(f"{attr.object_type}.{attr.attribute_name}: doc_ref doesn't look like Blender docs")
+        elif not attr.doc_ref.startswith("blender_python_reference_5_0/"):
+            errors.append(f"{attr.object_type}.{attr.attribute_name}: doc_ref must be API doc path")
+        elif attr.attribute_name.lower() not in attr.doc_ref.lower():
+            errors.append(f"{attr.object_type}.{attr.attribute_name}: doc_ref missing attribute name")
+
+    for op in output.ops:
+        if not op.doc_ref:
+            errors.append(f"{op.op_path}: missing doc_ref")
+        elif not op.doc_ref.startswith("blender_python_reference_5_0/"):
+            errors.append(f"{op.op_path}: doc_ref must be API doc path")
 
     if errors:
         return GuardrailFunctionOutput(
@@ -281,7 +289,10 @@ async def validate_api_spec(ctx, agent, output: APISpec) -> GuardrailFunctionOut
         )
 
     return GuardrailFunctionOutput(
-        output_info={"verified_count": len(output.domain_attributes) + len(output.flow_attributes)},
+        output_info={
+            "verified_count": len(output.domain_attributes) + len(output.flow_attributes),
+            "verified_ops": len(output.ops),
+        },
         tripwire_triggered=False,
     )
 
@@ -296,8 +307,10 @@ OUTPUT: APISpec (Pydantic schema with doc_refs for EVERY attribute).
 ## CRITICAL RULES
 1. You MUST call semantic_search_blender_docs for EACH attribute you plan to use.
 2. You MUST include the doc_ref from the search result.
-3. If you cannot find documentation for an attribute, DO NOT include it.
-4. NEVER guess attribute names - only use EXACT names from documentation.
+3. Doc refs MUST be API docs (`blender_python_reference_5_0/...`), not manual pages.
+4. You MUST include `bpy.ops.*` calls in the spec with doc refs (e.g., bake ops).
+5. If you cannot find documentation for an attribute or op, DO NOT include it.
+6. NEVER guess attribute names - only use EXACT names from documentation.
 
 ## Turn Budget
 T1: semantic_search_blender_docs for domain settings (FluidDomainSettings)
@@ -310,7 +323,10 @@ Every attribute in domain_attributes and flow_attributes MUST have:
 - object_type: Exact class name from docs
 - attribute_name: Exact attribute name from docs (CASE SENSITIVE)
 - value_type: From docs (int, float, bool, enum)
-- doc_ref: Path to documentation (REQUIRED - guardrail will reject without this)
+- doc_ref: API doc path (REQUIRED - guardrail will reject without this)
+Every op in ops MUST have:
+- op_path: Exact bpy.ops path (e.g., bpy.ops.fluid.bake_data)
+- doc_ref: API doc path (REQUIRED)
 
 STOP after T4. Do NOT invent attributes.""",
 
@@ -349,33 +365,41 @@ async def validate_code_against_spec(ctx, agent, output: VerifiedScriptOutput) -
     # Read the generated script
     script_content = Path(output.script_path).read_text()
 
-    # Extract all bpy.types.* attribute accesses
-    # Pattern matches: settings.attribute_name or FluidDomainSettings.attribute_name
-    pattern = r'\.(\w+)\s*='
-    used_attributes = set(re.findall(pattern, script_content))
+    # Extract attribute assignments for enforced variable names
+    # Required convention: dset = domain_settings, fset = flow_settings
+    domain_pattern = r'\bdset\.(\w+)\s*='
+    flow_pattern = r'\bfset\.(\w+)\s*='
+    used_attributes = set(re.findall(domain_pattern, script_content))
+    used_attributes.update(re.findall(flow_pattern, script_content))
 
     # Build set of allowed attributes from spec
     allowed_attributes = set()
     for attr in api_spec.domain_attributes + api_spec.flow_attributes:
         allowed_attributes.add(attr.attribute_name)
 
+    # Extract bpy.ops calls
+    ops_pattern = r'\bbpy\.ops\.[a-zA-Z_]+\.[a-zA-Z_]+'
+    used_ops = set(re.findall(ops_pattern, script_content))
+
     # Find violations
     violations = used_attributes - allowed_attributes
-    # Filter out common non-API attributes
-    violations = {v for v in violations if not v.startswith('_') and v not in {'name', 'type', 'data', 'location', 'scale', 'rotation'}}
+    allowed_ops = {op.op_path for op in api_spec.ops}
+    op_violations = used_ops - allowed_ops
 
-    if violations:
+    if violations or op_violations:
         return GuardrailFunctionOutput(
             output_info={
                 "violations": list(violations),
-                "reason": f"Code uses attributes not in verified spec: {violations}",
+                "op_violations": list(op_violations),
+                "reason": "Code uses attributes or ops not in verified spec",
                 "allowed": list(allowed_attributes),
+                "allowed_ops": list(allowed_ops),
             },
             tripwire_triggered=True,
         )
 
     return GuardrailFunctionOutput(
-        output_info={"apis_verified": len(used_attributes)},
+        output_info={"apis_verified": len(used_attributes), "ops_verified": len(used_ops)},
         tripwire_triggered=False,
     )
 
@@ -392,6 +416,7 @@ OUTPUT: VerifiedScriptOutput.
 2. Do NOT invent or guess ANY attribute names.
 3. Copy attribute names EXACTLY from the spec (case-sensitive).
 4. If you need an attribute not in the spec, STOP and report it.
+5. Use variable names `dset` (domain_settings) and `fset` (flow_settings) so guardrails can verify usage.
 
 ## Turn Budget
 T1: Write complete Blender Python code using ONLY spec attributes
@@ -404,6 +429,7 @@ For each attribute, copy EXACTLY from APISpec:
 - domain_attributes: Use for FluidDomainSettings
 - flow_attributes: Use for FluidFlowSettings
 - shader_nodes: Use for node creation
+- ops: Use ONLY the ops listed in APISpec
 
 NEVER write an attribute not in the spec. The output guardrail will reject it.""",
 
@@ -483,6 +509,9 @@ Domain attributes (FluidDomainSettings):
 Flow attributes (FluidFlowSettings):
 {json.dumps([attr.model_dump() for attr in api_spec.flow_attributes], indent=2)}
 
+Ops (bpy.ops calls):
+{json.dumps([op.model_dump() for op in api_spec.ops], indent=2)}
+
 COPY ATTRIBUTE NAMES EXACTLY. Do not invent any attributes."""
 
     try:
@@ -547,11 +576,39 @@ async def validate_api_spec(ctx, agent, output: APISpec) -> GuardrailFunctionOut
             output_info={"reason": "Missing doc_refs"},
             tripwire_triggered=True,  # Rejects the output
         )
-    return GuardrailFunctionOutput(tripwire_triggered=False)
+    return GuardrailFunctionOutput(
+        output_info={"status": "passed"},
+        tripwire_triggered=False
+    )
 
 agent = Agent(
     output_guardrails=[validate_api_spec],
 )
+```
+
+#### 2.1 Enforcing Doc Tool Usage (SDK-correct)
+Use RunHooks or `ModelSettings.tool_choice` to ensure a doc tool is called before any spec output.
+This prevents the spec agent from skipping doc tools.
+
+```python
+from agents import ModelSettings, RunHooks
+
+class RequireDocsFirst(RunHooks):
+    def __init__(self):
+        self.doc_query_made = False
+
+    async def on_tool_start(self, context, agent, tool):
+        if tool.name in {"semantic_search_blender_docs", "search_blender_api_by_intent"}:
+            self.doc_query_made = True
+    async def on_agent_end(self, context, agent, output):
+        if not self.doc_query_made:
+            raise DocQueryRequiredError("Doc query required before spec output")
+
+api_spec_agent = Agent(
+    model_settings=ModelSettings(tool_choice="semantic_search_blender_docs"),
+)
+
+spec_result = await Runner.run(api_spec_agent, spec_prompt, hooks=RequireDocsFirst())
 ```
 
 #### 3. Context Passing

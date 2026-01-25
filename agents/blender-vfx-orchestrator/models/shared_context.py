@@ -816,6 +816,14 @@ class SharedContext(BaseModel):
         description="Pattern name that will be applied in this iteration"
     )
 
+    # Phase 7: Spec-First Pipeline (API Hallucination Prevention)
+    # The verified API specification from the API Spec Agent
+    # Used by the Code Writer guardrail to validate generated code
+    api_spec: Optional[Any] = Field(
+        default=None,
+        description="Verified APISpec from API Spec Agent (used by Code Writer guardrail)"
+    )
+
     @classmethod
     def from_request(cls, request: AssetRequest, session_id: str) -> "SharedContext":
         """Create a new SharedContext from an asset request."""

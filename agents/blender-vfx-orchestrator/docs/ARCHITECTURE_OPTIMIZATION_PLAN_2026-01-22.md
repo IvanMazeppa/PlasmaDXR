@@ -3,7 +3,7 @@
 **Date:** 2026-01-22
 **Author:** Ben + Claude
 **Status:** Active Implementation
-**Last Updated:** 2026-01-23 (Phase 1, 2, 3, 4, 6, 7 complete)
+**Last Updated:** 2026-01-25 (Phase 1, 2, 3, 4, 6, 7, 12 complete)
 
 ---
 
@@ -26,6 +26,7 @@ This document captures the comprehensive analysis of the Blender VFX Orchestrato
 | 6 | API Validator agent | ✅ **COMPLETE** | `specialized_agents/api_validator.py` created |
 | 7 | Tracing everywhere | ✅ **COMPLETE** | 10+ trace() calls with metadata |
 | 5 | Turn budget per agent | ⚠️ **PARTIAL** | Covered by RunHooks max_turns |
+| 12 | Spec-First Pipeline | ✅ **COMPLETE** | API Spec Agent → Code Writer (anti-hallucination) |
 
 ---
 
@@ -779,6 +780,44 @@ result = await Runner.run(agent, prompt, context=context, session=sdk_session, .
 - Hard-disable `create_asset()` in production.
 - Remove handoff agent initialization after deprecation window.
 - Update docs and tests to target pipeline-only behavior.
+
+### Phase 12: Spec-First Pipeline (API Hallucination Prevention) ✅ COMPLETE
+**Goal:** Make API hallucinations structurally impossible through a two-phase approach.
+**Implemented:** 2026-01-25
+**Reference:** `SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md`
+
+**Problem Solved:**
+Script Writer hallucinates Blender attributes like `bake_frame_start` (doesn't exist).
+The old mitigation (API Validator) only catches errors AFTER generation.
+
+**Solution: Spec-First Architecture:**
+1. **API Spec Agent** creates verified APISpec from Blender 5.0 docs
+   - MUST call semantic_search_blender_docs for EVERY attribute
+   - Output guardrail rejects specs with missing/invalid doc_refs
+   - Output: APISpec with verified attributes and doc_refs
+
+2. **Code Writer Agent** writes code using ONLY verified APIs
+   - NO doc tools - spec is the single source of truth
+   - Output guardrail validates code against the APISpec
+   - Enforces variable naming: `dset` for domain_settings, `fset` for flow_settings
+
+**Files Created:**
+- `models/api_spec.py` - APISpec, APIAttribute, APIOperation, VerifiedScriptOutput
+- `guardrails/api_spec_guardrails.py` - validate_api_spec, validate_code_against_spec
+- `specialized_agents/api_spec_agent.py` - API Spec Agent
+- `specialized_agents/code_writer_agent.py` - Code Writer Agent
+
+**Hooks Added:**
+- `create_api_spec_hooks()` - doc search optimization
+- `create_code_writer_hooks()` - strict turn budget
+
+**Integration:**
+- Feature flag: `VFXOrchestrator._use_spec_first_pipeline`
+- Fallback: Original Script Writer if spec-first fails
+- Context: `SharedContext.api_spec` holds the verified spec
+
+**Key Insight:** If an attribute isn't in the spec, the Code Writer cannot use it.
+The guardrail validates this mechanically - no LLM instruction-following required.
 
 ---
 

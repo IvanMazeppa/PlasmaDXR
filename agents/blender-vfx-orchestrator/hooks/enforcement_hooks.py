@@ -554,6 +554,78 @@ def create_learning_agent_hooks() -> EnforcementHooks:
     return EnforcementHooks(config)
 
 
+def create_api_spec_hooks() -> EnforcementHooks:
+    """
+    Create hooks optimized for API Spec Agent.
+
+    The API Spec Agent MUST call documentation tools for EVERY attribute
+    it includes in the spec. This is the first line of defense against
+    hallucinated attributes.
+
+    Doc search tools are the PRIMARY tools for this agent:
+    - semantic_search_blender_docs: For attribute verification
+    - search_blender_api_by_intent: For operation verification
+
+    Turn budget is tight (4-6 turns) because:
+    - T1: Search domain attributes
+    - T2: Search flow attributes
+    - T3: Search operations
+    - T4: Return APISpec
+
+    SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+    """
+    config = EnforcementConfig(
+        max_same_tool_calls=6,  # May need multiple searches per attribute type
+        max_consecutive_same_tool=4,  # Allow back-to-back doc searches
+        max_exempt_tool_calls=10,  # Hard ceiling
+        max_turns=6,
+        hard_turn_limit=8,
+        require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces
+        exempt_from_loop_detection=[
+            "semantic_search_blender_docs",  # Primary tool
+            "search_blender_api_by_intent",  # Secondary tool
+            "validate_parameter_range",  # May validate multiple parameters
+        ],
+        raise_on_loop=True,
+        raise_on_doc_missing=False,  # Output guardrail handles this
+    )
+    return EnforcementHooks(config)
+
+
+def create_code_writer_hooks() -> EnforcementHooks:
+    """
+    Create hooks optimized for Code Writer Agent (spec-first pipeline).
+
+    CRITICAL: The Code Writer receives a VERIFIED APISpec and MUST NOT
+    call any documentation tools. If it needs to look up attributes,
+    that's a failure of the API Spec Agent.
+
+    This agent has:
+    - NO doc query tools (by design)
+    - Strict turn budget (4-6 turns)
+    - write_script and validate_script only
+
+    The output guardrail (validate_code_against_spec) validates that
+    the generated code only uses attributes from the APISpec.
+
+    SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+    """
+    config = EnforcementConfig(
+        max_same_tool_calls=2,  # Should only call write_script once
+        max_consecutive_same_tool=2,  # No looping
+        max_exempt_tool_calls=4,  # Validation might need retries
+        max_turns=6,
+        hard_turn_limit=8,
+        require_doc_query_before=[],  # No doc tools available - spec is source of truth
+        exempt_from_loop_detection=[
+            "validate_script",  # May need to validate after corrections
+        ],
+        raise_on_loop=True,
+        raise_on_doc_missing=False,
+    )
+    return EnforcementHooks(config)
+
+
 # =============================================================================
 # TESTING
 # =============================================================================

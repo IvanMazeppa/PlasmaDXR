@@ -12,6 +12,13 @@ from .enforcement_hooks import (
     DocQueryRequiredError,
     TurnBudgetExceededError,
     EnforcementConfig,
+    # Specialized hook factories
+    create_research_hooks,
+    create_script_writer_hooks,
+    create_quality_analyst_hooks,
+    create_learning_agent_hooks,
+    create_api_spec_hooks,
+    create_code_writer_hooks,
 )
 
 from .diagnostic_hooks import (
@@ -29,6 +36,13 @@ __all__ = [
     "DocQueryRequiredError",
     "TurnBudgetExceededError",
     "EnforcementConfig",
+    # Specialized hook factories
+    "create_research_hooks",
+    "create_script_writer_hooks",
+    "create_quality_analyst_hooks",
+    "create_learning_agent_hooks",
+    "create_api_spec_hooks",
+    "create_code_writer_hooks",
     # Diagnostics
     "DiagnosticHooks",
     "PromptFingerprint",

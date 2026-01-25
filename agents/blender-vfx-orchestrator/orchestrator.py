@@ -70,6 +70,8 @@ from hooks.enforcement_hooks import (
     create_script_writer_hooks,
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
+    create_api_spec_hooks,
+    create_code_writer_hooks,
 )
 
 # Phase 3: Input/Output Guardrails for agent validation
@@ -87,6 +89,11 @@ from guardrails import (
     validate_technique_decision,
     validate_modification_decision,
     validate_quality_decision,
+)
+# Phase 7: Spec-First Pipeline guardrails (API Hallucination Prevention)
+from guardrails.api_spec_guardrails import (
+    validate_api_spec,
+    validate_code_against_spec,
 )
 from agents.extensions import handoff_filters
 # Removed unused handoff prompt imports - standalone agents don't use handoffs
@@ -199,6 +206,8 @@ from models.shared_context import (
     BlenderExecution,
     QualityMetrics,
 )
+# API Spec models for Spec-First Pipeline
+from models.api_spec import APISpec, VerifiedScriptOutput
 
 # Proactive research tools for Strategy 3: Early warning detection
 # NOTE: pre_iteration_research (direct callable) is imported at line 48 for pipeline use
@@ -252,6 +261,12 @@ from specialized_agents import (
 # DocsExpert now uses in-process function_tools instead of MCP client connections.
 # This fixes the anyio TaskGroup conflict that previously blocked MCP tool handlers.
 from specialized_agents.docs_expert import create_docs_expert
+# Spec-First Pipeline agents (Phase 7: API Hallucination Prevention)
+# These agents replace direct Script Writer usage with a two-phase approach:
+# 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
+# 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
+from specialized_agents.api_spec_agent import create_api_spec_agent, format_api_spec_for_prompt
+from specialized_agents.code_writer_agent import create_code_writer_agent
 # API Validator for Blender 5.0 API validation (Phase 6 of Architecture Optimization)
 # Validates API calls in generated scripts BEFORE execution to catch errors at source
 from specialized_agents.api_validator import (
@@ -824,6 +839,12 @@ class BlenderVFXOrchestrator:
         self._modification_coordinator: Optional[Agent] = None
         self._quality_gate_coordinator: Optional[Agent] = None
 
+        # Phase 7: Spec-First Pipeline agents (API Hallucination Prevention)
+        # Two-phase approach: API Spec Agent → Code Writer Agent
+        self._api_spec_agent: Optional[Agent] = None
+        self._code_writer_agent: Optional[Agent] = None
+        self._use_spec_first_pipeline: bool = True  # Feature flag for gradual rollout
+
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
         self._initialized = False
@@ -859,6 +880,203 @@ class BlenderVFXOrchestrator:
             model_settings_kwargs["verbosity"] = "medium"
 
         return settings.model, ModelSettings(**model_settings_kwargs)
+
+    async def _run_spec_first_pipeline(
+        self,
+        effect_type: str,
+        technique: str,
+        request: "AssetRequest",
+        context: SharedContext,
+        sdk_session: SQLiteSession,
+    ) -> ScriptOutput:
+        """
+        Run the Spec-First Pipeline for API hallucination prevention.
+
+        This two-phase approach makes hallucinated attributes structurally impossible:
+        1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
+        2. Code Writer Agent: Writes code using ONLY verified APIs from spec
+
+        The guardrails enforce that:
+        - Every attribute in the spec has a valid doc_ref
+        - Generated code only uses attributes from the spec
+
+        Args:
+            effect_type: VFX effect type (pyro, explosion, etc.)
+            technique: Selected technique (mantaflow_smoke, etc.)
+            request: Asset generation request
+            context: Shared context for agents
+            sdk_session: SDK session for conversation persistence
+
+        Returns:
+            ScriptOutput with the generated script path and metadata
+
+        SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+        """
+        print(f"[Spec-First] Starting API Spec → Code Writer pipeline", file=sys.stderr)
+
+        # Create hooks for each agent
+        api_spec_hooks = create_api_spec_hooks()
+        code_writer_hooks = create_code_writer_hooks()
+
+        # ====== PHASE 1.A: API SPEC AGENT ======
+        # Creates verified API specification from Blender 5.0 docs
+        print(f"[Spec-First] Phase 1.A: API Spec Agent", file=sys.stderr)
+
+        spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
+
+## Effect Type: {effect_type}
+## Technique: {technique}
+## Description: {request.description}
+
+You MUST:
+1. Call semantic_search_blender_docs for EVERY attribute you include
+2. Include the doc_ref from search results in your output
+3. Only include attributes with valid doc_refs from blender_python_reference_5_0/
+
+Key parameters needed for {effect_type}:
+- Domain resolution and type
+- Flow type and behavior
+- Temperature, density, velocity settings
+- Any technique-specific attributes
+
+Search the documentation for each attribute and return the complete APISpec."""
+
+        try:
+            spec_result = await Runner.run(
+                self._api_spec_agent,
+                spec_prompt,
+                context=context,
+                session=sdk_session,
+                hooks=api_spec_hooks,
+                max_turns=8
+            )
+            api_spec: APISpec = spec_result.final_output
+            print(f"[Spec-First] API Spec created: {len(api_spec.domain_attributes)} domain attrs, "
+                  f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
+
+            # Store the API spec in context for the Code Writer guardrail
+            context.api_spec = api_spec
+
+        except Exception as e:
+            print(f"[Spec-First] ERROR: API Spec Agent failed: {e}", file=sys.stderr)
+            # Fall back to the original Script Writer
+            print(f"[Spec-First] Falling back to original Script Writer", file=sys.stderr)
+            return await self._run_original_script_writer(
+                effect_type, technique, request, context, sdk_session
+            )
+
+        print(f"[Spec-First] API Spec hooks stats: {api_spec_hooks.get_stats()}", file=sys.stderr)
+
+        # ====== PHASE 1.B: CODE WRITER AGENT ======
+        # Writes code using ONLY verified APIs from the spec
+        print(f"[Spec-First] Phase 1.B: Code Writer Agent", file=sys.stderr)
+
+        # Format the API spec for the Code Writer prompt
+        spec_text = format_api_spec_for_prompt(api_spec)
+
+        code_prompt = f"""Write a Blender Python script for {effect_type} effect using ONLY the verified APIs below.
+
+{spec_text}
+
+## Asset Parameters
+- Asset Name: {request.asset_name}
+- Effect Type: {effect_type}
+- Technique: {technique}
+- Description: {request.description}
+- Resolution: {request.resolution}
+- Frames: {request.frame_start}-{request.frame_end}
+
+## CRITICAL RULES
+1. ONLY use attributes listed in the APISpec above
+2. Use variable names: dset for domain_settings, fset for flow_settings
+3. Copy attribute names EXACTLY (case sensitive)
+4. If an attribute you need is not in the spec, work without it
+
+Call write_script to generate the script, then validate_script to check it.
+Return the VerifiedScriptOutput with script_path and apis_used."""
+
+        try:
+            code_result = await Runner.run(
+                self._code_writer_agent,
+                code_prompt,
+                context=context,
+                session=sdk_session,
+                hooks=code_writer_hooks,
+                max_turns=8
+            )
+            verified_output: VerifiedScriptOutput = code_result.final_output
+
+            # Convert VerifiedScriptOutput to ScriptOutput for pipeline compatibility
+            script = ScriptOutput(
+                script_path=verified_output.script_path,
+                technique_used=verified_output.technique_used,
+                parameters_set=verified_output.parameters_set,
+                validation_passed=verified_output.validation_passed,
+                validation_errors=verified_output.validation_errors,
+            )
+            print(f"[Spec-First] Script generated: {script.script_path}", file=sys.stderr)
+            print(f"[Spec-First] APIs used: {verified_output.apis_used}", file=sys.stderr)
+
+        except Exception as e:
+            print(f"[Spec-First] ERROR: Code Writer Agent failed: {e}", file=sys.stderr)
+            # Create error output
+            script = ScriptOutput(
+                script_path="",
+                technique_used=technique,
+                parameters_set={},
+                validation_passed=False,
+                validation_errors=[f"Spec-First pipeline failed: {e}"],
+            )
+
+        print(f"[Spec-First] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
+        return script
+
+    async def _run_original_script_writer(
+        self,
+        effect_type: str,
+        technique: str,
+        request: "AssetRequest",
+        context: SharedContext,
+        sdk_session: SQLiteSession,
+    ) -> ScriptOutput:
+        """
+        Run the original Script Writer as fallback.
+
+        This is used when the Spec-First pipeline fails or is disabled.
+        """
+        script_hooks = create_script_writer_hooks()
+
+        script_prompt = f"""Generate a Blender Python script for {effect_type} VFX.
+
+## Technique: {technique}
+
+## Parameters
+- Asset Name: {request.asset_name}
+- Effect Type: {effect_type}
+- Description: {request.description}
+- Resolution: {request.resolution}
+- Frames: {request.frame_start}-{request.frame_end}
+
+Generate a complete, validated script. Return the script_path in your output."""
+
+        try:
+            script_result = await Runner.run(
+                self._script_agent_standalone,
+                script_prompt,
+                context=context,
+                session=sdk_session,
+                hooks=script_hooks,
+                max_turns=15
+            )
+            return script_result.final_output
+        except Exception as e:
+            return ScriptOutput(
+                script_path="",
+                technique_used=technique,
+                parameters_set={},
+                validation_passed=False,
+                validation_errors=[str(e)],
+            )
 
     async def initialize(self) -> None:
         """
@@ -1188,8 +1406,39 @@ After executing the script, return a structured ExecutionOutput with:
         # Quality Gate Coordinator (after each iteration)
         self._quality_gate_coordinator = create_quality_gate_coordinator()
 
+        # =============================================================
+        # Phase 7: Spec-First Pipeline Agents (API Hallucination Prevention)
+        # =============================================================
+        # Two-phase approach that makes API hallucinations structurally impossible:
+        # 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
+        # 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
+        #
+        # SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+
+        if self._use_spec_first_pipeline:
+            print("[Orchestrator] Creating Phase 7 Spec-First Pipeline agents...", file=sys.stderr)
+
+            # API Spec Agent - creates verified API specifications
+            # Has output guardrail that rejects specs with missing/invalid doc_refs
+            self._api_spec_agent = create_api_spec_agent(
+                model="gpt-5.2",
+                use_high_reasoning=True,
+            )
+
+            # Code Writer Agent - writes code using ONLY verified APIs
+            # Has output guardrail that validates code against the APISpec
+            self._code_writer_agent = create_code_writer_agent(
+                model="gpt-5.2",
+                use_high_reasoning=True,
+            )
+
+            print("[Orchestrator] Spec-First Pipeline agents ready", file=sys.stderr)
+
         self._initialized = True
-        print("[Orchestrator] Initialization complete (5 agents + 5 standalone + 3 coordinators ready)", file=sys.stderr)
+        agent_count = "5 agents + 5 standalone + 3 coordinators"
+        if self._use_spec_first_pipeline:
+            agent_count += " + 2 spec-first"
+        print(f"[Orchestrator] Initialization complete ({agent_count} ready)", file=sys.stderr)
 
     async def create_asset(self, request: AssetRequest) -> SessionState:
         """
@@ -1550,22 +1799,55 @@ Select the optimal technique and provide starting parameters."""
                                 print(f"[Pipeline] WARN: Experiment suggestions failed: {e}", file=sys.stderr)
 
                     # ====== PHASE 1: SCRIPT GENERATION ======
-                    print(f"[Pipeline] PHASE 1: Script Writer", file=sys.stderr)
+                    print(f"[Pipeline] PHASE 1: Script Generation", file=sys.stderr)
                     if iteration == 1:
-                        # Build script prompt with Coordinator's technique selection
-                        technique_guidance = ""
-                        starting_params = {}
+                        # Determine technique from Coordinator selection
+                        technique_name = "unknown"
                         if selected_technique:
-                            technique_guidance = f"""
+                            technique_name = selected_technique.selected_technique
+
+                        # ====== PHASE 7: SPEC-FIRST PIPELINE (API Hallucination Prevention) ======
+                        # Two-phase approach: API Spec Agent → Code Writer Agent
+                        # This makes hallucinated attributes structurally impossible.
+                        if self._use_spec_first_pipeline and self._api_spec_agent and self._code_writer_agent:
+                            print(f"[Pipeline] Using SPEC-FIRST pipeline (Phase 7)", file=sys.stderr)
+                            try:
+                                script = await self._run_spec_first_pipeline(
+                                    effect_type=request.effect_type.value,
+                                    technique=technique_name,
+                                    request=request,
+                                    context=context,
+                                    sdk_session=sdk_session,
+                                )
+                            except Exception as e:
+                                print(f"[Pipeline] Spec-First pipeline failed: {e}", file=sys.stderr)
+                                print(f"[Pipeline] Falling back to original Script Writer", file=sys.stderr)
+                                # Fall back to original Script Writer
+                                script = await self._run_original_script_writer(
+                                    effect_type=request.effect_type.value,
+                                    technique=technique_name,
+                                    request=request,
+                                    context=context,
+                                    sdk_session=sdk_session,
+                                )
+                        else:
+                            # Original Script Writer flow (deprecated but kept for compatibility)
+                            print(f"[Pipeline] Using ORIGINAL Script Writer (Spec-First disabled)", file=sys.stderr)
+
+                            # Build script prompt with Coordinator's technique selection
+                            technique_guidance = ""
+                            starting_params = {}
+                            if selected_technique:
+                                technique_guidance = f"""
 ## COORDINATOR SELECTED TECHNIQUE
 Technique: {selected_technique.selected_technique}
 Reasoning: {selected_technique.reasoning}
 Starting Parameters: {json.dumps(selected_technique.key_parameters, indent=2) if selected_technique.key_parameters else 'None specified'}
 
 YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selected this as optimal."""
-                            starting_params = selected_technique.key_parameters or {}
+                                starting_params = selected_technique.key_parameters or {}
 
-                        script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
+                            script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
 {technique_guidance}
 
 ## Research Findings
@@ -1581,51 +1863,51 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
 
 Generate a complete, validated script using the selected technique. Return the script_path in your output."""
 
-                        # Run Script Writer for iteration 1 with enforcement hooks
-                        try:
-                            script_result = await Runner.run(
-                                self._script_agent_standalone,
-                                script_prompt,
-                                context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                hooks=script_hooks,
-                                max_turns=15
-                            )
-                            script: ScriptOutput = script_result.final_output
-                        except LoopDetectedError as e:
-                            print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
-                            # Create a minimal script output to continue
-                            script = ScriptOutput(
-                                script_path="",
-                                technique_used="loop_detected",
-                                parameters_set={},
-                                validation_passed=False,
-                                validation_errors=[str(e)]
-                            )
-                        except DocQueryRequiredError as e:
-                            print(f"[Pipeline] ERROR: Script Writer missing doc query: {e}", file=sys.stderr)
-                            # Force research before continuing
-                            script = ScriptOutput(
-                                script_path="",
-                                technique_used="doc_query_missing",
-                                parameters_set={},
-                                validation_passed=False,
-                                validation_errors=[str(e)]
-                            )
-                        except Exception as e:
-                            # SDK wraps LoopDetectedError in UserError - check for it
-                            if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
-                                print(f"[Pipeline] WARN: Script Writer loop (wrapped): {e}", file=sys.stderr)
+                            # Run Script Writer for iteration 1 with enforcement hooks
+                            try:
+                                script_result = await Runner.run(
+                                    self._script_agent_standalone,
+                                    script_prompt,
+                                    context=context,
+                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                    hooks=script_hooks,
+                                    max_turns=15
+                                )
+                                script: ScriptOutput = script_result.final_output
+                            except LoopDetectedError as e:
+                                print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
+                                # Create a minimal script output to continue
                                 script = ScriptOutput(
                                     script_path="",
                                     technique_used="loop_detected",
                                     parameters_set={},
                                     validation_passed=False,
-                                    validation_errors=["Loop detected - agent made too many consecutive doc queries"]
+                                    validation_errors=[str(e)]
                                 )
-                            else:
-                                raise  # Re-raise if it's a different error
-                        print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
+                            except DocQueryRequiredError as e:
+                                print(f"[Pipeline] ERROR: Script Writer missing doc query: {e}", file=sys.stderr)
+                                # Force research before continuing
+                                script = ScriptOutput(
+                                    script_path="",
+                                    technique_used="doc_query_missing",
+                                    parameters_set={},
+                                    validation_passed=False,
+                                    validation_errors=[str(e)]
+                                )
+                            except Exception as e:
+                                # SDK wraps LoopDetectedError in UserError - check for it
+                                if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                    print(f"[Pipeline] WARN: Script Writer loop (wrapped): {e}", file=sys.stderr)
+                                    script = ScriptOutput(
+                                        script_path="",
+                                        technique_used="loop_detected",
+                                        parameters_set={},
+                                        validation_passed=False,
+                                        validation_errors=["Loop detected - agent made too many consecutive doc queries"]
+                                    )
+                                else:
+                                    raise  # Re-raise if it's a different error
+                            print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
                     else:
                         # Track if we successfully modified the script directly
                         direct_modification_success = False

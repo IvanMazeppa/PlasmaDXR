@@ -63,6 +63,12 @@ from guardrails.coordinator_guardrails import (
     validate_quality_decision,
 )
 
+# Phase 12: Spec-First Pipeline guardrails (API Hallucination Prevention)
+from guardrails.api_spec_guardrails import (
+    validate_api_spec,
+    validate_code_against_spec,
+)
+
 __all__ = [
     # Research Agent guardrails
     "validate_research_output",
@@ -77,4 +83,7 @@ __all__ = [
     "validate_technique_decision",
     "validate_modification_decision",
     "validate_quality_decision",
+    # Spec-First Pipeline guardrails (Phase 12)
+    "validate_api_spec",
+    "validate_code_against_spec",
 ]
