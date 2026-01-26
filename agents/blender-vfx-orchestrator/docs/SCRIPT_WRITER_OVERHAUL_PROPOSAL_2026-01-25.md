@@ -69,15 +69,17 @@ VALID_ENUM_VALUES = {
 ### Remaining Issues
 
 1. **Enum validation verification** - Needs a successful spec-first run
-2. **Spec-first doc search stabilization** - API Spec Agent still trips loop detection
-3. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
-4. **Render generation** - Test scripts don't produce renders (setup only)
+2. **Spec-first doc search stabilization** - Bundle-first plan added; needs verification
+3. **Render pipeline camera fix** - API fixer + instructions added; needs verification
+4. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
+5. **Render generation** - Test scripts don't produce renders (setup only)
 
 ### Files Modified
 
-- `specialized_agents/api_spec_agent.py` - Clearer doc_ref format instructions
+- `specialized_agents/api_spec_agent.py` - Bundle-first doc search plan + enum extraction rules
 - `guardrails/api_spec_guardrails.py` - Expanded safe_ops allowlist, added debug output, enum validation
 - `hooks/enforcement_hooks.py` - Increased limits, added fallback hooks
+- `tools/blender_api_fixer.py` - Inject camera setup when render has no camera
 - `hooks/__init__.py` - Exported new hook function
 - `orchestrator.py` - Uses fallback hooks for original Script Writer
 

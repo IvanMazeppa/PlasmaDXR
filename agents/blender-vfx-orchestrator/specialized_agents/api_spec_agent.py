@@ -37,6 +37,7 @@ from guardrails.api_spec_guardrails import validate_api_spec
 from tools.semantic_docs_tools import (
     semantic_search_blender_docs,
     search_blender_api_by_intent,
+    blender_doc_search_bundle,
 )
 
 # Import parameter validation tool if available
@@ -77,24 +78,25 @@ If value_type is **enum**, you MUST include `enum_values`:
 
 ## EXECUTION PLAN
 
-### TURN 1: Search domain attributes (parallel OK)
-Call semantic_search_blender_docs for each:
-- "FluidDomainSettings resolution_max"
-- "FluidDomainSettings domain_type"
-- "FluidDomainSettings cache_type"
-- "FluidDomainSettings time_scale"
+### TURN 1: Bundle-first doc search (MANDATORY)
+Call `blender_doc_search_bundle` ONCE with:
+- effect_type, description, intent, domain
 
-### TURN 2: Search flow attributes (parallel OK)
-- "FluidFlowSettings flow_type"
-- "FluidFlowSettings temperature"
-- "FluidFlowSettings fuel_amount"
+Use bundle results to populate as many attributes/ops as possible.
 
-### TURN 3: Search ops (if needed)
-Call search_blender_api_by_intent:
-- "bake fluid simulation"
+### TURN 2: Targeted attribute searches (MAX 6 TOTAL)
+Only if an attribute is still missing a valid doc_ref:
+- Call `semantic_search_blender_docs` for that specific attribute
+- **Hard limit:** 6 calls total
+
+### TURN 3: Ops search (MAX 1)
+Call `search_blender_api_by_intent` only if an op doc_ref is missing.
 
 ### TURN 4: OUTPUT - NO MORE SEARCHING
 Output the APISpec. Do NOT search again after Turn 3.
+
+**TOTAL DOC SEARCHES:**
+- 1 bundle + <=6 semantic_search + <=1 intent = <=8 total
 
 ## EXTRACTING DOC_REF FROM RESULTS
 
@@ -154,6 +156,7 @@ class APISpecAgent:
         """Initialize the agent with tools and guardrails."""
         # Build tool list
         tools = [
+            blender_doc_search_bundle,
             semantic_search_blender_docs,
             search_blender_api_by_intent,
         ]
@@ -164,6 +167,8 @@ class APISpecAgent:
         model_settings_kwargs = {}
         if self.use_high_reasoning:
             model_settings_kwargs["reasoning"] = {"effort": "high"}
+        # Avoid large parallel batches that trip loop detection
+        model_settings_kwargs["parallel_tool_calls"] = False
 
         self._agent = Agent[SharedContext](
             name="API Spec Agent",

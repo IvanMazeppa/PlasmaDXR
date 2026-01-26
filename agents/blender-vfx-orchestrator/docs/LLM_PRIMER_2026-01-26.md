@@ -149,15 +149,19 @@ See `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`. Summary:
 
 ## 10) What To Do Next (Priority Order)
 
-1. **Stabilize API Spec Agent search**
-   - Reduce per-turn search volume
-   - Enforce "Turn 4 output only"
-2. **Fix render camera**
-   - Create or set active camera before render
-3. **Verify enum guardrail**
-   - Run v10 again after spec-first succeeds
-4. **Improve doc search precision**
-   - Prefer API docs over manual/genindex hits
+**See `docs/MASTER_ROADMAP_2026-01-26.md` for the single working roadmap.**
+
+| Priority | Task | Effort | Status |
+|----------|------|--------|--------|
+| P0 | Fix render camera | LOW | TODO |
+| P1 | Stabilize spec-first search | MEDIUM | TODO |
+| P2 | Verify enum guardrail | LOW | TODO |
+| P3 | Improve doc search precision | HIGH | DEFERRED |
+
+**Recommended order:**
+1. **Fix render camera** (P0) - Quick win, unlocks downstream phases
+2. **Stabilize API Spec Agent search** (P1) - Prevent loop detection fallback
+3. **Verify enum guardrail** (P2) - Automatically tested after 1 & 2
 
 ---
 

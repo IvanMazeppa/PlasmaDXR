@@ -102,6 +102,15 @@ def clear_scene():
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
 
+# Ensure camera exists (required for render)
+def ensure_camera():
+    scene = bpy.context.scene
+    if scene.camera is None:
+        bpy.ops.object.camera_add(location=(6, -6, 4))
+        cam = bpy.context.active_object
+        cam.rotation_euler = (1.1, 0, 0.8)
+        scene.camera = cam
+
 # Create domain
 def create_domain():
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 1))
@@ -144,6 +153,7 @@ scene.frame_end = FRAME_END
 
 domain = create_domain()
 flow = create_flow()
+ensure_camera()
 
 # ... rest of script ...
 ```

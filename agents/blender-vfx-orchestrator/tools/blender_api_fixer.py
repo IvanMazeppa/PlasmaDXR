@@ -249,6 +249,40 @@ def validate_and_fix_script(script_path: str) -> Dict:
             content = re.sub(pattern, replacement, content)
             fixes_applied.append(description)
 
+    # Camera safety fix: add camera if rendering but no camera setup exists
+    has_render_call = re.search(r"bpy\.ops\.render\.render", content) is not None
+    has_camera_setup = re.search(
+        r"(scene\.camera|bpy\.context\.scene\.camera|camera_add)",
+        content
+    ) is not None
+
+    if has_render_call and not has_camera_setup:
+        camera_snippet = (
+            "\n# API Fixer: Ensure camera exists for rendering\n"
+            "scene = bpy.context.scene\n"
+            "if scene.camera is None:\n"
+            "    bpy.ops.object.camera_add(location=(6, -6, 4))\n"
+            "    cam = bpy.context.active_object\n"
+            "    cam.rotation_euler = (1.1, 0, 0.8)\n"
+            "    scene.camera = cam\n"
+        )
+
+        insert_pos = None
+        scene_match = re.search(r"^scene\s*=\s*bpy\.context\.scene.*$", content, re.MULTILINE)
+        if scene_match:
+            insert_pos = scene_match.end()
+        else:
+            import_match = re.search(r"^import bpy.*$", content, re.MULTILINE)
+            if import_match:
+                insert_pos = import_match.end()
+
+        if insert_pos is not None:
+            content = content[:insert_pos] + camera_snippet + content[insert_pos:]
+        else:
+            content = camera_snippet + "\n" + content
+
+        fixes_applied.append("Added camera setup before render (missing scene.camera)")
+
     if fixes_applied:
         # Write fixed content back
         path.write_text(content)

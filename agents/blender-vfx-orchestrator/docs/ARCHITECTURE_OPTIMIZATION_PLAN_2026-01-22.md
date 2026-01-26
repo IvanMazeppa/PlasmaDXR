@@ -26,7 +26,7 @@ This document captures the comprehensive analysis of the Blender VFX Orchestrato
 | 6 | API Validator agent | ✅ **COMPLETE** | `specialized_agents/api_validator.py` created |
 | 7 | Tracing everywhere | ✅ **COMPLETE** | 10+ trace() calls with metadata |
 | 5 | Turn budget per agent | ⚠️ **PARTIAL** | Covered by RunHooks max_turns |
-| 12 | Spec-First Pipeline | ⚠️ **PARTIAL** | Attrs verified, enum values NOT validated (2026-01-26) |
+| 12 | Spec-First Pipeline | ⚠️ **PARTIAL** | See `PHASE_12_ROADMAP_2026-01-26.md` for completion plan |
 
 ---
 

@@ -194,7 +194,7 @@ For EXPLOSION effects:
 ALWAYS include:
 - import bpy
 - Scene cleanup
-- Camera setup
+- Camera setup (ensure active camera exists)
 - Render settings with OUTPUT_DIR variable (populated from asset name)
 - **RENDER CALL AT THE END** - without this, no image is produced!
 
@@ -210,6 +210,14 @@ CACHE_DIR = f"{OUTPUT_DIR}/cache"
 from pathlib import Path
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+
+# Ensure camera exists before render
+scene = bpy.context.scene
+if scene.camera is None:
+    bpy.ops.object.camera_add(location=(6, -6, 4))
+    cam = bpy.context.active_object
+    cam.rotation_euler = (1.1, 0, 0.8)
+    scene.camera = cam
 
 # At the end of main():
 scene.render.filepath = RENDER_PATH

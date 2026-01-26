@@ -152,6 +152,15 @@ class EnforcementConfig:
     enforce_doc_query_on_end: bool = False
     doc_query_warn_threshold: Optional[int] = None
 
+    # Bundle-first enforcement for API Spec Agent
+    # When enabled, targeted search tools are blocked until bundle tool is called
+    require_bundle_first: bool = False
+    bundle_tool: str = "blender_doc_search_bundle"
+    targeted_search_tools: List[str] = field(default_factory=lambda: [
+        "semantic_search_blender_docs",
+        "search_blender_api_by_intent",
+    ])
+
     # Tools that are exempt from loop detection (always allowed)
     exempt_from_loop_detection: List[str] = field(default_factory=lambda: [
         "validate_script",  # May need multiple validation calls
@@ -177,10 +186,13 @@ class EnforcementHooks(RunHooks):
        documentation has been queried first. This enforces the "docs first"
        pattern critical for Blender 5.0 API correctness.
 
-    3. **Turn Budget**: Tracks turn count and warns/errors when budget
+    3. **Bundle-First Enforcement**: For API Spec Agent, requires bundle
+       doc search before targeted searches (prevents doc search spam).
+
+    4. **Turn Budget**: Tracks turn count and warns/errors when budget
        is exceeded. Helps identify runaway agents.
 
-    4. **Visibility**: Logs all tool calls to stderr for debugging.
+    5. **Visibility**: Logs all tool calls to stderr for debugging.
 
     Example:
         ```python
@@ -223,6 +235,9 @@ class EnforcementHooks(RunHooks):
         self._consecutive_same_tool: int = 0
         self._last_tool_called: Optional[str] = None
 
+        # Bundle-first enforcement for API Spec Agent
+        self._bundle_called: bool = False
+
     def _log(self, message: str, level: str = "INFO") -> None:
         """Log a message to stderr if logging is enabled."""
         if self.config.log_to_stderr:
@@ -238,6 +253,7 @@ class EnforcementHooks(RunHooks):
         self._consecutive_same_tool = 0
         self._last_tool_called = None
         self._run_start_time = datetime.now()
+        self._bundle_called = False
 
     # =========================================================================
     # RUNHOOKS LIFECYCLE METHODS
@@ -290,6 +306,23 @@ class EnforcementHooks(RunHooks):
         if tool_name in self.config.doc_query_tools:
             self._doc_query_made = True
             self._log(f"Doc query detected via '{tool_name}'")
+
+        # Check if this is the bundle tool
+        if tool_name == self.config.bundle_tool:
+            self._bundle_called = True
+            self._log(f"Bundle tool called: '{tool_name}'")
+
+        # ENFORCEMENT 0: Bundle-First (for API Spec Agent)
+        if self.config.require_bundle_first:
+            if tool_name in self.config.targeted_search_tools and not self._bundle_called:
+                self._log(
+                    f"BUNDLE-FIRST REQUIRED: '{tool_name}' blocked - call '{self.config.bundle_tool}' first",
+                    level="ERROR"
+                )
+                raise DocQueryRequiredError(
+                    blocked_tool=tool_name,
+                    required_tools=[self.config.bundle_tool]
+                )
 
         # ENFORCEMENT 1: Loop Detection (3 layers)
         is_exempt = tool_name in self.config.exempt_from_loop_detection
@@ -384,6 +417,7 @@ class EnforcementHooks(RunHooks):
         self._consecutive_same_tool = 0
         self._last_tool_called = None
         self._current_agent_name = to_agent.name
+        self._bundle_called = False  # Reset bundle-first state for new agent
 
     async def on_agent_end(
         self,
@@ -633,15 +667,13 @@ def create_api_spec_hooks() -> EnforcementHooks:
     it includes in the spec. This is the first line of defense against
     hallucinated attributes.
 
-    Doc search tools are the PRIMARY tools for this agent:
-    - semantic_search_blender_docs: For attribute verification
-    - search_blender_api_by_intent: For operation verification
-
-    Turn budget is tight (4-6 turns) because:
-    - T1: Search domain attributes
-    - T2: Search flow attributes
-    - T3: Search operations
+    BUNDLE-FIRST ENFORCEMENT:
+    - T1: MUST call blender_doc_search_bundle to get all attributes for effect type
+    - T2-3: MAY call targeted searches (semantic_search_blender_docs) for gaps
     - T4: Return APISpec
+
+    This prevents doc search spam (80+ calls in v10) by requiring the bundle
+    tool first, which returns 10-30 verified attributes in one call.
 
     IMPORTANT: The SDK may execute multiple tool calls in parallel within a
     single turn. For complex effects (pyro, ocean, etc.), the agent may need
@@ -652,15 +684,23 @@ def create_api_spec_hooks() -> EnforcementHooks:
     """
     config = EnforcementConfig(
         max_same_tool_calls=10,  # Standard limit for non-exempt tools
-        max_consecutive_same_tool=20,  # Allow 2-3 parallel batches, prevent spam
-        max_exempt_tool_calls=30,  # Hard ceiling for doc search tools
-        max_turns=6,
-        hard_turn_limit=8,
+        max_consecutive_same_tool=30,  # Allow batched parallel calls after bundle
+        max_exempt_tool_calls=40,  # Hard ceiling for doc search tools
+        max_turns=10,  # Increased from 6 to allow complex reasoning
+        hard_turn_limit=12,  # Increased from 8 to accommodate reasoning models
         require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces
         enforce_doc_query_on_end=True,
-        doc_query_warn_threshold=40,
+        doc_query_warn_threshold=50,
+        # BUNDLE-FIRST: Block targeted searches until bundle is called
+        require_bundle_first=True,
+        bundle_tool="blender_doc_search_bundle",
+        targeted_search_tools=[
+            "semantic_search_blender_docs",
+            "search_blender_api_by_intent",
+        ],
         exempt_from_loop_detection=[
-            "semantic_search_blender_docs",  # Primary tool
+            "blender_doc_search_bundle",  # Bundle tool - should be called once
+            "semantic_search_blender_docs",  # Primary targeted tool (after bundle)
             "search_blender_api_by_intent",  # Secondary tool
             "validate_parameter_range",  # May validate multiple parameters
         ],
