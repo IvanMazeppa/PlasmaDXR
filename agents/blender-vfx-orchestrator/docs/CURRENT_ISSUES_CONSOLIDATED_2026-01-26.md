@@ -1,5 +1,7 @@
 # Current Issues Consolidated (2026-01-26 - Updated)
 
+**Status:** Supporting issues list. Priorities live in `docs/MASTER_ROADMAP_2026-01-26.md`.
+
 This document consolidates **current problems and blockers** across recent issue
 documents to make triage easier. Use this as the primary "what's broken" list.
 
@@ -142,10 +144,229 @@ documents to make triage easier. Use this as the primary "what's broken" list.
 | Test | Date | Result | Trace |
 |------|------|--------|-------|
 | Phase-4 Gate | 2026-01-26 19:05 | ✅ PASS | `e2e_test_verbose_20260126_185722.jsonl` |
+| 2-Iter Shakedown | 2026-01-26 19:27 | ❌ FAIL | (no trace - stdout only) |
 | Shakedown v1 | 2026-01-26 18:42 | ⚠️ TIMEOUT | `phase4_gate_shakedown_20260126_184218.jsonl` |
 | Test v10 | 2026-01-26 04:20 | ❌ Loop detection | `e2e_test_v10_20260126_042056.jsonl` |
 | Test v9 | 2026-01-26 02:45 | ❌ Enum error | `e2e_test_v9_20260126_024559.jsonl` |
 
 ---
 
-*Document updated: 2026-01-26 19:10 UTC*
+## 2-Iteration Shakedown Findings (2026-01-26 19:27 UTC)
+
+**Test:** `python test_quick_e2e.py --preset quick_test --effect smoke --iterations 2`
+
+### Iteration 1 Results
+- API Spec Agent: max_turns=8 exceeded → fallback to Script Writer
+- Script Writer: Generated script with `velocity_multi` (HALLUCINATED)
+- Executor: `AttributeError: 'FluidFlowSettings' object has no attribute 'velocity_multi'`
+- Quality: Not reached due to execution failure
+
+### Iteration 2 Results
+- Modification Coordinator: Guardrail rejected nested output (expected)
+- Script Writer fallback: Blocked by `DocQueryRequiredError` on `modify_script`
+- **Root cause:** `create_script_writer_hooks()` requires doc query before `modify_script`
+- **Fix applied:** Use `create_fallback_script_writer_hooks()` for iteration 2+ (no doc requirement since Research Agent already queried)
+
+### Fixes Applied This Session
+1. **VERSION_TRUTH.md** - Added `velocity_multi` → `velocity_factor` mapping
+2. **orchestrator.py:2217** - Use fallback hooks for iteration 2+ Script Writer
+
+### Verification Run (19:33 UTC)
+- **Iteration 1:** Script Writer generated `noise_scale = 1.0` (float) - TypeError
+- **Iteration 2:** Ran without `DocQueryRequiredError` (FIX VERIFIED)
+- **Coordinator:** Correctly identified fix `noise_scale: 1` (int)
+- **modify_script:** Applied zero changes (contract issue - tracked)
+- **Result:** `max_iterations` reached, score 0.0
+
+---
+
+## DEEP DIVE: Coordinator → modify_script Contract Issue (2026-01-26 19:45 UTC)
+
+### Problem Statement
+The Modification Coordinator correctly diagnoses issues and outputs fixes, but `_modify_script_impl` fails to apply the changes.
+
+### Evidence from Test Run
+
+**Coordinator Output:**
+```python
+{
+    'FluidDomainSettings.noise_scale': 1,
+    'FluidDomainSettings.noise_strength': 0.4,
+    'FluidDomainSettings.resolution_max': 64,
+    'FluidFlowSettings.temperature': 1.0,
+    'FluidFlowSettings.density': 1.0,
+    'FluidFlowSettings.initial_velocity_z': 2.0
+}
+```
+
+**modify_script Result:**
+```
+Changes Made: NONE
+```
+
+### Root Cause Analysis
+
+**The contract has THREE incompatible formats:**
+
+| Component | Expected Format | Example |
+|-----------|-----------------|---------|
+| Coordinator output | Blender API paths | `FluidDomainSettings.noise_scale` |
+| Generated script | Direct attribute assignment | `dsettings.noise_scale = 1.0` |
+| `_modify_script_impl` | Config class pattern | `class Config: NOISE_SCALE = 1` |
+
+**Why `_modify_script_impl` fails:**
+
+1. **Line 775:** Converts param to uppercase: `param_upper = param.upper()`
+   - Input: `FluidDomainSettings.noise_scale`
+   - Result: `FLUIDDOMAINSETTINGS.NOISE_SCALE`
+
+2. **Line 800-818:** Searches for `class Config:` section with pattern:
+   - `(\s+{param_upper}\s*=\s*)([^\n]+)`
+   - Looks for: `FLUIDDOMAINSETTINGS.NOISE_SCALE = value`
+   - Script has: `dsettings.noise_scale = 1.0`
+   - **No match found**
+
+3. **Line 821-829:** Fallback searches for `Config.PARAM` pattern:
+   - Looks for: `Config.FLUIDDOMAINSETTINGS.NOISE_SCALE = value`
+   - Script has: `dsettings.noise_scale = 1.0`
+   - **No match found**
+
+### Script Structure Analysis
+
+The Script Writer generates code like this:
+```python
+# NO Config class - direct Blender API calls
+dsettings = mod.domain_settings
+dsettings.domain_type = 'GAS'
+dsettings.resolution_max = 64
+dsettings.noise_scale = 1.0  # <-- This is what needs modification
+
+fsettings = modf.flow_settings
+fsettings.flow_type = 'SMOKE'
+fsettings.temperature = 1.0
+```
+
+But `_modify_script_impl` expects:
+```python
+class Config:
+    NOISE_SCALE = 1
+    RESOLUTION_MAX = 64
+    # etc.
+
+# Later in script
+dsettings.noise_scale = Config.NOISE_SCALE
+```
+
+### Solution Options
+
+**Option A: Fix `_modify_script_impl` to handle direct attribute patterns**
+- Add pattern: `(dsettings|fsettings|settings)\.{param_name}\s*=\s*([^\n]+)`
+- Map Coordinator keys: `FluidDomainSettings.X` → `dsettings.X`
+- Low risk, surgical fix
+
+**Option B: Change Coordinator output format**
+- Output `noise_scale` instead of `FluidDomainSettings.noise_scale`
+- Update instructions + guardrails
+- Medium risk, requires prompt engineering
+
+**Option C: Standardize Script Writer to use Config class**
+- All scripts use `class Config:` for parameters
+- `_modify_script_impl` already handles this
+- High risk, requires Script Writer changes
+
+### Recommended Fix: Option A
+
+Add direct attribute pattern matching to `_modify_script_impl`:
+
+```python
+# Map Coordinator prefixes to script variable names
+PREFIX_MAP = {
+    'FluidDomainSettings': ['dsettings', 'domain_settings', 'dom'],
+    'FluidFlowSettings': ['fsettings', 'flow_settings', 'flow'],
+}
+
+# For param like 'FluidDomainSettings.noise_scale':
+prefix, attr = param.rsplit('.', 1) if '.' in param else (None, param)
+if prefix in PREFIX_MAP:
+    for var_name in PREFIX_MAP[prefix]:
+        pattern = rf"({var_name}\.{attr}\s*=\s*)([^\n]+)"
+        # ... apply replacement
+```
+
+### Impact Assessment
+
+- **Phase-4 gate:** Still PASSED (single iteration works)
+- **Multi-iteration:** Broken (Coordinator fixes don't apply)
+- **Autonomy goal:** Blocked until fixed
+
+---
+
+## Full Test Session Log (2026-01-26)
+
+### Test 1: Phase-4 Gate Verification (19:05 UTC)
+- **Command:** Single iteration E2E test
+- **Result:** ✅ PASS - Quality score 40.0
+- **Trace:** `e2e_test_verbose_20260126_185722.jsonl`
+
+### Test 2: 2-Iteration Shakedown Pre-Fix (19:27 UTC)
+- **Command:** `python test_quick_e2e.py --preset quick_test --effect smoke --iterations 2`
+- **Iteration 1:** Script Writer hallucinated `velocity_multi` → `AttributeError`
+- **Iteration 2:** `DocQueryRequiredError` on `modify_script`
+- **Result:** ❌ FAIL
+
+### Test 3: 2-Iteration Shakedown Post-Fix (19:33 UTC)
+- **Command:** Same as Test 2
+- **Fix Applied:** `create_fallback_script_writer_hooks()` for iteration 2+
+- **Iteration 1:** Script Writer used `noise_scale = 1.0` (float) → `TypeError: expected int`
+- **Iteration 2:** Coordinator correctly identified fix `noise_scale: 1`, but modify_script applied NONE
+- **Result:** ❌ FAIL (but DocQueryRequiredError FIX VERIFIED)
+
+### Files Modified This Session
+
+| File | Change | Commit Status |
+|------|--------|---------------|
+| `docs/VERSION_TRUTH.md` | Added `velocity_multi` hallucination | Uncommitted |
+| `orchestrator.py:2217` | Use fallback hooks for iter 2+ | Uncommitted |
+| `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md` | This document | Uncommitted |
+| `docs/MASTER_ROADMAP_2026-01-26.md` | Updated status | Uncommitted |
+
+### Hallucinations Discovered This Session
+
+| Hallucinated Attribute | Correct Attribute | Location |
+|------------------------|-------------------|----------|
+| `velocity_multi` | `velocity_factor` | `FluidFlowSettings` |
+| `noise_scale = 1.0` (float) | `noise_scale = 1` (int) | `FluidDomainSettings` |
+
+### Enforcement Hooks Working
+
+| Hook | Behavior | Verified |
+|------|----------|----------|
+| Bundle-first | Blocks targeted search before bundle | ✅ |
+| Doc-query required | Blocks write/modify without doc query | ✅ |
+| Fallback hooks | Allows modify_script without doc query | ✅ |
+| Loop detection | Prevents infinite same-tool calls | ✅ |
+| Turn budget | Triggers fallback at max_turns=8 | ✅ |
+
+---
+
+## Priority Fix Queue
+
+| Priority | Issue | Impact | Fix Location |
+|----------|-------|--------|--------------|
+| P0 | Coordinator → modify_script contract | Multi-iteration broken | `tools/script_generator_tools.py` |
+| P1 | noise_scale type (float vs int) | Execution fails | Script Writer instructions or guardrail |
+| P2 | API Spec Agent bundle-first | Wastes API calls | Prompt engineering or few-shot |
+
+---
+
+*Document updated: 2026-01-26 20:00 UTC*
+*Investigation conducted by: Claude Opus 4.5*
+*Trace files: See `traces/` directory*
+
+## GPT-5-mini User Shakedown (2026-01-26 19:35 UTC)
+
+**Report:** `docs/TEST_REPORT_GPT5_MINI_SHAKEDOWN_2026-01-26.md`
+**Result:** ✅ SUCCESS (with fallback)
+- Confirmed `gpt-5-mini` viability for full pipeline.
+- Confirmed **Spec-First Fallback** robustness (Spec Agent timed out -> Script Writer saved the run).
+- Confirmed **Verbose Tracing** functionality.

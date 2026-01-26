@@ -1,5 +1,7 @@
 # LLM Primer - Blender VFX Orchestrator
 
+**Status:** Onboarding only. Roadmap priorities live in `docs/MASTER_ROADMAP_2026-01-26.md`.
+
 **Date:** 2026-01-26  
 **Audience:** New LLM/agent onboarding  
 **Purpose:** One-stop, accurate, up-to-date context for this system

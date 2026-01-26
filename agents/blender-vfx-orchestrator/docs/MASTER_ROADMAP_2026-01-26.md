@@ -1,8 +1,8 @@
 # Master Roadmap - Spec-First to Autonomy
 
-**Date:** 2026-01-26 (Updated)
+**Date:** 2026-01-26 (Consolidated)
 **Purpose:** Single roadmap to stabilize the pipeline and reach autonomous operation
-**Scope:** Replaces Phase-12 + Autonomy roadmaps (see `docs/archive/`)
+**Scope:** Replaces Phase‑12 + Autonomy roadmaps (see `docs/archive/`)
 
 ---
 
@@ -17,86 +17,114 @@
 
 ---
 
-## 1) Current State (Snapshot - 2026-01-26 19:05 UTC)
+## 1) Inputs / Evidence (Used to Consolidate)
 
-**Source of truth:** `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+**Primary issues list:**  
 
-**VERIFIED WORKING (Phase-4 Gate PASSED):**
-- Full pipeline completed successfully (452 seconds)
-- Quality score 40.0 met threshold at iteration 1
-- Bundle-first enforcement WORKING (blocks unauthorized targeted searches)
-- Camera injection fix verified
-- Enum guardrail verified (rejects invalid values like `flow_behavior='FLOW'`)
-- Loop detection prevents infinite doc searches
+- `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
 
-**FALLBACK PATH USED:**
-- API Spec Agent tried to skip bundle → was blocked → fell back to Script Writer
-- Script Writer completed successfully with doc queries
-- This is acceptable for Phase-4 gate
+**Session inventory + changes:**  
 
-**Trace Evidence:**
-- `traces/e2e_test_verbose_20260126_185722.jsonl` (successful run)
-- `traces/phase4_gate_shakedown_20260126_184218.jsonl` (earlier partial run)
+- `docs/SESSION_CHANGES_2026-01-26.md`
+
+**Test evidence:**  
+
+- `docs/TEST_REPORT_GPT5_MINI_SHAKEDOWN_2026-01-26.md`  
+- `traces/e2e_test_verbose_20260126_185722.jsonl`  
+- `traces/user_shakedown_20260126_193538.jsonl`
 
 ---
 
-## 2) Phase 12 Completion (Stabilize Spec-First)
+## 2) Current State (Snapshot)
 
-**Goal:** Achieve first successful end-to-end run with spec-first (no fallback).
+**Verified working (with evidence):**
 
-### P0 — Camera Safety ✅ VERIFIED
-- **What:** Inject camera if render is called without one.
-- **Where:** `tools/blender_api_fixer.py` (camera fix), `tools/dynamic_instructions.py` (explicit camera setup).
-- **Status:** Unit tested, injects camera correctly.
+- Fallback path works and produces renders (see user shakedown report + trace).
+- Guardrails validate attributes and ops (spec‑first path when reached).
 
-### P1 — Spec-First Search Stabilization ✅ VERIFIED (Partial)
-- **What:** Bundle-first search plan enforced via RunHooks.
-- **Where:** `hooks/enforcement_hooks.py` (`require_bundle_first=True`).
-- **Status:**
-  - Bundle-first enforcement WORKING (targeted searches blocked until bundle called)
-  - Doc searches reduced from 80+ to 8 (90% reduction)
-  - **ISSUE:** API Spec Agent still hits max_turns=8 before output
+**Reported/partially verified:**
 
-### P2 — Enum Guardrail ✅ VERIFIED
-- **What:** Guardrail rejects invalid enum values.
-- **Where:** `guardrails/api_spec_guardrails.py` (`VALID_ENUM_VALUES` fallback + enforcement).
-- **Status:** Unit tested, rejects invalid enums like `flow_behavior='FLOW'`.
+- Bundle‑first enforcement exists but API Spec Agent still skips it and is blocked.
+- Camera fix has been added, but needs a spec‑first success run to confirm.
+- Enum guardrail added; verified by unit test, not yet exercised in spec‑first.
 
-**Phase 12 Exit Criteria**
-- [x] Bundle-first enforcement working
-- [x] Camera fix verified
-- [x] Enum guardrail verified
-- [x] Full pipeline completes with passing quality (via fallback path)
-- [ ] Spec-first completes without fallback (API Spec Agent needs model tuning)
+**Blocking issues (from CURRENT_ISSUES + SESSION_CHANGES):**
+
+- **P0:** Coordinator → `_modify_script_impl` contract break (multi‑iteration stalled).
+- **P1:** API Spec Agent efficiency/turn budget (spec‑first still falls back).
+- **P1:** Type hallucinations (e.g., `noise_scale` float, `velocity_multi`).
 
 ---
 
-## 3) Phase-4 Gate (Stability Gate)
+## 3) Phase 12 Completion (Stabilize Spec-First)
+
+**Goal:** Achieve a full spec‑first run (no fallback) with bounded doc search and a render.
+
+### P0 — Coordinator → `_modify_script_impl` Contract
+
+- **Problem:** Coordinator outputs API paths, but `_modify_script_impl` expects Config class patterns.  
+  Result: iteration 2+ changes are never applied.
+- **Status:** **OPEN (P0 blocker)**.
+- **Fix required:** Update `_modify_script_impl` to handle direct attribute assignments (e.g., `dsettings.noise_scale = X`).
+
+### P1 — API Spec Agent Efficiency (Bundle‑First + Turn Budget)
+
+- **Problem:** API Spec Agent still skips bundle‑first and hits turn limits → fallback.
+- **Status:** **PARTIAL** (hooks enforce, behavior still inefficient).
+- **Fix required:** Stronger prompt/few‑shot, and/or increase `max_turns` for API Spec Agent.
+
+### P1 — Camera Safety
+
+- **What:** Ensure render doesn’t fail without an active camera.
+- **Status:** **IMPLEMENTED, NEEDS SPEC‑FIRST VERIFICATION**.
+- **Evidence:** Camera present in fallback render; spec‑first success run still pending.
+
+### P1 — Enum Guardrail Verification
+
+- **What:** Reject invalid enum literals.
+- **Status:** **IMPLEMENTED, UNIT‑TESTED**; not yet exercised in a spec‑first run.
+
+### P2 — Type Hallucination Prevention
+
+- **Examples:** `noise_scale` float vs int, `velocity_multi` vs `velocity_factor`.
+- **Status:** **OPEN** (needs enforcement in Script Writer + modification path).
+
+#### Phase 12 Exit Criteria
+
+- [ ] Spec‑first completes without fallback.
+- [ ] Render succeeds with camera present.
+- [ ] Enum guardrail exercised in spec‑first.
+- [ ] Iteration 2+ changes apply (contract fixed).
+
+---
+
+## 4) Phase‑4 Gate (Stability Gate)
 
 Use `docs/PHASE_4_GATING_ROADMAP_2026-01-25.md` as criteria.
 
-**Must pass:**
-- [x] Modification contract enforced (flat config keys only).
-- [x] Doc grounding reliable (real DocPath, not temp files).
-- [x] Trace correlation (single trace + group_id).
-- [x] Spec-first doc search discipline (bounded - 8 searches vs 80+).
+**Must pass (current status):**
 
-**Status: PASSED (via fallback)**
-- Pipeline completes with quality score meeting threshold
-- Bundle-first enforcement working (blocks unauthorized searches)
-- Fallback to Script Writer is acceptable for gate criteria
+- [ ] Modification contract enforced (blocked by `_modify_script_impl` mismatch).
+- [ ] Doc grounding reliable (needs repeatable `DocPath` validation).
+- [ ] Trace correlation (single `trace()` + `group_id` in JSONL).
+- [ ] Spec‑first doc search discipline (bundle‑first + bounded; agent still skips).
 
-**Future Optimization:**
-- Train API Spec Agent to call bundle first (currently ignored)
-- This is a model behavior issue, not an enforcement issue
+**Blocking:**
+
+- Spec‑first still falls back before producing APISpec.
+
+**Next fix candidates:**
+
+- Increase API Spec Agent turn budget and add few‑shot bundle‑first examples.
 
 ---
 
-## 4) Baseline Autonomous Workflow
+## 5) Baseline Autonomous Workflow
 
 **Goal:** Unattended runs for small tasks with consistent outputs.
 
 **Default loop:**
+
 1. Research → Technique Selection
 2. Spec-first script generation
 3. Execute + render
@@ -104,6 +132,7 @@ Use `docs/PHASE_4_GATING_ROADMAP_2026-01-25.md` as criteria.
 5. Learn + decide next action
 
 **Metrics:**
+
 - Script success rate
 - Render success rate
 - Spec-first usage rate (no fallback)
@@ -112,23 +141,26 @@ Use `docs/PHASE_4_GATING_ROADMAP_2026-01-25.md` as criteria.
 
 ---
 
-## 5) Autonomy Expansion
+## 6) Autonomy Expansion
 
 **Additions:**
+
 - Session summarization + compaction
 - Cross-session bootstrap (patterns + warnings)
 - Regression tests (evals + trace grading)
 
 **Risk controls:**
+
 - Budget guardrail enforced
 - Guardrail coverage across agents
 - Pattern library validation gate
 
 ---
 
-## 6) Workflow Optimization (Optional)
+## 7) Workflow Optimization (Optional)
 
 Only after stability:
+
 - Planner-Executor-Verifier core
 - Beam search (N=2-3, K=1)
 - Bandit technique selection
@@ -136,55 +168,51 @@ Only after stability:
 
 ---
 
-## 7) Immediate Next Steps (Priority Order)
+## 8) Immediate Next Steps (Priority Order)
 
-1. ✅ Verify API Spec Agent bundle-first enforcement (DONE - hooks enforce)
-2. ✅ Verify camera fix (DONE - unit tested)
-3. ✅ Verify enum guardrail (DONE - unit tested)
-4. ✅ Increase API Spec Agent turn budget (max_turns: 10, hard_limit: 12)
-5. ✅ Run E2E shakedown - PASSED (Score 40.0, fallback to Script Writer)
+1. **P0** Fix Coordinator → `_modify_script_impl` contract (apply direct attribute changes).
+2. **P1** Stabilize API Spec Agent (bundle‑first compliance + turn budget).
+3. **P1** Verify camera fix in a **spec‑first** success run.
+4. **P1** Exercise enum guardrail in spec‑first (catch invalid literals).
+5. **P2** Enforce type correctness (`noise_scale`, `velocity_factor`).
 
-**Next Phase:**
-6. Investigate API Spec Agent ignoring bundle-first instructions
-7. Consider model prompt tuning or few-shot examples
+### P0 Blocker: Coordinator → modify_script Contract
 
----
+**See `CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md` for full investigation.**
 
-## 8) Implementation Changes (This Session)
+**Summary:** The Modification Coordinator outputs Blender API paths (`FluidDomainSettings.noise_scale`),
+but `_modify_script_impl` expects Config class patterns (`class Config: NOISE_SCALE = 1`).
+The generated scripts use direct attribute assignment (`dsettings.noise_scale = 1.0`),
+which matches neither format.
 
-### hooks/enforcement_hooks.py
-- Added `require_bundle_first` config option
-- Added `bundle_tool` and `targeted_search_tools` config
-- Added `_bundle_called` state tracking
-- Updated `on_tool_start` to enforce bundle-first
-- Updated `create_api_spec_hooks()` with bundle-first enforcement
-- Increased limits: `max_consecutive_same_tool=30`, `max_exempt_tool_calls=40`
-
-### Verification Tests Run
-1. `hooks.enforcement_hooks` unit test - PASS
-2. `blender_api_fixer.py` camera injection test - PASS
-3. `api_spec_guardrails.py` enum validation test - PASS
-4. E2E shakedown test - **PASS** (Score 40.0, pipeline completed in 452s)
-
-### E2E Test Summary (2026-01-26 19:04)
-- **Result:** PASSED (quality score 40.0 met threshold)
-- **Trace:** `traces/e2e_test_verbose_20260126_185722.jsonl`
-- **Bundle-first enforcement:** WORKING (API Spec Agent was blocked when skipping bundle)
-- **Fallback:** Triggered successfully (Script Writer completed the job)
-- **Render:** Successful (test_smoke_e2e.png, 98.3s)
-- **Quality Analysis:** 7 issues identified, score meets threshold
+**Fix Required:** Update `tools/script_generator_tools.py:_modify_script_impl` to handle
+direct attribute patterns like `dsettings.noise_scale = X`.
 
 ---
 
-## 9) References
+## 9) Session Notes (Condensed)
+
+- **User shakedown (gpt‑5‑mini):** Fallback succeeded, render produced, score 22.0.  
+  Evidence: `docs/TEST_REPORT_GPT5_MINI_SHAKEDOWN_2026-01-26.md` + trace.
+- **Phase‑4 gate pass (single iteration):** Completed with fallback.  
+  Evidence: `traces/e2e_test_verbose_20260126_185722.jsonl`.
+- **P0 blocker identified:** `_modify_script_impl` doesn’t match coordinator output format.
+
+---
+
+## 10) References
 
 - `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+- `docs/SESSION_CHANGES_2026-01-26.md`
+- `docs/TEST_REPORT_GPT5_MINI_SHAKEDOWN_2026-01-26.md`
 - `docs/PHASE_4_GATING_ROADMAP_2026-01-25.md`
 - `docs/SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md`
 - `docs/SDK_ENFORCEMENT_PROTOCOL.md`
 - `docs/VERSION_TRUTH.md`
 - `traces/phase4_gate_shakedown_20260126_184218.jsonl`
+- `traces/e2e_test_verbose_20260126_185722.jsonl`
+- `traces/user_shakedown_20260126_193538.jsonl`
 
 ---
 
-*End of Roadmap*
+End of Roadmap

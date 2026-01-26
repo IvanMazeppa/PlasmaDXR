@@ -1,5 +1,7 @@
 # SDK Documentation Enforcement Protocol
 
+**Status:** Ground truth reference. Not a roadmap.
+
 **Purpose:** Ensure OpenAI Agents SDK documentation is ALWAYS consulted before making changes.
 
 **Current SDK Version:** v0.6.9+ (2026-01-23)

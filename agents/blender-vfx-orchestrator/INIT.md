@@ -62,3 +62,6 @@
 - OpenAI Developer Docs search completed.
 - Tracing enabled (single outer trace + group_id).
 - Guardrails + RunHooks wired for all applicable agents.
+
+## Resources
+- **MCP Integration:** See `MCP_INTEGRATION_GUIDE.md` for setup instructions.

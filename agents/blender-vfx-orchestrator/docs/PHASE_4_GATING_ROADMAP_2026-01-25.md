@@ -1,5 +1,7 @@
 # Phase 4 Gating Roadmap (2026-01-25)
 
+**Status:** Gate criteria only. Roadmap priorities live in `docs/MASTER_ROADMAP_2026-01-26.md`.
+
 ## Purpose
 Define the remaining **blocking issues** that must be fixed before starting
 Phase 4 (session compaction + cross‑session bootstrap) or any alternative

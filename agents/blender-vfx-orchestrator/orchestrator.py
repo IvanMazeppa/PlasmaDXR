@@ -2214,7 +2214,9 @@ If stuck on same issue, try a DIFFERENT TECHNIQUE from research alternatives.
 Use patterns from library if available."""
 
                             # Create fresh hooks for this iteration (reset counters)
-                            iter_script_hooks = create_script_writer_hooks()
+                            # Use fallback hooks for iteration 2+ since Research Agent already queried docs
+                            # This prevents blocking modify_script when doc queries were done in iter 1
+                            iter_script_hooks = create_fallback_script_writer_hooks()
                             try:
                                 script_result = await Runner.run(
                                     self._script_agent_standalone,
