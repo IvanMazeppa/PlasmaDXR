@@ -58,7 +58,7 @@ This is exactly what we need for monitoring whether Script Writer is:
 
 ---
 
-## Proposed Integration: Eval-Driven Script Generation
+## Proposed Integration: Eval-Informed Script Generation
 
 ### Architecture Overview
 
@@ -75,10 +75,10 @@ User Request
 ┌─────────────────────────────────────────────────────────────┐
 │  PHASE 1: Script Writer Agent                               │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │  TRACE GRADER: doc_query_before_attribute             │  │
+│  │  TRACE GRADER (dashboard): doc_query_before_attribute │  │
 │  │  - Evaluates: Did agent query docs before writing?    │  │
 │  │  - Scoring: 1.0 if query found, 0.0 if missing        │  │
-│  │  - Action: Block script output if score < 1.0         │  │
+│  │  - Action: Record failures for triage/regression      │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌───────────────────────────────────────────────────────┐  │
@@ -92,7 +92,8 @@ User Request
     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  PHASE 1.5: API Validator (existing, enhanced)              │
-│  Now uses eval results for confident validation             │
+│  Runtime enforcement via RunHooks + guardrails              │
+│  Eval results inform prompt/validator updates               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -271,6 +272,18 @@ Build a dataset of known-good scripts for regression testing:
 
 ---
 
+## Quick Integration Checklist
+
+1. Define dataset schema in `data_source_config` and create JSONL items.
+2. Build a small golden dataset (known‑good attributes + ops per effect).
+3. Create eval with Python + score_model graders.
+4. Upload dataset file with `purpose="evals"`.
+5. Run evals via `/v1/evals/{eval_id}/runs` (async).
+6. Review results + trace grading in dashboard.
+7. Feed findings back into prompts/guardrails/docs.
+
+---
+
 ## Recommended Implementation Path
 
 ### Phase 1: Python Grader (Immediate)
@@ -325,8 +338,7 @@ All proposed solutions are compatible with OpenAI Agents SDK v0.7.0:
 
 | Feature | SDK Support |
 |---------|-------------|
-| Output guardrails with Python logic | `@output_guardrail` decorator |
-| Trace access for grading | `RunHooks.on_agent_end` |
+| Runtime enforcement | RunHooks + guardrails |
 | Eval API calls | Standard requests or openai SDK |
 | Custom graders | Via `/v1/evals` API |
 
@@ -334,12 +346,13 @@ All proposed solutions are compatible with OpenAI Agents SDK v0.7.0:
 
 ## Next Steps
 
-1. **Implement Python Grader** as output guardrail (immediate)
-2. **Create eval via API** for continuous monitoring
+1. **Implement Python grader + dataset schema**
+2. **Create eval via API** and run an initial batch
 3. **Build golden dataset** from successful script runs
-4. **Enable trace grading** in production
+4. **Enable trace grading** in the dashboard
+5. **Schedule eval runs** (CI or cron)
 
-This transforms our approach from "catch hallucinations" to "prevent hallucinations through verified generation."
+This shifts us from ad‑hoc debugging to repeatable regressions + trace‑level visibility.
 
 ---
 

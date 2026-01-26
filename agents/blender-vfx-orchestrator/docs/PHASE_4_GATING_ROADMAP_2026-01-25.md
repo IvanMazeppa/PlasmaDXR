@@ -15,6 +15,9 @@ signals from being amplified.
    - `doc_refs` resolve to real `DocPath`, not temp filenames.
 3) **Trace correlation working**  
    - SDK trace uses `group_id=session_id` and local JSONL includes the same ID.
+4) **Spec‑first doc search discipline**  
+   - API Spec Agent stops searching after Turn 3 and outputs APISpec on Turn 4.  
+   - Doc‑query count bounded (no semantic_search spam).
 
 If any of the above is red, **Phase 4 must not start**.
 
@@ -66,6 +69,14 @@ non‑empty coordinator parameters.
 **Required fix:**  
 - Enforce the setup order in prompts + validator (already added, needs verification).
 
+### 7) Spec‑First Doc Search Throttling (API Spec Agent)
+**Evidence:** `semantic_search_blender_docs` called ~88 times in spec‑first trace.  
+**Impact:** Cost/latency blow‑up; weak doc grounding despite high volume.  
+**Required fix:**  
+- Reduce hook limits for API Spec Agent (consecutive/exempt tool calls).  
+- Block doc searches after Turn 3; enforce “output only” on Turn 4.  
+- Track doc_query_count in hook stats for regression visibility.
+
 ---
 
 ## Roadmap (Stabilization → Autonomy)
@@ -75,7 +86,8 @@ non‑empty coordinator parameters.
 2) **Vector store coverage validation** (manual + API queries pass)  
 3) **SDK trace discipline + JSONL correlation**  
 4) **Doc‑query detection updates** (bundle + file_search)  
-5) **Research warning grounding decision** (KB or docs only)
+5) **Research warning grounding decision** (KB or docs only)  
+6) **Spec‑first doc search throttling** (API Spec Agent)
 
 ### Phase 4 — Long‑Run Memory (After Gate Passes)
 6) **Session summarization + compaction**  
@@ -94,6 +106,7 @@ non‑empty coordinator parameters.
 - Coordinator modification produces **non‑empty** `changes_made`.
 - SDK trace view shows **single trace row** per run and correct flow.
 - `doc_refs` contain real `DocPath` entries (not temp filenames).
+- API Spec Agent doc search count within target range and stops after Turn 3.
 
 ---
 

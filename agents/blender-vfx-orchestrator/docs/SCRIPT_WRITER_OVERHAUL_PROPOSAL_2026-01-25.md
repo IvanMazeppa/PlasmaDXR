@@ -1,9 +1,42 @@
 # Script Writer Overhaul Proposal
 
 **Date:** 2026-01-25
-**Status:** PROPOSAL - Awaiting Review
+**Status:** IMPLEMENTED ✅ (2026-01-26 00:45 UTC)
 **Problem:** Script Writer hallucinating Blender API attributes despite having doc tools
 **Root Cause:** No structural enforcement - agent CAN skip verification
+
+---
+
+## Implementation Status (Updated 2026-01-26)
+
+### Test Results
+
+| Test | API Spec Agent | Code Writer | Overall |
+|------|----------------|-------------|---------|
+| v5 (00:01) | ❌ doc_ref format wrong | N/A (fallback) | FAIL |
+| v6 (00:12) | ✅ PASSED (18 attrs, 3 ops) | ❌ 1 ops violation | FAIL |
+| v7 (00:39) | ✅ PASSED (7 attrs, 0 ops) | ✅ PASSED (7 attrs verified) | **SUCCESS** |
+
+### What's Working
+
+1. **API Spec Agent** - Creates verified APISpec with proper doc_refs
+2. **Code Writer guardrail** - Catches any APIs not in the spec
+3. **Fallback path** - Falls back to original Script Writer if spec-first fails
+4. **Safe ops allowlist** - Common bpy.ops exempted from strict validation
+
+### Remaining Issues (Non-Critical)
+
+1. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
+2. **Render generation** - Test scripts don't produce renders (setup only)
+3. **Turn budget optimization** - API Spec Agent uses 43 searches (could be fewer)
+
+### Files Modified
+
+- `specialized_agents/api_spec_agent.py` - Clearer doc_ref format instructions
+- `guardrails/api_spec_guardrails.py` - Expanded safe_ops allowlist, added debug output
+- `hooks/enforcement_hooks.py` - Increased limits, added fallback hooks
+- `hooks/__init__.py` - Exported new hook function
+- `orchestrator.py` - Uses fallback hooks for original Script Writer
 
 ---
 

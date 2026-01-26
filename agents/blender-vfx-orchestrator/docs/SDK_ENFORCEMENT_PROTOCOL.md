@@ -235,6 +235,28 @@ These gaps are **SDK-defined behaviors** that affect enforcement reliability:
 
 ---
 
+## Spec-First Enforcement Additions (2026-01-26)
+
+**Purpose:** Prevent API Spec Agent doc‑search spam and enforce “search then output” discipline.
+
+**Required (Spec‑First):**
+- **Doc query required before output** for API Spec Agent (RunHooks `on_agent_end` check).
+- **No doc searches after Turn 3** (Turn 4 must output APISpec).
+- **Doc tool list** must include:
+  - `semantic_search_blender_docs`
+  - `search_blender_api_by_intent`
+  - `blender_doc_search_bundle`
+
+**Recommended hook limits for API Spec Agent:**
+- `max_consecutive_same_tool` ≤ **20**
+- `max_exempt_tool_calls` ≤ **30**
+- `max_turns` **6**, `hard_turn_limit` **8**
+
+**Observability:**
+- Record `doc_query_count` in hook stats for trace grading and regression tracking.
+
+---
+
 ## Enforcement Checklist
 
 Before modifying orchestrator code, verify:

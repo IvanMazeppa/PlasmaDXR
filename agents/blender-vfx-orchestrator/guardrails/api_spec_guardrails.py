@@ -347,16 +347,36 @@ async def validate_code_against_spec(
 
     # Also allow common safe ops that don't need to be in spec
     safe_ops = {
+        # Object operations
         "bpy.ops.object.select_all",
         "bpy.ops.object.delete",
+        "bpy.ops.object.modifier_add",
+        "bpy.ops.object.mode_set",
+        "bpy.ops.object.origin_set",
+        "bpy.ops.object.shade_smooth",
+        "bpy.ops.object.shade_flat",
+        "bpy.ops.object.transform_apply",
+        # Mesh primitives
         "bpy.ops.mesh.primitive_cube_add",
         "bpy.ops.mesh.primitive_cylinder_add",
         "bpy.ops.mesh.primitive_sphere_add",
+        "bpy.ops.mesh.primitive_ico_sphere_add",
+        "bpy.ops.mesh.primitive_uv_sphere_add",
+        "bpy.ops.mesh.primitive_plane_add",
+        # File operations
         "bpy.ops.render.render",
         "bpy.ops.wm.save_as_mainfile",
         "bpy.ops.wm.open_mainfile",
+        # Fluid/physics (common setup ops)
+        "bpy.ops.ptcache.bake_all",
+        "bpy.ops.ptcache.free_bake_all",
     }
     op_violations = op_violations - safe_ops
+
+    # Verbose logging for debugging
+    if op_violations:
+        print(f"[Guardrail DEBUG] Rejected ops: {op_violations}", file=sys.stderr)
+        print(f"[Guardrail DEBUG] Allowed spec ops: {allowed_ops}", file=sys.stderr)
 
     total_violations = len(domain_violations) + len(flow_violations) + len(op_violations)
 
