@@ -3,7 +3,7 @@
 **Date:** 2026-01-22
 **Author:** Ben + Claude
 **Status:** Active Implementation
-**Last Updated:** 2026-01-25 (Phase 1, 2, 3, 4, 6, 7, 12 complete)
+**Last Updated:** 2026-01-26 (Phase 1, 2, 3, 4, 6, 7 complete; Phase 12 partial - enum validation needed)
 
 ---
 
@@ -26,7 +26,7 @@ This document captures the comprehensive analysis of the Blender VFX Orchestrato
 | 6 | API Validator agent | ✅ **COMPLETE** | `specialized_agents/api_validator.py` created |
 | 7 | Tracing everywhere | ✅ **COMPLETE** | 10+ trace() calls with metadata |
 | 5 | Turn budget per agent | ⚠️ **PARTIAL** | Covered by RunHooks max_turns |
-| 12 | Spec-First Pipeline | ✅ **COMPLETE** | API Spec Agent → Code Writer (anti-hallucination) |
+| 12 | Spec-First Pipeline | ⚠️ **PARTIAL** | Attrs verified, enum values NOT validated (2026-01-26) |
 
 ---
 
@@ -781,10 +781,12 @@ result = await Runner.run(agent, prompt, context=context, session=sdk_session, .
 - Remove handoff agent initialization after deprecation window.
 - Update docs and tests to target pipeline-only behavior.
 
-### Phase 12: Spec-First Pipeline (API Hallucination Prevention) ✅ COMPLETE
+### Phase 12: Spec-First Pipeline (API Hallucination Prevention) ⚠️ PARTIAL
+
 **Goal:** Make API hallucinations structurally impossible through a two-phase approach.
 **Implemented:** 2026-01-25
 **Reference:** `SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md`
+**Last Test:** 2026-01-26 Test v9
 
 **Problem Solved:**
 Script Writer hallucinates Blender attributes like `bake_frame_start` (doesn't exist).
@@ -818,6 +820,58 @@ The old mitigation (API Validator) only catches errors AFTER generation.
 
 **Key Insight:** If an attribute isn't in the spec, the Code Writer cannot use it.
 The guardrail validates this mechanically - no LLM instruction-following required.
+
+---
+
+#### Phase 12 Test Results (2026-01-26)
+
+**Test v9 Findings:**
+- ✅ API Spec Agent passed guardrail (14 attrs, 3 ops, 17 doc queries)
+- ✅ Code Writer passed guardrail (12 attrs, 2 ops verified)
+- ✅ Loop detection working (stayed under 20-call limit)
+- ✅ Parallel tool calls working (14 searches in 18s batch)
+- ❌ **Enum value hallucination** - Executor failed
+
+**New Gap Identified: Enum Value Validation**
+
+The spec-first guardrails validate:
+- ✅ Doc_refs exist and reference correct API docs
+- ✅ Attributes used in code match the verified spec
+- ❌ **Enum VALUES are NOT validated**
+
+**Example Failure:**
+```python
+# API Spec Agent output:
+APIAttribute(attribute_name="flow_behavior", doc_ref="...valid...")
+
+# Code Writer output:
+fset.flow_behavior = 'FLOW'  # WRONG - hallucinated value
+
+# Blender runtime error:
+TypeError: enum "FLOW" not found in ('INFLOW', 'OUTFLOW', 'GEOMETRY')
+```
+
+**Required Fix (Phase 12.1):**
+Add enum value validation to prevent value hallucinations:
+
+```python
+# Option A: Add to APISpec model
+class APIAttribute(BaseModel):
+    attribute_name: str
+    value_type: str
+    doc_ref: str
+    valid_values: list[str] | None = None  # NEW: For enums
+
+# Option B: Add VALID_ENUM_VALUES constant
+VALID_ENUM_VALUES = {
+    "flow_behavior": ["INFLOW", "OUTFLOW", "GEOMETRY"],
+    "flow_type": ["SMOKE", "FIRE", "BOTH"],
+    "domain_type": ["GAS", "LIQUID"],
+    "cache_type": ["MODULAR", "ALL", "FINAL"],
+}
+```
+
+**Status:** Attribute hallucination FIXED, enum value hallucination OPEN
 
 ---
 

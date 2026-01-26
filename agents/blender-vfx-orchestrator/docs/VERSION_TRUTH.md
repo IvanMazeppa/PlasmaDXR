@@ -139,6 +139,21 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `timesteps_per_frame` | `timesteps_maximum` | HALLUCINATED (2026-01-25) |
 | `time_scale` | `timesteps_maximum` or `cfl_condition` | HALLUCINATED (2026-01-25) |
 
+### VALID ENUM VALUES - USE ONLY THESE
+| Attribute | Valid Values | Notes |
+|-----------|--------------|-------|
+| `flow_behavior` | `'INFLOW'`, `'OUTFLOW'`, `'GEOMETRY'` | NOT 'FLOW' |
+| `flow_type` | `'SMOKE'`, `'FIRE'`, `'BOTH'` | Smoke/fire/both |
+| `domain_type` | `'GAS'`, `'LIQUID'` | Gas for smoke/fire |
+| `cache_type` | `'MODULAR'`, `'ALL'`, `'FINAL'` | Cache storage mode |
+| `cache_data_format` | `'OPENVDB'`, `'UNI'` | Use OPENVDB for NanoVDB |
+| `effector_type` | `'COLLISION'`, `'GUIDE'` | Effector behavior |
+
+### INVALID ENUM VALUES - DO NOT USE
+| Attribute | Wrong Value | Correct Values | Date Found |
+|-----------|-------------|----------------|------------|
+| `flow_behavior` | `'FLOW'` | `'INFLOW'`, `'OUTFLOW'`, `'GEOMETRY'` | 2026-01-26 |
+
 ### TYPE REQUIREMENTS - CORRECT TYPES
 | Attribute | Type | Common Mistake |
 |-----------|------|----------------|
@@ -157,6 +172,23 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `.outputs['B']` | `.outputs['Blue']` |
 
 **Documentation:** https://docs.blender.org/api/current/
+
+---
+
+## Output File Locations (Preserved)
+
+**Files are NOT automatically deleted.** All outputs are preserved for backlog analysis.
+
+| Directory | Contents | Cleanup Policy |
+|-----------|----------|----------------|
+| `build/vdb_output/<session>/` | VDB files, renders, .blend files | Manual only |
+| `build/blender_cli_logs/<timestamp>/` | Blender stdout/stderr logs | Manual only |
+| `traces/*.jsonl` | Verbose trace files | Manual only |
+| `assets/blender_scripts/generated/` | Generated Python scripts | Manual only |
+
+**Session persistence cleanup:** `cleanup_old_sessions()` only removes sessions older than 30 days (see `utils/session_persistence.py`).
+
+**Verified 2026-01-26:** 115+ directories in `build/vdb_output/`, logs preserved.
 
 ---
 

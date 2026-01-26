@@ -1,34 +1,75 @@
 # Script Writer Overhaul Proposal
 
 **Date:** 2026-01-25
-**Status:** IMPLEMENTED ✅ (2026-01-26 00:45 UTC)
+**Status:** PARTIAL ⚠️ - Attribute validation working, enum value validation MISSING
 **Problem:** Script Writer hallucinating Blender API attributes despite having doc tools
 **Root Cause:** No structural enforcement - agent CAN skip verification
 
 ---
 
-## Implementation Status (Updated 2026-01-26)
+## Implementation Status (Updated 2026-01-26 03:00 UTC)
 
 ### Test Results
 
-| Test | API Spec Agent | Code Writer | Overall |
-|------|----------------|-------------|---------|
-| v5 (00:01) | ❌ doc_ref format wrong | N/A (fallback) | FAIL |
-| v6 (00:12) | ✅ PASSED (18 attrs, 3 ops) | ❌ 1 ops violation | FAIL |
-| v7 (00:39) | ✅ PASSED (7 attrs, 0 ops) | ✅ PASSED (7 attrs verified) | **SUCCESS** |
+| Test | API Spec Agent | Code Writer | Executor | Overall |
+|------|----------------|-------------|----------|---------|
+| v5 (00:01) | ❌ doc_ref format wrong | N/A (fallback) | N/A | FAIL |
+| v6 (00:12) | ✅ PASSED (18 attrs, 3 ops) | ❌ 1 ops violation | N/A | FAIL |
+| v7 (00:39) | ✅ PASSED (7 attrs, 0 ops) | ✅ PASSED (7 attrs) | ⚠️ "ERROR: None" | PARTIAL |
+| **v9 (02:45)** | ✅ PASSED (14 attrs, 3 ops) | ✅ PASSED (12 attrs) | ❌ Enum error | **FAIL** |
+
+### v9 Detailed Results (2026-01-26 02:45 UTC)
+
+**Trace:** `traces/e2e_test_v9_20260126_024559.jsonl` (226KB)
+**Model:** gpt-5-mini | **Iterations:** 1
+
+| Phase | Duration | Tool Calls | Status |
+|-------|----------|------------|--------|
+| Research Agent | 51.7s | 3 | ✅ |
+| Technique Selector | 26.5s | 0 | ✅ |
+| API Spec Agent | 223s | 17 (16 searches + 1 intent) | ✅ |
+| Code Writer | 138s | 2 (write + validate) | ✅ |
+| API Validator | <1s | 0 | ✅ (3/3 valid) |
+| Executor | 36.7s | 2 | ❌ |
+
+**Failure:**
+```
+TypeError: enum "FLOW" not found in ('INFLOW', 'OUTFLOW', 'GEOMETRY')
+fset.flow_behavior = 'FLOW'  # ← Hallucinated value
+```
 
 ### What's Working
 
 1. **API Spec Agent** - Creates verified APISpec with proper doc_refs
 2. **Code Writer guardrail** - Catches any APIs not in the spec
-3. **Fallback path** - Falls back to original Script Writer if spec-first fails
-4. **Safe ops allowlist** - Common bpy.ops exempted from strict validation
+3. **Parallel tool calls** - 14 doc searches batched in single turn (~18s)
+4. **Loop detection** - Stays under 20-call limit, no infinite loops
+5. **Fallback path** - Falls back to original Script Writer if spec-first fails
+6. **Safe ops allowlist** - Common bpy.ops exempted from strict validation
 
-### Remaining Issues (Non-Critical)
+### 🚨 CRITICAL GAP: Enum Value Hallucination
 
-1. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
-2. **Render generation** - Test scripts don't produce renders (setup only)
-3. **Turn budget optimization** - API Spec Agent uses 43 searches (could be fewer)
+**The spec-first pipeline validates ATTRIBUTES but NOT VALUES.**
+
+- ✅ Guardrail verifies `flow_behavior` attribute exists (doc_ref valid)
+- ❌ Guardrail does NOT verify `'FLOW'` is a valid enum value
+- ❌ LLM hallucinated `'FLOW'` despite docs showing `('INFLOW', 'OUTFLOW', 'GEOMETRY')`
+
+**Required Fix (Phase 12.1):**
+```python
+VALID_ENUM_VALUES = {
+    "flow_behavior": ["INFLOW", "OUTFLOW", "GEOMETRY"],
+    "flow_type": ["SMOKE", "FIRE", "BOTH"],
+    "domain_type": ["GAS", "LIQUID"],
+    # ... more enums
+}
+```
+
+### Remaining Issues
+
+1. **🚨 Enum value validation** - CRITICAL, blocks successful execution
+2. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
+3. **Render generation** - Test scripts don't produce renders (setup only)
 
 ### Files Modified
 
@@ -37,6 +78,12 @@
 - `hooks/enforcement_hooks.py` - Increased limits, added fallback hooks
 - `hooks/__init__.py` - Exported new hook function
 - `orchestrator.py` - Uses fallback hooks for original Script Writer
+
+### Documentation Updated (2026-01-26)
+
+- `docs/VERSION_TRUTH.md` - Added VALID_ENUM_VALUES, INVALID ENUM VALUES, output file locations
+- `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md` - Added v9 findings, enum hallucination blocker
+- `docs/ARCHITECTURE_OPTIMIZATION_PLAN_2026-01-22.md` - Phase 12 marked PARTIAL, added test findings
 
 ---
 

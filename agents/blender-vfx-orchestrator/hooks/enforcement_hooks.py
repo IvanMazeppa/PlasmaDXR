@@ -149,6 +149,8 @@ class EnforcementConfig:
     log_to_stderr: bool = True
     raise_on_loop: bool = True
     raise_on_doc_missing: bool = True
+    enforce_doc_query_on_end: bool = False
+    doc_query_warn_threshold: Optional[int] = None
 
     # Tools that are exempt from loop detection (always allowed)
     exempt_from_loop_detection: List[str] = field(default_factory=lambda: [
@@ -383,6 +385,40 @@ class EnforcementHooks(RunHooks):
         self._last_tool_called = None
         self._current_agent_name = to_agent.name
 
+    async def on_agent_end(
+        self,
+        context: "RunContextWrapper",
+        agent: "Agent",
+        output: Any
+    ) -> None:
+        """
+        Called when an agent completes execution.
+
+        Used for end-of-run enforcement (doc query requirement) and warnings.
+        """
+        if self.config.enforce_doc_query_on_end and not self._doc_query_made:
+            self._log(
+                f"DOC QUERY REQUIRED: Agent '{agent.name}' produced output without doc query",
+                level="ERROR"
+            )
+            if self.config.raise_on_doc_missing:
+                raise DocQueryRequiredError(
+                    blocked_tool="output",
+                    required_tools=self.config.doc_query_tools
+                )
+
+        if self.config.doc_query_warn_threshold is not None:
+            doc_query_count = sum(
+                1 for tool_name in self._tool_call_sequence
+                if tool_name in self.config.doc_query_tools
+            )
+            if doc_query_count > self.config.doc_query_warn_threshold:
+                self._log(
+                    f"DOC QUERY WARNING: {doc_query_count} doc queries "
+                    f"(threshold: {self.config.doc_query_warn_threshold})",
+                    level="WARN"
+                )
+
     # =========================================================================
     # ADDITIONAL ENFORCEMENT METHODS
     # =========================================================================
@@ -424,12 +460,17 @@ class EnforcementHooks(RunHooks):
         Returns:
             Dict with tool call counts, turn count, etc.
         """
+        doc_query_count = sum(
+            1 for tool_name in self._tool_call_sequence
+            if tool_name in self.config.doc_query_tools
+        )
         return {
             "agent_name": self._current_agent_name,
             "turn_count": self._turn_count,
             "tool_call_counts": dict(self._tool_call_counts),
             "total_tool_calls": sum(self._tool_call_counts.values()),
             "doc_query_made": self._doc_query_made,
+            "doc_query_count": doc_query_count,
             "tool_call_sequence": list(self._tool_call_sequence),
             "run_duration_seconds": (
                 (datetime.now() - self._run_start_time).total_seconds()
@@ -611,18 +652,20 @@ def create_api_spec_hooks() -> EnforcementHooks:
     """
     config = EnforcementConfig(
         max_same_tool_calls=10,  # Standard limit for non-exempt tools
-        max_consecutive_same_tool=60,  # High limit for parallel batch searches (may need 2-3 batches)
-        max_exempt_tool_calls=60,  # Match consecutive limit for exempt tools
+        max_consecutive_same_tool=20,  # Allow 2-3 parallel batches, prevent spam
+        max_exempt_tool_calls=30,  # Hard ceiling for doc search tools
         max_turns=6,
         hard_turn_limit=8,
         require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces
+        enforce_doc_query_on_end=True,
+        doc_query_warn_threshold=40,
         exempt_from_loop_detection=[
             "semantic_search_blender_docs",  # Primary tool
             "search_blender_api_by_intent",  # Secondary tool
             "validate_parameter_range",  # May validate multiple parameters
         ],
         raise_on_loop=True,
-        raise_on_doc_missing=False,  # Output guardrail handles this
+        raise_on_doc_missing=True,  # Require at least one doc query before output
     )
     return EnforcementHooks(config)
 
