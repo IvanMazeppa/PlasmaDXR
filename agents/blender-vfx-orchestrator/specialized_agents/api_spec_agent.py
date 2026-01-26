@@ -68,6 +68,13 @@ WRONG (generic class ref - REJECTED BY VALIDATOR):
 
 Pattern: blender_python_reference_5_0/bpy.types.{CLASS}.html#{ATTRIBUTE_NAME}
 
+## ENUM VALUES (CRITICAL)
+
+If value_type is **enum**, you MUST include `enum_values`:
+- Extract exact enum values from docs (case-sensitive)
+- Example: `flow_behavior` → `['INFLOW', 'OUTFLOW', 'GEOMETRY']`
+- If enum values cannot be verified, **omit the attribute**
+
 ## EXECUTION PLAN
 
 ### TURN 1: Search domain attributes (parallel OK)

@@ -24,6 +24,39 @@ documents to make triage easier. Use this as the primary “what’s broken” l
 
 ---
 
+## Latest Run Findings (2026-01-26 04:20) - Test v10
+
+**Trace:** `traces/e2e_test_v10_20260126_042056.jsonl`
+**Script:** `assets/blender_scripts/generated/test_smoke_e2e_v2.py`
+**Model:** gpt-5-mini | **Iterations:** 2
+
+### Phase Results (Iteration 1)
+
+| Phase | Status | Details |
+|-------|--------|---------|
+| Research Agent | ✅ PASS | 3 tools, doc queries working |
+| Technique Selector | ✅ PASS | Selected mantaflow_smoke |
+| API Spec Agent | ❌ FAIL | Doc search loop detection triggered |
+| Code Writer | ⚠️ FALLBACK | Spec-first failed; fell back to original Script Writer |
+| API Validator | ✅ PASS | 11/11 valid |
+| Executor | ❌ FAIL | No camera for render |
+
+### Critical Findings
+
+1. **Spec-first still unstable**  
+   - API Spec Agent exceeded consecutive doc-search limit (21+ in a row).  
+   - Spec-first pipeline aborted and fell back to original Script Writer.
+
+2. **Render pipeline missing camera**  
+   - Executor error: `Cannot render, no camera`  
+   - Occurred in both iterations (pattern reuse included).
+
+3. **Enum validation not exercised**  
+   - Enum guardrail exists, but spec-first did not reach Code Writer.  
+   - Needs a successful spec-first run to verify enum enforcement.
+
+---
+
 ## Latest Run Findings (2026-01-26 02:45) - Test v9
 
 **Trace:** `traces/e2e_test_v9_20260126_024559.jsonl` (226KB)
@@ -77,26 +110,30 @@ Trace: `traces/e2e_test_verbose_water_20260125_210557.jsonl`
 
 ## Current Blockers (Must Fix)
 
-1) **🆕 Enum value hallucination (2026-01-26)**
-   - API Spec Agent verifies attribute doc_refs exist but doesn't extract/verify enum values.
-   - Example: `flow_behavior = 'FLOW'` hallucinated despite correct docs showing `('INFLOW', 'OUTFLOW', 'GEOMETRY')`.
-   - **Fix options:**
-     a) Enhance API Spec Agent instructions to extract enum values from doc results
-     b) Add enum validation guardrail that checks values against known enums
-     c) Add `VALID_ENUM_VALUES` constant map like `KNOWN_API_CHANGES`
+1) **Enum value validation verification (2026-01-26)**
+   - Guardrail now checks enum values via `VALID_ENUM_VALUES` fallback map.
+   - Needs a successful run to confirm it blocks invalid values like `'FLOW'`.
 
-2) **`bake_frame_start` / cache frame API mismatch** (Partially fixed by spec-first)
+2) **Spec-first doc search throttling still failing**
+   - API Spec Agent triggers loop detection (21+ consecutive doc calls).
+   - Need tighter search plan or fewer per-turn queries.
+
+3) **Render pipeline missing camera**
+   - `bpy.ops.render.render` invoked with no active camera.
+   - Either create/set camera or skip render for headless runs.
+
+4) **`bake_frame_start` / cache frame API mismatch** (Partially fixed by spec-first)
    - Spec-first pipeline prevents attribute hallucination when API Spec Agent works correctly.
    - Still need fallback Script Writer to have this blocked.
 
-3) **Doc search precision**
+5) **Doc search precision**
    - `search_blender_api_by_intent` returns unrelated APIs for fluid-domain intents.
    - API doc hits are mostly genindex snippets, not attribute-level sources.
 
-4) **API validator too permissive**
+6) **API validator too permissive**
    - Mark unknown attributes invalid (strict mode) before execution.
 
-5) **Pattern library propagates outdated API**
+7) **Pattern library propagates outdated API**
    - Pattern application can reintroduce removed attributes.
    - Needs validation on pattern application step.
 
@@ -104,16 +141,23 @@ Trace: `traces/e2e_test_verbose_water_20260125_210557.jsonl`
 
 ## High Priority (Next)
 
-1) **🆕 Enum value validation** (CRITICAL)
-   - Add `VALID_ENUM_VALUES` map for common Blender enums
-   - Validate API Spec Agent output includes only valid enum values
-   - Example entry: `flow_behavior: ['INFLOW', 'OUTFLOW', 'GEOMETRY']`
+1) **Enum validation verification** (CRITICAL)
+   - Run v10 to confirm enum values are rejected before execution
+   - Expand `VALID_ENUM_VALUES` map as needed
 
-2) **Learning agent baseline + experiment recording**
+2) **Spec-first doc search stabilization**
+   - Reduce per-turn doc queries or use bundled search
+   - Prevent loop detection while keeping doc coverage
+
+3) **Render pipeline camera fix**
+   - Ensure a camera exists before calling render
+   - Or disable render in headless cache-only runs
+
+4) **Learning agent baseline + experiment recording**
    - Baseline sync was fixed but not verified in a complete run.
    - Test v9 didn't reach learning phase (execution failed first).
 
-3) **Quality Analyst verification**
+5) **Quality Analyst verification**
    - Not reached in test v9 due to execution failure.
    - Need successful script execution to verify ML evaluation.
 
@@ -129,6 +173,7 @@ Trace: `traces/e2e_test_verbose_water_20260125_210557.jsonl`
 - **🆕 Verbose tracing** - Trace files created correctly when using `test_e2e_orchestrator.py` or enabling `enable_verbose_tracing()` (2026-01-26).
 - **🆕 Parallel tool execution** - API Spec Agent correctly batches 14 doc searches in single turn (~18s total) (2026-01-26).
 - **🆕 Files NOT being deleted** - Confirmed 115+ directories preserved in `build/vdb_output/`, logs in `build/blender_cli_logs/` (2026-01-26).
+- **🆕 Enum value guardrail** - Added enum validation in `validate_code_against_spec` (2026-01-26).
 
 ---
 
@@ -139,11 +184,11 @@ Trace: `traces/e2e_test_verbose_water_20260125_210557.jsonl`
 
 ---
 
-## Suggested Next Test (Once enum validation added)
+## Suggested Next Test (Verify enum validation)
 
 **Test v10 Requirements:**
-1. Add `VALID_ENUM_VALUES` validation to API Spec Agent or guardrail
-2. Run 1-iteration test with gpt-5-mini
+1. Run 1-iteration test with gpt-5-mini
+2. Confirm enum validation blocks invalid values before execution
 
 **Success Criteria:**
 - ✅ No enum errors in Blender execution

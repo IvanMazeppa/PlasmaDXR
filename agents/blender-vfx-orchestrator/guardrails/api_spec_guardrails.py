@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import Any, List, Set, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Set, TYPE_CHECKING, Union
 
 from agents import (
     Agent,
@@ -27,6 +27,20 @@ from agents import (
 if TYPE_CHECKING:
     from agents import RunContextWrapper
     from models.api_spec import APISpec, VerifiedScriptOutput
+
+
+# =============================================================================
+# ENUM VALUE VALIDATION
+# =============================================================================
+
+# Fallback enum values when APISpec doesn't provide enum_values.
+# TEMPORARY SAFETY NET: Remove once enum_values are reliably extracted from docs.
+# Keep this small and explicit to avoid false positives.
+VALID_ENUM_VALUES = {
+    "flow_behavior": ["INFLOW", "OUTFLOW", "GEOMETRY"],
+    "flow_type": ["SMOKE", "FIRE", "BOTH"],
+    "domain_type": ["GAS", "LIQUID"],
+}
 
 
 # =============================================================================
@@ -340,10 +354,52 @@ async def validate_code_against_spec(
         for op in api_spec.ops:
             allowed_ops.add(op.op_path)
 
+    # Build enum validation map (attribute_name -> allowed values)
+    enum_allowed: Dict[str, Set[str]] = {}
+    spec_attrs = []
+    if hasattr(api_spec, 'domain_attributes'):
+        spec_attrs.extend(api_spec.domain_attributes)
+    if hasattr(api_spec, 'flow_attributes'):
+        spec_attrs.extend(api_spec.flow_attributes)
+    if hasattr(api_spec, 'scene_attributes'):
+        spec_attrs.extend(api_spec.scene_attributes)
+    if hasattr(api_spec, 'object_attributes'):
+        spec_attrs.extend(api_spec.object_attributes)
+
+    for attr in spec_attrs:
+        value_type = str(getattr(attr, "value_type", "")).lower()
+        if value_type == "enum":
+            values = []
+            enum_values = getattr(attr, "enum_values", None)
+            if enum_values:
+                values = list(enum_values)
+            elif attr.attribute_name in VALID_ENUM_VALUES:
+                values = list(VALID_ENUM_VALUES[attr.attribute_name])
+            if values:
+                enum_allowed[attr.attribute_name] = set(values)
+
+    # Extract enum assignments (string literals only)
+    enum_assign_pattern = r'\b(?:dset|fset|domain_settings|flow_settings|scene)\.(\w+)\s*=\s*(["\'])([^"\']+)\2'
+    enum_assignments: Dict[str, str] = {}
+    for attr_name, _quote, value in re.findall(enum_assign_pattern, script_content):
+        enum_assignments[attr_name] = value
+
     # Find violations
     domain_violations = used_domain_attrs - allowed_domain
     flow_violations = used_flow_attrs - allowed_flow
     op_violations = used_ops - allowed_ops
+
+    # Enum value validation (reject unknown or missing enum values)
+    enum_value_violations: Set[str] = set()
+    enum_value_missing: Set[str] = set()
+    for attr_name, allowed_values in enum_allowed.items():
+        if attr_name in used_domain_attrs or attr_name in used_flow_attrs:
+            if attr_name not in enum_assignments:
+                enum_value_missing.add(attr_name)
+                continue
+            value = enum_assignments[attr_name]
+            if value not in allowed_values:
+                enum_value_violations.add(f"{attr_name}={value}")
 
     # Also allow common safe ops that don't need to be in spec
     safe_ops = {
@@ -378,13 +434,20 @@ async def validate_code_against_spec(
         print(f"[Guardrail DEBUG] Rejected ops: {op_violations}", file=sys.stderr)
         print(f"[Guardrail DEBUG] Allowed spec ops: {allowed_ops}", file=sys.stderr)
 
-    total_violations = len(domain_violations) + len(flow_violations) + len(op_violations)
+    total_violations = (
+        len(domain_violations)
+        + len(flow_violations)
+        + len(op_violations)
+        + len(enum_value_violations)
+        + len(enum_value_missing)
+    )
 
     if total_violations > 0:
         print(
             f"[Guardrail] validate_code_against_spec TRIGGERED: "
             f"{len(domain_violations)} domain, {len(flow_violations)} flow, "
-            f"{len(op_violations)} ops violations",
+            f"{len(op_violations)} ops, {len(enum_value_violations)} enum value, "
+            f"{len(enum_value_missing)} enum missing violations",
             file=sys.stderr
         )
         return GuardrailFunctionOutput(
@@ -394,6 +457,9 @@ async def validate_code_against_spec(
                 "domain_violations": list(domain_violations),
                 "flow_violations": list(flow_violations),
                 "op_violations": list(op_violations),
+                "enum_value_violations": list(enum_value_violations),
+                "enum_value_missing": list(enum_value_missing),
+                "allowed_enum_values": {k: sorted(list(v)) for k, v in enum_allowed.items()},
                 "allowed_domain": list(allowed_domain),
                 "allowed_flow": list(allowed_flow),
                 "allowed_ops": list(allowed_ops),
@@ -414,6 +480,10 @@ async def validate_code_against_spec(
             "verified_domain_attrs": list(used_domain_attrs),
             "verified_flow_attrs": list(used_flow_attrs),
             "verified_ops": list(used_ops),
+            "verified_enum_values": {
+                k: enum_assignments.get(k) for k in enum_allowed.keys()
+                if k in enum_assignments
+            },
         },
         tripwire_triggered=False,
     )

@@ -1,13 +1,13 @@
 # Script Writer Overhaul Proposal
 
 **Date:** 2026-01-25
-**Status:** PARTIAL ⚠️ - Attribute validation working, enum value validation MISSING
+**Status:** PARTIAL ⚠️ - Attribute + enum validation implemented, needs verification
 **Problem:** Script Writer hallucinating Blender API attributes despite having doc tools
 **Root Cause:** No structural enforcement - agent CAN skip verification
 
 ---
 
-## Implementation Status (Updated 2026-01-26 03:00 UTC)
+## Implementation Status (Updated 2026-01-26 03:40 UTC)
 
 ### Test Results
 
@@ -17,6 +17,7 @@
 | v6 (00:12) | ✅ PASSED (18 attrs, 3 ops) | ❌ 1 ops violation | N/A | FAIL |
 | v7 (00:39) | ✅ PASSED (7 attrs, 0 ops) | ✅ PASSED (7 attrs) | ⚠️ "ERROR: None" | PARTIAL |
 | **v9 (02:45)** | ✅ PASSED (14 attrs, 3 ops) | ✅ PASSED (12 attrs) | ❌ Enum error | **FAIL** |
+| **v10 (04:20)** | ❌ Loop detection | ⚠️ fallback | ❌ No camera | **FAIL** |
 
 ### v9 Detailed Results (2026-01-26 02:45 UTC)
 
@@ -47,15 +48,15 @@ fset.flow_behavior = 'FLOW'  # ← Hallucinated value
 5. **Fallback path** - Falls back to original Script Writer if spec-first fails
 6. **Safe ops allowlist** - Common bpy.ops exempted from strict validation
 
-### 🚨 CRITICAL GAP: Enum Value Hallucination
+### ✅ Enum Value Validation (Implemented)
 
-**The spec-first pipeline validates ATTRIBUTES but NOT VALUES.**
+**The spec-first pipeline now validates enum values in the Code Writer guardrail.**
 
 - ✅ Guardrail verifies `flow_behavior` attribute exists (doc_ref valid)
-- ❌ Guardrail does NOT verify `'FLOW'` is a valid enum value
-- ❌ LLM hallucinated `'FLOW'` despite docs showing `('INFLOW', 'OUTFLOW', 'GEOMETRY')`
+- ✅ Guardrail rejects invalid enum values like `'FLOW'`
+- ⚠️ Needs verification in a successful test run
 
-**Required Fix (Phase 12.1):**
+**Implemented Fix (Phase 12.1):**
 ```python
 VALID_ENUM_VALUES = {
     "flow_behavior": ["INFLOW", "OUTFLOW", "GEOMETRY"],
@@ -67,14 +68,15 @@ VALID_ENUM_VALUES = {
 
 ### Remaining Issues
 
-1. **🚨 Enum value validation** - CRITICAL, blocks successful execution
-2. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
-3. **Render generation** - Test scripts don't produce renders (setup only)
+1. **Enum validation verification** - Needs a successful spec-first run
+2. **Spec-first doc search stabilization** - API Spec Agent still trips loop detection
+3. **Executor error reporting** - Reports "ERROR: None" even when script succeeds
+4. **Render generation** - Test scripts don't produce renders (setup only)
 
 ### Files Modified
 
 - `specialized_agents/api_spec_agent.py` - Clearer doc_ref format instructions
-- `guardrails/api_spec_guardrails.py` - Expanded safe_ops allowlist, added debug output
+- `guardrails/api_spec_guardrails.py` - Expanded safe_ops allowlist, added debug output, enum validation
 - `hooks/enforcement_hooks.py` - Increased limits, added fallback hooks
 - `hooks/__init__.py` - Exported new hook function
 - `orchestrator.py` - Uses fallback hooks for original Script Writer
