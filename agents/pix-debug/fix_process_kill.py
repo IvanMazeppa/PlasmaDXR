@@ -23,7 +23,7 @@ new_timeout = """            except subprocess.TimeoutExpired:
                 except subprocess.TimeoutExpired:
                     # Still running, terminate harder (Windows TASKKILL)
                     try:
-                        subprocess.run(["taskkill.exe", "/F", "/IM", "PlasmaDX-Clean.exe"], 
+                        subprocess.run(["taskkill.exe", "/F", "/IM", "PlasmaDXR.exe"], 
                                      capture_output=True, timeout=2)
                     except:
                         pass  # Best effort

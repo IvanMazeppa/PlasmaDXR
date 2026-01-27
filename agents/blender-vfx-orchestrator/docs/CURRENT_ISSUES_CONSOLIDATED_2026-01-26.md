@@ -351,11 +351,30 @@ if prefix in PREFIX_MAP:
 
 ## Priority Fix Queue
 
-| Priority | Issue | Impact | Fix Location |
-|----------|-------|--------|--------------|
-| P0 | Coordinator → modify_script contract | Multi-iteration broken | `tools/script_generator_tools.py` |
-| P1 | noise_scale type (float vs int) | Execution fails | Script Writer instructions or guardrail |
-| P2 | API Spec Agent bundle-first | Wastes API calls | Prompt engineering or few-shot |
+| Priority | Issue | Impact | Fix Location | Status |
+|----------|-------|--------|--------------|--------|
+| P0 | Coordinator → modify_script contract | Multi-iteration broken | `tools/script_generator_tools.py` | ✅ FIXED 2026-01-26 |
+| P1 | noise_scale type (float vs int) | Execution fails | `specialized_agents/api_validator.py` | ✅ FIXED 2026-01-26 |
+| P1 | velocity_multi hallucination | Execution fails | `specialized_agents/api_validator.py` | ✅ FIXED 2026-01-26 |
+| P2 | API Spec Agent bundle-first | Wastes API calls | `hooks/enforcement_hooks.py` | ✅ FIXED 2026-01-26 |
+
+### Fixes Applied (2026-01-26)
+
+1. **`_modify_script_impl` Contract Fix:**
+   - Added `BLENDER_CLASS_TO_VAR` mapping for Coordinator API paths → script variable patterns
+   - Now handles `FluidDomainSettings.noise_scale` → `settings.noise_scale` automatically
+   - Direct attribute pattern matching for scripts without Config class
+
+2. **`APISpecEnforcementHooks` with Bundle-First:**
+   - New hook class that mechanically enforces bundle-first discipline
+   - `semantic_search_blender_docs` and `search_blender_api_by_intent` are BLOCKED until `blender_doc_search_bundle` called
+   - Raises `BundleFirstRequiredError` if violated
+   - Max 6 targeted searches after bundle
+
+3. **Type Enforcement (noise_scale, velocity_factor):**
+   - Added `velocity_multi` to `KNOWN_API_CHANGES` with correction
+   - Pattern detection for `noise_scale = X.Y` (float assignments)
+   - Extended coverage for values 1.0-4.0
 
 ---
 

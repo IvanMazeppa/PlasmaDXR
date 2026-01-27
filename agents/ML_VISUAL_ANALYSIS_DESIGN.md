@@ -712,7 +712,7 @@ for renderer in legacy rtxdi_m4 rtxdi_m5; do
   for scenario in close_distance far_distance stress_test; do
     for preset in performance balanced quality; do
       # Run PlasmaDX with config
-      ./build/Debug/PlasmaDX-Clean.exe \
+      ./build/Debug/PlasmaDXR.exe \
         --config=configs/scenarios/${scenario}.json \
         --renderer=${renderer} \
         --preset=${preset}
@@ -813,7 +813,7 @@ claude mcp server reconnect rtxdi-quality-analyzer
 python -m agents.rtxdi-quality-analyzer.src.tools.regression_monitor
 
 # 3. Make code changes, test
-./build/Debug/PlasmaDX-Clean.exe
+./build/Debug/PlasmaDXR.exe
 
 # 4. Auto-detect regressions
 # (monitoring service captures screenshot, compares to baseline, alerts if regression)

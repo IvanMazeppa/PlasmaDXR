@@ -14,7 +14,7 @@ old_kill = """            except subprocess.TimeoutExpired:
                 except subprocess.TimeoutExpired:
                     # Still running, terminate harder (Windows TASKKILL)
                     try:
-                        subprocess.run(["taskkill.exe", "/F", "/IM", "PlasmaDX-Clean.exe"], 
+                        subprocess.run(["taskkill.exe", "/F", "/IM", "PlasmaDXR.exe"], 
                                      capture_output=True, timeout=2)
                     except:
                         pass  # Best effort
@@ -29,7 +29,7 @@ new_kill = """            except subprocess.TimeoutExpired:
                 # Windows: Kill by image name to catch any child processes
                 try:
                     kill_result = subprocess.run(
-                        ["taskkill.exe", "/F", "/IM", "PlasmaDX-Clean.exe"], 
+                        ["taskkill.exe", "/F", "/IM", "PlasmaDXR.exe"], 
                         capture_output=True, 
                         text=True,
                         timeout=5

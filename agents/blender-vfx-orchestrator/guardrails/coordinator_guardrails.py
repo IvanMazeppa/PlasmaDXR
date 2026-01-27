@@ -13,6 +13,7 @@ SDK Pattern Reference:
 
 from __future__ import annotations
 
+import re
 import sys
 from typing import Any, TYPE_CHECKING
 
@@ -31,6 +32,8 @@ VALID_MODIFICATION_ACTIONS = {
     "switch_technique",
     "continue",
 }
+
+DELETE_SENTINEL = "__DELETE__"
 
 # Valid next actions for quality gate decisions
 VALID_QUALITY_NEXT_ACTIONS = {
@@ -228,6 +231,28 @@ async def validate_modification_decision(
                     "parameter_changes must be flat (no nested dict/list). "
                     f"Nested keys: {nested_keys}"
                 )
+            else:
+                # Enforce structured values: numbers/bools/short enums/DELETE sentinel
+                invalid_values = []
+                for key, value in parameter_changes.items():
+                    if isinstance(value, (int, float, bool)) or value is None:
+                        continue
+                    if isinstance(value, str):
+                        if value == DELETE_SENTINEL:
+                            continue
+                        if re.search(r"\s", value) or len(value) > 32:
+                            invalid_values.append(key)
+                            continue
+                        # Short enum tokens like GAS, LIQUID, REPLAY, MODULAR, GEOMETRY
+                        continue
+                    invalid_values.append(key)
+
+                if invalid_values:
+                    errors.append(
+                        "parameter_changes values must be numeric/bool, short enum tokens, "
+                        f"or '{DELETE_SENTINEL}' for removals. "
+                        f"Invalid keys: {invalid_values}"
+                    )
 
     if action == "switch_technique":
         if not new_technique:

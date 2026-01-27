@@ -1,4 +1,4 @@
-# PlasmaDX Log Analysis RAG Agent
+# PlasmaDXR Log Analysis RAG Agent
 
 **Multi-agent RAG system for automated DirectX 12 rendering diagnostics**
 
@@ -85,9 +85,9 @@ Logs/PIX/Buffers → Embedding (ChromaDB) → Hybrid Retrieval (BM25+FAISS)
 
    **Optional** (defaults are already set):
    ```bash
-   PROJECT_ROOT=/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean
-   LOG_DIR=/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/build/bin/Debug/logs
-   PIX_DIR=/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/PIX
+   PROJECT_ROOT=/home/maz3ppa/projects/PlasmaDXR
+   LOG_DIR=/home/maz3ppa/projects/PlasmaDXR/build/bin/Debug/logs
+   PIX_DIR=/home/maz3ppa/projects/PlasmaDXR/PIX
    ```
 
 4. **Verify installation:**
@@ -113,7 +113,7 @@ python main.py --interactive
 
 **Ingest logs:**
 ```bash
-python main.py --ingest /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/logs
+python main.py --ingest /home/maz3ppa/projects/PlasmaDXR/logs
 ```
 
 ### 📝 **Example Queries**
@@ -194,14 +194,14 @@ rag> exit
 ### 🪟 **WSL + Windows Hybrid Setup**
 
 **Important Path Notes:**
-- **Claude Code / MCP Server**: Runs on WSL (Unix paths like `/mnt/d/...`)
+- **Claude Code / MCP Server**: Runs on WSL (Unix paths like `/home/maz3ppa/projects/PlasmaDXR`)
 - **Cursor IDE**: Runs on Windows (Windows paths like `D:\Users\...`)
 - **Agent Code**: Uses Unix paths (WSL convention)
-- **PlasmaDX App**: Writes logs to Windows filesystem (accessible via `/mnt/d/`)
+- **PlasmaDXR App**: Writes logs to Windows filesystem (accessible via `/home/maz3ppa/projects/PlasmaDXR`)
 
 **Path Translation:**
-- Windows: `D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean\logs`
-- WSL: `/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/logs`
+- Windows: `D:\Users\dilli\AndroidStudioProjects\PlasmaDXR\logs`
+- WSL: `/home/maz3ppa/projects/PlasmaDXR/logs`
 
 All paths in `.env` and code use WSL-style Unix paths.
 
@@ -244,7 +244,7 @@ create_sdk_mcp_server(
 **1. ingest_logs**
 ```json
 {
-  "path": "/mnt/d/.../logs",
+  "path": "/home/maz3ppa/projects/PlasmaDXR/logs",
   "include_pix": true,
   "max_files": 10
 }
@@ -275,7 +275,7 @@ create_sdk_mcp_server(
 **4. analyze_pix_capture**
 ```json
 {
-  "capture_path": "/mnt/d/.../PIX/Captures/latest.wpix",
+  "capture_path": "/home/maz3ppa/projects/PlasmaDXR/PIX/Captures/latest.wpix",
   "extract_events": true
 }
 ```
@@ -283,7 +283,7 @@ create_sdk_mcp_server(
 **5. read_buffer_dump**
 ```json
 {
-  "buffer_path": "/mnt/d/.../PIX/buffer_dumps/g_particles.bin",
+  "buffer_path": "/home/maz3ppa/projects/PlasmaDXR/PIX/buffer_dumps/g_particles.bin",
   "buffer_type": "particles",
   "max_entries": 10
 }
@@ -302,7 +302,7 @@ create_sdk_mcp_server(
 
 ## Integration with Existing Agents
 
-This RAG agent **complements** existing PlasmaDX agents:
+This RAG agent **complements** existing PlasmaDXR agents:
 
 | Agent | Integration Point |
 |-------|------------------|
@@ -398,21 +398,6 @@ agents/log-analysis-rag/
 └── venv/                     # Virtual environment
 ```
 
-### 🔄 **Extending the Agent**
-
-**Add new MCP tool:**
-1. Implement async function in `mcp-server/tools.py`
-2. Decorate with `@tool()` in `main.py`
-3. Register in `create_mcp_server()`
-
-**Modify workflow:**
-1. Edit nodes in `src/nodes/`
-2. Update workflow in `src/graph/workflow.py`
-
-**Change models:**
-1. Update `.env` with new model names
-2. Models available: https://build.nvidia.com/
-
 ---
 
 ## Performance
@@ -453,7 +438,7 @@ agents/log-analysis-rag/
 
 ## License
 
-Part of PlasmaDX-Clean project. See project root for license.
+Part of PlasmaDXR project. See project root for license.
 
 ---
 

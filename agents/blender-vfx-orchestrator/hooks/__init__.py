@@ -11,7 +11,9 @@ from .enforcement_hooks import (
     LoopDetectedError,
     DocQueryRequiredError,
     TurnBudgetExceededError,
+    BundleFirstRequiredError,
     EnforcementConfig,
+    APISpecEnforcementHooks,
     # Specialized hook factories
     create_research_hooks,
     create_script_writer_hooks,
@@ -36,7 +38,9 @@ __all__ = [
     "LoopDetectedError",
     "DocQueryRequiredError",
     "TurnBudgetExceededError",
+    "BundleFirstRequiredError",
     "EnforcementConfig",
+    "APISpecEnforcementHooks",
     # Specialized hook factories
     "create_research_hooks",
     "create_script_writer_hooks",

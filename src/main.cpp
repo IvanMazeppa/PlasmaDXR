@@ -1,4 +1,4 @@
-// PlasmaDX-Clean - Modern, clean particle system with RT lighting
+// PlasmaDXR - Modern, clean particle system with RT lighting
 // Entry point - kept minimal and clean
 
 #include "core/Application.h"
@@ -20,9 +20,9 @@ extern "C" {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow) {
     try {
         // Initialize logging
-        Logger::Initialize("PlasmaDX-Clean");
+        Logger::Initialize("PlasmaDXR");
 
-        LOG_INFO("=== PlasmaDX-Clean Starting ===");
+        LOG_INFO("=== PlasmaDXR Starting ===");
         LOG_INFO("Clean architecture, modern design");
         LOG_INFO("Target: 100K particles with RT lighting");
 
@@ -35,7 +35,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
             // Simple command line parsing (Windows provides a single string)
             std::string cmdLine = lpCmdLine;
             std::vector<std::string> args;
-            args.push_back("PlasmaDX-Clean.exe"); // argv[0]
+            args.push_back("PlasmaDXR.exe"); // argv[0]
 
             size_t pos = 0;
             while (pos < cmdLine.length()) {
@@ -84,7 +84,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
         // Clean shutdown
         app.Shutdown();
 
-        LOG_INFO("=== PlasmaDX-Clean Exiting (Code: {})", exitCode);
+        LOG_INFO("=== PlasmaDXR Exiting (Code: {})", exitCode);
         return exitCode;
 
     } catch (const std::exception& e) {

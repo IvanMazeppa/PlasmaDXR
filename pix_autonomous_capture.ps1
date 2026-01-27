@@ -11,9 +11,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = "D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean"
+$projectRoot = "D:\Users\dilli\AndroidStudioProjects\PlasmaDXR"
 $pixTool = "C:\Program Files\Microsoft PIX\2509.25\pixtool.exe"
-$appExe = "$projectRoot\build\Debug\PlasmaDX-Clean.exe"
+$appExe = "$projectRoot\build\Debug\PlasmaDXR.exe"
 $captureFile = "$projectRoot\pix\Captures\$OutputName.wpix"
 
 Write-Host ""
@@ -58,7 +58,7 @@ Write-Host " Done!" -ForegroundColor Green
 # Step 3: Find the app process
 Write-Host ""
 Write-Host "Step 3: Finding app process..." -ForegroundColor Yellow
-$appProcess = Get-Process -Name "PlasmaDX-Clean" -ErrorAction SilentlyContinue
+$appProcess = Get-Process -Name "PlasmaDXR" -ErrorAction SilentlyContinue
 if ($appProcess) {
     $pid = $appProcess.Id
     Write-Host "  Found PID: $pid" -ForegroundColor Green

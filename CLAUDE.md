@@ -391,7 +391,7 @@ if not budget["can_afford_evaluation"]:
 
 ---
 
-## PlasmaDX-Clean (DXR Renderer)
+## PlasmaDXR (DXR Renderer)
 
 The DXR volumetric particle renderer that consumes VFX assets is in the main `src/` directory. This is secondary to the orchestrator focus but still functional.
 
@@ -400,10 +400,10 @@ The DXR volumetric particle renderer that consumes VFX assets is in the main `sr
 # Build
 mkdir build && cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
-MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
+MSBuild.exe build/PlasmaDXR.sln /p:Configuration=Debug /p:Platform=x64
 
 # Run
-./build/bin/Debug/PlasmaDX-Clean.exe --config=configs/user/default.json
+./build/bin/Debug/PlasmaDXR.exe --config=configs/user/default.json
 ```
 
 ### Key DXR Concepts

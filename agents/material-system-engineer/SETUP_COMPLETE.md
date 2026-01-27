@@ -123,7 +123,7 @@ Next Steps:
    MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
 
 3. Test:
-   ./build/Debug/PlasmaDX-Clean.exe --scenario=configs/scenarios/test_gas_and_stars.json
+   ./build/Debug/PlasmaDXR.exe --scenario=configs/scenarios/test_gas_and_stars.json
 
 4. Validate visually:
    - Press F2 to capture screenshot

@@ -15,6 +15,7 @@ Key capabilities:
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import os
 import re
@@ -195,6 +196,20 @@ class QualityDecision(BaseModel):
     next_action: str = Field(description="Next action: 'complete', 'iterate', 'switch_technique', 'request_guidance'")
     escape_level: int = Field(ge=0, le=4, description="Current escape velocity level (0-4)")
     reasoning: str = Field(description="Explanation of the quality decision")
+
+
+def compute_sica_utility(score: float, cost_usd: float, time_seconds: float) -> float:
+    """
+    SICA utility function for selecting best iteration.
+
+    U = 0.5 * score_norm + 0.25 * (1 - cost/10) + 0.25 * (1 - time/300)
+    score_norm is score / 100.
+    """
+    score_norm = max(0.0, min(1.0, score / 100.0))
+    cost_component = 1.0 - min(1.0, max(0.0, cost_usd) / 10.0)
+    time_component = 1.0 - min(1.0, max(0.0, time_seconds) / 300.0)
+    utility = 0.5 * score_norm + 0.25 * cost_component + 0.25 * time_component
+    return max(0.0, min(1.0, utility))
 
 from models.shared_context import (
     AssetRequest,
@@ -728,10 +743,19 @@ Given quality feedback and iteration history, decide the modification strategy.
 ## Output
 Return a ModificationDecision with:
 - action: 'modify_params' | 'switch_technique' | 'continue'
-- parameter_changes: Dict of {param_name: new_value} - CONCRETE numbers
+- parameter_changes: Dict of {param_name: new_value} - CONCRETE values only
 - new_technique: New technique name if switching
 - reasoning: Why this strategy
-- confidence: 0.0-1.0 confidence level""",
+- confidence: 0.0-1.0 confidence level
+
+## CRITICAL FORMAT RULES (NO PROSE)
+- parameter_changes keys MUST be Blender API paths, e.g.:
+  - FluidDomainSettings.resolution_max
+  - FluidFlowSettings.flow_behavior
+- Values MUST be: numbers, booleans, short enum tokens, or "__DELETE__"
+- NO nested dicts, NO sentences, NO explanations in values
+- Use "__DELETE__" to remove an invalid line (e.g., flow.velocity_factor)
+""",
         model=settings.model,
         model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
@@ -1696,6 +1720,10 @@ Select the optimal technique and provide starting parameters."""
                     session.current_iteration = iteration
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{request.max_iterations} ======", file=sys.stderr)
 
+                    # Track per-iteration cost and time for utility scoring
+                    iteration_start_time = time.monotonic()
+                    budget_spent_start = self._budget_tracker.get_spent()
+
                     # Phase 2: Initialize self-learning variables for this iteration
                     # These will be populated in Phase 0.95 for iteration 2+
                     pattern_to_apply = None
@@ -2480,11 +2508,34 @@ Provide detailed feedback for improvement."""
                     if quality.primary_issue:
                         print(f"[Pipeline] Issue: {quality.primary_issue[:60]}...", file=sys.stderr)
 
-                    # Update session
+                    # Update session (quality best)
                     session.best_score = max(session.best_score, quality.overall_score)
                     if quality.overall_score == session.best_score:
                         session.best_iteration = iteration
                         session.final_render_path = execution.render_path
+
+                    # Update session (SICA utility best)
+                    iteration_duration = time.monotonic() - iteration_start_time
+                    iteration_cost = max(0.0, self._budget_tracker.get_spent() - budget_spent_start)
+                    utility_score = compute_sica_utility(
+                        score=quality.overall_score,
+                        cost_usd=iteration_cost,
+                        time_seconds=iteration_duration
+                    )
+                    if utility_score >= session.best_utility_score:
+                        session.best_utility_score = utility_score
+                        session.best_utility_iteration = iteration
+                        session.best_utility_quality_score = quality.overall_score
+                        session.best_utility_cost_usd = iteration_cost
+                        session.best_utility_time_seconds = iteration_duration
+                        session.best_utility_script_path = script.script_path
+                        session.best_utility_render_path = execution.render_path
+                        print(
+                            f"[Pipeline] Utility best: U={utility_score:.3f} "
+                            f"(score={quality.overall_score:.1f}, cost=${iteration_cost:.2f}, "
+                            f"time={iteration_duration:.1f}s) at iter {iteration}",
+                            file=sys.stderr
+                        )
 
                     # Extract current params from script (use parameters_set, the correct field on ScriptOutput)
                     current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}

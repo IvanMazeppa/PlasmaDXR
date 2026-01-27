@@ -23,7 +23,7 @@ In Claude Code:
 ### Manual Verification
 ```bash
 cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/build/bin/Debug
-./PlasmaDX-Clean.exe --particles 100 --restir
+./PlasmaDXR.exe --particles 100 --restir
 # Press Ctrl+C or Alt+F4 to exit
 # Check logs/PlasmaDX-Clean_*.log for "Lighting system: Volumetric ReSTIR"
 ```
@@ -42,7 +42,7 @@ cd /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/build/bin/Debug
 
 **Verification:**
 ```bash
-./PlasmaDX-Clean.exe --particles 100 --restir
+./PlasmaDXR.exe --particles 100 --restir
 # Log shows: [INFO] Lighting system: Volumetric ReSTIR (autonomous testing mode)
 ```
 
@@ -341,14 +341,14 @@ In Claude Code:
 **Diagnosis:**
 ```bash
 # Check if rebuild applied
-ls -lt /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/build/bin/Debug/PlasmaDX-Clean.exe
+ls -lt /mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean/build/bin/Debug/PlasmaDXR.exe
 # Should show recent timestamp (after 23:02 on Oct 31)
 ```
 
 **Solution:**
 1. Rebuild PlasmaDX: `MSBuild build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64`
 2. Verify flag in code: Check Application.cpp line 111-113 for `--restir` case
-3. Test manually: `./PlasmaDX-Clean.exe --particles 100 --restir`
+3. Test manually: `./PlasmaDXR.exe --particles 100 --restir`
 
 ### Issue: Shader loading errors
 
@@ -390,7 +390,7 @@ tasklist.exe | grep -i plasma
 **Solution:**
 ```bash
 # Manual cleanup
-taskkill.exe /F /IM PlasmaDX-Clean.exe
+taskkill.exe /F /IM PlasmaDXR.exe
 
 # Then reconnect MCP
 /mcp reconnect pix-debug
@@ -577,7 +577,7 @@ The agent will execute 5 sequential tests and summarize results.
 ### Combined with Buffer Dumps
 After identifying crash point, manually run:
 ```bash
-./PlasmaDX-Clean.exe --particles 2045 --restir --dump-buffers 2
+./PlasmaDXR.exe --particles 2045 --restir --dump-buffers 2
 ```
 
 Then analyze with:
@@ -645,7 +645,7 @@ In Claude Code:
 
 Before using for critical debugging, verify:
 
-- [ ] Manual test: `./PlasmaDX-Clean.exe --particles 100 --restir` works
+- [ ] Manual test: `./PlasmaDXR.exe --particles 100 --restir` works
 - [ ] Autonomous test: Status = "timeout", --restir flag detected
 - [ ] Process cleanup: `tasklist.exe | grep plasma` returns empty after test
 - [ ] Log capture: Both init and final logs present

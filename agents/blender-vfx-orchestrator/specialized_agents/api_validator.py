@@ -173,7 +173,19 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_maximum or cfl_condition."
     },
     # =============================================================================
-    # TYPE WARNINGS (Phase 3: 2026-01-25)
+    # HALLUCINATED ATTRIBUTES - FluidFlowSettings (Phase 4: 2026-01-26)
+    # =============================================================================
+    # FluidFlowSettings.velocity_multi does NOT exist - use velocity_factor
+    ".velocity_multi": {
+        "correction": ".velocity_factor",
+        "reason": "HALLUCINATED: velocity_multi does not exist. Use velocity_factor (float 0-1000) for initial velocity."
+    },
+    "velocity_multi": {
+        "correction": "velocity_factor",
+        "reason": "HALLUCINATED: velocity_multi does not exist. Use velocity_factor (float 0-1000) for initial velocity."
+    },
+    # =============================================================================
+    # TYPE WARNINGS (Phase 3: 2026-01-25, Updated Phase 4: 2026-01-26)
     # These attributes EXIST but have specific type requirements that LLMs miss
     # =============================================================================
     # FluidDomainSettings.noise_scale expects INT, not float
@@ -188,6 +200,14 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
     "noise_scale = 0.5": {
         "correction": "noise_scale = 1  # Must be int >= 1, not float",
         "reason": "TYPE ERROR: noise_scale expects int >= 1, not float. Minimum value is 1."
+    },
+    "noise_scale = 3.0": {
+        "correction": "noise_scale = 3  # Must be int, not float",
+        "reason": "TYPE ERROR: noise_scale expects int, not float. Use int(value) or integer literals."
+    },
+    "noise_scale = 4.0": {
+        "correction": "noise_scale = 4  # Must be int, not float",
+        "reason": "TYPE ERROR: noise_scale expects int, not float. Use int(value) or integer literals."
     },
     # bpy.app.build_options changes (Blender 5.0)
     "bpy.app.build_options.engines": {
@@ -437,6 +457,16 @@ def extract_api_calls_from_code(code: str) -> List[str]:
 
         if domain_settings_access and not fluid_type_set:
             api_calls.add("mod.domain_settings.domain_type")
+
+    # Pattern 16: TYPE ERROR - noise_scale assigned with float (must be int)
+    # Match: noise_scale = X.Y or noise_scale = float(X)
+    for match in re.finditer(r'noise_scale\s*=\s*(\d+\.\d+|\d+\.)', code):
+        float_val = match.group(1)
+        api_calls.add(f"noise_scale = {float_val}")
+
+    # Pattern 17: HALLUCINATED - velocity_multi does not exist
+    if 'velocity_multi' in code:
+        api_calls.add("velocity_multi")
 
     return sorted(api_calls)
 

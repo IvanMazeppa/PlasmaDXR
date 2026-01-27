@@ -76,11 +76,23 @@ If value_type is **enum**, you MUST include `enum_values`:
 - Example: `flow_behavior` → `['INFLOW', 'OUTFLOW', 'GEOMETRY']`
 - If enum values cannot be verified, **omit the attribute**
 
-## EXECUTION PLAN
+## EXECUTION PLAN - FOLLOW EXACTLY
 
-### TURN 1: Bundle-first doc search (MANDATORY)
-Call `blender_doc_search_bundle` ONCE with:
-- effect_type, description, intent, domain
+### TURN 1: Bundle-first doc search (MANDATORY - HOOKS ENFORCE THIS)
+**FIRST TOOL CALL MUST BE `blender_doc_search_bundle`**. No exceptions.
+
+Example call:
+```
+blender_doc_search_bundle(
+    effect_type="pyro",
+    description="Explosion with fire and smoke",
+    intent="domain setup, flow emitter, baking",
+    domain="FluidDomainSettings FluidFlowSettings"
+)
+```
+
+⚠️ WARNING: Targeted searches (semantic_search_blender_docs, search_blender_api_by_intent)
+are BLOCKED by hooks until bundle has been called. Attempting them first will fail.
 
 Use bundle results to populate as many attributes/ops as possible.
 

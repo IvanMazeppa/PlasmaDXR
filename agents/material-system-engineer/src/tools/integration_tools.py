@@ -107,7 +107,7 @@ Camera Distance: {camera_distance:.1f} units
 - Material system overhead: ~5-8% (estimate)
 
 ## Validation Steps
-1. Launch: `./build/Debug/PlasmaDX-Clean.exe --scenario={name}.json`
+1. Launch: `./build/Debug/PlasmaDXR.exe --scenario={name}.json`
 2. Wait 2-3 seconds for temporal convergence
 3. Press F2 to capture screenshot
 4. Run dxr-image-quality-analyst for visual assessment

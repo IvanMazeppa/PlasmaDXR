@@ -39,7 +39,7 @@ class SafetyHooks:
 
     # Commands that should run in background only
     BACKGROUND_ONLY = [
-        "PlasmaDX-Clean.exe",  # Main application
+        "PlasmaDXR.exe",  # Main application
         "MSBuild.exe",  # Builds can be long-running
     ]
 

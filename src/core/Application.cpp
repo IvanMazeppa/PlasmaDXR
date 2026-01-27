@@ -276,7 +276,7 @@ bool Application::Initialize(HINSTANCE hInstance, int nCmdShow, int argc, char**
             m_vortexDecay = static_cast<float>(std::atof(argv[++i]));
             m_physicsParamsSet = true;
         } else if (arg == "--help" || arg == "-h") {
-            LOG_INFO("Usage: PlasmaDX-Clean.exe [options]");
+            LOG_INFO("Usage: PlasmaDXR.exe [options]");
             LOG_INFO("  --config=<file>      : Load configuration from JSON file");
             LOG_INFO("  --gaussian, -g       : Use 3D Gaussian Splatting renderer");
             LOG_INFO("  --billboard, -b      : Use Billboard renderer");
@@ -1504,7 +1504,7 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.lpszClassName = L"PlasmaDXClean";
+    wc.lpszClassName = L"PlasmaDXR";
 
     if (!RegisterClassEx(&wc)) {
         return false;
@@ -1536,8 +1536,8 @@ bool Application::CreateAppWindow(HINSTANCE hInstance, int nCmdShow) {
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
     m_hwnd = CreateWindow(
-        L"PlasmaDXClean",
-        L"PlasmaDX-Clean - RT Lighting Test",
+        L"PlasmaDXR",
+        L"PlasmaDXR - RT Lighting Test",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
         rc.right - rc.left, rc.bottom - rc.top,

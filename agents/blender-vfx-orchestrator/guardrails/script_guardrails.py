@@ -14,6 +14,7 @@ SDK Pattern Reference:
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, List, TYPE_CHECKING, Union
@@ -61,6 +62,43 @@ RESEARCH_INDICATORS = [
     "key_parameters",
     "alternative_approaches",
 ]
+
+# Known hallucination patterns to block in generated scripts
+HALLUCINATION_PATTERNS = [
+    (r"\bresolution_divisions\b", "resolution_divisions removed in Blender 5.0 (use resolution_max)"),
+    (r"\buse_adaptive_time_steps\b", "use_adaptive_time_steps is invalid (use use_adaptive_timesteps)"),
+    (r"\bvelocity_multi\b", "velocity_multi is invalid (use velocity_factor)"),
+    (r"\bnoise_res_factor\b", "noise_res_factor removed in Blender 5.0"),
+    (r"\btime_scale\b", "time_scale removed in Blender 5.0"),
+    (r"\bdomain_resolution\b\s*=", "domain_resolution is read-only (use resolution_max)"),
+    (r"\bflow\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+    (r"\bobject\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+    (r"\bobj\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+]
+
+
+def _scan_script_for_hallucinations(script_text: str) -> List[str]:
+    """Return list of hallucination issues found in script text."""
+    issues: List[str] = []
+    if not script_text:
+        return issues
+
+    in_triple = False
+    for line in script_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if '"""' in stripped or "'''" in stripped:
+            if stripped.count('"""') == 1 or stripped.count("'''") == 1:
+                in_triple = not in_triple
+            continue
+        if in_triple or stripped.startswith("#"):
+            continue
+
+        for pattern, message in HALLUCINATION_PATTERNS:
+            if re.search(pattern, line):
+                issues.append(f"{message} | line: {stripped}")
+    return issues
 
 
 @input_guardrail
@@ -255,6 +293,21 @@ async def validate_script_output(
             f"script_path '{script_path}' does not exist yet",
             file=sys.stderr
         )
+    else:
+        try:
+            script_text = Path(script_path).read_text()
+            hallucinations = _scan_script_for_hallucinations(script_text)
+            if hallucinations:
+                return GuardrailFunctionOutput(
+                    tripwire_triggered=True,
+                    output_info={
+                        "reason": "Script contains hallucinated APIs",
+                        "issues": hallucinations,
+                    }
+                )
+        except Exception:
+            # If we can't read the script, defer to validate_script tool
+            pass
 
     # Check technique_used
     if not technique:

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PlasmaDX-Clean)
+project(PlasmaDXR)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,7 +11,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Platform check
 if(NOT WIN32)
-    message(FATAL_ERROR "PlasmaDX-Clean requires Windows")
+    message(FATAL_ERROR "PlasmaDXR requires Windows")
 endif()
 
 # Find Windows SDK

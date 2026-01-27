@@ -495,6 +495,124 @@ class EnforcementHooks(RunHooks):
 
 
 # =============================================================================
+# API SPEC AGENT BUNDLE-FIRST ENFORCEMENT
+# =============================================================================
+
+class BundleFirstRequiredError(EnforcementError):
+    """
+    Raised when targeted doc search is attempted before bundle search.
+
+    The API Spec Agent MUST call blender_doc_search_bundle FIRST.
+    This prevents the agent from ignoring bundle instructions.
+    """
+
+    def __init__(self, blocked_tool: str):
+        self.blocked_tool = blocked_tool
+        super().__init__(
+            f"BUNDLE-FIRST REQUIRED: Cannot call '{blocked_tool}' before calling "
+            f"'blender_doc_search_bundle'. Call the bundle search first to get "
+            f"all domain/flow/scene attributes, then use targeted searches for gaps."
+        )
+
+
+class APISpecEnforcementHooks(EnforcementHooks):
+    """
+    Specialized hooks for API Spec Agent with BUNDLE-FIRST enforcement.
+
+    This class enforces the "bundle-first" discipline:
+    1. Targeted doc searches (semantic_search_blender_docs, search_blender_api_by_intent)
+       are BLOCKED until blender_doc_search_bundle has been called.
+    2. After bundle call, targeted searches are limited (max 6).
+    3. Turn budget is enforced to prevent endless searching.
+
+    The bundle-first pattern is critical because:
+    - Bundle returns multiple related attributes in one call
+    - Targeted searches are expensive and can cause loop detection
+    - Bundle provides a solid foundation for the APISpec
+    """
+
+    BUNDLE_TOOL = "blender_doc_search_bundle"
+    TARGETED_TOOLS = ["semantic_search_blender_docs", "search_blender_api_by_intent"]
+    MAX_TARGETED_SEARCHES = 6
+
+    def __init__(self):
+        """Initialize with API Spec Agent optimized config."""
+        config = EnforcementConfig(
+            max_same_tool_calls=10,  # Standard limit for non-exempt tools
+            max_consecutive_same_tool=8,  # Allow batches, prevent spam
+            max_exempt_tool_calls=15,  # Hard ceiling for doc search tools
+            max_turns=6,
+            hard_turn_limit=8,
+            require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces
+            enforce_doc_query_on_end=True,
+            doc_query_warn_threshold=20,
+            exempt_from_loop_detection=[
+                "semantic_search_blender_docs",  # Primary tool
+                "search_blender_api_by_intent",  # Secondary tool
+                "blender_doc_search_bundle",  # Bundle tool
+                "validate_parameter_range",  # May validate multiple parameters
+            ],
+            raise_on_loop=True,
+            raise_on_doc_missing=True,  # Require at least one doc query before output
+        )
+        super().__init__(config)
+
+        # Bundle-first state
+        self._bundle_called: bool = False
+        self._targeted_search_count: int = 0
+
+    def _reset_state(self) -> None:
+        """Reset all tracking state for a new agent run."""
+        super()._reset_state()
+        self._bundle_called = False
+        self._targeted_search_count = 0
+
+    async def on_tool_start(
+        self,
+        context: "RunContextWrapper",
+        agent: "Agent",
+        tool: Tool
+    ) -> None:
+        """
+        Called immediately before a tool is invoked.
+
+        Enforces BUNDLE-FIRST: targeted searches blocked until bundle called.
+        """
+        tool_name = tool.name
+
+        # Track bundle call
+        if tool_name == self.BUNDLE_TOOL:
+            self._bundle_called = True
+            self._log(f"Bundle search called - targeted searches now allowed")
+
+        # BUNDLE-FIRST ENFORCEMENT
+        if tool_name in self.TARGETED_TOOLS:
+            if not self._bundle_called:
+                self._log(
+                    f"BUNDLE-FIRST REQUIRED: '{tool_name}' blocked - call bundle first",
+                    level="ERROR"
+                )
+                raise BundleFirstRequiredError(blocked_tool=tool_name)
+
+            self._targeted_search_count += 1
+            if self._targeted_search_count > self.MAX_TARGETED_SEARCHES:
+                self._log(
+                    f"TARGETED SEARCH LIMIT: {self._targeted_search_count}/{self.MAX_TARGETED_SEARCHES}",
+                    level="WARN"
+                )
+
+        # Call parent for standard enforcement
+        await super().on_tool_start(context, agent, tool)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics including bundle-first state."""
+        stats = super().get_stats()
+        stats["bundle_called"] = self._bundle_called
+        stats["targeted_search_count"] = self._targeted_search_count
+        return stats
+
+
+# =============================================================================
 # SPECIALIZED HOOK CONFIGURATIONS
 # =============================================================================
 
@@ -627,47 +745,25 @@ def create_learning_agent_hooks() -> EnforcementHooks:
 
 def create_api_spec_hooks() -> EnforcementHooks:
     """
-    Create hooks optimized for API Spec Agent.
+    Create hooks optimized for API Spec Agent with BUNDLE-FIRST enforcement.
 
-    The API Spec Agent MUST call documentation tools for EVERY attribute
-    it includes in the spec. This is the first line of defense against
-    hallucinated attributes.
+    The API Spec Agent MUST:
+    1. Call blender_doc_search_bundle FIRST (Turn 1)
+    2. Use targeted searches only for gaps (Turns 2-3)
+    3. Output APISpec by Turn 4
 
-    Doc search tools are the PRIMARY tools for this agent:
-    - semantic_search_blender_docs: For attribute verification
-    - search_blender_api_by_intent: For operation verification
+    BUNDLE-FIRST ENFORCEMENT:
+    - Targeted doc searches are BLOCKED until bundle has been called
+    - This prevents the agent from ignoring bundle instructions
 
     Turn budget is tight (4-6 turns) because:
-    - T1: Search domain attributes
-    - T2: Search flow attributes
-    - T3: Search operations
+    - T1: Bundle search (MANDATORY)
+    - T2-3: Targeted searches for gaps (<=6 total)
     - T4: Return APISpec
-
-    IMPORTANT: The SDK may execute multiple tool calls in parallel within a
-    single turn. For complex effects (pyro, ocean, etc.), the agent may need
-    to verify 15-30+ attributes simultaneously. The limits below accommodate
-    legitimate parallel batching while still preventing infinite loops.
 
     SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
     """
-    config = EnforcementConfig(
-        max_same_tool_calls=10,  # Standard limit for non-exempt tools
-        max_consecutive_same_tool=20,  # Allow 2-3 parallel batches, prevent spam
-        max_exempt_tool_calls=30,  # Hard ceiling for doc search tools
-        max_turns=6,
-        hard_turn_limit=8,
-        require_doc_query_before=[],  # Spec Agent IS the doc query - output guardrail enforces
-        enforce_doc_query_on_end=True,
-        doc_query_warn_threshold=40,
-        exempt_from_loop_detection=[
-            "semantic_search_blender_docs",  # Primary tool
-            "search_blender_api_by_intent",  # Secondary tool
-            "validate_parameter_range",  # May validate multiple parameters
-        ],
-        raise_on_loop=True,
-        raise_on_doc_missing=True,  # Require at least one doc query before output
-    )
-    return EnforcementHooks(config)
+    return APISpecEnforcementHooks()
 
 
 def create_code_writer_hooks() -> EnforcementHooks:

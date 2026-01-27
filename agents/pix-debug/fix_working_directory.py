@@ -8,8 +8,8 @@ with open('mcp_server.py', 'r') as f:
 
 # Fix 1: Update exe path to build/bin/Debug (latest build location)
 content = content.replace(
-    'exe_path = os.path.join(PLASMA_DX_PATH, "build/Debug/PlasmaDX-Clean.exe")',
-    'exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")'
+    'exe_path = os.path.join(PLASMA_DX_PATH, "build/Debug/PlasmaDXR.exe")',
+    'exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")'
 )
 
 # Fix 2: Add exe_dir variable and use it as cwd

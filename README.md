@@ -1,4 +1,4 @@
-# PlasmaDX-Clean
+# PlasmaDXR
 
 **A cutting-edge DirectX 12 volumetric particle renderer featuring DXR 1.1 inline ray tracing, 3D Gaussian splatting, and ReSTIR global illumination.**
 
@@ -215,10 +215,10 @@ float HenyeyGreenstein(float cosTheta, float g) {
 ### Compilation
 ```bash
 # Open solution
-start build-vs2022/PlasmaDX-Clean.sln
+start build-vs2022/PlasmaDXR.sln
 
 # Or build from command line
-msbuild build-vs2022/PlasmaDX-Clean.sln /p:Configuration=Release /p:Platform=x64
+msbuild build-vs2022/PlasmaDXR.sln /p:Configuration=Release /p:Platform=x64
 ```
 
 ### Runtime Requirements
@@ -234,10 +234,10 @@ msbuild build-vs2022/PlasmaDX-Clean.sln /p:Configuration=Release /p:Platform=x64
 
 ```bash
 # Run with default config
-./build/Debug/PlasmaDX-Clean.exe
+./build/Debug/PlasmaDXR.exe
 
 # Run with custom config
-./build/Debug/PlasmaDX-Clean.exe --config=configs/scenarios/stress_test.json
+./build/Debug/PlasmaDXR.exe --config=configs/scenarios/stress_test.json
 ```
 
 ### Directory Structure
@@ -260,7 +260,7 @@ AI agents can modify their own config files for autonomous testing:
 
 ```bash
 # PIX debugging agent uses dedicated config
-./build/DebugPIX/PlasmaDX-Clean.exe --config=configs/agents/pix_agent.json
+./build/DebugPIX/PlasmaDXR.exe --config=configs/agents/pix_agent.json
 
 # Agent can modify: camera position, feature toggles, capture settings
 # Agent should NOT modify: user configs, build defaults
@@ -330,7 +330,7 @@ AI agents can modify their own config files for autonomous testing:
 
 ### PIX GPU Capture Workflow
 1. Launch PIX (from Windows SDK)
-2. Attach to `PlasmaDX-Clean.exe`
+2. Attach to `PlasmaDXR.exe`
 3. Capture frame (F12)
 4. Inspect resources:
    - `g_particles` - Particle buffer (position, velocity, temperature)
@@ -339,7 +339,7 @@ AI agents can modify their own config files for autonomous testing:
    - `g_prevReservoirs` - Previous frame reservoirs (temporal reuse)
 
 ### Logging
-All logs written to `logs/PlasmaDX-Clean_YYYYMMDD_HHMMSS.log`
+All logs written to `logs/PlasmaDXR_YYYYMMDD_HHMMSS.log`
 - Feature detection results
 - Shader compilation status
 - Runtime control changes
@@ -461,7 +461,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## 👤 Author
 
-**PlasmaDX-Clean** - A clean-architecture rewrite of the original PlasmaDX monolithic engine, focusing on maintainability, extensibility, and cutting-edge rendering techniques.
+**PlasmaDXR** - A clean-architecture rewrite of the original PlasmaDX monolithic engine, focusing on maintainability, extensibility, and cutting-edge rendering techniques.
 
 **Development Environment:**
 - Primary: Visual Studio 2022 (C++20)

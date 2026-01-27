@@ -17,7 +17,7 @@ echo   PIX_CAPTURE_FRAME=%PIX_CAPTURE_FRAME%
 echo.
 
 REM Change to project directory
-cd /d D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean
+cd /d D:\Users\dilli\AndroidStudioProjects\PlasmaDXR
 
 echo Launching via pixtool from its install folder...
 echo App will use Gaussian renderer with 10K particles
@@ -34,11 +34,11 @@ REM   4. Working directory set to project root (CRITICAL for shader/log paths!)
 REM   5. Removed PIX_AUTO_CAPTURE env vars (conflicts with programmatic-capture)
 REM   6. Using take-capture after 3 second delay for warmup
 timeout /t 1 /nobreak >nul
-start "PIX Capture" /B "C:\Program Files\Microsoft PIX\2509.25\pixtool.exe" launch "D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean\build\Debug\PlasmaDX-Clean.exe" --command-line="--particles 10000 --gaussian" --working-directory="D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean"
+start "PIX Capture" /B "C:\Program Files\Microsoft PIX\2509.25\pixtool.exe" launch "D:\Users\dilli\AndroidStudioProjects\PlasmaDXR\build\Debug\PlasmaDXR.exe" --command-line="--particles 10000 --gaussian" --working-directory="D:\Users\dilli\AndroidStudioProjects\PlasmaDXR"
 echo Waiting 3 seconds for app warmup...
 timeout /t 3 /nobreak
 echo Taking capture...
-"C:\Program Files\Microsoft PIX\2509.25\pixtool.exe" take-capture --frames=1 --open save-capture "D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean\pix\Captures\test.wpix"
+"C:\Program Files\Microsoft PIX\2509.25\pixtool.exe" take-capture --frames=1 --open save-capture "D:\Users\dilli\AndroidStudioProjects\PlasmaDXR\pix\Captures\test.wpix"
 
 echo.
 echo =====================================

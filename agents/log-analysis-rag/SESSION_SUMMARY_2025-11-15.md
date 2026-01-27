@@ -343,9 +343,9 @@ User requested: *"yes let's fix the buffer dumping issue first, it's been around
 **Testing Required (Next Session):**
 ```bash
 # Test buffer dumping with different lighting systems
-./build/Debug/PlasmaDX-Clean.exe --multi-light --dump-buffers 120
-./build/Debug/PlasmaDX-Clean.exe --rtxdi --dump-buffers 120
-./build/Debug/PlasmaDX-Clean.exe --volumetric-restir --dump-buffers 120
+./build/Debug/PlasmaDXR.exe --multi-light --dump-buffers 120
+./build/Debug/PlasmaDXR.exe --rtxdi --dump-buffers 120
+./build/Debug/PlasmaDXR.exe --volumetric-restir --dump-buffers 120
 
 # Verify metadata.json contains all new fields
 cat PIX/buffer_dumps/metadata.json

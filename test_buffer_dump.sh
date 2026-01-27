@@ -8,7 +8,7 @@ echo ""
 
 # Test 1: Verify executable exists
 echo "[TEST 1] Checking executable..."
-if [ -f "build/Debug/PlasmaDX-Clean.exe" ]; then
+if [ -f "build/bin/Debug/PlasmaDXR.exe" ]; then
     echo "  ✓ Executable found"
 else
     echo "  ✗ Executable not found - run MSBuild first"
@@ -25,10 +25,10 @@ echo "  ✓ Directory created: pix/buffer_dumps"
 # Test 3: Run auto-dump at frame 10 (quick test)
 echo ""
 echo "[TEST 3] Running auto-dump test (frame 10)..."
-echo "  Command: ./build/Debug/PlasmaDX-Clean.exe --dump-buffers 10 --gaussian --particles 10000"
+echo "  Command: ./build/bin/Debug/PlasmaDXR.exe --dump-buffers 10 --gaussian --particles 10000"
 echo ""
 
-./build/Debug/PlasmaDX-Clean.exe --dump-buffers 10 --gaussian --particles 10000
+./build/bin/Debug/PlasmaDXR.exe --dump-buffers 10 --gaussian --particles 10000
 
 # Check exit code
 if [ $? -eq 0 ]; then
@@ -118,6 +118,6 @@ ls -lh pix/buffer_dumps/
 echo ""
 echo "Next steps:"
 echo "  1. Run existing analysis: python pix/analyze_restir_manual.py --current pix/buffer_dumps/g_currentReservoirs.bin --prev pix/buffer_dumps/g_prevReservoirs.bin"
-echo "  2. Test manual dump: ./build/Debug/PlasmaDX-Clean.exe --dump-buffers --gaussian (press Ctrl+D)"
+echo "  2. Test manual dump: ./build/bin/Debug/PlasmaDXR.exe --dump-buffers --gaussian (press Ctrl+D)"
 echo "  3. Multi-distance capture: See BUFFER_DUMP_IMPLEMENTATION_COMPLETE.md"
 echo ""

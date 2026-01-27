@@ -7,7 +7,7 @@
 
 ## OVERVIEW
 
-The **DXR Image Quality Analyst** is an MCP (Model Context Protocol) agent designed to provide **brutally honest, actionable visual quality feedback** during PlasmaDX development. It combines ML-powered perceptual similarity analysis (LPIPS) with traditional computer vision metrics to track visual improvements/regressions.
+The **DXR Image Quality Analyst** is an MCP (Model Context Protocol) agent designed to provide **brutally honest, actionable visual quality feedback** during PlasmaDXR development. It combines ML-powered perceptual similarity analysis (LPIPS) with traditional computer vision metrics to track visual improvements/regressions.
 
 ### Core Capabilities
 
@@ -19,7 +19,7 @@ The **DXR Image Quality Analyst** is an MCP (Model Context Protocol) agent desig
 
 - **Honest Feedback:** No sugar-coating - identifies critical issues directly
 - **Actionable Recommendations:** Specific file:line references for fixes
-- **Context-Aware:** Understands PlasmaDX goals (volumetric plasma, not geometric primitives)
+- **Context-Aware:** Understands PlasmaDXR goals (volumetric plasma, not geometric primitives)
 - **ML Vision:** Can "see" visual differences humans would notice
 - **Metadata Integration:** Reads screenshot JSON sidecars for config-specific advice
 
@@ -41,8 +41,8 @@ Agent is already installed. Verify connection:
 ### First Use: Capture & Analyze
 
 ```bash
-# 1. Run PlasmaDX and capture screenshot (F2 key)
-./build/Debug/PlasmaDX-Clean.exe
+# 1. Run PlasmaDXR and capture screenshot (F2 key)
+./build/bin/Debug/PlasmaDXR.exe
 
 # 2. Analyze most recent screenshot
 /mcp dxr-image-quality-analyst assess_visual_quality \
@@ -190,7 +190,7 @@ Agent is already installed. Verify connection:
 
 ```bash
 # 1. Standard test capture (same config every week)
-./build/Debug/PlasmaDX-Clean.exe --config=configs/scenarios/standard_test.json  # F2
+./build/bin/Debug/PlasmaDXR.exe --config=configs/scenarios/standard_test.json  # F2
 
 # 2. Visual assessment
 /mcp dxr-image-quality-analyst assess_visual_quality \
@@ -216,7 +216,7 @@ Agent is already installed. Verify connection:
 ### 1. Capture Consistency
 
 **Always use same camera distance/angle for comparisons**
-- Use standard test position (press '1' in PlasmaDX)
+- Use standard test position (press '1' in PlasmaDXR)
 - Different angles create false positives in ML comparison
 
 ### 2. Metadata is Critical
@@ -304,7 +304,7 @@ chmod 755 PIX/heatmaps
 
 ### Long-Term (1-2 months)
 
-10. **Real-Time Quality Monitoring** - Live LPIPS overlaid in PlasmaDX viewport
+10. **Real-Time Quality Monitoring** - Live LPIPS overlaid in PlasmaDXR viewport
 11. **Volumetric Rendering Simulator** - Predict visual outcome before rendering
 12. **Aesthetic Style Transfer** - "Make it look like [NASA reference image]"
 
@@ -347,7 +347,7 @@ Automatically detect black screens, NaN particles, uniform colors
 **3. Context-Aware Analysis**
 
 Understands:
-- PlasmaDX goals: Smooth volumetric plasma, not geometric primitives
+- PlasmaDXR goals: Smooth volumetric plasma, not geometric primitives
 - Material system status: In development, expect early-stage issues
 - Performance targets: 120 FPS @ 1440p with 13 lights
 - Visual aesthetic: Glowing accretion disk with rim lighting
@@ -456,9 +456,9 @@ LPIPS correctly identifies Modification B as more significant.
 
 ## SUPPORT
 
-**Questions/Issues:** Open issue in PlasmaDX-Clean repository
+**Questions/Issues:** Open issue in PlasmaDXR repository
 **MCP Logs:** `~/.cache/claude-cli-nodejs/.../mcp-logs-dxr-image-quality-analyst/`
-**Maintainer:** Ben (PlasmaDX project lead)
+**Maintainer:** Ben (PlasmaDXR project lead)
 **Agent Philosophy:** Brutal honesty - no sugar-coating!
 
 ---

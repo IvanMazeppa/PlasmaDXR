@@ -66,9 +66,9 @@ async def test():
     
     # Process termination
     import subprocess
-    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDX-Clean.exe"], 
+    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDXR.exe"], 
                           capture_output=True, text=True)
-    running = result.stdout.count("PlasmaDX-Clean.exe")
+    running = result.stdout.count("PlasmaDXR.exe")
     
     print("\n✅ Process Termination:")
     if running == 0:

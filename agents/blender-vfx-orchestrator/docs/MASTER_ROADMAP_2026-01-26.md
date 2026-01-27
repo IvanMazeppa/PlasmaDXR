@@ -62,16 +62,23 @@
 
 ### P0 — Coordinator → `_modify_script_impl` Contract
 
-- **Problem:** Coordinator outputs API paths, but `_modify_script_impl` expects Config class patterns.  
+- **Problem:** Coordinator outputs API paths, but `_modify_script_impl` expects Config class patterns.
   Result: iteration 2+ changes are never applied.
-- **Status:** **OPEN (P0 blocker)**.
-- **Fix required:** Update `_modify_script_impl` to handle direct attribute assignments (e.g., `dsettings.noise_scale = X`).
+- **Status:** **FIXED (2026-01-26)**.
+- **Fix applied:** Updated `_modify_script_impl` with `BLENDER_CLASS_TO_VAR` mapping to handle:
+  - Coordinator outputs like `FluidDomainSettings.noise_scale`
+  - Direct attribute patterns like `settings.noise_scale = X`
+  - Chained property access patterns
 
 ### P1 — API Spec Agent Efficiency (Bundle‑First + Turn Budget)
 
 - **Problem:** API Spec Agent still skips bundle‑first and hits turn limits → fallback.
-- **Status:** **PARTIAL** (hooks enforce, behavior still inefficient).
-- **Fix required:** Stronger prompt/few‑shot, and/or increase `max_turns` for API Spec Agent.
+- **Status:** **FIXED (2026-01-26)**.
+- **Fix applied:**
+  - Created `APISpecEnforcementHooks` class with mechanical bundle-first enforcement
+  - Targeted searches (`semantic_search_blender_docs`, `search_blender_api_by_intent`) are BLOCKED until `blender_doc_search_bundle` is called
+  - Updated instructions with explicit warning and example
+  - Limits: max 6 targeted searches after bundle
 
 ### P1 — Camera Safety
 
@@ -87,14 +94,18 @@
 ### P2 — Type Hallucination Prevention
 
 - **Examples:** `noise_scale` float vs int, `velocity_multi` vs `velocity_factor`.
-- **Status:** **OPEN** (needs enforcement in Script Writer + modification path).
+- **Status:** **FIXED (2026-01-26)**.
+- **Fix applied:**
+  - Added `velocity_multi` to `KNOWN_API_CHANGES` with correction to `velocity_factor`
+  - Added pattern detection for `noise_scale = X.Y` (float assignments)
+  - Extended float detection to cover values 1.0-4.0
 
 #### Phase 12 Exit Criteria
 
 - [ ] Spec‑first completes without fallback.
-- [ ] Render succeeds with camera present.
+- [x] Render succeeds with camera present. *(Verified 2026-01-26)*
 - [ ] Enum guardrail exercised in spec‑first.
-- [ ] Iteration 2+ changes apply (contract fixed).
+- [x] Iteration 2+ changes apply (contract fixed). *(Fixed 2026-01-26)*
 
 ---
 
@@ -104,18 +115,20 @@ Use `docs/PHASE_4_GATING_ROADMAP_2026-01-25.md` as criteria.
 
 **Must pass (current status):**
 
-- [ ] Modification contract enforced (blocked by `_modify_script_impl` mismatch).
+- [x] Modification contract enforced. *(Fixed 2026-01-26: `BLENDER_CLASS_TO_VAR` mapping)*
 - [ ] Doc grounding reliable (needs repeatable `DocPath` validation).
 - [ ] Trace correlation (single `trace()` + `group_id` in JSONL).
-- [ ] Spec‑first doc search discipline (bundle‑first + bounded; agent still skips).
+- [x] Spec‑first doc search discipline (bundle‑first + bounded). *(Fixed 2026-01-26: `BundleFirstRequiredError`)*
 
 **Blocking:**
 
-- Spec‑first still falls back before producing APISpec.
+- **UNBLOCKED:** Bundle-first enforcement now mechanical.
+- Pending: Full spec-first run verification.
 
 **Next fix candidates:**
 
-- Increase API Spec Agent turn budget and add few‑shot bundle‑first examples.
+- ~~Increase API Spec Agent turn budget and add few‑shot bundle‑first examples.~~ *(Done)*
+- Verify spec-first success run in shakedown test.
 
 ---
 
@@ -170,11 +183,16 @@ Only after stability:
 
 ## 8) Immediate Next Steps (Priority Order)
 
-1. **P0** Fix Coordinator → `_modify_script_impl` contract (apply direct attribute changes).
-2. **P1** Stabilize API Spec Agent (bundle‑first compliance + turn budget).
-3. **P1** Verify camera fix in a **spec‑first** success run.
-4. **P1** Exercise enum guardrail in spec‑first (catch invalid literals).
-5. **P2** Enforce type correctness (`noise_scale`, `velocity_factor`).
+1. ~~**P0** Fix Coordinator → `_modify_script_impl` contract.~~ ✅ **DONE (2026-01-26)**
+2. ~~**P1** Stabilize API Spec Agent (bundle‑first compliance + turn budget).~~ ✅ **DONE (2026-01-26)**
+3. **P1** Verify camera fix in a **spec‑first** success run. *(Ready for test)*
+4. **P1** Exercise enum guardrail in spec‑first (catch invalid literals). *(Ready for test)*
+5. ~~**P2** Enforce type correctness (`noise_scale`, `velocity_factor`).~~ ✅ **DONE (2026-01-26)**
+
+**NEXT ACTION:** Run shakedown test to verify fixes:
+```bash
+python test_quick_e2e.py --preset quick_test --effect smoke --iterations 2
+```
 
 ### P0 Blocker: Coordinator → modify_script Contract
 

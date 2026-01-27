@@ -165,7 +165,7 @@ async def capture_buffers(args: dict) -> list[TextContent]:
     mode = args.get("mode", "gaussian")
     output_dir = args.get("output_dir")
 
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
     dump_dir = output_dir or BUFFER_DUMP_DIR
 
     cmd = [exe_path, "--dump-buffers"]
@@ -319,7 +319,7 @@ async def pix_capture(args: dict) -> list[TextContent]:
         output_name = f"mcp_capture_{timestamp}.wpix"
 
     output_path = os.path.join(PIX_CAPTURES_DIR, output_name)
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
 
     cmd = [
         PIXTOOL_PATH, "launch", exe_path,
@@ -421,7 +421,7 @@ async def diagnose_gpu_hang(args: dict) -> list[TextContent]:
     test_threshold = args.get("test_threshold", False)
     capture_logs = args.get("capture_logs", True)
     
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
     exe_dir = os.path.dirname(exe_path)
     log_dir = os.path.join(exe_dir, "logs")  # Logs written relative to exe location
     
@@ -525,7 +525,7 @@ if ($wshell.AppActivate("PlasmaDX-Clean")) {
                 # Windows: Kill by image name to catch any child processes
                 try:
                     kill_result = subprocess.run(
-                        ["taskkill.exe", "/F", "/IM", "PlasmaDX-Clean.exe"], 
+                        ["taskkill.exe", "/F", "/IM", "PlasmaDXR.exe"], 
                         capture_output=True, 
                         text=True,
                         timeout=5

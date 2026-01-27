@@ -30,7 +30,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-from agents import function_tool
+from agents import (
+    function_tool,
+    tool_input_guardrail,
+    tool_output_guardrail,
+    ToolGuardrailFunctionOutput,
+)
 
 
 # =============================================================================
@@ -48,6 +53,135 @@ if str(SCRIPT_GENERATOR_DIR) not in sys.path:
 
 # Output directory
 OUTPUT_DIR = PROJECT_ROOT / "assets/blender_scripts/generated"
+
+# Delete sentinel for structured modifications
+DELETE_SENTINEL = "__DELETE__"
+
+# Known hallucination patterns to block before execution
+HALLUCINATION_PATTERNS = [
+    (r"\bresolution_divisions\b", "resolution_divisions removed in Blender 5.0 (use resolution_max)"),
+    (r"\buse_adaptive_time_steps\b", "use_adaptive_time_steps is invalid (use use_adaptive_timesteps)"),
+    (r"\bvelocity_multi\b", "velocity_multi is invalid (use velocity_factor)"),
+    (r"\bnoise_res_factor\b", "noise_res_factor removed in Blender 5.0"),
+    (r"\btime_scale\b", "time_scale removed in Blender 5.0"),
+    (r"\bdomain_resolution\b\s*=", "domain_resolution is read-only (use resolution_max)"),
+    (r"\bflow\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+    (r"\bobject\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+    (r"\bobj\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
+]
+
+
+def _scan_for_hallucinated_api(script_text: str) -> List[str]:
+    """Return list of hallucination issues found in script text."""
+    issues: List[str] = []
+    if not script_text:
+        return issues
+
+    in_triple = False
+    for line in script_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if '"""' in stripped or "'''" in stripped:
+            # Toggle triple-quote state when encountering docstrings
+            if stripped.count('"""') == 1 or stripped.count("'''") == 1:
+                in_triple = not in_triple
+            continue
+        if in_triple or stripped.startswith("#"):
+            continue
+
+        for pattern, message in HALLUCINATION_PATTERNS:
+            if re.search(pattern, line):
+                issues.append(f"{message} | line: {stripped}")
+    return issues
+
+
+def _parse_tool_arguments(data: Any) -> Dict[str, Any]:
+    """Parse tool arguments from guardrail context."""
+    raw = getattr(getattr(data, "context", None), "tool_arguments", None)
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+@tool_input_guardrail
+def guard_write_script_input(data: Any) -> ToolGuardrailFunctionOutput:
+    """Block write_script() if generated code includes known hallucinations."""
+    args = _parse_tool_arguments(data)
+    code = args.get("code", "")
+    issues = _scan_for_hallucinated_api(code)
+    if issues:
+        return ToolGuardrailFunctionOutput.reject_content(
+            "Blocked write_script due to hallucinated APIs: " + "; ".join(issues)
+        )
+    return ToolGuardrailFunctionOutput.allow()
+
+
+@tool_output_guardrail
+def guard_write_script_output(data: Any) -> ToolGuardrailFunctionOutput:
+    """Validate written script file before allowing pipeline to proceed."""
+    output = getattr(data, "output", None)
+    script_path = None
+    if isinstance(output, dict):
+        script_path = output.get("script_path")
+    elif isinstance(output, str):
+        try:
+            payload = json.loads(output)
+            script_path = payload.get("script_path")
+        except Exception:
+            script_path = None
+
+    if script_path:
+        try:
+            text = Path(script_path).read_text()
+            issues = _scan_for_hallucinated_api(text)
+            if issues:
+                return ToolGuardrailFunctionOutput.reject_content(
+                    "Script contains hallucinated APIs: " + "; ".join(issues)
+                )
+        except Exception:
+            # If we can't read, allow but surface later via validate_script
+            return ToolGuardrailFunctionOutput.allow()
+
+    return ToolGuardrailFunctionOutput.allow()
+
+
+@tool_output_guardrail
+def guard_modify_script_output(data: Any) -> ToolGuardrailFunctionOutput:
+    """Validate modified script file before allowing pipeline to proceed."""
+    output = getattr(data, "output", None)
+    modified_path = None
+    payload = None
+    if isinstance(output, dict):
+        payload = output
+        modified_path = output.get("modified_path")
+    elif isinstance(output, str):
+        try:
+            payload = json.loads(output)
+            modified_path = payload.get("modified_path")
+        except Exception:
+            modified_path = None
+
+    if payload and payload.get("success") and not payload.get("changes_made"):
+        return ToolGuardrailFunctionOutput.reject_content(
+            "modify_script produced no changes; modifications must be patchable."
+        )
+
+    if modified_path:
+        try:
+            text = Path(modified_path).read_text()
+            issues = _scan_for_hallucinated_api(text)
+            if issues:
+                return ToolGuardrailFunctionOutput.reject_content(
+                    "Modified script contains hallucinated APIs: " + "; ".join(issues)
+                )
+        except Exception:
+            return ToolGuardrailFunctionOutput.allow()
+
+    return ToolGuardrailFunctionOutput.allow()
 
 
 # =============================================================================
@@ -739,6 +873,11 @@ def _modify_script_impl(
     """
     Modify an existing Blender script.
 
+    Handles multiple input formats from Coordinator/Learning Agent:
+    1. Simple param names: 'noise_scale' -> Config.NOISE_SCALE or settings.noise_scale
+    2. Blender API paths: 'FluidDomainSettings.noise_scale' -> settings.noise_scale
+    3. Prefixed vars: 'dsettings.noise_scale' -> dsettings.noise_scale
+
     Args:
         script_path: Path to the script to modify
         modifications: Dict of changes to make
@@ -747,6 +886,16 @@ def _modify_script_impl(
     Returns:
         JSON with modification results
     """
+    # Map Coordinator Blender API class names to common script variable patterns
+    # The Coordinator outputs 'FluidDomainSettings.param' but scripts use 'settings.param'
+    BLENDER_CLASS_TO_VAR = {
+        'FluidDomainSettings': ['settings', 'dsettings', 'domain_settings', 'dom', 'domain'],
+        'FluidFlowSettings': ['flow', 'fsettings', 'flow_settings'],
+        'FluidEffectorSettings': ['effector', 'effector_settings'],
+        'Scene': ['scene', 'bpy.context.scene'],
+        'Object': ['obj', 'domain', 'emitter'],
+    }
+
     try:
         # Resolve path
         path = Path(script_path)
@@ -774,14 +923,28 @@ def _modify_script_impl(
         for param, value in modifications.items():
             param_upper = param.upper()
 
-            # Handle explicit deletion directives (e.g., "settings.use_caching (delete this line)")
-            if isinstance(value, str) and any(
-                marker in value.lower()
-                for marker in ("delete this line", "remove this line", "delete line", "remove line")
+            # Parse Coordinator-style API path: 'FluidDomainSettings.noise_scale' -> ('FluidDomainSettings', 'noise_scale')
+            blender_class = None
+            attr_name = param
+            if '.' in param:
+                parts = param.split('.', 1)
+                if parts[0] in BLENDER_CLASS_TO_VAR:
+                    blender_class = parts[0]
+                    attr_name = parts[1]
+
+            # Handle explicit deletion directives or delete sentinel
+            if value == DELETE_SENTINEL or (
+                isinstance(value, str) and any(
+                    marker in value.lower()
+                    for marker in ("delete this line", "remove this line", "delete line", "remove line")
+                )
             ):
                 # Extract target token to remove
-                target = value.split("(")[0].strip()
-                target = target if target else param
+                if value == DELETE_SENTINEL:
+                    target = attr_name or param
+                else:
+                    target = value.split("(")[0].strip()
+                    target = target if target else param
 
                 lines = content.split("\n")
                 removed_any = False
@@ -827,6 +990,56 @@ def _modify_script_impl(
                     content = new_content
                     changes_made.append(f"Config.{param_upper}: {old_val} -> {value}")
                     params_changed[param] = {"from": old_val, "to": value}
+                    continue
+
+            # DIRECT ATTRIBUTE PATTERN (Coordinator contract fix)
+            # Handle scripts using direct assignment: settings.noise_scale = X
+            # When Coordinator outputs 'FluidDomainSettings.noise_scale', we search for
+            # settings.noise_scale, dsettings.noise_scale, domain_settings.noise_scale, etc.
+            if param not in params_changed:
+                direct_match_found = False
+
+                # Build list of variable names to search for
+                var_names_to_try = []
+                if blender_class and blender_class in BLENDER_CLASS_TO_VAR:
+                    var_names_to_try = BLENDER_CLASS_TO_VAR[blender_class]
+                else:
+                    # If no class prefix, try common variable names
+                    var_names_to_try = ['settings', 'dsettings', 'flow', 'fsettings', 'domain_settings', 'flow_settings']
+
+                for var_name in var_names_to_try:
+                    # Pattern: var_name.attr_name = value (case-sensitive for attr_name)
+                    direct_pattern = rf"({re.escape(var_name)}\.{re.escape(attr_name)}\s*=\s*)([^\n]+)"
+                    direct_match = re.search(direct_pattern, content)
+
+                    if direct_match:
+                        old_val = direct_match.group(2).strip()
+                        new_content = re.sub(direct_pattern, f"\\g<1>{value}", content, count=1)
+                        if new_content != content:
+                            content = new_content
+                            changes_made.append(f"{var_name}.{attr_name}: {old_val} -> {value}")
+                            params_changed[param] = {"from": old_val, "to": value, "pattern": "direct_attr"}
+                            direct_match_found = True
+                            break
+
+                # Also try: attr on domain_settings property access (e.g., domain.modifiers["Fluid"].domain_settings.X)
+                if not direct_match_found:
+                    # More permissive pattern for chained property access
+                    chained_pattern = rf"(\.{re.escape(attr_name)}\s*=\s*)([^\n]+)"
+                    chained_matches = list(re.finditer(chained_pattern, content))
+                    for chained_match in chained_matches:
+                        # Verify this is not inside a string or comment
+                        line_start = content.rfind('\n', 0, chained_match.start()) + 1
+                        line = content[line_start:chained_match.end()]
+                        if line.strip().startswith('#') or line.strip().startswith('"""'):
+                            continue
+
+                        old_val = chained_match.group(2).strip()
+                        # Replace only this occurrence
+                        content = content[:chained_match.start()] + f".{attr_name} = {value}" + content[chained_match.end():]
+                        changes_made.append(f"*.{attr_name}: {old_val} -> {value}")
+                        params_changed[param] = {"from": old_val, "to": value, "pattern": "chained_attr"}
+                        break
 
         # Determine output path
         if output_name:
@@ -925,7 +1138,9 @@ async def generate_script(
     )
 
 
-@function_tool
+@function_tool(
+    tool_output_guardrails=[guard_modify_script_output],
+)
 async def modify_script(
     script_path: str,
     modifications_json: str,
@@ -948,6 +1163,7 @@ async def modify_script(
             - flame_smoke: Flame smoke ratio
             - domain_scale: Domain size multiplier
             - custom_code: Dict of {search_pattern: replacement}
+            - "__DELETE__": Sentinel value to remove a line matching the key
             Example: '{"resolution": 128, "turbulence": 0.8}'
         output_name: Optional new filename (default: adds "_modified" suffix)
 
@@ -1081,7 +1297,10 @@ Description:
         }, indent=2)
 
 
-@function_tool
+@function_tool(
+    tool_input_guardrails=[guard_write_script_input],
+    tool_output_guardrails=[guard_write_script_output],
+)
 async def write_script(
     code: str,
     output_name: str,

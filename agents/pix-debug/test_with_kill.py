@@ -8,9 +8,9 @@ async def test():
     print("🧪 Testing process termination...")
     
     # Check if any PlasmaDX processes running before test
-    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDX-Clean.exe"], 
+    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDXR.exe"], 
                           capture_output=True, text=True)
-    before_count = result.stdout.count("PlasmaDX-Clean.exe")
+    before_count = result.stdout.count("PlasmaDXR.exe")
     print(f"PlasmaDX processes before test: {before_count}")
     
     # Run test
@@ -29,9 +29,9 @@ async def test():
     
     # Check if processes were killed
     await asyncio.sleep(2)  # Wait for kill to complete
-    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDX-Clean.exe"], 
+    result = subprocess.run(["tasklist.exe", "/FI", "IMAGENAME eq PlasmaDXR.exe"], 
                           capture_output=True, text=True)
-    after_count = result.stdout.count("PlasmaDX-Clean.exe")
+    after_count = result.stdout.count("PlasmaDXR.exe")
     print(f"PlasmaDX processes after test: {after_count}")
     
     if after_count <= before_count:

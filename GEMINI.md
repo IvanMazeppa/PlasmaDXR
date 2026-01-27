@@ -1,6 +1,6 @@
 # GEMINI.md
 
-This file serves as the primary context and instruction manual for Gemini agents working on the **PlasmaDX-Clean** project.
+This file serves as the primary context and instruction manual for Gemini agents working on the **PlasmaDXR** project.
 
 ---
 
@@ -18,7 +18,7 @@ This file serves as the primary context and instruction manual for Gemini agents
 ---
 ## 2. Project Overview
 
-**PlasmaDX-Clean** is a high-performance **DirectX 12 volumetric particle renderer** simulating a black hole accretion disk. It leverages cutting-edge rendering and ML technologies to achieve real-time cinematic visuals.
+**PlasmaDXR** is a high-performance **DirectX 12 volumetric particle renderer** simulating a black hole accretion disk. It leverages cutting-edge rendering and ML technologies to achieve real-time cinematic visuals.
 
 **Key Features:**
 - **Rendering:** 3D Gaussian Splatting (volumetric ellipsoids), DXR 1.1 Inline Ray Tracing (RayQuery), ReSTIR Global Illumination, PCSS Soft Shadows.
@@ -65,16 +65,16 @@ The project uses **CMake** to generate a Visual Studio solution. Use `MSBuild` f
 
 **Debug Build (Fast Iteration):**
 ```cmd
-'/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe' build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64
+'/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe' build/PlasmaDXR.sln /p:Configuration=Debug /p:Platform=x64
 ```
 
 **DebugPIX Build (GPU Debugging):**
 ```cmd
-MSBuild PlasmaDX-Clean.sln /p:Configuration=DebugPIX /p:Platform=x64
+MSBuild PlasmaDXR.sln /p:Configuration=DebugPIX /p:Platform=x64
 ```
 
 ### Running the Engine
-Executable location: `build/bin/Debug/PlasmaDX-Clean.exe`
+Executable location: `build/bin/Debug/PlasmaDXR.exe`
 
 **Arguments:**
 - `--config=configs/scenarios/stress_test.json`: Load specific config.

@@ -24,7 +24,7 @@ load_dotenv()
 
 # Configuration
 PIXTOOL_PATH = os.getenv("PIXTOOL_PATH", "/mnt/c/Program Files/Microsoft PIX/2509.25/pixtool.exe")
-PLASMA_DX_PATH = os.getenv("PLASMA_DX_PATH", "/mnt/d/Users/dilli/AndroidStudioProjects/PlasmaDX-Clean")
+PLASMA_DX_PATH = os.getenv("PLASMA_DX_PATH", "/home/maz3ppa/projects/PlasmaDXR")
 BUFFER_DUMP_DIR = os.getenv("BUFFER_DUMP_DIR", os.path.join(PLASMA_DX_PATH, "PIX/buffer_dumps"))
 PIX_CAPTURES_DIR = os.getenv("PIX_CAPTURES_DIR", os.path.join(PLASMA_DX_PATH, "PIX/Captures"))
 
@@ -38,7 +38,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="capture_buffers",
-            description="Trigger in-app buffer dump from PlasmaDX-Clean at specific frame",
+            description="Trigger in-app buffer dump from PlasmaDXR at specific frame",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -133,7 +133,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="diagnose_gpu_hang",
-            description="Autonomous GPU hang/TDR crash diagnosis - launches PlasmaDX with specified settings, monitors for crashes, captures logs, and analyzes failure patterns. Ideal for debugging compute shader hangs, resource state issues, and particle count thresholds.",
+            description="Autonomous GPU hang/TDR crash diagnosis - launches PlasmaDXR with specified settings, monitors for crashes, captures logs, and analyzes failure patterns. Ideal for debugging compute shader hangs, resource state issues, and particle count thresholds.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -181,7 +181,7 @@ async def capture_buffers(args: dict) -> list[TextContent]:
     mode = args.get("mode", "gaussian")
     output_dir = args.get("output_dir")
 
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
     dump_dir = output_dir or BUFFER_DUMP_DIR
 
     cmd = [exe_path, "--dump-buffers"]
@@ -335,7 +335,7 @@ async def pix_capture(args: dict) -> list[TextContent]:
         output_name = f"mcp_capture_{timestamp}.wpix"
 
     output_path = os.path.join(PIX_CAPTURES_DIR, output_name)
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
 
     cmd = [
         PIXTOOL_PATH, "launch", exe_path,
@@ -655,7 +655,7 @@ async def validate_shader_execution(args: dict) -> list[TextContent]:
         log_dir = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/logs")
         if os.path.exists(log_dir):
             log_files = sorted(
-                [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.startswith("PlasmaDX")],
+                [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.startswith("PlasmaDXR")],
                 key=lambda x: os.path.getmtime(x),
                 reverse=True
             )
@@ -885,7 +885,7 @@ async def diagnose_gpu_hang(args: dict) -> list[TextContent]:
     test_threshold = args.get("test_threshold", False)
     capture_logs = args.get("capture_logs", True)
     
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
     exe_dir = os.path.dirname(exe_path)
     log_dir = os.path.join(exe_dir, "logs")  # Logs written relative to exe location
     
@@ -951,11 +951,11 @@ async def diagnose_gpu_hang(args: dict) -> list[TextContent]:
                 ps_script = '''
 $wshell = New-Object -ComObject wscript.shell
 Start-Sleep -Milliseconds 500
-if ($wshell.AppActivate("PlasmaDX-Clean")) {
+if ($wshell.AppActivate("PlasmaDXR")) {
     Start-Sleep -Milliseconds 300
     $wshell.SendKeys("{F7}")
 } else {
-    Write-Host "Failed to activate PlasmaDX window"
+    Write-Host "Failed to activate PlasmaDXR window"
 }
 '''
                 result = subprocess.run(
@@ -989,7 +989,7 @@ if ($wshell.AppActivate("PlasmaDX-Clean")) {
                 # Windows: Kill by image name to catch any child processes
                 try:
                     kill_result = subprocess.run(
-                        ["taskkill.exe", "/F", "/IM", "PlasmaDX-Clean.exe"], 
+                        ["taskkill.exe", "/F", "/IM", "PlasmaDXR.exe"], 
                         capture_output=True, 
                         text=True,
                         timeout=5

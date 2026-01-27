@@ -150,7 +150,7 @@ When given a task like "Add gas cloud and star materials to the particle system"
     - Recommend next steps for user
 
 14. **Request visual validation** (user action required)
-    - "Launch PlasmaDX with: `./build/Debug/PlasmaDX-Clean.exe --scenario=test_materials.json`"
+    - "Launch PlasmaDX with: `./build/Debug/PlasmaDXR.exe --scenario=test_materials.json`"
     - "Wait 2-3 seconds for temporal convergence"
     - "Press F2 to capture screenshot"
     - "Request dxr-image-quality-analyst.assess_visual_quality(screenshot.bmp) for validation"
@@ -300,7 +300,7 @@ dxc.exe -T cs_6_5 -E main shaders/particles/particle_gaussian_raytrace.hlsl -Fo 
 MSBuild.exe build/PlasmaDX-Clean.sln /p:Configuration=Debug /p:Platform=x64 /t:Build
 
 # Step 3: Test
-./build/Debug/PlasmaDX-Clean.exe --scenario=configs/scenarios/test_gas_and_stars.json
+./build/Debug/PlasmaDXR.exe --scenario=configs/scenarios/test_gas_and_stars.json
 
 # Step 4: Visual Validation
 - Wait 2-3 seconds for temporal convergence

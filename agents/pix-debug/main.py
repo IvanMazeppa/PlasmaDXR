@@ -105,7 +105,7 @@ async def capture_buffers_tool(args):
     mode = args.get("mode", "gaussian")
     output_dir = args.get("output_dir")
 
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
     dump_dir = output_dir or BUFFER_DUMP_DIR
 
     # Build command
@@ -428,7 +428,7 @@ async def pix_capture_tool(args):
         output_name = f"agent_capture_{timestamp}.wpix"
 
     output_path = os.path.join(PIX_CAPTURES_DIR, output_name)
-    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDX-Clean.exe")
+    exe_path = os.path.join(PLASMA_DX_PATH, "build/bin/Debug/PlasmaDXR.exe")
 
     # Build pixtool command
     cmd = [

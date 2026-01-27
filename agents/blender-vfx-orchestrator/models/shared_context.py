@@ -631,6 +631,39 @@ class SessionState(BaseModel):
         ge=0,
         description="Iteration that achieved best score"
     )
+    best_utility_score: float = Field(
+        default=0.0,
+        ge=0.0, le=1.0,
+        description="Best SICA utility score achieved (0-1)"
+    )
+    best_utility_iteration: int = Field(
+        default=0,
+        ge=0,
+        description="Iteration that achieved best utility score"
+    )
+    best_utility_quality_score: float = Field(
+        default=0.0,
+        ge=0.0, le=100.0,
+        description="Quality score for best utility iteration"
+    )
+    best_utility_cost_usd: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Estimated cost (USD) for best utility iteration"
+    )
+    best_utility_time_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Wall time (seconds) for best utility iteration"
+    )
+    best_utility_script_path: Optional[str] = Field(
+        default=None,
+        description="Script path for best utility iteration"
+    )
+    best_utility_render_path: Optional[str] = Field(
+        default=None,
+        description="Render path for best utility iteration"
+    )
 
     # Iteration history
     iterations: List[IterationResult] = Field(

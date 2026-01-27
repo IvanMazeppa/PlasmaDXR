@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo PlasmaDX-Clean Build Script
+echo PlasmaDXR Build Script
 echo Clean architecture, automatic fallbacks
 echo ========================================
 
@@ -33,18 +33,18 @@ copy ..\external\D3D12\*.dll bin\Debug\D3D12\ >nul 2>&1
 
 echo ========================================
 echo Build complete!
-echo Executable: bin\Debug\PlasmaDX-Clean.exe
+echo Executable: bin\Debug\PlasmaDXR.exe
 echo ========================================
 
 REM Ask to run
-choice /M "Run PlasmaDX-Clean now?"
+choice /M "Run PlasmaDXR now?"
 if errorlevel 2 goto :end
 if errorlevel 1 goto :run
 
 :run
-echo Starting PlasmaDX-Clean...
+echo Starting PlasmaDXR...
 cd bin\Debug
-PlasmaDX-Clean.exe
+PlasmaDXR.exe
 cd ..\..
 
 :end

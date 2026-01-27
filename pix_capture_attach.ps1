@@ -3,8 +3,8 @@ Write-Host "PIX Capture - Attach Method" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
-$workDir = "D:\Users\dilli\AndroidStudioProjects\PlasmaDX-Clean"
-$exe = "$workDir\build\Debug\PlasmaDX-Clean.exe"
+$workDir = "D:\Users\dilli\AndroidStudioProjects\PlasmaDXR"
+$exe = "$workDir\build\Debug\PlasmaDXR.exe"
 $captureFile = "$workDir\pix\Captures\attach_test.wpix"
 $pixtool = "C:\Program Files\Microsoft PIX\2509.25\pixtool.exe"
 

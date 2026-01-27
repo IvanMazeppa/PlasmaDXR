@@ -11,7 +11,7 @@
 ## Architecture Overview
 
 ```
-PlasmaDX-Clean.exe
+PlasmaDXR.exe
        ↓
    (Hotkey: Ctrl+Shift+C)
        ↓
