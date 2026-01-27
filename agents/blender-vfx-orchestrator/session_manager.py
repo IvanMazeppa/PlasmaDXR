@@ -18,7 +18,10 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.shared_context import SessionState
 
 
 @dataclass
@@ -476,5 +479,49 @@ class SessionManager:
             mgr.issue_tracker.issue_counts = it.get("issue_counts", {})
             mgr.issue_tracker.consecutive_same_issue = it.get("consecutive_same_issue", 0)
             mgr.issue_tracker.last_primary_issue = it.get("last_primary_issue")
+
+        return mgr
+
+    @classmethod
+    def from_session_state(cls, session: "SessionState") -> "SessionManager":
+        """
+        Reconstruct a SessionManager by replaying iteration history from a SessionState.
+
+        This properly rebuilds all derived state (issue_tracker, params_that_helped/hurt,
+        best_score, etc.) by running each iteration through record_result(), avoiding
+        duplication of derivation logic.
+
+        Args:
+            session: Loaded SessionState with iterations to replay
+
+        Returns:
+            SessionManager with fully reconstructed state
+        """
+        mgr = cls(session_id=session.session_id)
+
+        # Record initial baseline (before any iterations)
+        mgr.record_baseline(params={}, score=0.0, script_path="", render_path=None)
+
+        for i, iter_result in enumerate(session.iterations):
+            params = iter_result.script.modifications or {}
+
+            # Record baseline for iteration 2+ (mirrors create_asset_pipeline baseline logic)
+            if i > 0:
+                prev = session.iterations[i - 1]
+                mgr.record_baseline(
+                    params=prev.script.modifications or {},
+                    score=prev.score,
+                    script_path=prev.script.script_path,
+                    render_path=prev.execution.render_path,
+                )
+
+            mgr.record_result(
+                iteration=iter_result.iteration,
+                params=params,
+                score=iter_result.score,
+                issues=iter_result.quality.issues if iter_result.quality else [],
+                primary_issue=iter_result.quality.primary_issue if iter_result.quality else None,
+                technique=iter_result.script.technique_name,
+            )
 
         return mgr

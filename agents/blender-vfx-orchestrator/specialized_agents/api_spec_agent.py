@@ -123,7 +123,7 @@ You SHOULD include them when relevant to the effect. Use the class-level doc_ref
 - noise_scale: int [1-10] — noise detail
 - vorticity: float [0-1] — swirl
 - use_adaptive_timesteps: bool
-- timesteps_maximum: int
+- timesteps_max: int [1-45]
 - use_dissolve_smoke: bool
 - dissolve_speed: int
 - use_flip_particles: bool — enable FLIP (liquid)
@@ -159,7 +159,8 @@ Scene: frame_start, frame_end
 
 ## HALLUCINATED - DO NOT USE
 - resolution_divisions (use resolution_max)
-- timesteps_per_frame (use timesteps_maximum)
+- timesteps_per_frame (use timesteps_max)
+- timesteps_maximum (use timesteps_max)
 - bake_frame_start (use scene.frame_start)
 
 ## OUTPUT RULES

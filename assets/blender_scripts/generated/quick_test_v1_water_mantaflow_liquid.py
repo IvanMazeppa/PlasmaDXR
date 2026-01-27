@@ -56,9 +56,9 @@ def create_domain():
 
     # VERIFIED FluidDomainSettings attributes ONLY
     dset.domain_type = 'LIQUID'
-    dset.resolution_max = 64
+    dset.resolution_max = int(DOMAIN_RESOLUTION)
     dset.use_adaptive_timesteps = True
-# REMOVED: dset.timesteps_maximum = 4
+    dset.timesteps_maximum = 4
 
     dset.use_flip_particles = True
     dset.flip_ratio = 0.9

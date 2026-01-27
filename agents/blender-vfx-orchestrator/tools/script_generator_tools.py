@@ -917,6 +917,34 @@ def _modify_script_impl(
         changes_made = []
         params_changed = {}
 
+        def _format_value_for_python(val: Any, old_val_str: str = "") -> str:
+            """Format a value for insertion into Python source code.
+
+            String values that represent enum constants (e.g. 'REPLAY', 'LIQUID')
+            must be quoted in the output, otherwise they become bare NameErrors.
+            If the old value was already quoted, preserve quoting for the new value.
+            """
+            if isinstance(val, str):
+                # Check if old value was a quoted string — preserve quoting
+                old_stripped = old_val_str.strip()
+                was_quoted = (
+                    (old_stripped.startswith("'") and old_stripped.endswith("'"))
+                    or (old_stripped.startswith('"') and old_stripped.endswith('"'))
+                )
+                if was_quoted:
+                    return f"'{val}'"
+                # If it looks like a Python identifier/enum (all uppercase, underscores),
+                # it likely needs quotes to avoid NameError
+                if val.replace('_', '').isalpha() and val == val.upper() and len(val) > 1:
+                    return f"'{val}'"
+                # Other string values that don't look like numbers or Python literals
+                try:
+                    float(val)
+                except ValueError:
+                    if val not in ('True', 'False', 'None'):
+                        return f"'{val}'"
+            return str(val)
+
         # Apply modifications via regex replacements
         # CRITICAL: Only modify parameters within the Config class section
         # This prevents accidental modification of parse_args() or other functions
@@ -973,11 +1001,12 @@ def _modify_script_impl(
 
                 if param_match:
                     old_val = param_match.group(2).strip()
+                    formatted = _format_value_for_python(value, old_val)
                     # Replace only within Config section
-                    new_config = re.sub(param_pattern, f"\\g<1>{value}", config_section, count=1, flags=re.IGNORECASE)
+                    new_config = re.sub(param_pattern, f"\\g<1>{formatted}", config_section, count=1, flags=re.IGNORECASE)
                     content = content[:config_start] + new_config + content[config_start + len(config_section):]
-                    changes_made.append(f"{param_upper}: {old_val} -> {value}")
-                    params_changed[param] = {"from": old_val, "to": value}
+                    changes_made.append(f"{param_upper}: {old_val} -> {formatted}")
+                    params_changed[param] = {"from": old_val, "to": formatted}
                     continue
 
             # Fallback: Try Config.PARAM references anywhere (for dynamically assigned values)
@@ -985,11 +1014,12 @@ def _modify_script_impl(
             match = re.search(pattern_config_ref, content, re.IGNORECASE)
             if match and param not in params_changed:
                 old_val = match.group(2).strip()
-                new_content = re.sub(pattern_config_ref, f"\\g<1>{value}", content, flags=re.IGNORECASE)
+                formatted = _format_value_for_python(value, old_val)
+                new_content = re.sub(pattern_config_ref, f"\\g<1>{formatted}", content, flags=re.IGNORECASE)
                 if new_content != content:
                     content = new_content
-                    changes_made.append(f"Config.{param_upper}: {old_val} -> {value}")
-                    params_changed[param] = {"from": old_val, "to": value}
+                    changes_made.append(f"Config.{param_upper}: {old_val} -> {formatted}")
+                    params_changed[param] = {"from": old_val, "to": formatted}
                     continue
 
             # DIRECT ATTRIBUTE PATTERN (Coordinator contract fix)
@@ -1016,11 +1046,12 @@ def _modify_script_impl(
 
                     if direct_match:
                         old_val = direct_match.group(2).strip()
-                        new_content = re.sub(direct_pattern, f"\\g<1>{value}", content, count=1)
+                        formatted = _format_value_for_python(value, old_val)
+                        new_content = re.sub(direct_pattern, f"\\g<1>{formatted}", content, count=1)
                         if new_content != content:
                             content = new_content
-                            changes_made.append(f"{var_name}.{attr_name}: {old_val} -> {value}")
-                            params_changed[param] = {"from": old_val, "to": value, "pattern": "direct_attr"}
+                            changes_made.append(f"{var_name}.{attr_name}: {old_val} -> {formatted}")
+                            params_changed[param] = {"from": old_val, "to": formatted, "pattern": "direct_attr"}
                             direct_match_found = True
                             break
 
@@ -1037,10 +1068,11 @@ def _modify_script_impl(
                             continue
 
                         old_val = chained_match.group(2).strip()
+                        formatted = _format_value_for_python(value, old_val)
                         # Replace only this occurrence
-                        content = content[:chained_match.start()] + f".{attr_name} = {value}" + content[chained_match.end():]
-                        changes_made.append(f"*.{attr_name}: {old_val} -> {value}")
-                        params_changed[param] = {"from": old_val, "to": value, "pattern": "chained_attr"}
+                        content = content[:chained_match.start()] + f".{attr_name} = {formatted}" + content[chained_match.end():]
+                        changes_made.append(f"*.{attr_name}: {old_val} -> {formatted}")
+                        params_changed[param] = {"from": old_val, "to": formatted, "pattern": "chained_attr"}
                         break
 
             # SHADER NODE PATTERN (Learning Agent feedback loop fix)
@@ -1064,11 +1096,12 @@ def _modify_script_impl(
 
                     if shader_match:
                         old_val = shader_match.group(2).strip()
-                        new_content = re.sub(search_pattern, f"\\g<1>{value}", content, count=1)
+                        formatted = _format_value_for_python(value, old_val)
+                        new_content = re.sub(search_pattern, f"\\g<1>{formatted}", content, count=1)
                         if new_content != content:
                             content = new_content
-                            changes_made.append(f"SHADER: {node_var}.inputs['{input_name}']: {old_val} -> {value}")
-                            params_changed[param] = {"from": old_val, "to": value, "pattern": "shader_node"}
+                            changes_made.append(f"SHADER: {node_var}.inputs['{input_name}']: {old_val} -> {formatted}")
+                            params_changed[param] = {"from": old_val, "to": formatted, "pattern": "shader_node"}
 
             # MATH NODE PATTERN (density multipliers, etc.)
             # Handle: multiply.inputs[N].default_value = Y
@@ -1086,11 +1119,12 @@ def _modify_script_impl(
 
                     if math_match:
                         old_val = math_match.group(2).strip()
-                        new_content = re.sub(search_pattern, f"\\g<1>{value}", content, count=1)
+                        formatted = _format_value_for_python(value, old_val)
+                        new_content = re.sub(search_pattern, f"\\g<1>{formatted}", content, count=1)
                         if new_content != content:
                             content = new_content
-                            changes_made.append(f"MATH: {node_var}.inputs[{input_idx}]: {old_val} -> {value}")
-                            params_changed[param] = {"from": old_val, "to": value, "pattern": "math_node"}
+                            changes_made.append(f"MATH: {node_var}.inputs[{input_idx}]: {old_val} -> {formatted}")
+                            params_changed[param] = {"from": old_val, "to": formatted, "pattern": "math_node"}
 
         # Determine output path
         if output_name:

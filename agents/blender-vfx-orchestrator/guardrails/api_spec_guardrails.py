@@ -80,7 +80,7 @@ KNOWN_GOOD_ATTRIBUTES = {
         "value_type": "bool",
         "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
     },
-    "FluidDomainSettings.timesteps_maximum": {
+    "FluidDomainSettings.timesteps_max": {
         "value_type": "int",
         "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
     },
@@ -132,7 +132,7 @@ KNOWN_GOOD_ATTRIBUTES = {
     },
     "FluidDomainSettings.openvdb_cache_compress_type": {
         "value_type": "enum",
-        "enum_values": ["ZIP", "BLOSC", "NONE"],
+        "enum_values": ["ZIP", "NONE"],
         "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
     },
     # FluidDomainSettings - liquid specific

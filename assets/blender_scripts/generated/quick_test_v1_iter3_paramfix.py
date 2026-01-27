@@ -128,7 +128,7 @@ scene.collection.objects.link(mesh_obj)
 
 # Setup simple water material for reconstructed surface
 mat = bpy.data.materials.new(name="WaterMaterial")
-mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
 nodes = mat.node_tree.nodes
 links = mat.node_tree.links
 nodes.clear()
@@ -169,7 +169,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
-        mat.use_nodes = True  # Deprecated in 5.0, but still works
+        mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
 
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links

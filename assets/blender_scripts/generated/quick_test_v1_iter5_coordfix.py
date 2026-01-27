@@ -57,7 +57,7 @@ def create_domain():
     # VERIFIED FluidDomainSettings attributes ONLY
     dset.domain_type = 'LIQUID'
     dset.resolution_max = 64
-    dset.use_adaptive_timesteps = True
+    dset.use_adaptive_timesteps = False
 # REMOVED: dset.timesteps_maximum = 4
 
     dset.use_flip_particles = True
@@ -81,8 +81,8 @@ def create_domain():
     dset.vorticity = 0.0
 
     dset.cache_directory = str(CACHE_DIR)
-    dset.cache_type = 'REPLAY'
-    dset.openvdb_cache_compress_type = 'BLOSC'
+    dset.cache_type = REPLAY
+    dset.openvdb_cache_compress_type = ZIP
 
     return domain_obj
 
@@ -101,8 +101,8 @@ def create_inflow():
     fset = mod.flow_settings  # REQUIRED variable name
 
     # VERIFIED FluidFlowSettings attributes ONLY
-    fset.flow_type = 'LIQUID'
-    fset.flow_behavior = 'INFLOW'
+    fset.flow_type = LIQUID
+    fset.flow_behavior = INFLOW
 
     # Give the flow an initial velocity along the normal
     fset.use_initial_velocity = True

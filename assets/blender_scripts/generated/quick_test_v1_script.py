@@ -128,7 +128,7 @@ scene.collection.objects.link(mesh_obj)
 
 # Setup simple water material for reconstructed surface
 mat = bpy.data.materials.new(name="WaterMaterial")
-mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+mat.use_nodes = True  # Deprecated in 5.0, but still works
 nodes = mat.node_tree.nodes
 links = mat.node_tree.links
 nodes.clear()
@@ -169,7 +169,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
-        mat.use_nodes = True  # Deprecated in 5.0, but still works
+        mat.use_nodes = True
 
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
@@ -185,9 +185,9 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             # Fire/smoke: Principled Volume with blackbody emission
             volume = nodes.new('ShaderNodeVolumePrincipled')
             volume.location = (0, 0)
-            volume.inputs['Density'].default_value = 0.01
+            volume.inputs['Density'].default_value = 5.0
             volume.inputs['Anisotropy'].default_value = 0.3
-            volume.inputs['Blackbody Intensity'].default_value = 8.0  # Boosted from 1.0 for fire glow
+            volume.inputs['Blackbody Intensity'].default_value = 1.0
             volume.inputs['Blackbody Tint'].default_value = (1.0, 0.8, 0.5, 1.0)
 
             # Connect density and flame attributes
@@ -205,7 +205,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             multiply = nodes.new('ShaderNodeMath')
             multiply.location = (-200, 100)
             multiply.operation = 'MULTIPLY'
-            multiply.inputs[1].default_value = 8.0
+            multiply.inputs[1].default_value = 5.0
 
             links.new(attr_density.outputs['Fac'], multiply.inputs[0])
             links.new(multiply.outputs['Value'], volume.inputs['Density'])
@@ -218,7 +218,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             volume.location = (0, 0)
             volume.inputs['Density'].default_value = 5.0
             volume.inputs['Anisotropy'].default_value = 0.3
-            volume.inputs['Blackbody Intensity'].default_value = 8.0  # Boosted from 0.0 for fire glow
+            volume.inputs['Blackbody Intensity'].default_value = 0.0
 
             attr_density = nodes.new('ShaderNodeAttribute')
             attr_density.location = (-400, 100)
@@ -228,7 +228,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             multiply = nodes.new('ShaderNodeMath')
             multiply.location = (-200, 100)
             multiply.operation = 'MULTIPLY'
-            multiply.inputs[1].default_value = 10.0  # Boosted from 5.0 for visibility
+            multiply.inputs[1].default_value = 5.0
 
             links.new(attr_density.outputs['Fac'], multiply.inputs[0])
             links.new(multiply.outputs['Value'], volume.inputs['Density'])

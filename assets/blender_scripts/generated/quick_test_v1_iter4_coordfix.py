@@ -82,7 +82,7 @@ def create_domain():
 
     dset.cache_directory = str(CACHE_DIR)
     dset.cache_type = 'REPLAY'
-    dset.openvdb_cache_compress_type = 'BLOSC'
+    dset.openvdb_cache_compress_type = ZIP
 
     return domain_obj
 

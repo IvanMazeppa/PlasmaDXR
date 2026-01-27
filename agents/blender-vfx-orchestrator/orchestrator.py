@@ -1568,7 +1568,12 @@ After executing the script, return a structured ExecutionOutput with:
 
         return session
 
-    async def create_asset_pipeline(self, request: AssetRequest) -> SessionState:
+    async def create_asset_pipeline(
+        self,
+        request: AssetRequest,
+        resume_session_id: Optional[str] = None,
+        max_iterations_override: Optional[int] = None,
+    ) -> SessionState:
         """
         CODE-BASED ORCHESTRATION: Python controls the pipeline sequence.
 
@@ -1578,8 +1583,13 @@ After executing the script, return a structured ExecutionOutput with:
 
         Pipeline: Research → Script → Execute → Evaluate → Learn → (loop)
 
+        When resume_session_id is provided, loads the existing session and
+        resumes from the last completed iteration, skipping Phase 0/0.5.
+
         Args:
             request: Asset generation request parameters
+            resume_session_id: If provided, resume this session instead of creating new
+            max_iterations_override: Override max_iterations (useful for extending MAX_ITERATIONS sessions)
 
         Returns:
             SessionState with final results
@@ -1593,26 +1603,65 @@ After executing the script, return a structured ExecutionOutput with:
                 f"Budget exhausted. Monthly limit: ${self._budget_tracker.monthly_limit}"
             )
 
-        # Create session
-        session_id = generate_session_id(request.asset_name)
-        context = create_session_from_request(request, session_id)
-        session = context.session
+        # ====== SESSION SETUP: Resume or Create ======
+        is_resuming = False
+
+        if resume_session_id:
+            # Resume path: load existing session
+            session = self._persistence.load_session(resume_session_id)
+            if not session:
+                raise ValueError(f"Session not found: {resume_session_id}")
+
+            # Terminal status check — already complete
+            if session.status in [SessionStatus.PASSED, SessionStatus.CANCELLED]:
+                print(f"[Pipeline] Session {resume_session_id} already {session.status.value}, returning", file=sys.stderr)
+                return session
+
+            # Apply max_iterations override (useful for MAX_ITERATIONS sessions)
+            if max_iterations_override is not None:
+                session.request.max_iterations = max_iterations_override
+
+            # Set status to IN_PROGRESS for resumption
+            session.status = SessionStatus.IN_PROGRESS
+
+            # Create SharedContext from loaded session
+            context = SharedContext(session=session)
+            # Sync stuck_state from session to context
+            context.stuck_state = session.stuck_state
+
+            session_id = session.session_id
+            is_resuming = True
+
+            print(f"[Pipeline] RESUMING session: {session_id}", file=sys.stderr)
+        else:
+            # Fresh path: create new session
+            session_id = generate_session_id(request.asset_name)
+            context = create_session_from_request(request, session_id)
+            session = context.session
 
         # Phase 4: Create SDK session for conversation persistence across agents
-        # All agents share the same session to maintain context awareness
+        # For resumed sessions, this reuses the existing conversation DB
         sdk_session = get_or_create_sdk_session(session_id)
-        print(f"[Pipeline] SDK Session created: {session_id}", file=sys.stderr)
+        print(f"[Pipeline] SDK Session {'reused' if is_resuming else 'created'}: {session_id}", file=sys.stderr)
+
+        # Use overridden max_iterations if provided (applies to both paths)
+        effective_max_iterations = max_iterations_override if max_iterations_override is not None else request.max_iterations
 
         print(f"\n{'='*70}", file=sys.stderr)
-        print(f"PIPELINE ORCHESTRATION: {request.asset_name}", file=sys.stderr)
-        print(f"Effect: {request.effect_type.value} | Max Iterations: {request.max_iterations}", file=sys.stderr)
+        print(f"PIPELINE ORCHESTRATION: {request.asset_name}{' (RESUMED)' if is_resuming else ''}", file=sys.stderr)
+        print(f"Effect: {request.effect_type.value} | Max Iterations: {effective_max_iterations}", file=sys.stderr)
         print(f"{'='*70}\n", file=sys.stderr)
 
         try:
             with trace(f"VFX Pipeline: {request.asset_name}", group_id=session.session_id):
-                # ====== PHASE 0: RESEARCH (once at start) ======
-                print("[Pipeline] PHASE 0: Research", file=sys.stderr)
-                research_prompt = f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
+                # Initialize variables set by both fresh and resume paths
+                selected_technique: Optional[TechniqueDecision] = None
+                research_text = ""
+
+                if not is_resuming:
+                    # ====== PHASE 0: RESEARCH (once at start) ======
+                    print("[Pipeline] PHASE 0: Research", file=sys.stderr)
+                    research_prompt = f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
 
 Effect Type: {request.effect_type.value}
 Description: {request.description}
@@ -1620,59 +1669,59 @@ Reference: {request.reference_path or "None"}
 
 Research documentation, patterns, and APIs to find the optimal starting approach."""
 
-                # Create research hooks for Phase 0
-                phase0_research_hooks = create_research_hooks()
-                research_output: Optional[ResearchOutput] = None
-                try:
-                    research_result = await Runner.run(
-                        self._research_agent,
-                        research_prompt,
-                        context=context,
-                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                        hooks=phase0_research_hooks,
-                        max_turns=4  # Phase 3: Aligned with prompt turn budget
-                    )
-                    # Phase 3: Structured output - ResearchOutput schema
-                    research_output = research_result.final_output
-                    if research_output:
-                        # Build text summary from structured output for downstream use
-                        research_text = f"""## Research Summary
+                    # Create research hooks for Phase 0
+                    phase0_research_hooks = create_research_hooks()
+                    research_output: Optional[ResearchOutput] = None
+                    try:
+                        research_result = await Runner.run(
+                            self._research_agent,
+                            research_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            hooks=phase0_research_hooks,
+                            max_turns=4  # Phase 3: Aligned with prompt turn budget
+                        )
+                        # Phase 3: Structured output - ResearchOutput schema
+                        research_output = research_result.final_output
+                        if research_output:
+                            # Build text summary from structured output for downstream use
+                            research_text = f"""## Research Summary
 Recommended Approach: {research_output.recommended_approach}
 Key Parameters: {research_output.key_parameters}
 API Modules: {', '.join(research_output.api_modules) if research_output.api_modules else 'None'}
 Warnings: {'; '.join(research_output.warnings) if research_output.warnings else 'None'}
 Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 'None'}"""
-                    else:
-                        research_text = "No research findings"
-                except LoopDetectedError as e:
-                    # Research got stuck - use partial results
-                    print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
-                    research_text = "Research incomplete due to loop - proceeding with default approach"
-                except Exception as e:
-                    # SDK wraps LoopDetectedError in UserError - check for it
-                    if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
-                        print(f"[Pipeline] WARN: Research loop detected (wrapped): {e}", file=sys.stderr)
-                        research_text = "Research incomplete due to loop - proceeding with default approach for this effect type"
-                    else:
-                        raise  # Re-raise other exceptions
-                print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
-                print(f"[Pipeline] Research hooks stats: {phase0_research_hooks.get_stats()}", file=sys.stderr)
+                        else:
+                            research_text = "No research findings"
+                    except LoopDetectedError as e:
+                        # Research got stuck - use partial results
+                        print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
+                        research_text = "Research incomplete due to loop - proceeding with default approach"
+                    except Exception as e:
+                        # SDK wraps LoopDetectedError in UserError - check for it
+                        if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                            print(f"[Pipeline] WARN: Research loop detected (wrapped): {e}", file=sys.stderr)
+                            research_text = "Research incomplete due to loop - proceeding with default approach for this effect type"
+                        else:
+                            raise  # Re-raise other exceptions
+                    print(f"[Pipeline] Research complete: {research_text[:80]}...", file=sys.stderr)
+                    print(f"[Pipeline] Research hooks stats: {phase0_research_hooks.get_stats()}", file=sys.stderr)
 
-                # Store research in session for persistence and handoff to Script Writer
-                session.research_text = research_text
+                    # Store research in session for persistence and handoff to Script Writer
+                    session.research_text = research_text
 
-                # Phase 3: Use structured output directly instead of regex parsing
-                if research_output and research_output.alternative_approaches:
-                    for approach in research_output.alternative_approaches:
-                        if approach and approach not in session.alternative_approaches:
-                            session.alternative_approaches.append(approach)
-                    print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches (structured)", file=sys.stderr)
+                    # Phase 3: Use structured output directly instead of regex parsing
+                    if research_output and research_output.alternative_approaches:
+                        for approach in research_output.alternative_approaches:
+                            if approach and approach not in session.alternative_approaches:
+                                session.alternative_approaches.append(approach)
+                        print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches (structured)", file=sys.stderr)
 
-                # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
-                # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
-                # the initial technique based on research findings.
-                print("[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
-                technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
+                    # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
+                    # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
+                    # the initial technique based on research findings.
+                    print("[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
+                    technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
 
 ## Research Findings
 {research_text[:2000]}
@@ -1688,42 +1737,72 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
 
 Select the optimal technique and provide starting parameters."""
 
-                selected_technique: Optional[TechniqueDecision] = None
-                try:
-                    technique_result = await Runner.run(
-                        self._technique_coordinator,
-                        technique_prompt,
-                        context=context,
-                        session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                        max_turns=6  # Coordinators should be fast
+                    try:
+                        technique_result = await Runner.run(
+                            self._technique_coordinator,
+                            technique_prompt,
+                            context=context,
+                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            max_turns=6  # Coordinators should be fast
+                        )
+                        selected_technique = technique_result.final_output
+                        print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
+                        print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
+
+                        # Store in session for use by Script Writer
+                        session.current_technique = selected_technique.selected_technique
+                        if selected_technique.alternative_techniques:
+                            for alt in selected_technique.alternative_techniques:
+                                if alt not in session.alternative_approaches:
+                                    session.alternative_approaches.append(alt)
+
+                    except Exception as e:
+                        print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
+                        # Fall back to default technique selection
+                        selected_technique = None
+
+                else:
+                    # ====== RESUME: Skip Phase 0 and 0.5 ======
+                    print("[Pipeline] RESUME: Skipping Phase 0/0.5 (already stored in session)", file=sys.stderr)
+                    research_text = session.research_text or "Resumed session"
+                    # selected_technique stays None — not needed for iteration 2+
+                    # The guard `if selected_technique:` (Phase 1) handles this
+
+                # ====== ITERATION LOOP SETUP ======
+                if is_resuming and session.iterations:
+                    # Resume path: reconstruct loop variables from last IterationResult
+                    last_iter = session.iterations[-1]
+                    iteration = last_iter.iteration  # Loop body increments at top
+                    previous_script = ScriptOutput(
+                        script_path=last_iter.script.script_path,
+                        technique_used=last_iter.script.technique_name or "",
+                        parameters_set=last_iter.script.modifications or {},
+                        validation_passed=last_iter.script.validation_passed,
+                        validation_errors=last_iter.script.validation_issues or [],
                     )
-                    selected_technique = technique_result.final_output
-                    print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
-                    print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
-
-                    # Store in session for use by Script Writer
-                    session.current_technique = selected_technique.selected_technique
-                    if selected_technique.alternative_techniques:
-                        for alt in selected_technique.alternative_techniques:
-                            if alt not in session.alternative_approaches:
-                                session.alternative_approaches.append(alt)
-
-                except Exception as e:
-                    print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
-                    # Fall back to default technique selection
-                    selected_technique = None
-
-                # ====== ITERATION LOOP ======
-                iteration = 0
-                previous_script: Optional[ScriptOutput] = None
-                previous_score = 0.0
-                previous_params: Dict[str, Any] = {}
-                quality: Optional[QualityOutput] = None
-                learning: Optional[LearningOutput] = None
-
-                # Session Manager for deterministic experiment state tracking
-                # This is Python-side logic, not LLM - ensures baseline is always recorded
-                session_mgr = SessionManager(session_id=session.session_id)
+                    previous_score = last_iter.score
+                    previous_params = last_iter.script.modifications or {}
+                    quality = QualityOutput(
+                        overall_score=last_iter.quality.overall_score,
+                        passed=last_iter.quality.passed,
+                        primary_issue=last_iter.quality.primary_issue,
+                        issues=last_iter.quality.issues,
+                        suggestions=last_iter.quality.suggestions,
+                    )
+                    learning: Optional[LearningOutput] = None  # Populated after first resumed iteration
+                    session_mgr = SessionManager.from_session_state(session)
+                    print(f"[Pipeline] RESUME: Restored from iteration {last_iter.iteration} "
+                          f"(score={last_iter.score:.1f}, issues={session_mgr.issue_tracker.consecutive_same_issue}x same)",
+                          file=sys.stderr)
+                else:
+                    # Fresh path (or resume with 0 completed iterations)
+                    iteration = 0
+                    previous_script: Optional[ScriptOutput] = None
+                    previous_score = 0.0
+                    previous_params: Dict[str, Any] = {}
+                    quality: Optional[QualityOutput] = None
+                    learning: Optional[LearningOutput] = None
+                    session_mgr = SessionManager(session_id=session.session_id)
 
                 # Create enforcement hooks for each agent type
                 # These prevent loops and enforce documentation-first patterns
@@ -1732,21 +1811,22 @@ Select the optimal technique and provide starting parameters."""
                 quality_hooks = create_quality_analyst_hooks()
                 learning_hooks = create_learning_agent_hooks()
 
-                # Record initial baseline for iteration 1
-                # This fixes the "No baseline recorded" bug for single-iteration runs
-                # The baseline represents the "before any experiments" state
-                session_mgr.record_baseline(
-                    params={},  # No params before first iteration
-                    score=0.0,  # Score starts at 0
-                    script_path="",  # No script yet
-                    render_path=None
-                )
-                print(f"[Pipeline] Initial baseline recorded (score=0.0)", file=sys.stderr)
+                if not is_resuming:
+                    # Record initial baseline for iteration 1
+                    # This fixes the "No baseline recorded" bug for single-iteration runs
+                    # The baseline represents the "before any experiments" state
+                    session_mgr.record_baseline(
+                        params={},  # No params before first iteration
+                        score=0.0,  # Score starts at 0
+                        script_path="",  # No script yet
+                        render_path=None
+                    )
+                    print(f"[Pipeline] Initial baseline recorded (score=0.0)", file=sys.stderr)
 
-                while iteration < request.max_iterations:
+                while iteration < effective_max_iterations:
                     iteration += 1
                     session.current_iteration = iteration
-                    print(f"\n[Pipeline] ====== ITERATION {iteration}/{request.max_iterations} ======", file=sys.stderr)
+                    print(f"\n[Pipeline] ====== ITERATION {iteration}/{effective_max_iterations} ======", file=sys.stderr)
 
                     # Track per-iteration cost and time for utility scoring
                     iteration_start_time = time.monotonic()
@@ -1970,6 +2050,50 @@ Generate a complete, validated script using the selected technique. Return the s
                         # Track if we successfully modified the script directly
                         direct_modification_success = False
                         script: Optional[ScriptOutput] = None
+
+                        # ====== EXECUTION FAILURE ESCALATION ======
+                        # After 2+ consecutive identical execution failures, param tweaks
+                        # can't help — force a full spec-first regeneration with a new technique.
+                        exec_failure_prefix = "Execution failed:"
+                        is_exec_failure = (
+                            quality is not None
+                            and quality.primary_issue is not None
+                            and quality.primary_issue.startswith(exec_failure_prefix)
+                        )
+                        if (
+                            is_exec_failure
+                            and session_mgr.issue_tracker.consecutive_same_issue >= 2
+                            and self._use_spec_first_pipeline
+                        ):
+                            consec = session_mgr.issue_tracker.consecutive_same_issue
+                            print(
+                                f"[Pipeline] EXECUTION FAILURE x{consec} -- forcing spec-first regeneration",
+                                file=sys.stderr,
+                            )
+                            # Pick an untried technique
+                            untried = [
+                                a for a in session.alternative_approaches
+                                if a not in session_mgr.techniques_tried
+                            ]
+                            new_technique = untried[0] if untried else f"alternative_{len(session_mgr.techniques_tried) + 1}"
+                            print(f"[Pipeline] Switching to technique: {new_technique}", file=sys.stderr)
+                            try:
+                                script = await self._run_spec_first_pipeline(
+                                    effect_type=request.effect_type.value,
+                                    technique=new_technique,
+                                    request=request,
+                                    context=context,
+                                    sdk_session=sdk_session,
+                                )
+                                direct_modification_success = True
+                                session_mgr.reset_for_technique_switch(new_technique)
+                                print(f"[Pipeline] Spec-first regen succeeded: {script.script_path}", file=sys.stderr)
+                            except Exception as e:
+                                print(
+                                    f"[Pipeline] Spec-first regen failed: {e}, falling back to Coordinator",
+                                    file=sys.stderr,
+                                )
+                                # Fall through to existing Coordinator path below
 
                         # ====== PHASE 1.0.1: PATTERN APPLICATION (Phase 2 Self-Learning) ======
                         # Apply high-confidence pattern if found in Phase 0.95
@@ -2369,6 +2493,19 @@ Use patterns from library if available."""
                                 issues=script.validation_errors,
                                 suggestions=["Fix script generation errors"]
                             )
+                            # Record failure so stuck detection sees this iteration
+                            current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
+                            previous_params = current_params
+                            previous_score = 0
+                            session_mgr.record_result(
+                                iteration=iteration,
+                                params=current_params,
+                                score=0,
+                                issues=quality.issues,
+                                primary_issue=quality.primary_issue,
+                                technique=script.technique_used if script else None
+                            )
+                            print(f"[Pipeline] Script failure recorded: consecutive_same_issue={session_mgr.issue_tracker.consecutive_same_issue}", file=sys.stderr)
                             continue
                         # Else proceed with execution to see actual results
 
@@ -2504,6 +2641,19 @@ Run the script and report results."""
                             issues=[execution.error_message or "Unknown execution error"],
                             suggestions=["Fix script errors and retry"]
                         )
+                        # Record failure so stuck detection sees this iteration
+                        current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
+                        previous_params = current_params
+                        previous_score = 0
+                        session_mgr.record_result(
+                            iteration=iteration,
+                            params=current_params,
+                            score=0,
+                            issues=quality.issues,
+                            primary_issue=quality.primary_issue,
+                            technique=script.technique_used if script else None
+                        )
+                        print(f"[Pipeline] Execution failure recorded: consecutive_same_issue={session_mgr.issue_tracker.consecutive_same_issue}", file=sys.stderr)
                         continue
 
                     print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
@@ -2810,8 +2960,8 @@ Decide: Is quality gate PASSED? What is the next action?"""
                         is_passed = gate_decision.passed
                         next_action = gate_decision.next_action
                     else:
-                        is_passed = quality.passed or learning.next_action == 'complete'
-                        next_action = learning.next_action
+                        is_passed = quality.passed or (learning and learning.next_action == 'complete')
+                        next_action = learning.next_action if learning else ('complete' if quality.passed else 'iterate')
 
                     if is_passed or next_action == 'complete':
                         print(f"\n[Pipeline] ✓ QUALITY GATE PASSED at iteration {iteration}", file=sys.stderr)
@@ -2822,7 +2972,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                     should_switch = (
                         next_action == 'switch_technique'
                         or (gate_decision and gate_decision.escape_level >= 2)
-                        or learning.next_action == 'switch_technique'
+                        or (learning and learning.next_action == 'switch_technique')
                         or session_mgr.should_switch_technique()
                     )
                     if should_switch:
@@ -2898,15 +3048,24 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
 
         return session
 
-    async def resume_session(self, session_id: str) -> SessionState:
+    async def resume_session(
+        self,
+        session_id: str,
+        max_iterations_override: Optional[int] = None,
+    ) -> SessionState:
         """
-        Resume a paused or incomplete session.
+        Resume a paused or incomplete session using the code-based pipeline.
 
-        NOTE: This method uses the deprecated handoff-based orchestrator.
-        TODO: Migrate to resume_session_pipeline() using code-based orchestration.
+        Delegates to create_asset_pipeline() with resume_session_id, which:
+        - Loads the existing session
+        - Skips Phase 0 (Research) and Phase 0.5 (Technique Selection)
+        - Reconstructs loop state from the last completed iteration
+        - Continues the iteration loop from where it left off
 
         Args:
             session_id: ID of session to resume
+            max_iterations_override: Override max_iterations (useful for extending
+                sessions that hit MAX_ITERATIONS status)
 
         Returns:
             Updated SessionState
@@ -2914,42 +3073,16 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
         if not self._initialized:
             await self.initialize()
 
-        # Load session
+        # Load session to get the original request
         session = self._persistence.load_session(session_id)
         if not session:
             raise ValueError(f"Session not found: {session_id}")
 
-        if session.status in [SessionStatus.PASSED, SessionStatus.CANCELLED]:
-            return session  # Already complete
-
-        # Create context from session
-        context = SharedContext(session=session)
-
-        # Build resumption prompt
-        prompt = self._build_resumption_prompt(context)
-
-        # Run orchestrator
-        # gpt-5.2 with high reasoning effort needs more turns than default 10
-        # Using trace() for end-to-end observability across resumed iterations
-        try:
-            with trace(f"VFX Resume: {session.session_id}", group_id=session.session_id):
-                result = await Runner.run(
-                    self._orchestrator,
-                    prompt,
-                    context=context,  # Typed SharedContext for RunContextWrapper access
-                    max_turns=25  # Increased for gpt-5.2 reasoning
-                )
-
-            session = self._parse_result(result, context)
-
-        except Exception as e:
-            session.status = SessionStatus.FAILED
-            session.current_issues.append(f"Resumption error: {str(e)}")
-
-        # Save updated state
-        self._persistence.save_session(session)
-
-        return session
+        return await self.create_asset_pipeline(
+            request=session.request,
+            resume_session_id=session_id,
+            max_iterations_override=max_iterations_override,
+        )
 
     def _build_generation_prompt(
         self,
@@ -3198,18 +3331,26 @@ async def create_vfx_asset(
     return result
 
 
-async def resume_vfx_session(session_id: str) -> SessionState:
+async def resume_vfx_session(
+    session_id: str,
+    max_iterations: Optional[int] = None,
+) -> SessionState:
     """
     Convenience function to resume a VFX session.
 
     Args:
         session_id: ID of session to resume
+        max_iterations: Override max iterations (useful for extending
+            sessions that hit MAX_ITERATIONS status)
 
     Returns:
         Updated SessionState
     """
     orchestrator = await get_orchestrator()
-    return await orchestrator.resume_session(session_id)
+    return await orchestrator.resume_session(
+        session_id,
+        max_iterations_override=max_iterations,
+    )
 
 
 # =============================================================================
