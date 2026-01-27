@@ -1,6 +1,6 @@
 # Architecture Failure Analysis (2026-01-25)
 
-> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+> Consolidated issue list: `docs/MASTER_ROADMAP_2026-01-26.md`
 
 ## Executive Summary
 The workflow is failing for architectural (not incidental) reasons. The system allows

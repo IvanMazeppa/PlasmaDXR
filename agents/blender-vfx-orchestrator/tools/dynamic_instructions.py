@@ -155,21 +155,72 @@ Doc search results are the ONLY source of truth for API attributes.
 - Never infer or guess attributes based on naming patterns.
 - If you need an attribute not in results, search again (max 2 total).
 
-## SELF-QUESTIONING CHECKLIST (MANDATORY)
-Before writing any bpy.* attribute access, ask:
-1) "Have I verified this attribute in the doc search results?"
-2) "Which class does it belong to (FluidDomainSettings vs FluidFlowSettings)?"
-3) "What is the correct type (int/float/bool/enum)?"
-If any answer is unknown, STOP and search.
+## SELF-QUESTIONING CHECKLIST (MANDATORY - DO THIS FOR EVERY ATTRIBUTE)
+Before writing ANY bpy.* attribute access, ask yourself these questions OUT LOUD:
 
-## REFUSAL EXAMPLES (DO NOT GUESS)
-Example:
+1) "Have I verified this EXACT attribute name in the doc search results?"
+   - If NO → STOP, search for it
+   - If YES → proceed
+
+2) "Which class does it belong to?"
+   - FluidDomainSettings (domain cube) vs FluidFlowSettings (emitter object)
+   - NEVER mix them up!
+
+3) "What is the EXACT type?"
+   - noise_scale → int (NOT float! `1` not `1.0`)
+   - resolution_max → int
+   - temperature → float
+   - flow_type → enum ('SMOKE', 'FIRE', 'BOTH')
+
+4) "Am I spelling it correctly?"
+   - use_adaptive_timesteps (NOT use_adaptive_time_steps)
+   - cache_data_format (NOT cache_format)
+   - velocity_factor (NOT velocity or velocity_multi)
+
+If ANY answer is unknown or uncertain, STOP and search docs.
+
+## REFUSAL EXAMPLES (DO NOT GUESS - REFUSE INVALID ATTRIBUTES)
+
+### Example 1: resolution_divisions (DOES NOT EXIST)
 User: "Set resolution_divisions to 128"
-Assistant: "Cannot use resolution_divisions (not in Blender 5.0). Use resolution_max (int) instead."
+WRONG: `dsettings.resolution_divisions = 128`
+CORRECT: "Cannot use resolution_divisions (attribute does not exist in Blender 5.0).
+Use `dsettings.resolution_max = 128` instead."
 
-Example:
+### Example 2: velocity_multi (DOES NOT EXIST)
 User: "Set velocity_multi to 5.0"
-Assistant: "Cannot use velocity_multi (invalid). Use FluidFlowSettings.velocity_factor (float) instead."
+WRONG: `flow.velocity_multi = 5.0`
+CORRECT: "Cannot use velocity_multi (invalid attribute).
+Use `fsettings.velocity_factor = 5.0` instead."
+
+### Example 3: use_dissolve (WRONG NAME)
+User: "Enable dissolve"
+WRONG: `dsettings.use_dissolve = True`
+CORRECT: "Cannot use use_dissolve (wrong name in Blender 5.0).
+Use `dsettings.use_dissolve_smoke = True` instead."
+
+### Example 4: noise_scale type (WRONG TYPE)
+User: "Set noise scale to 2"
+WRONG: `dsettings.noise_scale = 2.0`  # Float will cause TypeError!
+CORRECT: `dsettings.noise_scale = 2`  # Must be int, not float
+
+### Example 5: velocity (DOES NOT EXIST)
+User: "Set flow velocity to 1.5"
+WRONG: `fsettings.velocity = 1.5`
+CORRECT: "Cannot use velocity (attribute does not exist).
+Use one of: velocity_factor, velocity_normal, velocity_random.
+Example: `fsettings.velocity_factor = 1.5`"
+
+### Example 6: absolute_density (DOES NOT EXIST)
+User: "Set absolute density to 5.0"
+WRONG: `fsettings.absolute_density = 5.0`
+CORRECT: "Cannot use absolute_density (invalid). Use separate attributes:
+`fsettings.density = 5.0`
+`fsettings.use_absolute = True`"
+
+## GOLDEN RULE: WHEN IN DOUBT, REFUSE AND SEARCH
+If you're not 100% certain an attribute exists with the exact spelling and type,
+DO NOT write it. Search the docs first. Guessing wastes iterations.
 
 ## DOC QUERY LIMIT - MAX 2 SEARCHES
 After your MANDATORY first query, you may do ONE more if needed. Then STOP.
@@ -202,6 +253,49 @@ T5-15: If validation fails -> modify_script + validate_script (up to 5 retries) 
 **REMEMBER: Research gives you the APPROACH. Doc query gives you the EXACT API NAMES. Both are needed.**
 
 ## CODE GENERATION GUIDELINES
+
+### CRITICAL: VOLUME MATERIAL REQUIRED FOR MANTAFLOW
+If using Mantaflow (smoke/fire/explosion), you MUST add a volume shader to the domain:
+- Without volume material → renders grey mesh instead of smoke/fire!
+- Use ShaderNodeVolumePrincipled on the domain object
+- Connect 'density' attribute for smoke visibility
+- Connect 'flame' attribute for fire emission
+
+```python
+def setup_volume_material(domain_obj, effect_type="SMOKE"):
+    mat = bpy.data.materials.new(name="VolumeShader")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+
+    output = nodes.new('ShaderNodeOutputMaterial')
+    volume = nodes.new('ShaderNodeVolumePrincipled')
+
+    # Density attribute for smoke
+    attr_density = nodes.new('ShaderNodeAttribute')
+    attr_density.attribute_name = 'density'
+    attr_density.attribute_type = 'GEOMETRY'
+
+    multiply = nodes.new('ShaderNodeMath')
+    multiply.operation = 'MULTIPLY'
+    multiply.inputs[1].default_value = 5.0
+
+    links.new(attr_density.outputs['Fac'], multiply.inputs[0])
+    links.new(multiply.outputs['Value'], volume.inputs['Density'])
+
+    if effect_type in ("FIRE", "BOTH"):
+        # Flame attribute for fire glow
+        attr_flame = nodes.new('ShaderNodeAttribute')
+        attr_flame.attribute_name = 'flame'
+        attr_flame.attribute_type = 'GEOMETRY'
+        links.new(attr_flame.outputs['Fac'], volume.inputs['Blackbody Intensity'])
+        volume.inputs['Blackbody Tint'].default_value = (1.0, 0.8, 0.5, 1.0)
+
+    links.new(volume.outputs['Volume'], output.inputs['Volume'])
+    domain_obj.data.materials.append(mat)
+```
+
 For SUN/STAR effects (from typical research):
 - Create UV sphere for photosphere with Emission material
 - Use procedural noise for granulation (ShaderNodeTexNoise)
@@ -212,6 +306,7 @@ For SUN/STAR effects (from typical research):
 For EXPLOSION effects:
 - Research will specify: fluid sim vs shader-based
 - Follow the research approach, don't default to fluid sim
+- **If using fluid sim: MUST add volume material to domain!**
 
 ALWAYS include:
 - import bpy
@@ -614,20 +709,43 @@ Return QualityOutput with:
 
 LEARNING_AGENT_BASE_INSTRUCTIONS = """## ROLE
 Record experiments, extract patterns, suggest fixes from accumulated knowledge.
+CRITICAL: Analyze script structure BEFORE suggesting modifications to ensure they work.
 
 ## TURN BUDGET
-Target: 3 turns | Hard limit: 8 turns (allows pattern extraction if successful)
-T1: query_knowledge_base + search_code_patterns (parallel)
-T2: record_experiment_result (ONCE)
-T3: If score_delta >= 5: extract_successful_pattern -> Return LearningOutput
-T3: Otherwise: Return LearningOutput
+Target: 4 turns | Hard limit: 8 turns (allows pattern extraction if successful)
+T1: analyze_script_modifiable_patterns(script_path) - UNDERSTAND SCRIPT FIRST
+T2: query_knowledge_base + search_code_patterns (parallel)
+T3: record_experiment_result (ONCE)
+T4: If score_delta >= 5: extract_successful_pattern -> Return LearningOutput
+T4: Otherwise: Return LearningOutput
 
 CRITICAL: Call record_experiment_result ONCE. Never retry on error.
 
-## BEFORE CHANGES
-1. search_code_patterns(issue) -> find known fixes
-2. query_knowledge_base(issue) -> check past learnings
-3. get_parameter_knowledge(param) -> accumulated wisdom
+## BEFORE SUGGESTING parameter_modifications (MANDATORY)
+1. analyze_script_modifiable_patterns(script_path) -> SEE WHAT CAN BE MODIFIED
+   - Look for shader_node_inputs (CRITICAL for visual appearance!)
+   - Check if Config values are actually used
+   - Identify the EXACT patterns that exist in the script
+2. search_code_patterns(issue) -> find known fixes
+3. query_knowledge_base(issue) -> check past learnings
+4. get_parameter_knowledge(param) -> accumulated wisdom
+
+## PARAMETER_MODIFICATIONS FORMAT (CRITICAL)
+Your parameter_modifications MUST match patterns found in script analysis:
+
+WRONG (won't work):
+  {"density": 15.0}  # Generic name - doesn't match any script pattern
+
+CORRECT (matches shader node pattern from analysis):
+  {"volume.inputs['Density'].default_value": 15.0}
+
+CORRECT (matches math node pattern):
+  {"multiply.inputs[1].default_value": 10.0}
+
+CORRECT (matches Config class):
+  {"DENSITY": 15.0}  # Only if Config.DENSITY exists and is used
+
+Use the EXACT identifiers from analyze_script_modifiable_patterns() output!
 
 ## DOC MINING (ONLY IF KB EMPTY)
 If query_knowledge_base returns 0 results for the issue, call:

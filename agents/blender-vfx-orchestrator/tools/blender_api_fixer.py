@@ -213,7 +213,210 @@ while len(\1) > 1:
         r"\1.velocity_factor =",
         "velocity → velocity_factor (FluidFlowSettings)"
     ),
+    # LLM HALLUCINATION: velocity_multi does NOT exist
+    (
+        r"\.velocity_multi\s*=",
+        r".velocity_factor =",
+        "velocity_multi → velocity_factor (FluidFlowSettings)"
+    ),
+    # Type fix: noise_scale must be int, not float
+    # Match patterns like: noise_scale = 1.0, noise_scale = 2.0, etc.
+    (
+        r"(\.noise_scale\s*=\s*)(\d+)\.0\b",
+        r"\1\2  # Must be int, not float",
+        "noise_scale float → int"
+    ),
+    # P0 FIX: Volume shader density too low - boost from 3.0 to 10.0
+    # This fixes "grey sphere" renders where the volume is too transparent
+    (
+        r"(multiply\.inputs\[1\]\.default_value\s*=\s*)([0-5]\.0)",
+        r"\g<1>10.0  # Boosted from \2 for visibility",
+        "Volume density multiplier boosted (grey sphere fix)"
+    ),
+    # P0 FIX: Emission strength too low for fire visibility
+    (
+        r"(bb_emission\.inputs\['Strength'\]\.default_value\s*=\s*)([0-5]\.0)",
+        r"\g<1>20.0  # Boosted from \2 for fire visibility",
+        "Emission strength boosted (fire visibility fix)"
+    ),
+    # P0 FIX: Blackbody intensity too low
+    (
+        r"(inputs\['Blackbody Intensity'\]\.default_value\s*=\s*)([0-3]\.0)",
+        r"\g<1>8.0  # Boosted from \2 for fire glow",
+        "Blackbody intensity boosted (fire glow fix)"
+    ),
 ]
+
+
+# =============================================================================
+# VOLUME MATERIAL INJECTION (P0 FIX - Grey Sphere Problem)
+# =============================================================================
+# Without a volume shader on the domain, Cycles renders the mesh geometry
+# instead of the smoke/fire volume, resulting in a grey sphere.
+
+VOLUME_MATERIAL_SNIPPET = '''
+# ==== API FIXER: Volume Material Setup (Mantaflow) ====
+# Without this, renders show grey mesh instead of smoke/fire
+def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
+    """Ensure domain has a volume shader for rendering smoke/fire."""
+    mat_name = f"{domain_obj.name}_VolumeMaterial"
+
+    # Check if material already exists
+    mat = bpy.data.materials.get(mat_name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=mat_name)
+        mat.use_nodes = True
+
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+
+        # Clear default nodes
+        nodes.clear()
+
+        # Create nodes based on effect type
+        output = nodes.new('ShaderNodeOutputMaterial')
+        output.location = (300, 0)
+
+        if effect_type in ("FIRE", "BOTH"):
+            # Fire/smoke: Principled Volume with blackbody emission
+            volume = nodes.new('ShaderNodeVolumePrincipled')
+            volume.location = (0, 0)
+            volume.inputs['Density'].default_value = 5.0
+            volume.inputs['Anisotropy'].default_value = 0.3
+            volume.inputs['Blackbody Intensity'].default_value = 1.0
+            volume.inputs['Blackbody Tint'].default_value = (1.0, 0.8, 0.5, 1.0)
+
+            # Connect density and flame attributes
+            attr_density = nodes.new('ShaderNodeAttribute')
+            attr_density.location = (-400, 100)
+            attr_density.attribute_name = 'density'
+            attr_density.attribute_type = 'GEOMETRY'
+
+            attr_flame = nodes.new('ShaderNodeAttribute')
+            attr_flame.location = (-400, -100)
+            attr_flame.attribute_name = 'flame'
+            attr_flame.attribute_type = 'GEOMETRY'
+
+            # Multiply density
+            multiply = nodes.new('ShaderNodeMath')
+            multiply.location = (-200, 100)
+            multiply.operation = 'MULTIPLY'
+            multiply.inputs[1].default_value = 5.0
+
+            links.new(attr_density.outputs['Fac'], multiply.inputs[0])
+            links.new(multiply.outputs['Value'], volume.inputs['Density'])
+            links.new(attr_flame.outputs['Fac'], volume.inputs['Blackbody Intensity'])
+            links.new(volume.outputs['Volume'], output.inputs['Volume'])
+
+        else:
+            # Smoke only: simpler volume scatter
+            volume = nodes.new('ShaderNodeVolumePrincipled')
+            volume.location = (0, 0)
+            volume.inputs['Density'].default_value = 5.0
+            volume.inputs['Anisotropy'].default_value = 0.3
+            volume.inputs['Blackbody Intensity'].default_value = 0.0
+
+            attr_density = nodes.new('ShaderNodeAttribute')
+            attr_density.location = (-400, 100)
+            attr_density.attribute_name = 'density'
+            attr_density.attribute_type = 'GEOMETRY'
+
+            multiply = nodes.new('ShaderNodeMath')
+            multiply.location = (-200, 100)
+            multiply.operation = 'MULTIPLY'
+            multiply.inputs[1].default_value = 5.0
+
+            links.new(attr_density.outputs['Fac'], multiply.inputs[0])
+            links.new(multiply.outputs['Value'], volume.inputs['Density'])
+            links.new(volume.outputs['Volume'], output.inputs['Volume'])
+
+    # Assign material to domain
+    if domain_obj.data.materials:
+        domain_obj.data.materials[0] = mat
+    else:
+        domain_obj.data.materials.append(mat)
+
+    return mat
+
+# Find domain object and apply volume material
+_api_fixer_domain = None
+for obj in bpy.data.objects:
+    for mod in obj.modifiers:
+        if mod.type == 'FLUID' and hasattr(mod, 'fluid_type') and mod.fluid_type == 'DOMAIN':
+            _api_fixer_domain = obj
+            break
+    if _api_fixer_domain:
+        break
+
+if _api_fixer_domain:
+    # Determine effect type from flow settings
+    _api_fixer_effect_type = "SMOKE"
+    for obj in bpy.data.objects:
+        for mod in obj.modifiers:
+            if mod.type == 'FLUID' and hasattr(mod, 'fluid_type') and mod.fluid_type == 'FLOW':
+                if hasattr(mod, 'flow_settings') and mod.flow_settings:
+                    ft = getattr(mod.flow_settings, 'flow_type', 'SMOKE')
+                    if ft in ('FIRE', 'BOTH'):
+                        _api_fixer_effect_type = ft
+                        break
+    _api_fixer_setup_volume_material(_api_fixer_domain, _api_fixer_effect_type)
+    print(f"[API Fixer] Applied volume material to {_api_fixer_domain.name} ({_api_fixer_effect_type})")
+# ==== END API FIXER: Volume Material Setup ====
+'''
+
+
+def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
+    """
+    Inject volume material setup if script uses Mantaflow but lacks volume shader.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Check if script uses Mantaflow domain
+    has_fluid_domain = re.search(
+        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
+        content
+    ) is not None
+
+    # Check if script already has volume material setup
+    has_volume_material = re.search(
+        r"ShaderNodeVolumePrincipled|ShaderNodeVolumeScatter|ShaderNodeVolumeAbsorption|"
+        r"Volume\s*Scatter|Volume\s*Absorption|VolumeMaterial|_setup_volume_material",
+        content,
+        re.IGNORECASE
+    ) is not None
+
+    # Check if there's a render call (otherwise no point adding material)
+    has_render = re.search(r"bpy\.ops\.render\.render", content) is not None
+
+    if has_fluid_domain and not has_volume_material and has_render:
+        # Find injection point: after bpy.ops.fluid.bake or before bpy.ops.render.render
+        # Prefer injecting before render call
+        render_match = re.search(
+            r"^(\s*)(scene\.render\.filepath\s*=|bpy\.ops\.render\.render)",
+            content,
+            re.MULTILINE
+        )
+
+        if render_match:
+            insert_pos = render_match.start()
+            indent = render_match.group(1)
+            # Indent the snippet
+            indented_snippet = "\n".join(
+                indent + line if line.strip() else line
+                for line in VOLUME_MATERIAL_SNIPPET.split("\n")
+            )
+            content = content[:insert_pos] + indented_snippet + "\n\n" + content[insert_pos:]
+            return content, True
+        else:
+            # Fallback: append at the end before any final print statements
+            content = content.rstrip() + "\n\n" + VOLUME_MATERIAL_SNIPPET
+            return content, True
+
+    return content, False
 
 
 def validate_and_fix_script(script_path: str) -> Dict:
@@ -282,6 +485,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
             content = camera_snippet + "\n" + content
 
         fixes_applied.append("Added camera setup before render (missing scene.camera)")
+
+    # P0 FIX: Inject volume material for Mantaflow domains (fixes grey sphere)
+    content, volume_fixed = _inject_volume_material_setup(content)
+    if volume_fixed:
+        fixes_applied.append("Injected volume material for Mantaflow domain (fixes grey sphere)")
 
     if fixes_applied:
         # Write fixed content back

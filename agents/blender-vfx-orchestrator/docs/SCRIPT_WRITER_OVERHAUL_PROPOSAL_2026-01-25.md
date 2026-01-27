@@ -86,7 +86,7 @@ VALID_ENUM_VALUES = {
 ### Documentation Updated (2026-01-26)
 
 - `docs/VERSION_TRUTH.md` - Added VALID_ENUM_VALUES, INVALID ENUM VALUES, output file locations
-- `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md` - Added v9 findings, enum hallucination blocker
+- `docs/MASTER_ROADMAP_2026-01-26.md` - Consolidated v9 findings and enum hallucination blocker
 - `docs/ARCHITECTURE_OPTIMIZATION_PLAN_2026-01-22.md` - Phase 12 marked PARTIAL, added test findings
 
 ---

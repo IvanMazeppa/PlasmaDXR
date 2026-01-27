@@ -1009,7 +1009,9 @@ def _modify_script_impl(
 
                 for var_name in var_names_to_try:
                     # Pattern: var_name.attr_name = value (case-sensitive for attr_name)
-                    direct_pattern = rf"({re.escape(var_name)}\.{re.escape(attr_name)}\s*=\s*)([^\n]+)"
+                    # IMPORTANT: Use word boundary \b to prevent matching substrings
+                    # (e.g., 'settings' should NOT match inside 'dsettings')
+                    direct_pattern = rf"(\b{re.escape(var_name)}\.{re.escape(attr_name)}\s*=\s*)([^\n]+)"
                     direct_match = re.search(direct_pattern, content)
 
                     if direct_match:
@@ -1040,6 +1042,55 @@ def _modify_script_impl(
                         changes_made.append(f"*.{attr_name}: {old_val} -> {value}")
                         params_changed[param] = {"from": old_val, "to": value, "pattern": "chained_attr"}
                         break
+
+            # SHADER NODE PATTERN (Learning Agent feedback loop fix)
+            # Handle shader node input modifications: node.inputs['X'].default_value = Y
+            # This enables the feedback loop to actually modify visual appearance
+            # The Learning Agent analyzes the script and provides EXACT patterns from its analysis
+            if param not in params_changed:
+                # Check if param matches shader node pattern: var.inputs['Name'].default_value
+                shader_pattern_match = re.match(
+                    r"(\w+)\.inputs\[(['\"])(.+?)\2\]\.default_value",
+                    param
+                )
+                if shader_pattern_match:
+                    node_var = shader_pattern_match.group(1)
+                    input_name = shader_pattern_match.group(3)
+
+                    # Build pattern to find and replace
+                    # Match: node_var.inputs['input_name'].default_value = old_value
+                    search_pattern = rf"({re.escape(node_var)}\.inputs\[['\"]" + re.escape(input_name) + rf"['\"]\]\.default_value\s*=\s*)([^\n]+)"
+                    shader_match = re.search(search_pattern, content)
+
+                    if shader_match:
+                        old_val = shader_match.group(2).strip()
+                        new_content = re.sub(search_pattern, f"\\g<1>{value}", content, count=1)
+                        if new_content != content:
+                            content = new_content
+                            changes_made.append(f"SHADER: {node_var}.inputs['{input_name}']: {old_val} -> {value}")
+                            params_changed[param] = {"from": old_val, "to": value, "pattern": "shader_node"}
+
+            # MATH NODE PATTERN (density multipliers, etc.)
+            # Handle: multiply.inputs[N].default_value = Y
+            if param not in params_changed:
+                math_pattern_match = re.match(
+                    r"(\w+)\.inputs\[(\d+)\]\.default_value",
+                    param
+                )
+                if math_pattern_match:
+                    node_var = math_pattern_match.group(1)
+                    input_idx = math_pattern_match.group(2)
+
+                    search_pattern = rf"({re.escape(node_var)}\.inputs\[{input_idx}\]\.default_value\s*=\s*)([^\n]+)"
+                    math_match = re.search(search_pattern, content)
+
+                    if math_match:
+                        old_val = math_match.group(2).strip()
+                        new_content = re.sub(search_pattern, f"\\g<1>{value}", content, count=1)
+                        if new_content != content:
+                            content = new_content
+                            changes_made.append(f"MATH: {node_var}.inputs[{input_idx}]: {old_val} -> {value}")
+                            params_changed[param] = {"from": old_val, "to": value, "pattern": "math_node"}
 
         # Determine output path
         if output_name:

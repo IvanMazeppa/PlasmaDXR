@@ -573,6 +573,158 @@ def _get_experiment_statistics_impl() -> str:
         })
 
 
+# In-memory modification strategy tracking (persists within session)
+# Tracks which modification patterns actually improve scores
+_modification_strategy_stats: Dict[str, Dict[str, Any]] = {}
+
+
+def _report_modification_outcome_impl(
+    issue: str,
+    modification_pattern: str,
+    pattern_type: str,
+    score_before: float,
+    score_after: float,
+    visual_change_observed: bool,
+    effect_type: str = ""
+) -> str:
+    """
+    Report whether a modification attempt actually worked.
+
+    Builds knowledge about:
+    - Which modification patterns (config, settings, shader_node) work for which issues
+    - Which parameters have real visual impact
+    - Which suggestions are "no-ops" that don't reach the render
+
+    Args:
+        issue: The issue being addressed (e.g., "too dark", "no fire visible")
+        modification_pattern: The pattern used (e.g., "volume.inputs['Density'].default_value")
+        pattern_type: Category (config_class, settings_attr, shader_node, math_node)
+        score_before: Quality score before modification
+        score_after: Quality score after modification
+        visual_change_observed: Did the render look different?
+        effect_type: Effect type for context
+
+    Returns:
+        JSON with updated strategy effectiveness statistics
+    """
+    global _modification_strategy_stats
+
+    try:
+        score_delta = score_after - score_before
+        success = score_delta > 0 and visual_change_observed
+
+        # Create strategy key
+        strategy_key = f"{issue}|{pattern_type}"
+        if strategy_key not in _modification_strategy_stats:
+            _modification_strategy_stats[strategy_key] = {
+                "issue": issue,
+                "pattern_type": pattern_type,
+                "total_attempts": 0,
+                "successful": 0,
+                "total_score_delta": 0.0,
+                "patterns_tried": [],
+                "effect_types": set()
+            }
+
+        stats = _modification_strategy_stats[strategy_key]
+        stats["total_attempts"] += 1
+        if success:
+            stats["successful"] += 1
+        stats["total_score_delta"] += score_delta
+        if modification_pattern not in stats["patterns_tried"]:
+            stats["patterns_tried"].append(modification_pattern)
+        if effect_type:
+            stats["effect_types"].add(effect_type)
+
+        # Calculate success rate
+        success_rate = stats["successful"] / stats["total_attempts"] if stats["total_attempts"] > 0 else 0.0
+        avg_delta = stats["total_score_delta"] / stats["total_attempts"] if stats["total_attempts"] > 0 else 0.0
+
+        # Also add to knowledge base if pattern is effective
+        if success_rate >= 0.7 and stats["total_attempts"] >= 2:
+            try:
+                tracker = _get_tracker_instance()
+                tracker.add_manual_learning(
+                    parameter=f"modification_strategy:{issue}",
+                    rule=f"For '{issue}' issues, use {pattern_type} modifications (success rate: {success_rate:.0%})",
+                    context=f"Effect types: {', '.join(stats['effect_types'])}"
+                )
+            except Exception:
+                pass  # Non-critical
+
+        return json.dumps({
+            "success": True,
+            "this_attempt": {
+                "success": success,
+                "score_delta": score_delta,
+                "visual_change": visual_change_observed
+            },
+            "strategy_stats": {
+                "issue": issue,
+                "pattern_type": pattern_type,
+                "success_rate": success_rate,
+                "average_score_delta": avg_delta,
+                "total_attempts": stats["total_attempts"],
+                "recommendation": "USE THIS PATTERN" if success_rate >= 0.5 else "TRY DIFFERENT PATTERN"
+            }
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": str(e)
+        })
+
+
+def _get_effective_strategy_impl(issue: str) -> str:
+    """
+    Get the most effective modification strategy for an issue.
+
+    Based on accumulated outcome tracking data.
+
+    Args:
+        issue: The issue to address
+
+    Returns:
+        JSON with best strategy and confidence
+    """
+    global _modification_strategy_stats
+
+    # Find strategies for this issue
+    matching = []
+    for key, stats in _modification_strategy_stats.items():
+        if issue.lower() in stats["issue"].lower():
+            success_rate = stats["successful"] / stats["total_attempts"] if stats["total_attempts"] > 0 else 0.0
+            matching.append({
+                "pattern_type": stats["pattern_type"],
+                "success_rate": success_rate,
+                "attempts": stats["total_attempts"],
+                "avg_score_delta": stats["total_score_delta"] / stats["total_attempts"] if stats["total_attempts"] > 0 else 0.0,
+                "patterns_tried": stats["patterns_tried"]
+            })
+
+    # Sort by success rate
+    matching.sort(key=lambda x: x["success_rate"], reverse=True)
+
+    if matching:
+        best = matching[0]
+        return json.dumps({
+            "issue": issue,
+            "best_strategy": best["pattern_type"],
+            "confidence": best["success_rate"],
+            "recommendation": f"Use {best['pattern_type']} modifications. Patterns that worked: {best['patterns_tried'][:3]}",
+            "all_strategies": matching
+        }, indent=2)
+    else:
+        return json.dumps({
+            "issue": issue,
+            "best_strategy": "unknown",
+            "confidence": 0.0,
+            "recommendation": "No data yet. Try shader_node modifications for visual issues.",
+            "all_strategies": []
+        }, indent=2)
+
+
 # =============================================================================
 # FUNCTION TOOL WRAPPERS (exposed to agents)
 # =============================================================================
@@ -826,3 +978,57 @@ async def get_experiment_statistics() -> str:
         JSON with aggregate metrics
     """
     return _get_experiment_statistics_impl()
+
+
+@function_tool
+async def report_modification_outcome(
+    issue: str,
+    modification_pattern: str,
+    pattern_type: str,
+    score_before: float,
+    score_after: float,
+    visual_change_observed: bool,
+    effect_type: str = ""
+) -> str:
+    """
+    Report whether a modification attempt actually worked.
+
+    Call this AFTER each iteration to track which modification strategies
+    are effective. This builds knowledge about:
+    - Which patterns (shader_node, config_class, etc.) work for which issues
+    - Which parameters have real visual impact
+    - Which suggestions are "no-ops"
+
+    Args:
+        issue: The issue being addressed (e.g., "too dark", "no fire visible")
+        modification_pattern: The exact pattern used (e.g., "volume.inputs['Density'].default_value")
+        pattern_type: Category: config_class, settings_attr, shader_node, math_node
+        score_before: Quality score before modification
+        score_after: Quality score after modification
+        visual_change_observed: Did the render look different?
+        effect_type: Effect type for context
+
+    Returns:
+        JSON with strategy effectiveness statistics
+    """
+    return _report_modification_outcome_impl(
+        issue, modification_pattern, pattern_type,
+        score_before, score_after, visual_change_observed, effect_type
+    )
+
+
+@function_tool
+async def get_effective_strategy(issue: str) -> str:
+    """
+    Get the most effective modification strategy for an issue.
+
+    Returns the pattern type (shader_node, config_class, etc.) that has
+    historically worked best for this type of issue.
+
+    Args:
+        issue: The issue to address (e.g., "too dark", "grey sphere")
+
+    Returns:
+        JSON with best strategy and confidence level
+    """
+    return _get_effective_strategy_impl(issue)

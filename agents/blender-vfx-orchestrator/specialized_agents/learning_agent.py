@@ -53,6 +53,9 @@ from tools.experiment_tracker_tools import (
     get_parameter_knowledge,
     add_manual_learning,
     get_experiment_statistics,
+    # Modification outcome tracking (self-learning feedback loop)
+    report_modification_outcome,
+    get_effective_strategy,
 )
 
 # Import knowledge distillation tools for automatic pattern extraction
@@ -73,6 +76,12 @@ from tools.physics_observation_tools import (
     get_pending_observations,
     correlate_observation,
     get_physics_patterns,
+)
+
+# Import script analysis tools for understanding script structure before suggesting modifications
+from tools.script_analysis_tools import (
+    analyze_script_modifiable_patterns,
+    get_effective_modification_for_issue,
 )
 
 # Doc mining tools (optional fallback when KB is empty)
@@ -170,6 +179,12 @@ class LearningAgent:
                 get_pending_observations,
                 correlate_observation,
                 get_physics_patterns,
+                # Script analysis tools (understand script structure before suggesting modifications)
+                analyze_script_modifiable_patterns,
+                get_effective_modification_for_issue,
+                # Modification outcome tracking (learn which patterns actually work)
+                report_modification_outcome,
+                get_effective_strategy,
                 # Doc mining fallback (used only when KB is empty)
                 blender_doc_search_bundle,
             ],

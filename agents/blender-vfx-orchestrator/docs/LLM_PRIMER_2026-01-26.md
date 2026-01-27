@@ -138,7 +138,7 @@ python test_e2e_orchestrator.py
 
 ## 9) Active Problems (Blockers)
 
-See `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`. Summary:
+See `docs/MASTER_ROADMAP_2026-01-26.md` (single source of truth). Summary:
 
 1. **Spec-first doc search stabilization** (loop detection still triggers).
 2. **Enum validation verification** (needs successful spec-first run).
@@ -193,7 +193,7 @@ See `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`. Summary:
 - `docs/SDK_ENFORCEMENT_PROTOCOL.md`
 - `docs/VERSION_TRUTH.md`
 - `docs/SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md`
-- `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+- `docs/MASTER_ROADMAP_2026-01-26.md`
 
 ---
 

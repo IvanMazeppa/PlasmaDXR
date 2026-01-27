@@ -4,7 +4,7 @@
 
 **Purpose:** Ensure OpenAI Agents SDK documentation is ALWAYS consulted before making changes.
 
-**Current SDK Version:** v0.6.9+ (2026-01-23)
+**Current SDK Version:** v0.7.0 (2026-01-27)
 
 ---
 

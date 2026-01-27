@@ -1,6 +1,6 @@
 # CRITICAL AUDIT: LLM Attribute Hallucination in Script Writer
 
-> Consolidated issue list: `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md`
+> Consolidated issue list: `docs/MASTER_ROADMAP_2026-01-26.md`
 
 **Date:** 2026-01-25
 **Status:** CRITICAL - Blocking all progress

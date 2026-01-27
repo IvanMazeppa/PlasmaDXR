@@ -76,12 +76,52 @@ HALLUCINATION_PATTERNS = [
     (r"\bobj\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
 ]
 
+# Valid OUTPUT_DIR prefixes - scripts must use these paths to avoid permission errors
+VALID_OUTPUT_DIR_PREFIXES = [
+    "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output",
+    "/home/maz3ppa/projects/PlasmaDXR/assets",
+    "/tmp/",  # Temporary paths are OK for testing
+    "//",  # Blender-relative paths are OK
+]
+
+
+def _validate_output_dir(script_text: str) -> List[str]:
+    """Check if OUTPUT_DIR in script uses a valid path prefix."""
+    issues = []
+
+    # Find OUTPUT_DIR assignment
+    output_dir_match = re.search(
+        r'OUTPUT_DIR\s*=\s*[f]?["\']([^"\']+)["\']',
+        script_text
+    )
+
+    if output_dir_match:
+        output_dir = output_dir_match.group(1)
+        # Handle f-string variables like {ASSET_NAME} - extract the base path
+        base_path = re.sub(r'\{[^}]+\}', '', output_dir)
+
+        is_valid = any(
+            base_path.startswith(prefix)
+            for prefix in VALID_OUTPUT_DIR_PREFIXES
+        )
+
+        if not is_valid:
+            issues.append(
+                f"HALLUCINATED OUTPUT_DIR: '{output_dir}' is not a valid path. "
+                f"Use /home/maz3ppa/projects/PlasmaDXR/build/vdb_output/{{ASSET_NAME}}"
+            )
+
+    return issues
+
 
 def _scan_script_for_hallucinations(script_text: str) -> List[str]:
     """Return list of hallucination issues found in script text."""
     issues: List[str] = []
     if not script_text:
         return issues
+
+    # Check OUTPUT_DIR path validity (prevent permission errors from hallucinated paths)
+    issues.extend(_validate_output_dir(script_text))
 
     in_triple = False
     for line in script_text.splitlines():

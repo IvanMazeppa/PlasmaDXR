@@ -2,6 +2,8 @@
 
 **Purpose:** Complete inventory of all changes, files, and data from this session.
 **Use this as a change log and evidence list. Roadmap priorities live in `docs/MASTER_ROADMAP_2026-01-26.md`.**
+**Note:** References to `docs/CURRENT_ISSUES_CONSOLIDATED_2026-01-26.md` and
+`docs/PHASE_4_GATING_ROADMAP_2026-01-25.md` are retired.
 
 ---
 

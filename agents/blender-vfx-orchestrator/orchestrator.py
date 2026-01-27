@@ -2353,9 +2353,17 @@ Use patterns from library if available."""
                                             corrected_content = '\n'.join(lines)
                                         else:
                                             # Direct token replacement
-                                            old_token = api_call.split('.')[-1] if '.' in api_call else api_call
-                                            new_token = correction.split('.')[-1] if '.' in correction else correction
-                                            corrected_content = corrected_content.replace(old_token, new_token)
+                                            # BUGFIX 2026-01-27: Assignment patterns (containing '=') must use
+                                            # full string replacement. Token splitting on '.' corrupts decimal
+                                            # literals (e.g., 6.0 becomes 6.<correction> when replacing "0")
+                                            if '=' in api_call:
+                                                # Assignment pattern (noise_scale = 1.0) - replace full match
+                                                corrected_content = corrected_content.replace(api_call, correction)
+                                            else:
+                                                # Property access (.use_caching) - use token replacement
+                                                old_token = api_call.split('.')[-1] if '.' in api_call else api_call
+                                                new_token = correction.split('.')[-1] if '.' in correction else correction
+                                                corrected_content = corrected_content.replace(old_token, new_token)
 
                                 # Also apply known patterns directly
                                 for pattern, fix in KNOWN_API_CHANGES.items():
@@ -2607,7 +2615,7 @@ Provide detailed feedback for improvement."""
                     learn_ctx = session_mgr.get_context_for_agents()
                     iteration_history = session_mgr.get_iteration_summary()
 
-                    learn_prompt = f"""Record the experiment results.
+                    learn_prompt = f"""Record the experiment results and suggest fixes.
 
 ## Current Iteration
 Iteration: {iteration}
@@ -2625,10 +2633,17 @@ Primary Issue: {quality.primary_issue or 'None'}
 2. Same issue {learn_ctx.get('consecutive_same_issue', 0)} times in a row
 3. Techniques tried: {', '.join(learn_ctx.get('techniques_tried', []))}
 
+## CRITICAL: Before Suggesting Modifications
+FIRST call analyze_script_modifiable_patterns("{script.script_path}") to understand:
+- What shader_node_inputs exist (these control visual appearance!)
+- What Config class values exist (and if they're used)
+- What settings assignments exist
+Then provide parameter_modifications using EXACT identifiers from the analysis.
+
 ## Your Output
 - If score improved significantly (delta >= 5), extract the pattern
 - If same issue 3+ times, recommend 'switch_technique'
-- If issues are parameter-related, provide parameter_modifications with CONCRETE values
+- If issues are parameter-related, provide parameter_modifications using EXACT patterns from script analysis
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
                     try:
