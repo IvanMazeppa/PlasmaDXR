@@ -2111,6 +2111,31 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                 print(f"[Pipeline] Coordinator decision: {mod_decision.action}", file=sys.stderr)
                                 print(f"[Pipeline] Reasoning: {mod_decision.reasoning[:60]}...", file=sys.stderr)
 
+                                # TECHNIQUE SWITCH: Route through spec-first pipeline for a fresh script
+                                # This avoids the modify_script path which can only patch Config params
+                                if mod_decision.action == 'switch_technique' and self._use_spec_first_pipeline:
+                                    print(f"[Pipeline] TECHNIQUE SWITCH → Re-running spec-first pipeline", file=sys.stderr)
+
+                                    # Pick new technique from alternatives
+                                    new_technique = mod_decision.reasoning[:80] if mod_decision.reasoning else "alternative"
+                                    untried = [a for a in session.alternative_approaches if a not in session_mgr.techniques_tried]
+                                    if untried:
+                                        new_technique = untried[0]
+
+                                    try:
+                                        script = await self._run_spec_first_pipeline(
+                                            effect_type=request.effect_type.value,
+                                            technique=new_technique,
+                                            request=request,
+                                            context=context,
+                                            sdk_session=sdk_session,
+                                        )
+                                        direct_modification_success = True
+                                        session_mgr.reset_for_technique_switch(new_technique)
+                                    except Exception as e:
+                                        print(f"[Pipeline] Spec-first switch failed: {e}, falling back to Script Writer", file=sys.stderr)
+                                        # Fall through to existing Script Writer path
+
                                 # If Coordinator provides parameter changes, try direct modification
                                 if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
                                     print(f"[Pipeline] Coordinator provided params: {mod_decision.parameter_changes}", file=sys.stderr)

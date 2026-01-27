@@ -110,6 +110,47 @@ The bundle results contain `doc_refs` and `related_apis`. Map them:
 The anchor (#resolution_max) MUST be the exact attribute_name you're documenting.
 Do NOT use class methods like bl_rna_get_subclass_py as anchors.
 
+## KNOWN-GOOD ATTRIBUTES (Always Allowed)
+The following attributes are WHITELISTED and do not need doc_ref anchor verification.
+You SHOULD include them when relevant to the effect. Use the class-level doc_ref (no anchor needed):
+  doc_ref: "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html"
+
+### FluidDomainSettings (Domain Setup - CRITICAL)
+- domain_type: enum [GAS, LIQUID] — DETERMINES EFFECT TYPE
+- resolution_max: int [32-512] — simulation quality
+- use_noise: bool — turbulence
+- noise_strength: float — turbulence intensity
+- noise_scale: int [1-10] — noise detail
+- vorticity: float [0-1] — swirl
+- use_adaptive_timesteps: bool
+- timesteps_maximum: int
+- use_dissolve_smoke: bool
+- dissolve_speed: int
+- use_flip_particles: bool — enable FLIP (liquid)
+- flip_ratio: float [0-1] — FLIP particle ratio (liquid)
+- particle_radius: float — particle size
+- use_mesh: bool — liquid mesh generation
+- mesh_concave_upper: float
+- mesh_smoothen_pos: int
+- mesh_smoothen_neg: int
+- cache_directory: str
+- cache_type: enum [REPLAY, MODULAR, ALL]
+- openvdb_cache_compress_type: enum [ZIP, BLOSC, NONE]
+- use_spray_particles: bool (liquid)
+- use_foam_particles: bool (liquid)
+- use_bubble_particles: bool (liquid)
+
+### FluidFlowSettings (Inflow/Outflow)
+- flow_type: enum [SMOKE, FIRE, BOTH, LIQUID]
+- flow_behavior: enum [INFLOW, OUTFLOW, GEOMETRY]
+- use_initial_velocity: bool
+- velocity_normal: float — initial velocity
+- temperature: float — heat
+- density: float — smoke density
+
+### FluidModifier
+- fluid_type: enum [NONE, DOMAIN, FLOW, EFFECTOR]
+
 ## COMMON ATTRIBUTES
 
 Domain: resolution_max, domain_type, use_adaptive_timesteps, use_noise, noise_strength, vorticity
@@ -122,9 +163,10 @@ Scene: frame_start, frame_end
 - bake_frame_start (use scene.frame_start)
 
 ## OUTPUT RULES
-1. Every attribute's doc_ref MUST contain that attribute's name
-2. Incomplete spec is OK - do NOT exceed turn budget
-3. After Turn 2, OUTPUT immediately - no more searching
+1. Every attribute's doc_ref MUST contain that attribute's name OR be on the known-good whitelist
+2. Include ALL whitelisted attributes relevant to the effect type
+3. For LIQUID effects: domain_type=LIQUID, use_flip_particles, use_mesh are MANDATORY
+4. After Turn 2, OUTPUT immediately - no more searching
 """
 
 

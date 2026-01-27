@@ -42,6 +42,147 @@ VALID_ENUM_VALUES = {
     "domain_type": ["GAS", "LIQUID"],
 }
 
+# Known-good Blender 5.0 Mantaflow attributes verified from official docs.
+# Attributes in this whitelist bypass strict doc_ref anchor validation.
+# This is P1-17 from the Master Roadmap: "API index/whitelist from Blender 5 docs"
+KNOWN_GOOD_ATTRIBUTES = {
+    # FluidDomainSettings - core simulation setup
+    "FluidDomainSettings.domain_type": {
+        "value_type": "enum",
+        "enum_values": ["GAS", "LIQUID"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.resolution_max": {
+        "value_type": "int",
+        "value_range": "[32, 512]",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_noise": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.noise_strength": {
+        "value_type": "float",
+        "value_range": "[0.0, 10.0]",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.noise_scale": {
+        "value_type": "int",
+        "value_range": "[1, 10]",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.vorticity": {
+        "value_type": "float",
+        "value_range": "[0.0, 1.0]",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_adaptive_timesteps": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.timesteps_maximum": {
+        "value_type": "int",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_dissolve_smoke": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.dissolve_speed": {
+        "value_type": "int",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_flip_particles": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.flip_ratio": {
+        "value_type": "float",
+        "value_range": "[0.0, 1.0]",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.particle_radius": {
+        "value_type": "float",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_mesh": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.mesh_concave_upper": {
+        "value_type": "float",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.mesh_smoothen_pos": {
+        "value_type": "int",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.mesh_smoothen_neg": {
+        "value_type": "int",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.cache_directory": {
+        "value_type": "str",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.cache_type": {
+        "value_type": "enum",
+        "enum_values": ["REPLAY", "MODULAR", "ALL"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.openvdb_cache_compress_type": {
+        "value_type": "enum",
+        "enum_values": ["ZIP", "BLOSC", "NONE"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    # FluidDomainSettings - liquid specific
+    "FluidDomainSettings.use_spray_particles": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_foam_particles": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    "FluidDomainSettings.use_bubble_particles": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
+    },
+    # FluidFlowSettings - inflow/outflow
+    "FluidFlowSettings.flow_type": {
+        "value_type": "enum",
+        "enum_values": ["SMOKE", "FIRE", "BOTH", "LIQUID"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    "FluidFlowSettings.flow_behavior": {
+        "value_type": "enum",
+        "enum_values": ["INFLOW", "OUTFLOW", "GEOMETRY"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    "FluidFlowSettings.use_initial_velocity": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    "FluidFlowSettings.velocity_normal": {
+        "value_type": "float",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    "FluidFlowSettings.temperature": {
+        "value_type": "float",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    "FluidFlowSettings.density": {
+        "value_type": "float",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
+    # Object-level fluid type
+    "FluidModifier.fluid_type": {
+        "value_type": "enum",
+        "enum_values": ["NONE", "DOMAIN", "FLOW", "EFFECTOR"],
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidModifier.html",
+    },
+}
+
 
 # =============================================================================
 # API SPEC GUARDRAIL
@@ -170,6 +311,15 @@ def _validate_attribute_doc_ref(attr: Any, category: str) -> str | None:
     """
     if not hasattr(attr, 'doc_ref') or not hasattr(attr, 'attribute_name'):
         return f"{category}: attribute missing doc_ref or attribute_name field"
+
+    # Check whitelist first - known-good attributes bypass strict doc_ref anchor validation
+    object_type = getattr(attr, 'object_type', '')
+    whitelist_key = f"{object_type}.{attr.attribute_name}" if object_type else ""
+    if whitelist_key and whitelist_key in KNOWN_GOOD_ATTRIBUTES:
+        # Still require non-empty doc_ref, but don't enforce anchor matching
+        if not attr.doc_ref or attr.doc_ref.strip() == "":
+            return f"{category}.{attr.attribute_name}: missing doc_ref (whitelisted but still needs ref)"
+        return None  # Pass - known good attribute
 
     if not attr.doc_ref or attr.doc_ref.strip() == "":
         return f"{category}.{attr.attribute_name}: missing doc_ref"

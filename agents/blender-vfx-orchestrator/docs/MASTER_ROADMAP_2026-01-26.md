@@ -181,6 +181,21 @@ If any item is red, **Phase 4 must not start**.
 
 ---
 
+## 8) Action Checklist (Working List)
+
+- [ ] Run a 2-iteration spec-first shakedown and confirm no fallback.
+- [ ] Verify `doc_refs` resolve to real `DocPath` entries.
+- [ ] Confirm iteration 2+ modifications change the script (`changes_made` non-empty).
+- [ ] Verify single outer `trace()` and `group_id=session_id` in JSONL.
+- [ ] Validate fluid domain setup order before accessing `domain_settings`.
+- [ ] Exercise enum guardrail in a spec-first run (not only unit tests).
+- [ ] Enforce strict unknown-attribute validation (unknown == invalid).
+- [ ] Require doc_refs for any pattern application to prevent legacy API drift.
+- [ ] Complete SQLiteSession integration and confirm cross-agent context.
+- [ ] Standardize output schema fields and add a schema drift test.
+
+---
+
 ## 7) Document Authority
 
 This file is the **only roadmap**. All other issue lists and gating docs are

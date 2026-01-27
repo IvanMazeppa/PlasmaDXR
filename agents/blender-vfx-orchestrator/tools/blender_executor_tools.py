@@ -524,6 +524,17 @@ async def _execute_blender_script_impl(
     except Exception as e:
         print(f"[Executor] WARN: API fixer failed: {e}", file=sys.stderr)
 
+    # Generate unique output directory for this execution
+    script_basename = Path(script_path).stem
+    unique_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_output_dir = str(PROJECT_ROOT / "build" / "vfx_output" / f"{unique_ts}_{script_basename}")
+    os.makedirs(unique_output_dir, exist_ok=True)
+
+    # Use unique dir if no explicit output_dir was provided
+    if not output_dir:
+        output_dir = unique_output_dir
+        print(f"[Executor] Unique output dir: {output_dir}", file=sys.stderr)
+
     # Check Blender executable
     if not Path(BLENDER_EXE).exists():
         return json.dumps({
@@ -559,7 +570,7 @@ async def _execute_blender_script_impl(
         })
 
     # Build command
-    cmd = [str(CLI_RUNNER)]
+    cmd = [str(CLI_RUNNER), "--save-blend"]
 
     if use_ui:
         cmd.append("--ui")
@@ -588,11 +599,16 @@ async def _execute_blender_script_impl(
 
     # Execute
     try:
+        # Pass output dir via env so scripts/wrappers can use it
+        env = os.environ.copy()
+        env['BLENDER_OUTPUT_DIR'] = output_dir or ""
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            env=env,
         )
 
         stdout_bytes, stderr_bytes = await asyncio.wait_for(

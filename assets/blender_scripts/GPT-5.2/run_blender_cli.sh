@@ -40,6 +40,7 @@ FACTORY_STARTUP=1
 PY_EXIT_CODE=1
 LOG_LEVEL="${BLENDER_LOG_LEVEL:-info}"
 LOG_MATCH="${BLENDER_LOG_MATCH:-}"
+SAVE_BLEND=0
 
 DEFAULT_BLENDER_EXE="/home/maz3ppa/apps/blender-5.0.1-linux-x64/blender"
 BLENDER_EXE="${BLENDER_EXE:-$DEFAULT_BLENDER_EXE}"
@@ -59,6 +60,7 @@ Options:
   --python-exit-code <n>   Exit code for Python exceptions (default: 1, 0 disables)
   --log-level <level>      fatal|error|warning|info|debug|trace (default: info)
   --log <match>            Logging categories match, e.g. "render,cycles" or "*"
+  --save-blend             Save .blend + fluid cache to run directory after script execution
   -h, --help               Show this help
 
 Examples:
@@ -107,6 +109,10 @@ while [[ $# -gt 0 ]]; do
     --log)
       LOG_MATCH="$2"
       shift 2
+      ;;
+    --save-blend)
+      SAVE_BLEND=1
+      shift
       ;;
     -h|--help)
       usage
@@ -247,6 +253,57 @@ BLEND_FOR_BLENDER=""
 if [[ -n "$BLEND_FILE" ]]; then
   BLEND_ABS="$(_abs_path "$BLEND_FILE")"
   BLEND_FOR_BLENDER="$(_rel_to_root_if_possible "$BLEND_ABS")"
+fi
+
+# --save-blend: create a wrapper that exec()s the original script,
+# then saves .blend + copies fluid cache into the run directory.
+if [[ "$SAVE_BLEND" -eq 1 ]]; then
+    WRAPPER="${RUN_DIR}/_wrapper.py"
+    export BLENDER_RUN_DIR="$RUN_DIR"
+
+    cat > "$WRAPPER" <<PYEOF
+import sys, os
+
+_run_dir = os.environ.get('BLENDER_RUN_DIR', '')
+_orig_script = r'${SCRIPT_ABS}'
+
+# Execute original script with correct __file__ identity
+_code = compile(open(_orig_script).read(), _orig_script, 'exec')
+exec(_code)
+
+# --- Post-execution: save .blend and relocate cache ---
+import bpy, shutil
+
+_blend_path = os.path.join(_run_dir, 'scene.blend')
+try:
+    bpy.ops.wm.save_as_mainfile(filepath=_blend_path)
+    print(f'[run_blender_cli] Saved .blend: {_blend_path}')
+except Exception as _e:
+    print(f'[run_blender_cli] WARNING: save .blend failed: {_e}')
+
+# Copy fluid cache data into run directory for portability
+try:
+    for _obj in bpy.data.objects:
+        for _mod in _obj.modifiers:
+            if _mod.type == 'FLUID' and hasattr(_mod, 'domain_settings') and _mod.domain_settings:
+                _cache_src = bpy.path.abspath(_mod.domain_settings.cache_directory)
+                if _cache_src and os.path.isdir(_cache_src):
+                    _cache_dst = os.path.join(_run_dir, 'cache', _obj.name)
+                    os.makedirs(_cache_dst, exist_ok=True)
+                    for _f in os.listdir(_cache_src):
+                        _src_file = os.path.join(_cache_src, _f)
+                        if os.path.isfile(_src_file):
+                            shutil.copy2(_src_file, _cache_dst)
+                    _mod.domain_settings.cache_directory = os.path.join('//', 'cache', _obj.name) + os.sep
+                    print(f'[run_blender_cli] Copied fluid cache for {_obj.name}: {_cache_dst}')
+    # Re-save with updated cache paths
+    bpy.ops.wm.save_as_mainfile(filepath=_blend_path)
+except Exception as _e:
+    print(f'[run_blender_cli] WARNING: cache copy failed: {_e}')
+PYEOF
+
+    SCRIPT_FOR_BLENDER="$(_rel_to_root_if_possible "$WRAPPER")"
+    echo "[run_blender_cli] Save-blend enabled, wrapper: $WRAPPER"
 fi
 
 # Optional .blend to open (use converted path).

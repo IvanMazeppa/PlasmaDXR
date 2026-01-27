@@ -38,6 +38,10 @@ EFFECT_CONFIGS = {
         'effect_type': EffectType.NEBULA,
         'description': 'Colorful space nebula with swirling gases and stars',
     },
+    'water': {
+        'effect_type': EffectType.WATER,
+        'description': 'Water pouring into a glass cup with splashing and refraction',
+    },
 }
 
 
@@ -132,7 +136,7 @@ Examples:
     )
     parser.add_argument('--name', type=str, default='quick_test_v1', help='Asset name')
     parser.add_argument('--effect', type=str, default='sun',
-                        choices=['sun', 'fire', 'explosion', 'smoke', 'nebula'],
+                        choices=['sun', 'fire', 'explosion', 'smoke', 'nebula', 'water'],
                         help='Effect type to test')
     parser.add_argument('--preset', type=str, default='quick_test',
                         help='Config preset (quick_test, development, production, budget_saver, debug)')
