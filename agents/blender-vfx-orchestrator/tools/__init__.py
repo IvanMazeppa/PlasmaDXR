@@ -68,6 +68,7 @@ from .semantic_docs_tools import (
     # Direct callable versions
     semantic_search_impl,
     find_alternatives_impl,
+    bundle_search_impl,
 )
 
 from .code_pattern_tools import (
@@ -135,6 +136,7 @@ __all__ = [
     "search_blender_api_by_intent",
     "semantic_search_impl",
     "find_alternatives_impl",
+    "bundle_search_impl",
     # Code Patterns (Strategy 4)
     "record_code_pattern",
     "search_code_patterns",

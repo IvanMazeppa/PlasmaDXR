@@ -237,6 +237,7 @@ from tools.proactive_research_tools import (
 # Semantic docs tools for Strategy 1: Vector Store for Blender Documentation
 from tools.semantic_docs_tools import (
     blender_doc_search_bundle,
+    bundle_search_impl,  # Direct callable (not FunctionTool) for programmatic use
     find_alternative_approaches,
 )
 
@@ -939,13 +940,33 @@ class BlenderVFXOrchestrator:
         """
         print(f"[Spec-First] Starting API Spec → Code Writer pipeline", file=sys.stderr)
 
+        # ====== PHASE 1.0: DETERMINISTIC BUNDLE CALL ======
+        # Call bundle programmatically BEFORE running the agent
+        # This removes reliance on model compliance for bundle-first discipline
+        print(f"[Spec-First] Phase 1.0: Deterministic bundle call", file=sys.stderr)
+
+        try:
+            # Use bundle_search_impl (direct callable) instead of blender_doc_search_bundle (FunctionTool)
+            bundle_results = bundle_search_impl(
+                effect_type=effect_type,
+                description=request.description,
+                intent=f"create {effect_type} effect with {technique}",
+                domain="Mantaflow",
+                max_results=6
+            )
+            print(f"[Spec-First] Bundle results loaded ({len(bundle_results)} chars)", file=sys.stderr)
+        except Exception as e:
+            print(f"[Spec-First] WARNING: Bundle call failed: {e}", file=sys.stderr)
+            bundle_results = "{}"  # Empty JSON fallback
+
         # Create hooks for each agent
         api_spec_hooks = create_api_spec_hooks()
         code_writer_hooks = create_code_writer_hooks()
 
         # ====== PHASE 1.A: API SPEC AGENT ======
         # Creates verified API specification from Blender 5.0 docs
-        print(f"[Spec-First] Phase 1.A: API Spec Agent", file=sys.stderr)
+        # Bundle results are pre-loaded - agent only needs targeted searches for gaps
+        print(f"[Spec-First] Phase 1.A: API Spec Agent (with pre-loaded bundle)", file=sys.stderr)
 
         spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
 
@@ -953,18 +974,25 @@ class BlenderVFXOrchestrator:
 ## Technique: {technique}
 ## Description: {request.description}
 
-You MUST:
-1. Call semantic_search_blender_docs for EVERY attribute you include
-2. Include the doc_ref from search results in your output
-3. Only include attributes with valid doc_refs from blender_python_reference_5_0/
+## PRE-LOADED BUNDLE RESULTS (from blender_doc_search_bundle)
+The bundle search has already been executed. Use these results as your PRIMARY source:
+
+```json
+{bundle_results}
+```
+
+## YOUR TASK
+1. Extract attributes and doc_refs from the bundle results above
+2. ONLY use semantic_search_blender_docs for specific attributes NOT found in bundle (max 4 calls)
+3. Construct doc_ref as: blender_python_reference_5_0/bpy.types.{{CLASS}}.html#{{ATTRIBUTE}}
+4. Output the complete APISpec with all verified attributes
 
 Key parameters needed for {effect_type}:
-- Domain resolution and type
-- Flow type and behavior
-- Temperature, density, velocity settings
-- Any technique-specific attributes
+- Domain: resolution_max, domain_type, use_noise, noise_strength, vorticity
+- Flow: flow_type, flow_behavior, temperature, density, velocity_normal
+- Scene: frame_start, frame_end
 
-Search the documentation for each attribute and return the complete APISpec."""
+Extract from bundle first, then fill gaps with targeted searches."""
 
         try:
             spec_result = await Runner.run(

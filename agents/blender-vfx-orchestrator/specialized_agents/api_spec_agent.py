@@ -54,6 +54,10 @@ except ImportError:
 API_SPEC_AGENT_INSTRUCTIONS = """## ROLE
 You are the API Specification Agent. Create a VERIFIED APISpec for Blender 5.0.
 
+## IMPORTANT: BUNDLE RESULTS ARE PRE-LOADED
+The orchestrator has ALREADY called `blender_doc_search_bundle` and injected the results
+into your prompt. You do NOT need to call the bundle tool - just parse the provided results.
+
 ## DOC_REF FORMAT - CRITICAL (Read First!)
 
 The doc_ref field MUST include the ATTRIBUTE NAME in the anchor. The validator REJECTS refs without it.
@@ -78,49 +82,37 @@ If value_type is **enum**, you MUST include `enum_values`:
 
 ## EXECUTION PLAN - FOLLOW EXACTLY
 
-### TURN 1: Bundle-first doc search (MANDATORY - HOOKS ENFORCE THIS)
-**FIRST TOOL CALL MUST BE `blender_doc_search_bundle`**. No exceptions.
+### TURN 1: Parse pre-loaded bundle results
+The prompt contains JSON from `blender_doc_search_bundle`. Extract:
+- Attribute names from `related_apis` and `results`
+- Doc refs from `doc_refs` field
+- Code patterns from `code_snippets`
 
-Example call:
-```
-blender_doc_search_bundle(
-    effect_type="pyro",
-    description="Explosion with fire and smoke",
-    intent="domain setup, flow emitter, baking",
-    domain="FluidDomainSettings FluidFlowSettings"
-)
-```
+Construct doc_refs as: blender_python_reference_5_0/bpy.types.{CLASS}.html#{ATTRIBUTE}
 
-⚠️ WARNING: Targeted searches (semantic_search_blender_docs, search_blender_api_by_intent)
-are BLOCKED by hooks until bundle has been called. Attempting them first will fail.
-
-Use bundle results to populate as many attributes/ops as possible.
-
-### TURN 2: Targeted attribute searches (MAX 6 TOTAL)
-Only if an attribute is still missing a valid doc_ref:
+### TURN 2: Targeted searches for GAPS ONLY (MAX 4 TOTAL)
+Only if a CRITICAL attribute is missing from the bundle:
 - Call `semantic_search_blender_docs` for that specific attribute
-- **Hard limit:** 6 calls total
+- **Hard limit:** 4 calls total
+- Skip non-critical attributes rather than exceeding limit
 
-### TURN 3: Ops search (MAX 1)
-Call `search_blender_api_by_intent` only if an op doc_ref is missing.
+### TURN 3: OUTPUT - NO MORE SEARCHING
+Output the APISpec. Do NOT search again after Turn 2.
 
-### TURN 4: OUTPUT - NO MORE SEARCHING
-Output the APISpec. Do NOT search again after Turn 3.
+**TOTAL DOC SEARCHES:** <=4 semantic_search (bundle already done)
 
-**TOTAL DOC SEARCHES:**
-- 1 bundle + <=6 semantic_search + <=1 intent = <=8 total
+## EXTRACTING DOC_REF FROM BUNDLE RESULTS
 
-## EXTRACTING DOC_REF FROM RESULTS
-
-When you search "FluidDomainSettings resolution_max", construct the doc_ref as:
-  "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html#resolution_max"
+The bundle results contain `doc_refs` and `related_apis`. Map them:
+- related_apis: ["bpy.types.FluidDomainSettings.resolution_max"]
+  → doc_ref: "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html#resolution_max"
 
 The anchor (#resolution_max) MUST be the exact attribute_name you're documenting.
 Do NOT use class methods like bl_rna_get_subclass_py as anchors.
 
 ## COMMON ATTRIBUTES
 
-Domain: resolution_max, domain_type, use_adaptive_timesteps, time_scale, vorticity
+Domain: resolution_max, domain_type, use_adaptive_timesteps, use_noise, noise_strength, vorticity
 Flow: flow_type, flow_behavior, temperature, density, fuel_amount, velocity_normal
 Scene: frame_start, frame_end
 
@@ -132,7 +124,7 @@ Scene: frame_start, frame_end
 ## OUTPUT RULES
 1. Every attribute's doc_ref MUST contain that attribute's name
 2. Incomplete spec is OK - do NOT exceed turn budget
-3. After Turn 3, OUTPUT immediately
+3. After Turn 2, OUTPUT immediately - no more searching
 """
 
 

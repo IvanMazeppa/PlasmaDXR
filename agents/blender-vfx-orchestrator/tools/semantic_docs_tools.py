@@ -458,8 +458,7 @@ def semantic_search_blender_docs(
     })
 
 
-@function_tool
-def blender_doc_search_bundle(
+def _blender_doc_search_bundle_impl(
     effect_type: str,
     description: str = "",
     intent: str = "",
@@ -467,28 +466,9 @@ def blender_doc_search_bundle(
     max_results: int = 6
 ) -> str:
     """
-    Multi-query Blender 5.0 doc search with internal fallbacks.
+    Internal implementation of bundle search - can be called directly.
 
-    This reduces tool-call count by batching multiple queries into ONE tool call.
-    Use when you need robust doc grounding without hitting turn limits.
-
-    Args:
-        effect_type: Effect type (fire, explosion, smoke, etc.)
-        description: Natural language request/goal
-        intent: Specific intent to search (optional)
-        domain: Domain focus (default: Mantaflow)
-        max_results: Max results to return (1-10)
-
-    Returns:
-        JSON with:
-        - queries_used: list of queries executed
-        - results_found: number of results
-        - results: list of doc chunks (content, score, source, query)
-        - code_snippets: extracted Python snippets (if any)
-        - related_apis: bpy.* references discovered
-        - doc_refs: list of source filenames
-        - warnings: list of warnings (if any)
-        - diagnostics: status info
+    This is the callable version that the orchestrator can use programmatically.
     """
     if not OPENAI_AVAILABLE:
         return json.dumps({
@@ -693,10 +673,55 @@ def blender_doc_search_bundle(
         "diagnostics": {
             "openai_available": True,
             "manual_store_id": MANUAL_STORE_ID,
-                "api_store_id": API_STORE_ID,
+            "api_store_id": API_STORE_ID,
             "queries_attempted": len(queries_used),
         },
     })
+
+
+@function_tool
+def blender_doc_search_bundle(
+    effect_type: str,
+    description: str = "",
+    intent: str = "",
+    domain: str = "Mantaflow",
+    max_results: int = 6
+) -> str:
+    """
+    Multi-query Blender 5.0 doc search with internal fallbacks.
+
+    This reduces tool-call count by batching multiple queries into ONE tool call.
+    Use when you need robust doc grounding without hitting turn limits.
+
+    Args:
+        effect_type: Effect type (fire, explosion, smoke, etc.)
+        description: Natural language request/goal
+        intent: Specific intent to search (optional)
+        domain: Domain focus (default: Mantaflow)
+        max_results: Max results to return (1-10)
+
+    Returns:
+        JSON with:
+        - queries_used: list of queries executed
+        - results_found: number of results
+        - results: list of doc chunks (content, score, source, query)
+        - code_snippets: extracted Python snippets (if any)
+        - related_apis: bpy.* references discovered
+        - doc_refs: list of source filenames
+        - warnings: list of warnings (if any)
+        - diagnostics: status info
+    """
+    return _blender_doc_search_bundle_impl(
+        effect_type=effect_type,
+        description=description,
+        intent=intent,
+        domain=domain,
+        max_results=max_results,
+    )
+
+
+# Alias for direct import
+bundle_search_impl = _blender_doc_search_bundle_impl
 
 
 @function_tool

@@ -517,26 +517,32 @@ class BundleFirstRequiredError(EnforcementError):
 
 class APISpecEnforcementHooks(EnforcementHooks):
     """
-    Specialized hooks for API Spec Agent with BUNDLE-FIRST enforcement.
+    Specialized hooks for API Spec Agent with targeted search limits.
 
-    This class enforces the "bundle-first" discipline:
-    1. Targeted doc searches (semantic_search_blender_docs, search_blender_api_by_intent)
-       are BLOCKED until blender_doc_search_bundle has been called.
-    2. After bundle call, targeted searches are limited (max 6).
-    3. Turn budget is enforced to prevent endless searching.
+    NOTE: Bundle-first enforcement has been moved to the orchestrator.
+    The orchestrator now calls blender_doc_search_bundle PROGRAMMATICALLY before
+    running this agent, removing reliance on model compliance.
 
-    The bundle-first pattern is critical because:
-    - Bundle returns multiple related attributes in one call
-    - Targeted searches are expensive and can cause loop detection
-    - Bundle provides a solid foundation for the APISpec
+    This class now enforces:
+    1. Targeted search limits (max 4 calls since bundle is pre-loaded)
+    2. Turn budget to prevent endless searching
+    3. Doc query tracking for observability
+
+    The bundle is pre-called, so _bundle_called starts as True.
     """
 
     BUNDLE_TOOL = "blender_doc_search_bundle"
     TARGETED_TOOLS = ["semantic_search_blender_docs", "search_blender_api_by_intent"]
-    MAX_TARGETED_SEARCHES = 6
+    MAX_TARGETED_SEARCHES = 4  # Reduced from 6 since bundle is pre-loaded
 
-    def __init__(self):
-        """Initialize with API Spec Agent optimized config."""
+    def __init__(self, bundle_pre_called: bool = True):
+        """
+        Initialize with API Spec Agent optimized config.
+
+        Args:
+            bundle_pre_called: If True (default), bundle is assumed to be pre-called
+                               by the orchestrator. Set to False for testing.
+        """
         config = EnforcementConfig(
             max_same_tool_calls=10,  # Standard limit for non-exempt tools
             max_consecutive_same_tool=8,  # Allow batches, prevent spam
@@ -557,15 +563,24 @@ class APISpecEnforcementHooks(EnforcementHooks):
         )
         super().__init__(config)
 
-        # Bundle-first state
-        self._bundle_called: bool = False
+        # Bundle state - True by default since orchestrator pre-calls it
+        self._bundle_pre_called = bundle_pre_called
+        self._bundle_called: bool = bundle_pre_called
         self._targeted_search_count: int = 0
+
+        # Mark doc query as made if bundle is pre-called
+        if bundle_pre_called:
+            self._doc_query_made = True
 
     def _reset_state(self) -> None:
         """Reset all tracking state for a new agent run."""
         super()._reset_state()
-        self._bundle_called = False
+        # Restore bundle_called to pre-called state (don't reset to False)
+        self._bundle_called = self._bundle_pre_called
         self._targeted_search_count = 0
+        # Restore doc_query_made if bundle was pre-called
+        if self._bundle_pre_called:
+            self._doc_query_made = True
 
     async def on_tool_start(
         self,
@@ -576,28 +591,23 @@ class APISpecEnforcementHooks(EnforcementHooks):
         """
         Called immediately before a tool is invoked.
 
-        Enforces BUNDLE-FIRST: targeted searches blocked until bundle called.
+        Tracks targeted search usage. Bundle-first is no longer enforced here
+        since the orchestrator pre-calls the bundle.
         """
         tool_name = tool.name
 
-        # Track bundle call
+        # Track bundle call (for observability, even though it's pre-called)
         if tool_name == self.BUNDLE_TOOL:
             self._bundle_called = True
-            self._log(f"Bundle search called - targeted searches now allowed")
+            self._log(f"Bundle search called by agent (note: already pre-loaded by orchestrator)")
 
-        # BUNDLE-FIRST ENFORCEMENT
+        # Track targeted searches and warn if exceeding limit
         if tool_name in self.TARGETED_TOOLS:
-            if not self._bundle_called:
-                self._log(
-                    f"BUNDLE-FIRST REQUIRED: '{tool_name}' blocked - call bundle first",
-                    level="ERROR"
-                )
-                raise BundleFirstRequiredError(blocked_tool=tool_name)
-
             self._targeted_search_count += 1
             if self._targeted_search_count > self.MAX_TARGETED_SEARCHES:
                 self._log(
-                    f"TARGETED SEARCH LIMIT: {self._targeted_search_count}/{self.MAX_TARGETED_SEARCHES}",
+                    f"TARGETED SEARCH LIMIT EXCEEDED: {self._targeted_search_count}/{self.MAX_TARGETED_SEARCHES} - "
+                    f"consider outputting APISpec with available data",
                     level="WARN"
                 )
 
@@ -745,25 +755,24 @@ def create_learning_agent_hooks() -> EnforcementHooks:
 
 def create_api_spec_hooks() -> EnforcementHooks:
     """
-    Create hooks optimized for API Spec Agent with BUNDLE-FIRST enforcement.
+    Create hooks optimized for API Spec Agent with pre-loaded bundle.
 
-    The API Spec Agent MUST:
-    1. Call blender_doc_search_bundle FIRST (Turn 1)
-    2. Use targeted searches only for gaps (Turns 2-3)
-    3. Output APISpec by Turn 4
+    NOTE: Bundle is now called PROGRAMMATICALLY by the orchestrator before
+    running the API Spec Agent. This removes reliance on model compliance.
 
-    BUNDLE-FIRST ENFORCEMENT:
-    - Targeted doc searches are BLOCKED until bundle has been called
-    - This prevents the agent from ignoring bundle instructions
+    The API Spec Agent workflow:
+    1. Parse pre-loaded bundle results from prompt (Turn 1)
+    2. Use targeted searches only for gaps (Turns 2-3, max 4 calls)
+    3. Output APISpec by Turn 3-4
 
     Turn budget is tight (4-6 turns) because:
-    - T1: Bundle search (MANDATORY)
-    - T2-3: Targeted searches for gaps (<=6 total)
-    - T4: Return APISpec
+    - T1: Parse bundle results (no tool calls needed)
+    - T2-3: Targeted searches for gaps (<=4 total)
+    - T3-4: Return APISpec
 
     SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
     """
-    return APISpecEnforcementHooks()
+    return APISpecEnforcementHooks(bundle_pre_called=True)
 
 
 def create_code_writer_hooks() -> EnforcementHooks:
