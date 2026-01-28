@@ -32,9 +32,9 @@ while len(\1) > 1:
         "ColorRamp.elements.clear() → while loop removal"
     ),
 
-    # use_nodes deprecated, use tree instead
+    # use_nodes deprecated, use tree instead (only add comment once)
     (
-        r"(\w+)\.use_nodes\s*=\s*True",
+        r"(\w+)\.use_nodes\s*=\s*True(?!\s*#)",
         r"\1.use_nodes = True  # Deprecated in 5.0, but still works",
         "use_nodes deprecation warning"
     ),
@@ -83,6 +83,21 @@ while len(\1) > 1:
         r".inputs['Transmission Weight'",
         "BSDF Transmission → Transmission Weight"
     ),
+    (
+        r"\.inputs\[['\"]Specular['\"]",
+        r".inputs['Specular IOR Level'",
+        "BSDF Specular → Specular IOR Level"
+    ),
+    (
+        r"\.inputs\[['\"]Clearcoat['\"]",
+        r".inputs['Coat Weight'",
+        "BSDF Clearcoat → Coat Weight"
+    ),
+    (
+        r"\.inputs\[['\"]Clearcoat Roughness['\"]",
+        r".inputs['Coat Roughness'",
+        "BSDF Clearcoat Roughness → Coat Roughness"
+    ),
 
     # Cycles samples path changes
     (
@@ -108,6 +123,13 @@ while len(\1) > 1:
         r"bpy\.context\.scene\.update\(\)",
         r"bpy.context.view_layer.depsgraph.update()",
         "scene.update() → depsgraph.update()"
+    ),
+
+    # use_auto_smooth removed in Blender 4.1+ (now handled automatically)
+    (
+        r"(?m)^.*\.use_auto_smooth\s*=\s*.*$",
+        r"# Blender 4.1+: use_auto_smooth removed (handled automatically)",
+        "use_auto_smooth removed"
     ),
 
     # FluidDomainSettings.use_dissolve does NOT EXIST - correct is use_dissolve_smoke
@@ -247,10 +269,23 @@ while len(\1) > 1:
     ),
 
     # Render only representative frames for quality evaluation, not full animation
+    # Pattern 1: FRAME_START/FRAME_END constants
     (
         r"(frames\s*=\s*)range\(\s*FRAME_START\s*,\s*FRAME_END\s*\+\s*1\s*\)",
         r"\1[min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]  # Representative frames for eval",
         "Render 3 representative frames instead of full animation"
+    ),
+    # Pattern 2: scene.frame_start/frame_end (most common in generated scripts)
+    (
+        r"for\s+(\w+)\s+in\s+range\(\s*scene\.frame_start\s*,\s*scene\.frame_end\s*\+\s*1\s*\)\s*:",
+        r"for \1 in [min(scene.frame_start + 5, scene.frame_end), (scene.frame_start + scene.frame_end) // 2, scene.frame_end]:  # Representative frames",
+        "Render 3 representative frames (scene.frame_start/end pattern)"
+    ),
+    # Pattern 3: frame_start/frame_end variables (lowercase)
+    (
+        r"for\s+(\w+)\s+in\s+range\(\s*frame_start\s*,\s*frame_end\s*\+\s*1\s*\)\s*:",
+        r"for \1 in [min(frame_start + 5, frame_end), (frame_start + frame_end) // 2, frame_end]:  # Representative frames",
+        "Render 3 representative frames (frame_start/end pattern)"
     ),
 
     # Mantaflow cache_type REPLAY doesn't produce full bake data - must be ALL
@@ -258,6 +293,14 @@ while len(\1) > 1:
         r"cache_type\s*=\s*['\"]REPLAY['\"]",
         r"cache_type = 'ALL'  # API Fixer: REPLAY doesn't produce full bake data",
         "cache_type REPLAY → ALL (full bake data)"
+    ),
+
+    # Blender-relative cache paths (//) don't work in headless mode without .blend file
+    # Convert to absolute path using project_root or os.getcwd()
+    (
+        r"cache_dir\s*=\s*['\"]//([^'\"]+)['\"]",
+        r"cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '\1')  # API Fixer: absolute path for headless",
+        "Blender-relative cache path → absolute path (headless fix)"
     ),
 ]
 
@@ -415,6 +458,40 @@ for _api_fixer_obj in bpy.data.objects:
 '''
 
 
+BAKE_BEFORE_RENDER_SNIPPET = '''
+# ==== API FIXER: Bake Fluid Simulation Before Rendering ====
+# Without baking, Mantaflow shows green FLIP particles instead of fluid mesh.
+# Must run bpy.ops.fluid.bake_all() BEFORE any render calls.
+_api_fixer_domain_obj = None
+for _api_fixer_obj in bpy.data.objects:
+    for _api_fixer_mod in _api_fixer_obj.modifiers:
+        if _api_fixer_mod.type == 'FLUID' and hasattr(_api_fixer_mod, 'fluid_type') and _api_fixer_mod.fluid_type == 'DOMAIN':
+            _api_fixer_domain_obj = _api_fixer_obj
+            break
+    if _api_fixer_domain_obj:
+        break
+
+if _api_fixer_domain_obj:
+    # Ensure domain is selected for bake operator
+    bpy.ops.object.select_all(action='DESELECT')
+    _api_fixer_domain_obj.select_set(True)
+    bpy.context.view_layer.objects.active = _api_fixer_domain_obj
+
+    # Align cache frame range with scene
+    _api_fixer_ds = _api_fixer_domain_obj.modifiers['Fluid'].domain_settings
+    _api_fixer_ds.cache_frame_start = bpy.context.scene.frame_start
+    _api_fixer_ds.cache_frame_end = bpy.context.scene.frame_end
+
+    # Bake all fluid data
+    print(f"[API Fixer] Baking fluid simulation for frames {_api_fixer_ds.cache_frame_start}-{_api_fixer_ds.cache_frame_end}...")
+    bpy.ops.fluid.bake_all()
+    print("[API Fixer] Fluid bake complete.")
+else:
+    print("[API Fixer] No fluid domain found - skipping bake.")
+# ==== END API FIXER: Bake Fluid Simulation ====
+'''
+
+
 def _inject_animation_to_stills(content: str) -> tuple[str, bool]:
     """
     Replace bpy.ops.render.render(animation=True) with per-frame still renders.
@@ -497,6 +574,58 @@ def _inject_bake_frame_alignment(content: str) -> tuple[str, bool]:
             indented_snippet = "\n".join(
                 indent + line if line.strip() else line
                 for line in BAKE_FRAME_ALIGNMENT_SNIPPET.split("\n")
+            )
+            content = content[:insert_pos] + indented_snippet + "\n\n" + content[insert_pos:]
+            return content, True
+
+    return content, False
+
+
+def _inject_bake_before_render(content: str) -> tuple[str, bool]:
+    """
+    Inject fluid bake call if script has fluid domain but no bake operation.
+
+    Without baking, Mantaflow shows green FLIP particles (debug visualization)
+    instead of the actual fluid mesh/surface.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Check if script has a fluid domain
+    has_fluid_domain = re.search(
+        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
+        content
+    ) is not None
+
+    # Check if script already has bake call
+    has_bake = re.search(
+        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all",
+        content
+    ) is not None
+
+    # Check if already injected
+    already_injected = "API FIXER: Bake Fluid Simulation" in content
+
+    # Check if there's a render call
+    has_render = re.search(r"bpy\.ops\.render\.render", content) is not None
+
+    if has_fluid_domain and not has_bake and not already_injected and has_render:
+        # Find the render section - inject before it
+        render_match = re.search(
+            r"^(\s*)(# =+\s*Render|# Render|for\s+\w+\s+in\s+.*frame|bpy\.ops\.render\.render)",
+            content,
+            re.MULTILINE
+        )
+
+        if render_match:
+            insert_pos = render_match.start()
+            indent = render_match.group(1)
+            indented_snippet = "\n".join(
+                indent + line if line.strip() else line
+                for line in BAKE_BEFORE_RENDER_SNIPPET.split("\n")
             )
             content = content[:insert_pos] + indented_snippet + "\n\n" + content[insert_pos:]
             return content, True
@@ -636,6 +765,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, volume_fixed = _inject_volume_material_setup(content)
     if volume_fixed:
         fixes_applied.append("Injected volume material for Mantaflow domain (fixes grey sphere)")
+
+    # P0 FIX: Inject fluid bake call if missing (fixes green FLIP particle display)
+    content, bake_injected = _inject_bake_before_render(content)
+    if bake_injected:
+        fixes_applied.append("Injected fluid bake call before render (fixes green particle display)")
 
     # P1 FIX: Align bake frame range with scene frame range
     content, bake_fixed = _inject_bake_frame_alignment(content)
