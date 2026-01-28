@@ -23,9 +23,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
+from agents.exceptions import OutputGuardrailTripwireTriggered
+from agents.memory import OpenAIResponsesCompactionSession
+from agents.memory.session import SessionABC
 
 # Enable verbose logging for debugging agent interactions
 # Set AGENTS_DEBUG=1 to enable, or call enable_verbose_stdout_logging() directly
@@ -113,6 +116,22 @@ class ResearchOutput(BaseModel):
     Phase 3: Structured schema for deterministic research outputs.
     All fields must be populated from actual tool results, not invented.
     """
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_field_names(cls, data: Any) -> Any:
+        """Normalize title-case keys to snake_case.
+
+        LLMs sometimes return keys like "Recommended Approach" instead of
+        "recommended_approach" despite the JSON schema specifying snake_case.
+        """
+        if isinstance(data, dict):
+            return {
+                key.lower().replace(" ", "_").replace("-", "_"): value
+                for key, value in data.items()
+            }
+        return data
+
     recommended_approach: str = Field(description="Best approach for the effect type (from documentation)")
     key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Recommended parameter values (from patterns or docs)")
     api_modules: List[str] = Field(default_factory=list, description="Blender API modules to use (e.g., bpy.types.FluidDomainSettings)")
@@ -310,27 +329,36 @@ from utils import (
 SDK_SESSIONS_DIR = Path(__file__).parent / "sessions" / "sdk"
 
 
-def get_or_create_sdk_session(session_id: str) -> SQLiteSession:
+def get_or_create_sdk_session(session_id: str) -> OpenAIResponsesCompactionSession:
     """
-    Get or create an SDK SQLiteSession for conversation persistence.
+    Get or create an SDK session with automatic history compaction.
 
-    SDK Sessions automatically store conversation history across Runner.run() calls,
-    enabling agents to remember previous interactions within the same VFX session.
+    Uses OpenAIResponsesCompactionSession to wrap a SQLiteSession. This provides
+    conversation persistence while preventing unbounded token growth — the SDK
+    automatically summarizes old history via the Responses API `responses.compact`
+    method.
+
+    Auto-compaction is disabled; compaction is triggered manually at the end of
+    each pipeline iteration via `await session.run_compaction({"force": True})`.
+    This preserves full context within an iteration while compressing between them.
 
     Args:
-        session_id: Unique identifier for the VFX session (e.g., "session_20260123_explosion_001")
+        session_id: Unique identifier for the VFX session
 
     Returns:
-        SQLiteSession instance for use with Runner.run()
+        OpenAIResponsesCompactionSession for use with Runner.run()
     """
-    # Ensure sessions directory exists
     SDK_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Create session database path
     db_path = SDK_SESSIONS_DIR / "vfx_conversations.db"
 
-    # Create SQLiteSession with session_id as conversation identifier
-    return SQLiteSession(session_id, str(db_path))
+    underlying = SQLiteSession(session_id, str(db_path))
+    return OpenAIResponsesCompactionSession(
+        session_id=session_id,
+        underlying_session=underlying,
+        # Disable auto-compaction — we trigger manually between iterations
+        # to preserve full context within each iteration
+        should_trigger_compaction=lambda _: False,
+    )
 
 
 # =============================================================================
@@ -938,7 +966,7 @@ class BlenderVFXOrchestrator:
         technique: str,
         request: "AssetRequest",
         context: SharedContext,
-        sdk_session: SQLiteSession,
+        sdk_session: Optional[SessionABC] = None,
     ) -> ScriptOutput:
         """
         Run the Spec-First Pipeline for API hallucination prevention.
@@ -1115,7 +1143,7 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
         technique: str,
         request: "AssetRequest",
         context: SharedContext,
-        sdk_session: SQLiteSession,
+        sdk_session: Optional[SessionABC] = None,
     ) -> ScriptOutput:
         """
         Run the original Script Writer as fallback.
@@ -1664,10 +1692,11 @@ After executing the script, return a structured ExecutionOutput with:
             context = create_session_from_request(request, session_id)
             session = context.session
 
-        # Phase 4: Create SDK session for conversation persistence across agents
-        # For resumed sessions, this reuses the existing conversation DB
+        # Phase 4: SDK session with compaction — preserves conversation context
+        # while preventing unbounded token growth. Compaction is triggered manually
+        # at the end of each iteration (not auto) to preserve full intra-iteration context.
         sdk_session = get_or_create_sdk_session(session_id)
-        print(f"[Pipeline] SDK Session {'reused' if is_resuming else 'created'}: {session_id}", file=sys.stderr)
+        print(f"[Pipeline] SDK Session (compacted): {session_id}", file=sys.stderr)
 
         # Use overridden max_iterations if provided (applies to both paths)
         effective_max_iterations = max_iterations_override if max_iterations_override is not None else request.max_iterations
@@ -1722,6 +1751,10 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
                         # Research got stuck - use partial results
                         print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
                         research_text = "Research incomplete due to loop - proceeding with default approach"
+                    except OutputGuardrailTripwireTriggered as e:
+                        # Research output failed validation (e.g., empty doc_refs) — non-fatal
+                        print(f"[Pipeline] WARN: Research guardrail tripped: {e}", file=sys.stderr)
+                        research_text = "Research output incomplete (guardrail) - proceeding with default approach"
                     except Exception as e:
                         # SDK wraps LoopDetectedError in UserError - check for it
                         if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
@@ -2787,7 +2820,7 @@ Execute it and report results."""
 
                                     try:
                                         reexec_result = await Runner.run(
-                                            self._executor_standalone,
+                                            self._executor_agent_standalone,
                                             reexec_prompt,
                                             context=context,
                                             session=sdk_session,
@@ -3205,9 +3238,23 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
                         except LoopDetectedError as e:
                             print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
                             # Keep existing research_text if new research loops
+                        except OutputGuardrailTripwireTriggered as e:
+                            print(f"[Pipeline] WARN: Research Agent guardrail tripped (doc_refs empty): {e}", file=sys.stderr)
+                            # Non-fatal: keep existing research_text, pipeline continues
                         print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
                         print(f"[Pipeline] Switch research hooks stats: {switch_research_hooks.get_stats()}", file=sys.stderr)
                         # Next iteration will get modified feedback to try different approach
+
+                    # ====== END OF ITERATION: COMPACT SESSION HISTORY ======
+                    # Trigger manual compaction to summarize old conversation history.
+                    # This keeps token usage bounded across iterations while preserving
+                    # full context within each iteration.
+                    if sdk_session and hasattr(sdk_session, 'run_compaction'):
+                        try:
+                            await sdk_session.run_compaction({"force": True})
+                            print(f"[Pipeline] Session history compacted after iteration {iteration}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Session compaction failed: {e}", file=sys.stderr)
 
                 # End of iteration loop
                 if session.status != SessionStatus.PASSED:

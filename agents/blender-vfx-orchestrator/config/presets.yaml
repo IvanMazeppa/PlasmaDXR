@@ -86,19 +86,84 @@ presets:
     max_turns: 10
     max_iterations: 3
 
-# Per-agent overrides (applied on top of preset)
-# Use when specific agents need different settings
+# Per-agent overrides (applied on top of preset defaults)
+# These apply globally across all presets.
+#
+# Configuration philosophy (2026-01-28):
+#   - AI-to-AI communication should be structured and concise, not verbose prose
+#   - verbosity: medium/low for agent-to-agent handoffs (structured Pydantic output)
+#   - verbosity: high ONLY for Quality Analyst (human-readable diagnostic detail)
+#   - reasoning_effort: high for agents whose mistakes cascade (code gen, evaluation, strategy)
+#   - max_output_tokens: sized to actual output (scripts need 25k, decisions need 1-2k)
+#
+# Research backing:
+#   - CodeAgents (arXiv 2507.03254): structured > verbose NL for accuracy AND cost
+#   - Anthropic multi-agent system: lightweight references, not full prose payloads
+#   - "Why do AI agents communicate in human language?" (arXiv 2506.02739):
+#     NL causes semantic redundancy, ambiguity, lossy compression between agents
+#
+# Model tiers:
+#   gpt-5.2  → complex reasoning, code generation, evaluation
+#   gpt-5-mini → simple/formulaic tasks (routing, execution, pass/fail)
 agent_overrides:
-  # Script Writer benefits from higher verbosity for code
+
+  # === TIER 1: Full power (gpt-5.2, high reasoning) ===
+  # These agents do the hardest cognitive work. Mistakes here cascade.
+
+  # Script Writer: code generation is the hardest task
+  # 25k output budget — scripts can be 200-300 lines, was truncating at 2k
   script_writer:
+    model: gpt-5.2
+    reasoning_effort: high
+    max_output_tokens: 25000
+    verbosity: medium
+
+  # Quality Analyst: vision-based evaluation needs nuanced judgment
+  # High verbosity HERE because detailed issue descriptions help debugging
+  quality_analyst:
+    model: gpt-5.2
+    reasoning_effort: high
+    max_output_tokens: 10000
     verbosity: high
 
-  # Coordinators are quick decisions
-  technique_coordinator:
-    max_turns: 3
-
+  # Modification Strategist: classifying structural vs parameter failures
+  # THE breakthrough agent — correct classification drives quality
   modification_coordinator:
+    model: gpt-5.2
+    reasoning_effort: high
+    max_output_tokens: 2000
+    max_turns: 4
+
+  # Research Agent: document interpretation, technique recommendation
+  # Runs once per session (Phase 0) + technique switches — high reasoning amortized
+  research_agent:
+    model: gpt-5.2
+    reasoning_effort: high
+    max_output_tokens: 4000
+
+  # === TIER 2: Smart but efficient (gpt-5.2, medium reasoning) ===
+
+  # Learning Agent: pattern extraction and experiment analysis
+  learning_agent:
+    model: gpt-5.2
+    reasoning_effort: medium
+    max_output_tokens: 4000
+    verbosity: medium
+
+  # === TIER 3: Fast workers (preset default = gpt-5-mini) ===
+  # Simple classification, parsing, pass/fail — no need for deep thinking
+
+  # Technique Selector: pick from a catalog
+  technique_coordinator:
+    reasoning_effort: low
+    max_output_tokens: 2000
     max_turns: 3
 
+  # Quality Gate Judge: numeric pass/fail + escape level
   quality_gate_coordinator:
+    reasoning_effort: low
+    max_output_tokens: 1000
     max_turns: 3
+
+  # Executor: runs Blender, parses stdout — uses preset default (gpt-5-mini)
+  # No override needed

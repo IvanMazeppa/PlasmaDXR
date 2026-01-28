@@ -245,6 +245,20 @@ while len(\1) > 1:
         r"\g<1>8.0  # Boosted from \2 for fire glow",
         "Blackbody intensity boosted (fire glow fix)"
     ),
+
+    # Render only representative frames for quality evaluation, not full animation
+    (
+        r"(frames\s*=\s*)range\(\s*FRAME_START\s*,\s*FRAME_END\s*\+\s*1\s*\)",
+        r"\1[min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames instead of full animation"
+    ),
+
+    # Mantaflow cache_type REPLAY doesn't produce full bake data - must be ALL
+    (
+        r"cache_type\s*=\s*['\"]REPLAY['\"]",
+        r"cache_type = 'ALL'  # API Fixer: REPLAY doesn't produce full bake data",
+        "cache_type REPLAY → ALL (full bake data)"
+    ),
 ]
 
 
@@ -365,6 +379,25 @@ if _api_fixer_domain:
 '''
 
 
+ANIMATION_TO_STILLS_SNIPPET = '''
+# ==== API FIXER: Animation → Representative Still Renders ====
+# bpy.ops.render.render(animation=True) does NOT write individual frame files in
+# headless mode. Replace with per-frame still renders of 3 representative frames.
+_api_fixer_scene = bpy.context.scene
+_api_fixer_fs = _api_fixer_scene.frame_start
+_api_fixer_fe = _api_fixer_scene.frame_end
+_api_fixer_base_path = _api_fixer_scene.render.filepath
+_api_fixer_frames = [min(_api_fixer_fs + 5, _api_fixer_fe), (_api_fixer_fs + _api_fixer_fe) // 2, _api_fixer_fe]
+for _api_fixer_f in _api_fixer_frames:
+    _api_fixer_scene.frame_set(_api_fixer_f)
+    _api_fixer_scene.render.filepath = f"{_api_fixer_base_path}{_api_fixer_f:04d}"
+    bpy.ops.render.render(write_still=True)
+    print(f"[API Fixer] Rendered frame {_api_fixer_f}")
+_api_fixer_scene.render.filepath = _api_fixer_base_path
+# ==== END API FIXER: Animation → Representative Still Renders ====
+'''
+
+
 BAKE_FRAME_ALIGNMENT_SNIPPET = '''
 # ==== API FIXER: Bake Frame Range Alignment ====
 # Mantaflow cache_frame_start/cache_frame_end default to 1-120 independent of scene.frame_end.
@@ -380,6 +413,44 @@ for _api_fixer_obj in bpy.data.objects:
             break
 # ==== END API FIXER: Bake Frame Range Alignment ====
 '''
+
+
+def _inject_animation_to_stills(content: str) -> tuple[str, bool]:
+    """
+    Replace bpy.ops.render.render(animation=True) with per-frame still renders.
+
+    In headless Blender, animation=True renders frames internally but does NOT
+    write individual image files that the pipeline can find for quality evaluation.
+    This replaces the call with a loop that renders 3 representative frames using
+    write_still=True.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Match render(animation=True) with optional extra kwargs
+    animation_match = re.search(
+        r"^(\s*)bpy\.ops\.render\.render\([^)]*animation\s*=\s*True[^)]*\).*$",
+        content,
+        re.MULTILINE
+    )
+
+    if animation_match and "API FIXER: Animation" not in content:
+        indent = animation_match.group(1)
+        indented_snippet = "\n".join(
+            indent + line if line.strip() else line
+            for line in ANIMATION_TO_STILLS_SNIPPET.split("\n")
+        )
+        content = (
+            content[:animation_match.start()]
+            + indented_snippet
+            + content[animation_match.end():]
+        )
+        return content, True
+
+    return content, False
 
 
 def _inject_bake_frame_alignment(content: str) -> tuple[str, bool]:
@@ -449,6 +520,13 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
         content
     ) is not None
 
+    # Check if domain is LIQUID — liquid domains render via mesh surface, not volume shader.
+    # Volume material injection would overwrite the correct water/glass material.
+    is_liquid_domain = re.search(
+        r"domain_type\s*[=,]\s*['\"]LIQUID['\"]",
+        content
+    ) is not None
+
     # Check if script already has volume material setup
     has_volume_material = re.search(
         r"ShaderNodeVolumePrincipled|ShaderNodeVolumeScatter|ShaderNodeVolumeAbsorption|"
@@ -460,7 +538,7 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
     # Check if there's a render call (otherwise no point adding material)
     has_render = re.search(r"bpy\.ops\.render\.render", content) is not None
 
-    if has_fluid_domain and not has_volume_material and has_render:
+    if has_fluid_domain and not is_liquid_domain and not has_volume_material and has_render:
         # Find injection point: after bpy.ops.fluid.bake or before bpy.ops.render.render
         # Prefer injecting before render call
         render_match = re.search(
@@ -563,6 +641,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, bake_fixed = _inject_bake_frame_alignment(content)
     if bake_fixed:
         fixes_applied.append("Aligned bake cache frame range with scene frame range")
+
+    # P0 FIX: Replace animation=True with per-frame still renders (headless compat)
+    content, stills_fixed = _inject_animation_to_stills(content)
+    if stills_fixed:
+        fixes_applied.append("Replaced animation=True with representative still renders (headless fix)")
 
     if fixes_applied:
         # Write fixed content back

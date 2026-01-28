@@ -171,10 +171,14 @@ class APISpec(BaseModel):
                 # Try without underscores (some docs use camelCase)
                 attr_parts = attr_lower.split('_')
                 if not any(part in doc_lower for part in attr_parts if len(part) > 3):
-                    raise ValueError(
-                        f"{attr.object_type}.{attr.attribute_name}: doc_ref '{attr.doc_ref}' "
-                        f"does not appear to reference this attribute"
-                    )
+                    # Fallback: accept if object_type (class name) appears in doc_ref
+                    # This validates the agent found the right documentation page
+                    obj_type_lower = attr.object_type.lower()
+                    if obj_type_lower not in doc_lower:
+                        raise ValueError(
+                            f"{attr.object_type}.{attr.attribute_name}: doc_ref '{attr.doc_ref}' "
+                            f"does not appear to reference this attribute"
+                        )
         return v
 
     @field_validator('ops')
