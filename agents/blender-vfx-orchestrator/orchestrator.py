@@ -182,8 +182,9 @@ class TechniqueDecision(BaseModel):
 
 class ModificationDecision(BaseModel):
     """Output from Coordinator for parameter modification strategy."""
-    action: str = Field(description="Action to take: 'modify_params', 'switch_technique', 'continue'")
-    parameter_changes: Dict[str, Any] = Field(default_factory=dict, description="Concrete parameter changes")
+    action: str = Field(description="Action to take: 'modify_params', 'modify_code', 'switch_technique', 'continue'")
+    parameter_changes: Dict[str, Any] = Field(default_factory=dict, description="Concrete parameter changes (for modify_params)")
+    code_change_description: Optional[str] = Field(default=None, description="Description of structural code changes needed (for modify_code)")
     new_technique: Optional[str] = Field(default=None, description="New technique if switching")
     reasoning: str = Field(description="Why this modification strategy was chosen")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this decision (0.0-1.0)")
@@ -736,20 +737,44 @@ Given quality feedback and iteration history, decide the modification strategy.
 - Previous iterations and what was tried
 - Consecutive same-issue count
 
-## Decision Logic
-1. If score is close to threshold (within 10): modify_params with targeted changes
-2. If same issue 3+ times: switch_technique to fundamentally different approach
-3. If score improving: continue with incremental param changes
+## Decision Logic (CHOOSE THE RIGHT ACTION)
+
+### modify_params — Change numeric values, booleans, enums
+Use when the issue is about tuning: resolution too low, density wrong, wrong material property.
+Examples: resolution_max=128, vorticity=2.0, flow_behavior='INFLOW'
+
+### modify_code — Rewrite script to fix structural/logic issues
+Use when the issue CANNOT be fixed by changing a parameter value. This rewrites the script.
+Examples of when to use modify_code:
+- "Execution failed: no Fluid modifier found during bake" → needs object context setup
+- "Fluid clips through glass mesh" → needs collision effector on glass object
+- Missing objects in scene (lights, cameras, effectors)
+- Wrong object relationships (parenting, modifiers on wrong object)
+- Incorrect bake/simulation setup order
+- Missing material assignments or shader node connections
+
+### switch_technique — Abandon current approach entirely
+Use when same issue persists 3+ times despite param AND code fixes.
+This generates a completely new script from scratch.
+
+### continue — No changes needed
+Use when score is already improving and no intervention needed.
 
 ## Output
 Return a ModificationDecision with:
-- action: 'modify_params' | 'switch_technique' | 'continue'
-- parameter_changes: Dict of {param_name: new_value} - CONCRETE values only
-- new_technique: New technique name if switching
+- action: 'modify_params' | 'modify_code' | 'switch_technique' | 'continue'
+- parameter_changes: Dict of {param_name: new_value} (for modify_params only)
+- code_change_description: What structural changes to make (for modify_code only)
+- new_technique: New technique name (for switch_technique only)
 - reasoning: Why this strategy
 - confidence: 0.0-1.0 confidence level
 
-## CRITICAL FORMAT RULES (NO PROSE)
+## CRITICAL: modify_params vs modify_code
+If the issue mentions "failed", "error", "missing", "not found", "clips through",
+"no modifier", "no object", or similar STRUCTURAL problems → use modify_code.
+Parameter tweaking CANNOT fix structural issues. Do NOT use modify_params for these.
+
+## CRITICAL FORMAT RULES for modify_params (NO PROSE)
 - parameter_changes keys MUST be Blender API paths, e.g.:
   - FluidDomainSettings.resolution_max
   - FluidFlowSettings.flow_behavior
@@ -2221,7 +2246,10 @@ Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'
 ## Available Alternatives
 {', '.join(session.alternative_approaches[:3]) if session.alternative_approaches else 'None'}
 
-Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parameter values."""
+Decide: modify_params, modify_code, OR switch_technique.
+- modify_params: Provide CONCRETE parameter values for tuning issues.
+- modify_code: Describe structural changes needed (missing objects, wrong setup, broken logic).
+- switch_technique: When the current approach is fundamentally broken after 3+ attempts."""
 
                             try:
                                 mod_result = await Runner.run(
@@ -2259,6 +2287,64 @@ Decide: modify_params OR switch_technique. If modifying, provide CONCRETE parame
                                     except Exception as e:
                                         print(f"[Pipeline] Spec-first switch failed: {e}, falling back to Script Writer", file=sys.stderr)
                                         # Fall through to existing Script Writer path
+
+                                # MODIFY CODE: Route to Script Writer with structural fix instructions
+                                # This uses write_script (full code gen) not modify_script (param swap)
+                                if mod_decision.action == 'modify_code' and mod_decision.code_change_description and previous_script and previous_script.script_path:
+                                    print(f"[Pipeline] MODIFY CODE → Structural script rewrite", file=sys.stderr)
+                                    print(f"[Pipeline] Changes requested: {mod_decision.code_change_description[:120]}", file=sys.stderr)
+
+                                    code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
+
+## Current Script
+Path: {previous_script.script_path}
+Technique: {previous_script.technique_used}
+
+## What Must Change (from Coordinator)
+{mod_decision.code_change_description}
+
+## Quality Feedback
+Score: {previous_score:.1f}
+Primary Issue: {quality.primary_issue if quality else 'Unknown'}
+Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'}
+
+## Effect Type: {request.effect_type.value}
+## Description: {request.description}
+
+## Instructions
+1. Read the current script to understand the existing setup
+2. Make the structural changes described above
+3. Keep everything that's working — only fix what's broken
+4. Use write_script to output the complete fixed script
+5. Name the output: {request.asset_name}_script_iter{iteration}_codefix
+
+## Common Structural Fixes
+- Bake context: set domain as active_object + selected before bpy.ops.fluid.bake_data()
+- Effectors: glass/solid meshes need Fluid modifier with fluid_type='EFFECTOR'
+- Object context: bpy.ops calls need correct context override
+- Missing depsgraph: call bpy.context.view_layer.depsgraph.update() after setup changes
+- Material assignment: ensure materials are assigned to correct objects
+- Frame range: align cache_frame_start/end with scene.frame_start/end"""
+
+                                    try:
+                                        code_fix_hooks = create_fallback_script_writer_hooks()
+                                        code_fix_result = await Runner.run(
+                                            self._script_agent_standalone,
+                                            code_fix_prompt,
+                                            context=context,
+                                            session=sdk_session,
+                                            hooks=code_fix_hooks,
+                                            max_turns=8,
+                                        )
+                                        code_fix_output = code_fix_result.final_output
+                                        if code_fix_output and code_fix_output.script_path:
+                                            print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
+                                            script = code_fix_output
+                                            direct_modification_success = True
+                                        else:
+                                            print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Pipeline] Code fix failed: {e}, falling back to Script Writer", file=sys.stderr)
 
                                 # If Coordinator provides parameter changes, try direct modification
                                 if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
@@ -2632,29 +2718,127 @@ Run the script and report results."""
                     print(f"[Pipeline] Executor hooks stats: {exec_hooks.get_stats()}", file=sys.stderr)
 
                     if not execution.success or not execution.render_path:
-                        print(f"[Pipeline] ERROR: Execution failed: {execution.error_message}", file=sys.stderr)
-                        # Continue to next iteration with error context
-                        quality = QualityOutput(
-                            overall_score=0,
-                            passed=False,
-                            primary_issue=f"Execution failed: {execution.error_message}",
-                            issues=[execution.error_message or "Unknown execution error"],
-                            suggestions=["Fix script errors and retry"]
-                        )
-                        # Record failure so stuck detection sees this iteration
-                        current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
-                        previous_params = current_params
-                        previous_score = 0
-                        session_mgr.record_result(
-                            iteration=iteration,
-                            params=current_params,
-                            score=0,
-                            issues=quality.issues,
-                            primary_issue=quality.primary_issue,
-                            technique=script.technique_used if script else None
-                        )
-                        print(f"[Pipeline] Execution failure recorded: consecutive_same_issue={session_mgr.issue_tracker.consecutive_same_issue}", file=sys.stderr)
-                        continue
+                        error_msg = execution.error_message or "Unknown execution error"
+                        print(f"[Pipeline] ERROR: Execution failed: {error_msg}", file=sys.stderr)
+
+                        # ====== PHASE 2.5: ERROR RECOVERY (AI-driven script fix) ======
+                        # Instead of blindly continuing to the next iteration (which would
+                        # just tweak parameters), give the Script Writer a chance to fix
+                        # the structural code issue using write_script (full code generation).
+                        recovery_succeeded = False
+
+                        # Only attempt recovery once per iteration to avoid infinite loops
+                        if not getattr(context, '_recovery_attempted_this_iter', False):
+                            context._recovery_attempted_this_iter = True
+                            print(f"[Pipeline] PHASE 2.5: Error Recovery (AI-driven script fix)", file=sys.stderr)
+
+                            recovery_prompt = f"""CRITICAL: The Blender script FAILED to execute. You must fix the script.
+
+## Error Message
+{error_msg}
+
+## Failed Script
+Path: {script.script_path}
+
+## What Went Wrong
+This is a STRUCTURAL code issue, not a parameter issue. Do NOT use modify_script
+(which only changes parameter values). Instead:
+1. Read the failing script to understand its structure
+2. Identify the root cause of the error
+3. Use write_script to generate a FIXED version of the complete script
+
+## Common Structural Fixes
+- Bake context: bpy.ops.fluid.bake_data() requires the domain object to be
+  bpy.context.view_layer.objects.active AND selected
+- Effector setup: Collision objects need a Fluid modifier with fluid_type='EFFECTOR'
+- Object context: bpy.ops calls require correct context (active object, selection)
+- Missing depsgraph update: call bpy.context.view_layer.depsgraph.update() after setup
+
+## Effect Type: {request.effect_type.value}
+## Technique: {script.technique_used}
+
+Fix the script and output it with write_script. Keep the same technique name
+but append '_errfix' to the output name."""
+
+                            try:
+                                recovery_hooks = create_fallback_script_writer_hooks()
+                                recovery_result = await Runner.run(
+                                    self._script_agent_standalone,
+                                    recovery_prompt,
+                                    context=context,
+                                    session=sdk_session,
+                                    hooks=recovery_hooks,
+                                    max_turns=6,
+                                )
+
+                                recovery_script = recovery_result.final_output
+                                if recovery_script and recovery_script.script_path:
+                                    print(f"[Pipeline] Recovery produced: {recovery_script.script_path}", file=sys.stderr)
+
+                                    # Re-execute the fixed script
+                                    print(f"[Pipeline] PHASE 2.5b: Re-executing recovered script", file=sys.stderr)
+                                    re_exec_hooks = create_quality_analyst_hooks()  # Fresh hooks
+                                    reexec_prompt = f"""Execute this recovered Blender script:
+
+Script: {recovery_script.script_path}
+Effect: {request.effect_type.value}
+
+Execute it and report results."""
+
+                                    try:
+                                        reexec_result = await Runner.run(
+                                            self._executor_standalone,
+                                            reexec_prompt,
+                                            context=context,
+                                            session=sdk_session,
+                                            hooks=re_exec_hooks,
+                                            max_turns=4,
+                                        )
+                                        reexec_output = reexec_result.final_output
+                                        if reexec_output and reexec_output.success and reexec_output.render_path:
+                                            print(f"[Pipeline] Recovery SUCCEEDED - render: {reexec_output.render_path}", file=sys.stderr)
+                                            # Replace the failed execution with recovered one
+                                            execution = reexec_output
+                                            script = recovery_script
+                                            recovery_succeeded = True
+                                        else:
+                                            re_err = reexec_output.error_message if reexec_output else "No output"
+                                            print(f"[Pipeline] Recovery re-execution also failed: {re_err}", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Pipeline] Recovery re-execution error: {e}", file=sys.stderr)
+                                else:
+                                    print(f"[Pipeline] Recovery produced no script_path", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] Error recovery failed: {e}", file=sys.stderr)
+
+                        # Reset recovery flag for next iteration
+                        context._recovery_attempted_this_iter = False
+
+                        if not recovery_succeeded:
+                            # Recovery failed or wasn't attempted — record failure and continue
+                            quality = QualityOutput(
+                                overall_score=0,
+                                passed=False,
+                                primary_issue=f"Execution failed: {error_msg}",
+                                issues=[error_msg],
+                                suggestions=["Fix script errors and retry"]
+                            )
+                            current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
+                            previous_params = current_params
+                            previous_score = 0
+                            session_mgr.record_result(
+                                iteration=iteration,
+                                params=current_params,
+                                score=0,
+                                issues=quality.issues,
+                                primary_issue=quality.primary_issue,
+                                technique=script.technique_used if script else None
+                            )
+                            print(f"[Pipeline] Execution failure recorded: consecutive_same_issue={session_mgr.issue_tracker.consecutive_same_issue}", file=sys.stderr)
+                            continue
+
+                        # Recovery succeeded — fall through to quality evaluation
+                        print(f"[Pipeline] Continuing to quality evaluation with recovered script", file=sys.stderr)
 
                     print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
 

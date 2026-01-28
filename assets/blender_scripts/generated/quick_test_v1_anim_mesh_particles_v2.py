@@ -36,7 +36,7 @@ if scene.world is None:
 world = scene.world
 # Use nodes (ok in 5.0)
 try:
-    world.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+    world.use_nodes = True  # Deprecated in 5.0, but still works
 except Exception:
     pass
 nt = world.node_tree
@@ -55,7 +55,7 @@ if os.path.exists(hdri_path):
         env.image = bpy.data.images.load(hdri_path)
         links.new(env.outputs['Color'], bg.inputs['Color'])
     except Exception:
-        bg.inputs['Color'].default_value = [0.02, 0.02, 0.03, 1.0]
+        bg.inputs['Color'].default_value = (0.06,0.07,0.08,1)
 else:
     bg.inputs['Color'].default_value = (0.06,0.07,0.08,1)
 
@@ -76,7 +76,7 @@ bpy.data.objects.remove(cup_inner, do_unlink=True)
 # Glass material
 glass_mat = bpy.data.materials.new(name='GlassMaterial')
 try:
-    glass_mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+    glass_mat.use_nodes = True  # Deprecated in 5.0, but still works
 except Exception:
     pass
 gn = glass_mat.node_tree.nodes
@@ -118,7 +118,7 @@ drop = bpy.context.active_object
 # Water material
 water_mat = bpy.data.materials.new(name='WaterMaterial')
 try:
-    water_mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+    water_mat.use_nodes = True  # Deprecated in 5.0, but still works
 except Exception:
     pass
 wn = water_mat.node_tree.nodes

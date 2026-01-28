@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 # Valid actions for modification decisions
 VALID_MODIFICATION_ACTIONS = {
     "modify_params",
+    "modify_code",
     "switch_technique",
     "continue",
 }
@@ -253,6 +254,15 @@ async def validate_modification_decision(
                         f"or '{DELETE_SENTINEL}' for removals. "
                         f"Invalid keys: {invalid_values}"
                     )
+
+    if action == "modify_code":
+        code_change_desc = getattr(output, "code_change_description", None) if hasattr(output, "code_change_description") else (output.get("code_change_description") if isinstance(output, dict) else None)
+        if not code_change_desc:
+            errors.append(
+                "action='modify_code' but code_change_description is empty. "
+                "Describe what structural changes the script needs (e.g. "
+                "'Add collision effector to glass mesh', 'Set domain object as active before bake')"
+            )
 
     if action == "switch_technique":
         if not new_technique:

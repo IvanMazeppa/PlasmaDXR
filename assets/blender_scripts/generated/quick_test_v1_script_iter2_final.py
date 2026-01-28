@@ -38,7 +38,7 @@ try:
 except Exception:
     env_tex = None
 world = scene.world
-world.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+world.use_nodes = True  # Deprecated in 5.0, but still works
 nt = world.node_tree
 nodes = nt.nodes
 links = nt.links
@@ -77,19 +77,19 @@ except Exception:
     dsettings.domain_type = 'LIQUID'
 
 # Key domain parameters (verified names: resolution_max, use_noise, noise_strength, vorticity)
-dsettings.resolution_max = 100
+dsettings.resolution_max = 200  # increased resolution for splash detail
 dsettings.cache_directory = CACHE_DIR
 # Enable noise for small-scale detail when available
 if hasattr(dsettings, 'use_noise'):
-    dsettings.use_noise = False
+    dsettings.use_noise = True
 if hasattr(dsettings, 'noise_strength'):
-    dsettings.noise_strength = 0.0
+    dsettings.noise_strength = 1.0
 # vorticity helps swirl details
 if hasattr(dsettings, 'vorticity'):
-    dsettings.vorticity = 1.0
+    dsettings.vorticity = 3.0
 # Try adaptive domain
 if hasattr(dsettings, 'use_adaptive_domain'):
-    dsettings.use_adaptive_domain = False
+    dsettings.use_adaptive_domain = True
 
 # Create a simple glass cup (cylinder with boolean thickness)
 bpy.ops.mesh.primitive_cylinder_add(radius=0.6, depth=1.2, location=(0,0,0.6))
@@ -136,10 +136,10 @@ except Exception:
     fsettings.flow_type = 'LIQUID'
 # Behavior: INFLOW to continuously pour
 if hasattr(fsettings, 'flow_behavior'):
-    fsettings.flow_behavior = 'GEOMETRY'
+    fsettings.flow_behavior = 'INFLOW'
 # Set initial velocity to drive the pour (normal)
 if hasattr(fsettings, 'velocity_normal'):
-    fsettings.velocity_normal = -2.0
+    fsettings.velocity_normal = -3.0
 # Density and temperature where available
 if hasattr(fsettings, 'density'):
     fsettings.density = 1.0
@@ -152,7 +152,7 @@ scene.collection.objects.link(mesh_obj)
 
 # Setup water material for reconstructed surface
 mat = bpy.data.materials.new(name="WaterMaterial")
-mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+mat.use_nodes = True  # Deprecated in 5.0, but still works
 nodes = mat.node_tree.nodes
 links = mat.node_tree.links
 nodes.clear()
@@ -174,7 +174,7 @@ mesh_obj.data.materials.append(mat)
 
 # Setup glass material for cup
 glass_mat = bpy.data.materials.new(name='GlassMaterial')
-glass_mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+glass_mat.use_nodes = True  # Deprecated in 5.0, but still works
 gnodes = glass_mat.node_tree.nodes
 glinks = glass_mat.node_tree.links
 gnodes.clear()
@@ -231,7 +231,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
-        mat.use_nodes = True  # Deprecated in 5.0, but still works  # Deprecated in 5.0, but still works
+        mat.use_nodes = True
 
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
@@ -249,7 +249,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             volume.location = (0, 0)
             volume.inputs['Density'].default_value = 5.0
             volume.inputs['Anisotropy'].default_value = 0.3
-            volume.inputs['Blackbody Intensity'].default_value = 8.0  # Boosted from 1.0 for fire glow
+            volume.inputs['Blackbody Intensity'].default_value = 1.0
             volume.inputs['Blackbody Tint'].default_value = (1.0, 0.8, 0.5, 1.0)
 
             # Connect density and flame attributes
@@ -267,7 +267,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             multiply = nodes.new('ShaderNodeMath')
             multiply.location = (-200, 100)
             multiply.operation = 'MULTIPLY'
-            multiply.inputs[1].default_value = 10.0  # Boosted from 5.0 for visibility
+            multiply.inputs[1].default_value = 5.0
 
             links.new(attr_density.outputs['Fac'], multiply.inputs[0])
             links.new(multiply.outputs['Value'], volume.inputs['Density'])
@@ -280,7 +280,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             volume.location = (0, 0)
             volume.inputs['Density'].default_value = 5.0
             volume.inputs['Anisotropy'].default_value = 0.3
-            volume.inputs['Blackbody Intensity'].default_value = 8.0  # Boosted from 0.0 for fire glow
+            volume.inputs['Blackbody Intensity'].default_value = 0.0
 
             attr_density = nodes.new('ShaderNodeAttribute')
             attr_density.location = (-400, 100)
@@ -290,7 +290,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
             multiply = nodes.new('ShaderNodeMath')
             multiply.location = (-200, 100)
             multiply.operation = 'MULTIPLY'
-            multiply.inputs[1].default_value = 10.0  # Boosted from 5.0 for visibility
+            multiply.inputs[1].default_value = 5.0
 
             links.new(attr_density.outputs['Fac'], multiply.inputs[0])
             links.new(multiply.outputs['Value'], volume.inputs['Density'])

@@ -365,6 +365,74 @@ if _api_fixer_domain:
 '''
 
 
+BAKE_FRAME_ALIGNMENT_SNIPPET = '''
+# ==== API FIXER: Bake Frame Range Alignment ====
+# Mantaflow cache_frame_start/cache_frame_end default to 1-120 independent of scene.frame_end.
+# Mismatched ranges waste bake time or cause missing frames.
+_api_fixer_scene = bpy.context.scene
+for _api_fixer_obj in bpy.data.objects:
+    for _api_fixer_mod in _api_fixer_obj.modifiers:
+        if _api_fixer_mod.type == 'FLUID' and hasattr(_api_fixer_mod, 'fluid_type') and _api_fixer_mod.fluid_type == 'DOMAIN':
+            _ds = _api_fixer_mod.domain_settings
+            _ds.cache_frame_start = _api_fixer_scene.frame_start
+            _ds.cache_frame_end = _api_fixer_scene.frame_end
+            print(f"[API Fixer] Aligned bake range: {_ds.cache_frame_start}-{_ds.cache_frame_end} (scene: {_api_fixer_scene.frame_start}-{_api_fixer_scene.frame_end})")
+            break
+# ==== END API FIXER: Bake Frame Range Alignment ====
+'''
+
+
+def _inject_bake_frame_alignment(content: str) -> tuple[str, bool]:
+    """
+    Inject bake frame range alignment if script uses Mantaflow and baking.
+
+    Ensures cache_frame_start/cache_frame_end match scene.frame_start/frame_end
+    so the bake doesn't waste time on 120 default frames when scene is 25 frames.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Check if script uses Mantaflow domain
+    has_fluid_domain = re.search(
+        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
+        content
+    ) is not None
+
+    # Check if script has a bake call
+    has_bake = re.search(
+        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all",
+        content
+    ) is not None
+
+    # Check if already aligned
+    already_aligned = re.search(
+        r"cache_frame_start|cache_frame_end|Bake Frame Range Alignment",
+        content
+    ) is not None
+
+    if has_fluid_domain and has_bake and not already_aligned:
+        # Inject before the first bake call
+        bake_match = re.search(
+            r"^(\s*)(bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all)",
+            content,
+            re.MULTILINE
+        )
+        if bake_match:
+            insert_pos = bake_match.start()
+            indent = bake_match.group(1)
+            indented_snippet = "\n".join(
+                indent + line if line.strip() else line
+                for line in BAKE_FRAME_ALIGNMENT_SNIPPET.split("\n")
+            )
+            content = content[:insert_pos] + indented_snippet + "\n\n" + content[insert_pos:]
+            return content, True
+
+    return content, False
+
+
 def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
     """
     Inject volume material setup if script uses Mantaflow but lacks volume shader.
@@ -490,6 +558,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, volume_fixed = _inject_volume_material_setup(content)
     if volume_fixed:
         fixes_applied.append("Injected volume material for Mantaflow domain (fixes grey sphere)")
+
+    # P1 FIX: Align bake frame range with scene frame range
+    content, bake_fixed = _inject_bake_frame_alignment(content)
+    if bake_fixed:
+        fixes_applied.append("Aligned bake cache frame range with scene frame range")
 
     if fixes_applied:
         # Write fixed content back

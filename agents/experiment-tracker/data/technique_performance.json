@@ -1,0 +1,45 @@
+{
+  "updated": "2026-01-28T01:22:31.465856",
+  "techniques": {
+    "water:mantaflow_liquid_flip_started": {
+      "technique_name": "mantaflow_liquid_flip_started",
+      "effect_type": "water",
+      "success_count": 0,
+      "failure_count": 1,
+      "total_score": 22.0,
+      "total_iterations": 0,
+      "exploration_bonus": 1.0,
+      "last_used": "2026-01-28T00:13:09.138069"
+    },
+    "water:mantaflow_liquid_flip_enhanced": {
+      "technique_name": "mantaflow_liquid_flip_enhanced",
+      "effect_type": "water",
+      "success_count": 0,
+      "failure_count": 1,
+      "total_score": 22.0,
+      "total_iterations": 0,
+      "exploration_bonus": 1.0,
+      "last_used": "2026-01-28T00:13:47.681720"
+    },
+    "water:animated_mesh_particles": {
+      "technique_name": "animated_mesh_particles",
+      "effect_type": "water",
+      "success_count": 1,
+      "failure_count": 0,
+      "total_score": 45.0,
+      "total_iterations": 1,
+      "exploration_bonus": 1.0,
+      "last_used": "2026-01-28T01:20:08.195686"
+    },
+    "water:animated_mesh_particles_v2": {
+      "technique_name": "animated_mesh_particles_v2",
+      "effect_type": "water",
+      "success_count": 1,
+      "failure_count": 0,
+      "total_score": 50.0,
+      "total_iterations": 1,
+      "exploration_bonus": 1.0,
+      "last_used": "2026-01-28T01:22:31.465826"
+    }
+  }
+}
