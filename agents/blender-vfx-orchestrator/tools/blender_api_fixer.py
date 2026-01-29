@@ -756,16 +756,12 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
 
 def _inject_plane_init_for_liquid_flow(content: str) -> tuple[str, bool]:
     """
-    Ensure planar liquid emitters use plane initialization.
+    Ensure liquid emitters use plane initialization.
 
     For liquid inflows using a plane emitter, Blender expects
     `use_plane_init=True` to emit volume correctly. Without it, bakes can
     complete but produce near-empty cache data.
     """
-    # Only apply if a plane emitter is present.
-    if "primitive_plane_add" not in content:
-        return content, False
-
     # Skip if already set.
     if re.search(r"use_plane_init\s*=\s*(True|False)", content):
         return content, False
@@ -871,7 +867,7 @@ def validate_and_fix_script(script_path: str) -> Dict:
     # P1 FIX: Planar liquid inflow emitters need plane init
     content, plane_init_fixed = _inject_plane_init_for_liquid_flow(content)
     if plane_init_fixed:
-        fixes_applied.append("Enabled use_plane_init for planar liquid flow emitter")
+        fixes_applied.append("Enabled use_plane_init for liquid flow emitter")
 
     # P0 FIX: Replace animation=True with per-frame still renders (headless compat)
     content, stills_fixed = _inject_animation_to_stills(content)
