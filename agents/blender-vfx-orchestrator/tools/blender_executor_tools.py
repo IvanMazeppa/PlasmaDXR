@@ -535,6 +535,11 @@ async def _execute_blender_script_impl(
         output_dir = unique_output_dir
         print(f"[Executor] Unique output dir: {output_dir}", file=sys.stderr)
 
+    cache_dir = None
+    if output_dir:
+        cache_dir = os.path.join(output_dir, "cache")
+        os.makedirs(cache_dir, exist_ok=True)
+
     # Check Blender executable
     if not Path(BLENDER_EXE).exists():
         return json.dumps({
@@ -602,6 +607,7 @@ async def _execute_blender_script_impl(
         # Pass output dir via env so scripts/wrappers can use it
         env = os.environ.copy()
         env['BLENDER_OUTPUT_DIR'] = output_dir or ""
+        env['BLENDER_CACHE_DIR'] = cache_dir or ""
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,

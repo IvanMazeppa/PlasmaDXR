@@ -275,11 +275,59 @@ while len(\1) > 1:
         r"\1[min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]  # Representative frames for eval",
         "Render 3 representative frames instead of full animation"
     ),
+    # Pattern 1b: Config.FRAME_START/FRAME_END in frames range
+    (
+        r"(frames\s*=\s*)range\(\s*Config\.FRAME_START\s*,\s*Config\.FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)",
+        r"\1[min(Config.FRAME_START + 5, Config.FRAME_END), (Config.FRAME_START + Config.FRAME_END) // 2, Config.FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames (Config.FRAME_* range)"
+    ),
+    # Pattern 1b-alt: frames = list(range(...)) (Config)
+    (
+        r"(frames\s*=\s*)list\(range\(\s*Config\.FRAME_START\s*,\s*Config\.FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\)",
+        r"\1[min(Config.FRAME_START + 5, Config.FRAME_END), (Config.FRAME_START + Config.FRAME_END) // 2, Config.FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames (Config.FRAME_* list(range))"
+    ),
+    # Pattern 1b-alt: frames = list(range(...)) (FRAME_START)
+    (
+        r"(frames\s*=\s*)list\(range\(\s*FRAME_START\s*,\s*FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\)",
+        r"\1[min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames (FRAME_START list(range))"
+    ),
+    # Pattern 1b-alt: frames = list(range(...)) (scene.frame_start/end)
+    (
+        r"(frames\s*=\s*)list\(range\(\s*scene\.frame_start\s*,\s*scene\.frame_end\s*\+\s*1\s*(?:,\s*[^)]*)?\)\)",
+        r"\1[min(scene.frame_start + 5, scene.frame_end), (scene.frame_start + scene.frame_end) // 2, scene.frame_end]  # Representative frames for eval",
+        "Render 3 representative frames (scene.frame_start list(range))"
+    ),
+    # Pattern 1c: return list(range(...)) variants (Config)
+    (
+        r"return\s+list\(range\(\s*Config\.FRAME_START\s*,\s*Config\.FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\)",
+        "return [min(Config.FRAME_START + 5, Config.FRAME_END), (Config.FRAME_START + Config.FRAME_END) // 2, Config.FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames (Config.FRAME_* return list(range))"
+    ),
+    # Pattern 1d: return list(range(...)) variants (FRAME_START)
+    (
+        r"return\s+list\(range\(\s*FRAME_START\s*,\s*FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\)",
+        "return [min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]  # Representative frames for eval",
+        "Render 3 representative frames (FRAME_START return list(range))"
+    ),
     # Pattern 2: scene.frame_start/frame_end (most common in generated scripts)
     (
         r"for\s+(\w+)\s+in\s+range\(\s*scene\.frame_start\s*,\s*scene\.frame_end\s*\+\s*1\s*\)\s*:",
         r"for \1 in [min(scene.frame_start + 5, scene.frame_end), (scene.frame_start + scene.frame_end) // 2, scene.frame_end]:  # Representative frames",
         "Render 3 representative frames (scene.frame_start/end pattern)"
+    ),
+    # Pattern 2b: Config.FRAME_START/FRAME_END in for-loop
+    (
+        r"for\s+(\w+)\s+in\s+range\(\s*Config\.FRAME_START\s*,\s*Config\.FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\s*:",
+        r"for \1 in [min(Config.FRAME_START + 5, Config.FRAME_END), (Config.FRAME_START + Config.FRAME_END) // 2, Config.FRAME_END]:  # Representative frames",
+        "Render 3 representative frames (Config.FRAME_* loop)"
+    ),
+    # Pattern 2c: FRAME_START/FRAME_END in for-loop
+    (
+        r"for\s+(\w+)\s+in\s+range\(\s*FRAME_START\s*,\s*FRAME_END\s*\+\s*1\s*(?:,\s*[^)]*)?\)\s*:",
+        r"for \1 in [min(FRAME_START + 5, FRAME_END), (FRAME_START + FRAME_END) // 2, FRAME_END]:  # Representative frames",
+        "Render 3 representative frames (FRAME_START loop)"
     ),
     # Pattern 3: frame_start/frame_end variables (lowercase)
     (
@@ -299,8 +347,20 @@ while len(\1) > 1:
     # Convert to absolute path using project_root or os.getcwd()
     (
         r"cache_dir\s*=\s*['\"]//([^'\"]+)['\"]",
-        r"cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '\1')  # API Fixer: absolute path for headless",
-        "Blender-relative cache path → absolute path (headless fix)"
+        r"cache_dir = os.environ.get('BLENDER_CACHE_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '\1')  # API Fixer: absolute path for headless",
+        "Blender-relative cache path → env-aware absolute path (headless fix)"
+    ),
+    # Cache directory defined from script dir (allow env override for consistency)
+    (
+        r"cache_dir\s*=\s*os\.path\.join\(\s*os\.path\.dirname\(os\.path\.abspath\(__file__\)\)\s*,\s*['\"]([^'\"]+)['\"]\s*\)",
+        r"cache_dir = os.environ.get('BLENDER_CACHE_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '\1')  # API Fixer: env override",
+        "cache_dir uses BLENDER_CACHE_DIR when set"
+    ),
+    # Project root from // (headless-safe, env-aware)
+    (
+        r"(\w+)\s*=\s*bpy\.path\.abspath\(['\"]//['\"]\)",
+        r"\1 = os.environ.get('BLENDER_OUTPUT_DIR') or bpy.path.abspath('//') or os.path.dirname(os.path.abspath(__file__))  # API Fixer: output root",
+        "bpy.path.abspath('//') → env-aware output root"
     ),
 ]
 
@@ -694,6 +754,38 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
     return content, False
 
 
+def _inject_plane_init_for_liquid_flow(content: str) -> tuple[str, bool]:
+    """
+    Ensure planar liquid emitters use plane initialization.
+
+    For liquid inflows using a plane emitter, Blender expects
+    `use_plane_init=True` to emit volume correctly. Without it, bakes can
+    complete but produce near-empty cache data.
+    """
+    # Only apply if a plane emitter is present.
+    if "primitive_plane_add" not in content:
+        return content, False
+
+    # Skip if already set.
+    if re.search(r"use_plane_init\s*=\s*(True|False)", content):
+        return content, False
+
+    # Find the liquid flow_type assignment and insert plane init after it.
+    match = re.search(
+        r"^(\s*)(\w+)\.flow_type\s*=\s*['\"]LIQUID['\"]\s*$",
+        content,
+        re.MULTILINE
+    )
+    if not match:
+        return content, False
+
+    indent = match.group(1)
+    var_name = match.group(2)
+    insert = f"\n{indent}{var_name}.use_plane_init = True  # Planar liquid emitter\n"
+    content = content[:match.end()] + insert + content[match.end():]
+    return content, True
+
+
 def validate_and_fix_script(script_path: str) -> Dict:
     """
     Validate script for known-bad Blender 5.0 API patterns and auto-fix.
@@ -775,6 +867,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, bake_fixed = _inject_bake_frame_alignment(content)
     if bake_fixed:
         fixes_applied.append("Aligned bake cache frame range with scene frame range")
+
+    # P1 FIX: Planar liquid inflow emitters need plane init
+    content, plane_init_fixed = _inject_plane_init_for_liquid_flow(content)
+    if plane_init_fixed:
+        fixes_applied.append("Enabled use_plane_init for planar liquid flow emitter")
 
     # P0 FIX: Replace animation=True with per-frame still renders (headless compat)
     content, stills_fixed = _inject_animation_to_stills(content)
