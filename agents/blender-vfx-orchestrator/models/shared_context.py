@@ -857,6 +857,16 @@ class SharedContext(BaseModel):
         description="Verified APISpec from API Spec Agent (used by Code Writer guardrail)"
     )
 
+    # Phase 2.7: Artifact Gates (deterministic validation)
+    last_gate_failure: Optional[str] = Field(
+        default=None,
+        description="Diagnosis from last artifact gate failure (for learning/retry)"
+    )
+    last_artifact_summary: Optional[str] = Field(
+        default=None,
+        description="Summary of discovered artifacts from last gate check"
+    )
+
     @classmethod
     def from_request(cls, request: AssetRequest, session_id: str) -> "SharedContext":
         """Create a new SharedContext from an asset request."""

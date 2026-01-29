@@ -23,6 +23,15 @@ from .code_pattern_memory import (
     CodePatternMemory,
     get_pattern_memory,
 )
+from .artifact_manager import (
+    ArtifactManager,
+    get_artifact_manager,
+    ResearchArtifact,
+    QualityArtifact,
+    IterationArtifact,
+    ScorecardArtifact,
+    ManifestArtifact,
+)
 
 __all__ = [
     "MCPConnectionPool",
@@ -41,4 +50,12 @@ __all__ = [
     "CodePattern",
     "CodePatternMemory",
     "get_pattern_memory",
+    # Artifact Manager (Artifact-First Handoffs)
+    "ArtifactManager",
+    "get_artifact_manager",
+    "ResearchArtifact",
+    "QualityArtifact",
+    "IterationArtifact",
+    "ScorecardArtifact",
+    "ManifestArtifact",
 ]

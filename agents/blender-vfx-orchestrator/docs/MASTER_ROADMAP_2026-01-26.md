@@ -163,7 +163,7 @@ If any item is red, **Phase 4 must not start**.
     - Formalize state transitions: PLAN → GENERATE → VALIDATE → EXECUTE → EVALUATE → DECIDE.
     - Ensure failure paths route to DIAGNOSE/FIX instead of ad-hoc retries.
 
-30. **Artifact-first handoffs**
+30. **Artifact-first handoffs** ✅ IMPLEMENTED (2026-01-29)
     - Agents must write scripts/logs/evals to disk and pass file refs, not inline dumps.
     - Enforce this in Coordinator prompts and guardrails.
 

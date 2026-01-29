@@ -1,0 +1,41 @@
+{
+  "recommended_approach": "Blender 5.0\u2019s Python reference/index indicates Mantaflow fluid setup is controlled through `bpy.types.FluidDomainSettings` (domain-level simulation controls) and `bpy.types.FluidFlowSettings` (emitter/flow controls, including noise-related flow inputs). For a simple campfire fire VFX, the best documented API-level starting point is to create/configure a fluid **Domain** object with `FluidDomainSettings`, add a **Flow** (emitter) object with `FluidFlowSettings`, then bake/preview the simulation over the desired frame range.",
+  "key_parameters": {
+    "domain_settings": {
+      "type": "bpy.types.FluidDomainSettings",
+      "noted_attributes_from_docs_index": [
+        "noise_strength",
+        "noise_time_anim",
+        "flip_ratio"
+      ]
+    },
+    "flow_settings": {
+      "type": "bpy.types.FluidFlowSettings",
+      "noted_attributes_from_docs_index": [
+        "noise_texture"
+      ]
+    },
+    "requested_start_values_from_prompt": {
+      "resolution": "32",
+      "frame_range": "1-10"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "The documentation hits returned here are largely API index entries (e.g., attributes like `noise_strength`/`noise_time_anim`/`noise_texture`) rather than a dedicated Mantaflow/fire how-to page; expect to rely on the UI operator (e.g., Quick Smoke) for initial object/modifier wiring, then adjust via `FluidDomainSettings`/`FluidFlowSettings`."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-29T20:07:50.457119"
+}

@@ -1,0 +1,19 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow fluid simulation API via `bpy.types.FluidDomainSettings` (gas-domain settings) as the primary control surface for a fire/campfire-style sim, and rely on the domain\u2019s built-in noise/detail controls exposed on `FluidDomainSettings` (e.g., `noise_strength`, `noise_time_anim`) to shape small-scale turbulent detail typical of flames.",
+  "key_parameters": {},
+  "api_modules": [
+    "bpy.types.FluidDomainSettings"
+  ],
+  "warnings": [
+    "The Blender 5.0 doc bundle search did not return specific documentation for the \u201cQuick Smoke\u201d operator/workflow or concrete example values for fire/campfire presets; it only surfaced general Python API index entries indicating the relevant `bpy.types.FluidDomainSettings` attributes (e.g., `noise_strength`, `noise_time_anim`, `flip_ratio`)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-29T20:34:25.107546"
+}

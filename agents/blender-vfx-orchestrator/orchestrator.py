@@ -210,8 +210,8 @@ class ModificationDecision(BaseModel):
     parameter_changes: Dict[str, Any] = Field(default_factory=dict, description="Concrete parameter changes (for modify_params)")
     code_change_description: Optional[str] = Field(default=None, description="Description of structural code changes needed (for modify_code)")
     new_technique: Optional[str] = Field(default=None, description="New technique if switching")
-    reasoning: str = Field(description="Why this modification strategy was chosen")
-    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this decision (0.0-1.0)")
+    reasoning: str = Field(default="See code_change_description or parameter_changes", description="Why this modification strategy was chosen")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence in this decision (0.0-1.0)")
 
 
 class QualityDecision(BaseModel):
@@ -324,6 +324,9 @@ from utils import (
     generate_session_id,
     create_session_from_request,
     resume_or_create_session,
+    # Artifact-First Handoffs
+    ArtifactManager,
+    get_artifact_manager,
 )
 
 # =============================================================================
@@ -1703,6 +1706,11 @@ After executing the script, return a structured ExecutionOutput with:
         sdk_session = get_or_create_sdk_session(session_id)
         print(f"[Pipeline] SDK Session (compacted): {session_id}", file=sys.stderr)
 
+        # Artifact-First Handoffs: Create manager for file-based agent communication
+        # Instead of passing full data inline in prompts, agents write to disk and pass file refs
+        artifact_mgr = get_artifact_manager(session_id)
+        print(f"[Pipeline] Artifact Manager: {artifact_mgr.artifact_dir}", file=sys.stderr)
+
         # Use overridden max_iterations if provided (applies to both paths)
         effective_max_iterations = max_iterations_override if max_iterations_override is not None else request.max_iterations
 
@@ -1780,14 +1788,32 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
                                 session.alternative_approaches.append(approach)
                         print(f"[Pipeline] Found {len(session.alternative_approaches)} alternative approaches (structured)", file=sys.stderr)
 
+                    # Artifact-First: Write research to file for downstream agents
+                    research_artifact_path = None
+                    if research_output:
+                        research_artifact_path = artifact_mgr.write_research_from_output(
+                            recommended_approach=research_output.recommended_approach,
+                            key_parameters=research_output.key_parameters,
+                            api_modules=research_output.api_modules,
+                            warnings=research_output.warnings,
+                            alternative_approaches=research_output.alternative_approaches,
+                            doc_refs=research_output.doc_refs,
+                        )
+                        print(f"[Pipeline] Research artifact: {research_artifact_path}", file=sys.stderr)
+
                     # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
                     # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
                     # the initial technique based on research findings.
                     print("[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
+
+                    # Artifact-First: Reference file instead of inline dump (compact prompt)
+                    research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
                     technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
 
-## Research Findings
-{research_text[:2000]}
+## Research Summary
+{research_ref}
+Recommended: {research_output.recommended_approach if research_output else 'Default approach'}
+Key params: {list(research_output.key_parameters.keys()) if research_output and research_output.key_parameters else 'None'}
 
 ## Effect Parameters
 - Effect Type: {request.effect_type.value}
@@ -2494,53 +2520,48 @@ Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'
                                 for param, value in learning.parameter_modifications.items():
                                     feedback_parts.append(f"- {param}: {value}")
 
-                            # Include research findings and alternatives for technique switching
-                            research_section = ""
-                            if session.research_text:
-                                research_section = f"""## Research Findings (from Phase 0)
-{session.research_text[:1500]}...
-"""
-                            alternatives_section = ""
-                            if session.alternative_approaches:
-                                untried = [a for a in session.alternative_approaches if a not in session.techniques_tried]
-                                if untried:
-                                    alternatives_section = f"""## Alternative Approaches NOT YET TRIED
-{chr(10).join(f'- {a}' for a in untried[:5])}
-"""
-                            techniques_section = ""
-                            if session.techniques_tried:
-                                techniques_section = f"""## Techniques Already Tried (do NOT repeat)
-{chr(10).join(f'- {t}' for t in session.techniques_tried)}
-"""
+                            # Artifact-First: Compact references instead of inline dumps
+                            research_ref = artifact_mgr.get_research_path()
+                            prev_quality_ref = artifact_mgr.get_quality_path(iteration - 1) if iteration > 1 else None
+
+                            # Build compact alternatives/techniques lists
+                            untried = [a for a in session.alternative_approaches if a not in session.techniques_tried][:5]
+                            untried_str = ", ".join(untried) if untried else "None"
+                            tried_str = ", ".join(session.techniques_tried) if session.techniques_tried else "None"
 
                             # Recommend technique switch if stuck
-                            switch_recommendation = ""
+                            switch_flag = ""
                             if ctx.get("stuck_issues") or ctx.get("consecutive_same_issue", 0) >= 2:
-                                switch_recommendation = """
-## IMPORTANT: TECHNIQUE SWITCH RECOMMENDED
-The current approach is not resolving issues. You SHOULD try a DIFFERENT technique from the alternatives above.
-Do NOT just tweak parameters - fundamentally change the approach.
-"""
+                                switch_flag = "**TECHNIQUE SWITCH RECOMMENDED** - current approach not resolving issues."
+
+                            # Compact feedback from learning agent
+                            feedback_str = quality.primary_issue or "No primary issue"
+                            if learning and learning.parameter_modifications:
+                                param_changes = ", ".join(f"{k}={v}" for k, v in learning.parameter_modifications.items())
+                                feedback_str += f" | Suggested params: {param_changes}"
 
                             script_prompt = f"""Modify the existing script to fix quality issues.
 
-## Current Script
+## Script
 Path: {previous_script.script_path if previous_script else 'Unknown'}
 Technique: {previous_script.technique_used if previous_script else 'Unknown'}
 
-{research_section}
-{alternatives_section}
-{techniques_section}
-{switch_recommendation}
-{chr(10).join(feedback_parts)}
+## Artifacts (read if needed)
+Research: {research_ref or 'None'}
+Previous Quality: {prev_quality_ref or 'None'}
+
+## Context
+Untried approaches: {untried_str}
+Already tried: {tried_str}
+{switch_flag}
+
+## Issue to Fix
+{feedback_str}
 
 ## Target
-Previous Score: {previous_score:.1f}
-Target Score: {request.quality_threshold}
+Previous: {previous_score:.1f} | Target: {request.quality_threshold}
 
-Modify the script to address the issues. Do NOT repeat parameter values that hurt scores.
-If stuck on same issue, try a DIFFERENT TECHNIQUE from research alternatives.
-Use patterns from library if available."""
+Fix the primary issue. Read artifacts for details if needed."""
 
                             # Create fresh hooks for this iteration (reset counters)
                             # Use fallback hooks for iteration 2+ since Research Agent already queried docs
@@ -2998,6 +3019,20 @@ Provide detailed feedback for improvement."""
                         )
                     print(f"[Pipeline] Quality hooks stats: {quality_hooks.get_stats()}", file=sys.stderr)
 
+                    # Artifact-First: Write quality evaluation to file
+                    quality_artifact_path = artifact_mgr.write_quality_from_output(
+                        iteration=iteration,
+                        overall_score=quality.overall_score,
+                        passed=quality.passed,
+                        primary_issue=quality.primary_issue,
+                        issues=quality.issues if hasattr(quality, 'issues') else [],
+                        suggestions=quality.suggestions if hasattr(quality, 'suggestions') else [],
+                        vision_assessment=quality.vision_assessment if hasattr(quality, 'vision_assessment') else "",
+                        reference_similarity=quality.reference_similarity if hasattr(quality, 'reference_similarity') else None,
+                        render_path=execution.render_path,
+                    )
+                    print(f"[Pipeline] Quality artifact: {quality_artifact_path}", file=sys.stderr)
+
                     previous_score = quality.overall_score
                     print(f"[Pipeline] Score: {quality.overall_score:.1f} | Passed: {quality.passed}", file=sys.stderr)
                     if quality.primary_issue:
@@ -3031,6 +3066,27 @@ Provide detailed feedback for improvement."""
                             f"time={iteration_duration:.1f}s) at iter {iteration}",
                             file=sys.stderr
                         )
+
+                    # Artifact-First: Write scorecard combining quality + gates + metrics
+                    # Extract critical issues for scorecard
+                    critical_issues = [
+                        issue for issue in (quality.issues if hasattr(quality, 'issues') else [])
+                        if any(kw in issue.upper() for kw in ["ZERO_LIGHTS", "BLACK_SCREEN", "WHITE_SCREEN", "CLIPPING"])
+                    ]
+                    scorecard_artifact_path = artifact_mgr.write_scorecard_from_values(
+                        iteration=iteration,
+                        overall_score=quality.overall_score,
+                        passed=quality.passed,
+                        critical_issues=critical_issues,
+                        warnings=quality.suggestions if hasattr(quality, 'suggestions') else [],
+                        cache_size_mb=artifact_summary.cache_size_mb if artifact_summary else 0.0,
+                        render_count=artifact_summary.render_count if artifact_summary else 0,
+                        vdb_count=artifact_summary.vdb_count if artifact_summary else 0,
+                        iteration_cost_usd=iteration_cost,
+                        iteration_time_seconds=iteration_duration,
+                        utility_score=utility_score,
+                    )
+                    print(f"[Pipeline] Scorecard artifact: {scorecard_artifact_path}", file=sys.stderr)
 
                     # Extract current params from script (use parameters_set, the correct field on ScriptOutput)
                     current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
@@ -3112,7 +3168,10 @@ Provide detailed feedback for improvement."""
 
                     # Get context from SessionManager for informed decisions
                     learn_ctx = session_mgr.get_context_for_agents()
-                    iteration_history = session_mgr.get_iteration_summary()
+
+                    # Artifact-First: Reference artifacts instead of inline dumps
+                    artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
+                    iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
 
                     learn_prompt = f"""Record the experiment results and suggest fixes.
 
@@ -3124,8 +3183,10 @@ Render: {execution.render_path}
 Score: {quality.overall_score:.1f}
 Passed: {quality.passed}
 Primary Issue: {quality.primary_issue or 'None'}
+Quality Artifact: {quality_artifact_path}
+Scorecard Artifact: {scorecard_artifact_path}
 
-{iteration_history}
+{iteration_summary}
 
 ## Analysis Needed
 1. Did the score improve? Delta: {learn_ctx.get('best_score', 0) - previous_score:+.1f}
@@ -3207,25 +3268,22 @@ Then provide parameter_modifications using EXACT identifiers from the analysis.
                     gate_decision: Optional[QualityDecision] = None
                     ctx = session_mgr.get_context_for_agents()
 
+                    # Artifact-First: Compact prompt with artifact references
                     gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
 
-## Quality Results
-- Score: {quality.overall_score:.1f}
-- Threshold: {request.quality_threshold}
-- Passed (simple check): {quality.passed}
-- Primary Issue: {quality.primary_issue or 'None'}
-- All Issues: {', '.join(quality.issues[:5]) if quality.issues else 'None'}
+## Key Metrics
+Score: {quality.overall_score:.1f} / Threshold: {request.quality_threshold} / Passed: {quality.passed}
+Primary Issue: {quality.primary_issue or 'None'}
 
-## Iteration Context
-- Current Iteration: {iteration}
-- Max Iterations: {request.max_iterations}
-- Consecutive Same Issue: {ctx.get('consecutive_same_issue', 0)}
-- Best Score So Far: {session.best_score:.1f}
-- Current Escape Level: {ctx.get('escape_level', 0)}
+## Artifacts (read if needed)
+Scorecard: {scorecard_artifact_path}
+Quality: {quality_artifact_path}
+
+## Context
+Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
 
 ## Learning Agent Recommendation
-Next Action: {learning.next_action}
-Reasoning: {learning.suggested_modifications[0] if learning.suggested_modifications else 'No reasoning provided'}
+Action: {learning.next_action} | Reasoning: {learning.suggested_modifications[0][:60] if learning.suggested_modifications else 'None'}...
 
 Decide: Is quality gate PASSED? What is the next action?"""
 
@@ -3323,6 +3381,23 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
                         print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
                         print(f"[Pipeline] Switch research hooks stats: {switch_research_hooks.get_stats()}", file=sys.stderr)
                         # Next iteration will get modified feedback to try different approach
+
+                    # ====== END OF ITERATION: WRITE ITERATION ARTIFACT ======
+                    # Artifact-First: Write iteration snapshot for cross-iteration reference
+                    cache_path = str(Path(artifact_output_dir) / "cache") if artifact_output_dir else None
+                    iteration_artifact_path = artifact_mgr.write_iteration_from_values(
+                        iteration=iteration,
+                        script_path=script.script_path if script else "",
+                        technique_used=script.technique_used if script else "",
+                        score=quality.overall_score if quality else 0.0,
+                        passed=quality.passed if quality else False,
+                        primary_issue=quality.primary_issue if quality else None,
+                        render_path=execution.render_path if execution else None,
+                        cache_path=cache_path,
+                        parameter_changes=script.parameters_set if script and hasattr(script, 'parameters_set') else {},
+                        escape_level=gate_decision.escape_level if gate_decision else 0,
+                    )
+                    print(f"[Pipeline] Iteration artifact: {iteration_artifact_path}", file=sys.stderr)
 
                     # ====== END OF ITERATION: COMPACT SESSION HISTORY ======
                     # Trigger manual compaction to summarize old conversation history.

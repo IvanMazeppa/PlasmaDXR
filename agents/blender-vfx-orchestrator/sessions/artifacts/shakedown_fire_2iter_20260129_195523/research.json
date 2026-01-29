@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s fluid simulation by configuring a gas Domain via `bpy.types.FluidDomainSettings` and at least one Flow via `bpy.types.FluidFlowSettings`, then bake the simulation using the fluid bake operators (queried in docs as `bpy.ops.fluid.bake`, `bpy.ops.fluid.bake_data`, `bpy.ops.fluid.bake_noise`).",
+  "key_parameters": {
+    "FluidDomainSettings": {
+      "noise_strength": "Attribute available on the domain for controlling noise influence/detail: `noise_strength`.",
+      "noise_time_anim": "Attribute available on the domain for animating noise over time: `noise_time_anim`.",
+      "flip_ratio": "Attribute available on the domain affecting FLIP behavior: `flip_ratio`."
+    },
+    "FluidFlowSettings": {
+      "noise_texture": "Attribute available on the flow for supplying a noise texture: `noise_texture`."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.fluid"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-29T19:56:47.588847"
+}

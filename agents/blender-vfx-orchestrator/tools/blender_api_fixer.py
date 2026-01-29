@@ -194,6 +194,14 @@ while len(\1) > 1:
         r"\1pass  # Blender 5.0: free_all() with temp_override removed\n",
         "free_all() with override removed"
     ),
+    # CRITICAL BUG FIX: temp_override + quick_smoke corrupts the scene in Blender 5.0
+    # The emitter object is deleted and replaced with a Cube, and the FLOW modifier is lost.
+    # Fix: Replace temp_override block with direct call (simple selection is sufficient)
+    (
+        r"(?m)^(\s*)with\s+bpy\.context\.temp_override\([^)]*\):\s*\n\s*bpy\.ops\.object\.quick_smoke\(\)",
+        r"\1# API Fixer: temp_override removed (corrupts quick_smoke in Blender 5.0)\n\1bpy.ops.object.quick_smoke()",
+        "temp_override removed from quick_smoke (Blender 5.0 bug)"
+    ),
     # FluidDomainSettings.resolution_divisions does NOT exist - use resolution_max
     (
         r"\.resolution_divisions\b",
@@ -341,6 +349,14 @@ while len(\1) > 1:
         r"cache_type\s*=\s*['\"]REPLAY['\"]",
         r"cache_type = 'ALL'  # API Fixer: REPLAY doesn't produce full bake data",
         "cache_type REPLAY → ALL (full bake data)"
+    ),
+
+    # Mantaflow cache_type MODULAR also doesn't work correctly in headless mode
+    # User reported physics simulation fails with MODULAR, works with ALL
+    (
+        r"cache_type\s*=\s*['\"]MODULAR['\"]",
+        r"cache_type = 'ALL'  # API Fixer: MODULAR fails in headless, use ALL",
+        "cache_type MODULAR → ALL (headless fix)"
     ),
 
     # Blender-relative cache paths (//) don't work in headless mode without .blend file
@@ -518,6 +534,19 @@ for _api_fixer_obj in bpy.data.objects:
 '''
 
 
+CAMERA_SCALE_FIX_SNIPPET = '''
+# ==== API FIXER: Camera Scale Normalization ====
+# look_at() functions using matrix_world can corrupt camera scale to (0, 0, 0),
+# causing black renders. Ensure all cameras have scale (1, 1, 1).
+for _api_fixer_obj in bpy.data.objects:
+    if _api_fixer_obj.type == 'CAMERA':
+        if _api_fixer_obj.scale[0] == 0 or _api_fixer_obj.scale[1] == 0 or _api_fixer_obj.scale[2] == 0:
+            _api_fixer_obj.scale = (1.0, 1.0, 1.0)
+            print(f"[API Fixer] Fixed camera scale on {_api_fixer_obj.name}")
+# ==== END API FIXER: Camera Scale Normalization ====
+'''
+
+
 BAKE_BEFORE_RENDER_SNIPPET = '''
 # ==== API FIXER: Bake Fluid Simulation Before Rendering ====
 # Without baking, Mantaflow shows green FLIP particles instead of fluid mesh.
@@ -603,15 +632,20 @@ def _inject_bake_frame_alignment(content: str) -> tuple[str, bool]:
     Returns:
         Tuple of (modified_content, was_modified)
     """
-    # Check if script uses Mantaflow domain
+    # Check if script uses Mantaflow domain (more robust pattern matching)
+    # Matches: fluid_type = 'DOMAIN', fluid_type == 'DOMAIN', getattr(...) == 'DOMAIN', etc.
     has_fluid_domain = re.search(
-        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
-        content
+        r"fluid_type\s*[=!]=?\s*['\"]DOMAIN['\"]|"
+        r"type\s*=\s*['\"]FLUID['\"]|"
+        r"FLUID\s+DOMAIN|"
+        r"domain_settings",
+        content,
+        re.IGNORECASE
     ) is not None
 
     # Check if script has a bake call
     has_bake = re.search(
-        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all",
+        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all|bpy\.ops\.fluid\.bake_noise",
         content
     ) is not None
 
@@ -654,15 +688,19 @@ def _inject_bake_before_render(content: str) -> tuple[str, bool]:
     Returns:
         Tuple of (modified_content, was_modified)
     """
-    # Check if script has a fluid domain
+    # Check if script has a fluid domain (robust pattern matching)
     has_fluid_domain = re.search(
-        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
-        content
+        r"fluid_type\s*[=!]=?\s*['\"]DOMAIN['\"]|"
+        r"type\s*=\s*['\"]FLUID['\"]|"
+        r"FLUID\s+DOMAIN|"
+        r"domain_settings",
+        content,
+        re.IGNORECASE
     ) is not None
 
     # Check if script already has bake call
     has_bake = re.search(
-        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all",
+        r"bpy\.ops\.fluid\.bake_data|bpy\.ops\.fluid\.bake_all|bpy\.ops\.fluid\.bake_noise",
         content
     ) is not None
 
@@ -703,17 +741,22 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
     Returns:
         Tuple of (modified_content, was_modified)
     """
-    # Check if script uses Mantaflow domain
+    # Check if script uses Mantaflow domain (robust pattern matching)
     has_fluid_domain = re.search(
-        r"fluid_type\s*=\s*['\"]DOMAIN['\"]|type\s*=\s*['\"]FLUID['\"]",
-        content
+        r"fluid_type\s*[=!]=?\s*['\"]DOMAIN['\"]|"
+        r"type\s*=\s*['\"]FLUID['\"]|"
+        r"FLUID\s+DOMAIN|"
+        r"domain_settings",
+        content,
+        re.IGNORECASE
     ) is not None
 
     # Check if domain is LIQUID — liquid domains render via mesh surface, not volume shader.
     # Volume material injection would overwrite the correct water/glass material.
     is_liquid_domain = re.search(
         r"domain_type\s*[=,]\s*['\"]LIQUID['\"]",
-        content
+        content,
+        re.IGNORECASE
     ) is not None
 
     # Check if script already has volume material setup
@@ -780,6 +823,53 @@ def _inject_plane_init_for_liquid_flow(content: str) -> tuple[str, bool]:
     insert = f"\n{indent}{var_name}.use_plane_init = True  # Planar liquid emitter\n"
     content = content[:match.end()] + insert + content[match.end():]
     return content, True
+
+
+def _inject_camera_scale_fix(content: str) -> tuple[str, bool]:
+    """
+    Inject camera scale normalization before render calls.
+
+    look_at() functions that manipulate matrix_world can corrupt camera scale
+    to (0, 0, 0), causing black renders. This fix ensures cameras have
+    scale (1, 1, 1) before rendering.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Check if script has a render call
+    has_render = re.search(r"bpy\.ops\.render\.render", content) is not None
+
+    # Check if script has a camera setup
+    has_camera = re.search(
+        r"(camera_add|bpy\.data\.cameras\.new|Camera_Data)",
+        content
+    ) is not None
+
+    # Check if already has camera scale fix
+    already_fixed = "Camera Scale Normalization" in content or "camera.scale" in content.lower()
+
+    if has_render and has_camera and not already_fixed:
+        # Find render section and inject before it
+        render_match = re.search(
+            r"^(\s*)(bpy\.ops\.render\.render|# =+\s*Render|# Render[^\n]*)",
+            content,
+            re.MULTILINE
+        )
+
+        if render_match:
+            insert_pos = render_match.start()
+            indent = render_match.group(1)
+            indented_snippet = "\n".join(
+                indent + line if line.strip() else line
+                for line in CAMERA_SCALE_FIX_SNIPPET.split("\n")
+            )
+            content = content[:insert_pos] + indented_snippet + "\n\n" + content[insert_pos:]
+            return content, True
+
+    return content, False
 
 
 def validate_and_fix_script(script_path: str) -> Dict:
@@ -868,6 +958,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, plane_init_fixed = _inject_plane_init_for_liquid_flow(content)
     if plane_init_fixed:
         fixes_applied.append("Enabled use_plane_init for liquid flow emitter")
+
+    # P0 FIX: Camera scale normalization (look_at matrix corruption causes black renders)
+    content, camera_fixed = _inject_camera_scale_fix(content)
+    if camera_fixed:
+        fixes_applied.append("Injected camera scale normalization (fixes black renders from look_at)")
 
     # P0 FIX: Replace animation=True with per-frame still renders (headless compat)
     content, stills_fixed = _inject_animation_to_stills(content)
