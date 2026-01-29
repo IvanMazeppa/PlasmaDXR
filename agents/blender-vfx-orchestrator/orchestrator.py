@@ -924,6 +924,7 @@ class BlenderVFXOrchestrator:
         self._executor_agent_standalone: Optional[Agent] = None
         self._quality_agent_standalone: Optional[Agent] = None
         self._learning_agent_standalone: Optional[Agent] = None
+        self._docs_expert_standalone: Optional[Agent] = None  # For parallel preflight
 
         # Phase 2: Coordinator agents for decision points (agents-as-tools pattern)
         # These agents are called at specific decision points, NOT for every step
@@ -1047,8 +1048,23 @@ class BlenderVFXOrchestrator:
         research_hooks: EnforcementHooks,
         run_config: Optional["RunConfig"],
     ) -> tuple[Optional[Any], Optional[str]]:
-        """Run research + docs expert in parallel (fan-out/fan-in)."""
-        if not self._enable_parallel_preflight or not self._docs_expert:
+        """Run research + docs expert in parallel (fan-out/fan-in).
+
+        This method runs the Research Agent and Docs Expert concurrently to reduce
+        latency at the start of the pipeline. The Docs Expert searches for high-risk
+        API usage patterns that inform the script generation.
+
+        Returns:
+            Tuple of (research_result, docs_expert_notes) where docs_expert_notes
+            is a string summary or None if disabled/failed.
+        """
+        import time as _time
+        preflight_start = _time.perf_counter()
+
+        # Use standalone docs expert (no handoffs) for parallel execution
+        if not self._enable_parallel_preflight or not self._docs_expert_standalone:
+            reason = "disabled" if not self._enable_parallel_preflight else "no standalone docs expert"
+            print(f"[Parallel Preflight] SEQUENTIAL mode ({reason})", file=sys.stderr)
             research_result = await self._run_agent(
                 self._research_agent,
                 f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
@@ -1064,13 +1080,19 @@ Research documentation, patterns, and APIs to find the optimal starting approach
                 max_turns=4,
                 run_config=run_config,
             )
+            elapsed = _time.perf_counter() - preflight_start
+            print(f"[Parallel Preflight] Sequential research completed in {elapsed:.1f}s", file=sys.stderr)
             return research_result, None
+
+        # PARALLEL MODE: Run research and docs expert concurrently
+        print(f"[Parallel Preflight] PARALLEL mode enabled for {request.effect_type.value}", file=sys.stderr)
 
         docs_prompt = f"""Search Blender 5.0 docs for high-risk API usage for {request.effect_type.value}.
 
 Focus on Mantaflow domain/flow settings, bake ops, and any known Blender 5.0 renames.
 Return a concise bullet list with doc_refs."""
 
+        print(f"[Parallel Preflight] Launching Research Agent + DocsExpert in parallel...", file=sys.stderr)
         research_task = self._run_agent(
             self._research_agent,
             f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
@@ -1087,7 +1109,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
             run_config=run_config,
         )
         docs_task = self._run_agent(
-            self._docs_expert,
+            self._docs_expert_standalone,  # Use standalone (no handoffs)
             docs_prompt,
             context=context,
             session=sdk_session,
@@ -1096,9 +1118,28 @@ Research documentation, patterns, and APIs to find the optimal starting approach
         )
 
         results = await asyncio.gather(research_task, docs_task, return_exceptions=True)
+        elapsed = _time.perf_counter() - preflight_start
+
+        # Extract results, handling exceptions gracefully
         research_result = results[0] if not isinstance(results[0], Exception) else None
         docs_result = results[1] if not isinstance(results[1], Exception) else None
+
+        # Log results and any exceptions for debugging
+        research_ok = not isinstance(results[0], Exception)
+        docs_ok = not isinstance(results[1], Exception)
+
+        if isinstance(results[0], Exception):
+            print(f"[Parallel Preflight] Research FAILED: {results[0]}", file=sys.stderr)
+        if isinstance(results[1], Exception):
+            print(f"[Parallel Preflight] DocsExpert FAILED: {results[1]}", file=sys.stderr)
+
         docs_text = getattr(docs_result, "final_output", None) if docs_result else None
+        docs_preview = docs_text[:80] + "..." if docs_text and len(docs_text) > 80 else docs_text
+
+        print(f"[Parallel Preflight] Completed in {elapsed:.1f}s", file=sys.stderr)
+        print(f"[Parallel Preflight]   Research: {'OK' if research_ok else 'FAILED'}", file=sys.stderr)
+        print(f"[Parallel Preflight]   DocsExpert: {'OK' if docs_ok else 'FAILED'} | Notes: {docs_preview or 'None'}", file=sys.stderr)
+
         return research_result, docs_text
 
     async def _run_spec_first_pipeline(
@@ -1647,6 +1688,19 @@ After executing the script, return a structured ExecutionOutput with:
             model_settings=learning_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
             tools=base_learning_standalone.tools,
+        )
+
+        # Docs Expert Standalone - for parallel preflight (no handoffs)
+        # This is used by _run_parallel_preflight to search docs in parallel with research
+        docs_model, docs_settings = self._get_model_settings("docs_expert")
+        base_docs_standalone = create_docs_expert()
+        self._docs_expert_standalone = Agent[SharedContext](
+            name="Documentation Expert (Standalone)",
+            instructions=base_docs_standalone.instructions,  # No handoff instructions
+            model=docs_model,
+            model_settings=docs_settings,
+            tools=base_docs_standalone.tools,
+            # No handoffs - runs standalone via Runner.run()
         )
 
         # =============================================================

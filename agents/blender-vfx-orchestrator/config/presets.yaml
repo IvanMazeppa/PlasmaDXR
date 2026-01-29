@@ -165,5 +165,13 @@ agent_overrides:
     max_output_tokens: 1000
     max_turns: 3
 
+  # Docs Expert: Blender 5.0 documentation search
+  # Used in parallel preflight for API verification
+  docs_expert:
+    model: gpt-5-mini
+    reasoning_effort: low
+    max_output_tokens: 2000
+    max_turns: 3
+
   # Executor: runs Blender, parses stdout — uses preset default (gpt-5-mini)
   # No override needed
