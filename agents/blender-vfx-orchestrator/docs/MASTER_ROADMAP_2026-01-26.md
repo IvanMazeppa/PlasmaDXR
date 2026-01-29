@@ -158,6 +158,30 @@ If any item is red, **Phase 4 must not start**.
 28. **Session compaction strategy**
     - Summarize every N iterations to control session growth (Phase 4 prerequisite).
 
+### P1 — Autonomy Architecture (Addendum 2026-01-29)
+29. **State-machine driven orchestration**
+    - Formalize state transitions: PLAN → GENERATE → VALIDATE → EXECUTE → EVALUATE → DECIDE.
+    - Ensure failure paths route to DIAGNOSE/FIX instead of ad-hoc retries.
+
+30. **Artifact-first handoffs**
+    - Agents must write scripts/logs/evals to disk and pass file refs, not inline dumps.
+    - Enforce this in Coordinator prompts and guardrails.
+
+31. **Run manifest + scorecard**
+    - Emit a per-run manifest (inputs, outputs, decisions, env).
+    - Emit a quality scorecard (pass/fail, cache size, render count, critical issues).
+
+32. **Bake/render gate thresholds** ✅ IMPLEMENTED (2026-01-29)
+    - Reject runs with empty/too-small caches or missing renders.
+    - Gate before marking PASS or proceeding to iteration > 1.
+    - Implementation: `guardrails/artifact_gates.py` with Phase 2.7 integration in orchestrator.
+
+33. **Critic loop for acceptance**
+    - Add a deterministic critic step: only accept if gates pass and quality >= threshold.
+
+34. **Learning registry (append-only)**
+    - Persist run outcomes and fixes; promote reliable fixes into the API fixer.
+
 ---
 
 ## 5) Execution Plan (Next Actions)
@@ -193,6 +217,12 @@ If any item is red, **Phase 4 must not start**.
 - [ ] Require doc_refs for any pattern application to prevent legacy API drift.
 - [ ] Complete SQLiteSession integration and confirm cross-agent context.
 - [ ] Standardize output schema fields and add a schema drift test.
+- [ ] Implement state-machine orchestration with explicit failure routing.
+- [ ] Enforce artifact-first handoffs (file refs only).
+- [ ] Add per-run manifest + quality scorecard outputs.
+- [x] Gate on cache size + render count before PASS. ✅ DONE (2026-01-29)
+- [ ] Add critic loop before acceptance.
+- [ ] Persist learning registry for outcomes/fixes.
 
 ---
 

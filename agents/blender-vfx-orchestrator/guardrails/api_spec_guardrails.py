@@ -42,6 +42,52 @@ VALID_ENUM_VALUES = {
     "domain_type": ["GAS", "LIQUID"],
 }
 
+# =============================================================================
+# BLENDER 5.0 DEPRECATED ATTRIBUTES BLACKLIST
+# =============================================================================
+# These attributes existed in Blender 4.x but were REMOVED or RENAMED in 5.0.
+# Scripts using these will fail at runtime - reject them early.
+# This is the primary defense against LLM training data using older Blender patterns.
+
+DEPRECATED_ATTRIBUTES = {
+    # FluidDomainSettings - removed/renamed in Blender 5.0
+    "resolution_divisions": "REMOVED: Use 'resolution_max' instead",
+    "use_adaptive_time_steps": "RENAMED: Use 'use_adaptive_timesteps' (no underscore before steps)",
+    "use_dissolve": "RENAMED: Use 'use_dissolve_smoke'",
+    "absolute_density": "REMOVED: Use 'density' with 'use_absolute'",
+    "bake_frame_start": "REMOVED: Use scene.frame_start or cache_frame_start/end",
+    "bake_frame_end": "REMOVED: Use scene.frame_end or cache_frame_start/end",
+    "timesteps_per_frame": "RENAMED: Use 'timesteps_max'",
+
+    # Cache/compression - BLOSC removed in Blender 5.0
+    "openvdb_cache_compress_type_BLOSC": "REMOVED: BLOSC compression removed in 5.0, use 'ZIP' or 'NONE'",
+
+    # FluidFlowSettings - removed/renamed
+    "use_absolute": "CHECK CONTEXT: Moved to different location or removed",
+
+    # Shader inputs - renamed in Blender 4.0+
+    "Specular": "RENAMED: Use 'Specular IOR Level' for Principled BSDF",
+    "Clearcoat": "RENAMED: Use 'Coat Weight' for Principled BSDF",
+    "Clearcoat Roughness": "RENAMED: Use 'Coat Roughness' for Principled BSDF",
+    "Transmission": "RENAMED: Use 'Transmission Weight' for Principled BSDF",
+    "Subsurface": "RENAMED: Use 'Subsurface Weight' for Principled BSDF",
+    "Sheen": "RENAMED: Use 'Sheen Weight' for Principled BSDF",
+
+    # Mesh - removed in Blender 4.1+
+    "use_auto_smooth": "REMOVED: Auto smooth is now per-edge, use Smooth by Angle modifier",
+    "auto_smooth_angle": "REMOVED: Use Smooth by Angle modifier",
+}
+
+# Known enum values that are INVALID in Blender 5.0
+DEPRECATED_ENUM_VALUES = {
+    "openvdb_cache_compress_type": {
+        "BLOSC": "REMOVED: Use 'ZIP' or 'NONE' in Blender 5.0",
+    },
+    "cache_type": {
+        # All valid in 5.0, but document for reference
+    },
+}
+
 # Known-good Blender 5.0 Mantaflow attributes verified from official docs.
 # Attributes in this whitelist bypass strict doc_ref anchor validation.
 # This is P1-17 from the Master Roadmap: "API index/whitelist from Blender 5 docs"
@@ -539,6 +585,44 @@ async def validate_code_against_spec(
     flow_violations = used_flow_attrs - allowed_flow
     op_violations = used_ops - allowed_ops
 
+    # ==========================================================================
+    # BLENDER 5.0 DEPRECATED ATTRIBUTE CHECK
+    # ==========================================================================
+    # This catches LLM training data using older Blender patterns.
+    # We check the ENTIRE script content, not just dset/fset assignments.
+    deprecated_found: Dict[str, str] = {}
+
+    for attr_name, reason in DEPRECATED_ATTRIBUTES.items():
+        # Check for attribute usage patterns
+        # Pattern: .attribute_name = or .attribute_name( or ['attribute_name']
+        patterns = [
+            rf'\.{re.escape(attr_name)}\s*=',  # .attr = value
+            rf'\.{re.escape(attr_name)}\s*\(',  # .attr(...)
+            rf'\[[\'"]{re.escape(attr_name)}[\'"]\]',  # ['attr'] or ["attr"]
+        ]
+        for pattern in patterns:
+            if re.search(pattern, script_content):
+                deprecated_found[attr_name] = reason
+                break
+
+    # Check for deprecated enum values
+    deprecated_enum_found: Dict[str, str] = {}
+    for attr_name, bad_values in DEPRECATED_ENUM_VALUES.items():
+        for bad_value, reason in bad_values.items():
+            # Pattern: attr_name = 'BAD_VALUE' or attr_name = "BAD_VALUE"
+            pattern = rf'\.{re.escape(attr_name)}\s*=\s*[\'\"]{re.escape(bad_value)}[\'\"]'
+            if re.search(pattern, script_content):
+                deprecated_enum_found[f"{attr_name}={bad_value}"] = reason
+
+    # Log deprecated attributes found
+    if deprecated_found or deprecated_enum_found:
+        print(
+            f"[Guardrail] DEPRECATED BLENDER 4.x PATTERNS DETECTED:",
+            file=sys.stderr
+        )
+        for attr, reason in {**deprecated_found, **deprecated_enum_found}.items():
+            print(f"  - {attr}: {reason}", file=sys.stderr)
+
     # Enum value validation (reject unknown or missing enum values)
     enum_value_violations: Set[str] = set()
     enum_value_missing: Set[str] = set()
@@ -552,8 +636,9 @@ async def validate_code_against_spec(
                 enum_value_violations.add(f"{attr_name}={value}")
 
     # Also allow common safe ops that don't need to be in spec
+    # These are standard Blender scene construction operations
     safe_ops = {
-        # Object operations
+        # Object operations - selection, deletion, modification
         "bpy.ops.object.select_all",
         "bpy.ops.object.delete",
         "bpy.ops.object.modifier_add",
@@ -562,6 +647,18 @@ async def validate_code_against_spec(
         "bpy.ops.object.shade_smooth",
         "bpy.ops.object.shade_flat",
         "bpy.ops.object.transform_apply",
+        "bpy.ops.object.convert",
+        "bpy.ops.object.duplicate",
+        "bpy.ops.object.join",  # Combining meshes
+        "bpy.ops.object.parent_set",
+        "bpy.ops.object.parent_clear",
+        # Object creation - cameras, lights, empties, forces
+        "bpy.ops.object.camera_add",
+        "bpy.ops.object.light_add",
+        "bpy.ops.object.empty_add",
+        "bpy.ops.object.effector_add",  # Force fields (wind, turbulence, etc)
+        "bpy.ops.object.speaker_add",
+        "bpy.ops.object.armature_add",
         # Mesh primitives
         "bpy.ops.mesh.primitive_cube_add",
         "bpy.ops.mesh.primitive_cylinder_add",
@@ -569,10 +666,38 @@ async def validate_code_against_spec(
         "bpy.ops.mesh.primitive_ico_sphere_add",
         "bpy.ops.mesh.primitive_uv_sphere_add",
         "bpy.ops.mesh.primitive_plane_add",
-        # File operations
+        "bpy.ops.mesh.primitive_circle_add",
+        "bpy.ops.mesh.primitive_cone_add",
+        "bpy.ops.mesh.primitive_torus_add",
+        "bpy.ops.mesh.primitive_grid_add",
+        "bpy.ops.mesh.primitive_monkey_add",
+        # Mesh editing operations
+        "bpy.ops.mesh.select_all",
+        "bpy.ops.mesh.select_face_by_sides",
+        "bpy.ops.mesh.delete",
+        "bpy.ops.mesh.fill",
+        "bpy.ops.mesh.extrude_region",
+        "bpy.ops.mesh.extrude_faces",
+        "bpy.ops.mesh.subdivide",
+        "bpy.ops.mesh.loop_cut",
+        "bpy.ops.mesh.bevel",
+        "bpy.ops.mesh.inset",
+        "bpy.ops.mesh.merge",
+        "bpy.ops.mesh.separate",
+        "bpy.ops.mesh.flip_normals",
+        "bpy.ops.mesh.normals_make_consistent",
+        # Curve primitives
+        "bpy.ops.curve.primitive_bezier_curve_add",
+        "bpy.ops.curve.primitive_bezier_circle_add",
+        "bpy.ops.curve.primitive_nurbs_curve_add",
+        "bpy.ops.curve.primitive_nurbs_circle_add",
+        "bpy.ops.curve.primitive_nurbs_path_add",
+        # File and render operations
         "bpy.ops.render.render",
         "bpy.ops.wm.save_as_mainfile",
         "bpy.ops.wm.open_mainfile",
+        # Data management
+        "bpy.ops.outliner.orphans_purge",  # Clean up unused data blocks
         # Fluid/physics (common setup ops)
         "bpy.ops.ptcache.bake_all",
         "bpy.ops.ptcache.free_bake_all",
@@ -592,23 +717,35 @@ async def validate_code_against_spec(
         + len(enum_value_missing)
     )
 
-    if total_violations > 0:
+    # Deprecated attributes are ALWAYS a failure, even if other violations = 0
+    total_deprecated = len(deprecated_found) + len(deprecated_enum_found)
+
+    if total_violations > 0 or total_deprecated > 0:
+        # Build reason message
+        reasons = []
+        if total_deprecated > 0:
+            reasons.append(f"Uses {total_deprecated} DEPRECATED Blender 4.x attributes")
+        if total_violations > 0:
+            reasons.append("Code uses APIs not in verified spec")
+
         print(
             f"[Guardrail] validate_code_against_spec TRIGGERED: "
             f"{len(domain_violations)} domain, {len(flow_violations)} flow, "
             f"{len(op_violations)} ops, {len(enum_value_violations)} enum value, "
-            f"{len(enum_value_missing)} enum missing violations",
+            f"{len(enum_value_missing)} enum missing, {total_deprecated} DEPRECATED violations",
             file=sys.stderr
         )
         return GuardrailFunctionOutput(
             output_info={
                 "status": "rejected",
-                "reason": "Code uses APIs not in verified spec",
+                "reason": "; ".join(reasons),
                 "domain_violations": list(domain_violations),
                 "flow_violations": list(flow_violations),
                 "op_violations": list(op_violations),
                 "enum_value_violations": list(enum_value_violations),
                 "enum_value_missing": list(enum_value_missing),
+                "deprecated_attributes": deprecated_found,  # NEW: Blender 5.0 enforcement
+                "deprecated_enum_values": deprecated_enum_found,  # NEW
                 "allowed_enum_values": {k: sorted(list(v)) for k, v in enum_allowed.items()},
                 "allowed_domain": list(allowed_domain),
                 "allowed_flow": list(allowed_flow),

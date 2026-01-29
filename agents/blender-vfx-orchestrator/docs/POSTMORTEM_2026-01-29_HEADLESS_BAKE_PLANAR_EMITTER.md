@@ -103,6 +103,23 @@ Both were reproduced and resolved in headless runs. The simulation failure was *
 
 ---
 
+## Quality Tuning Notes (For Future Iterations)
+
+### Fluid Appearance: "Large Particles"
+- Current `particle_radius = 0.8` and `resolution_max = 96` may be too coarse for the small glass scale (~0.042m radius).
+- Finer simulation requires higher resolution (128-192) and smaller particle radius (0.3-0.5).
+- Trade-off: Higher resolution = longer bake times.
+
+### Water Material Looks Like Glass
+- Current water shader uses Glass BSDF + Fresnel mixing, which produces glass-like refraction.
+- Real water needs:
+  - Slightly lower IOR (1.333 vs glass 1.45)
+  - Subtle absorption color (blue-green tint for depth)
+  - Volume absorption for murky/deep water effects
+- **Owner:** Quality Analyst subagent should flag and iterate on material settings.
+
+---
+
 ## Artifacts
 
 - Headless run logs and outputs under:

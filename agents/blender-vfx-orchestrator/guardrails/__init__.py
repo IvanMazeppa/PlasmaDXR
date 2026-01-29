@@ -69,6 +69,18 @@ from guardrails.api_spec_guardrails import (
     validate_code_against_spec,
 )
 
+# Artifact Gates: Deterministic validation of execution outputs
+# These are NOT SDK guardrails but mechanical checks run after execution
+from guardrails.artifact_gates import (
+    validate_execution_artifacts,
+    discover_execution_artifacts,
+    format_gate_failure_for_diagnosis,
+    ArtifactGateResult,
+    ExecutionArtifactSummary,
+    MIN_CACHE_SIZE_BYTES,
+    MIN_RENDER_COUNT,
+)
+
 __all__ = [
     # Research Agent guardrails
     "validate_research_output",
@@ -86,4 +98,12 @@ __all__ = [
     # Spec-First Pipeline guardrails (Phase 12)
     "validate_api_spec",
     "validate_code_against_spec",
+    # Artifact Gates (deterministic, not SDK guardrails)
+    "validate_execution_artifacts",
+    "discover_execution_artifacts",
+    "format_gate_failure_for_diagnosis",
+    "ArtifactGateResult",
+    "ExecutionArtifactSummary",
+    "MIN_CACHE_SIZE_BYTES",
+    "MIN_RENDER_COUNT",
 ]

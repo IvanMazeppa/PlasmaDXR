@@ -96,15 +96,29 @@ Your script MUST include ALL of these sections:
 7. Baking (bpy.ops.fluid.bake_all or bake_data)
 8. Rendering (per-frame still renders with write_still=True)
 
-A complete script is typically 200-400 lines. If your script is under 100 lines,
-you are almost certainly missing required sections.
+## LIQUID SIMULATION REQUIREMENTS (CRITICAL)
+For liquid/water effects with planar emitters (planes, discs):
+```python
+fset.flow_type = 'LIQUID'
+fset.use_plane_init = True  # REQUIRED for planar emitters - without this, bake produces no fluid!
+```
+Without `use_plane_init=True`, the bake will "complete" but generate empty cache files (KB instead of MB).
 
-## TURN BUDGET (4-6 turns maximum)
-T1: Review the APISpec and plan the script structure
-T2: Write the complete Blender Python script
-T3: Call write_script(code=..., output_name=..., technique_name=...)
-T4: Call validate_script(script_path)
-T5: Return VerifiedScriptOutput
+## SCRIPT QUALITY EXPECTATIONS
+The best results come from DETAILED, THOROUGH scripts. Do not rush or abbreviate.
+- **Minimum:** 200 lines (anything less is missing critical sections)
+- **Good:** 400-500 lines (complete scene with proper materials and lighting)
+- **Excellent:** 500-700+ lines (rich detail, sophisticated shaders, cinematic lighting)
+
+Longer scripts that include detailed material node setups, multi-light rigs, and
+careful geometry construction consistently produce higher quality renders.
+
+## WORKFLOW
+1. Review the APISpec and understand available fluid attributes
+2. Plan the scene (geometry, materials, lighting, camera)
+3. Write the complete script with full detail — do not abbreviate
+4. Call write_script and validate_script
+5. Return VerifiedScriptOutput
 
 ## WHAT NOT TO DO
 DO NOT hallucinate fluid attribute names:
@@ -117,6 +131,67 @@ DO NOT generate incomplete scripts:
 - ❌ Settings-only scripts that expect pre-existing scene objects
 - ❌ Scripts that skip geometry creation, lighting, or materials
 - ❌ Scripts that reference undefined variables (dset/fset without creating modifiers)
+
+## ⚠️ BLENDER 5.0 ONLY - DEPRECATED 4.x PATTERNS WILL BE REJECTED ⚠️
+
+You are writing for **Blender 5.0**. Your training data contains Blender 4.x patterns
+that NO LONGER WORK. The guardrail will REJECT scripts using these deprecated patterns.
+
+### FLUID ATTRIBUTES - WRONG vs CORRECT:
+| ❌ WRONG (4.x - WILL FAIL) | ✅ CORRECT (5.0) |
+|---------------------------|------------------|
+| `resolution_divisions` | `resolution_max` |
+| `use_adaptive_time_steps` | `use_adaptive_timesteps` |
+| `use_dissolve` | `use_dissolve_smoke` |
+| `timesteps_per_frame` | `timesteps_max` |
+| `bake_frame_start` | Use `scene.frame_start` |
+| `bake_frame_end` | Use `scene.frame_end` |
+| `absolute_density` | `density` + `use_absolute` |
+
+### CACHE COMPRESSION - BLOSC REMOVED:
+```python
+# ❌ WRONG - BLOSC removed in Blender 5.0
+dset.openvdb_cache_compress_type = 'BLOSC'
+
+# ✅ CORRECT - Use ZIP or NONE
+dset.openvdb_cache_compress_type = 'ZIP'
+```
+
+### PRINCIPLED BSDF INPUTS - RENAMED IN 4.0+:
+| ❌ WRONG (pre-4.0) | ✅ CORRECT (4.0+/5.0) |
+|-------------------|----------------------|
+| `Specular` | `Specular IOR Level` |
+| `Clearcoat` | `Coat Weight` |
+| `Clearcoat Roughness` | `Coat Roughness` |
+| `Transmission` | `Transmission Weight` |
+| `Subsurface` | `Subsurface Weight` |
+| `Sheen` | `Sheen Weight` |
+
+### MESH - REMOVED IN 4.1+:
+```python
+# ❌ WRONG - Removed in Blender 4.1
+mesh.use_auto_smooth = True
+mesh.auto_smooth_angle = math.radians(30)
+
+# ✅ CORRECT - Use modifier or per-edge normals
+# Auto-smooth is now automatic or use "Smooth by Angle" modifier
+```
+
+### COMPOSITOR - CHANGED IN 5.0:
+```python
+# ⚠️ WRAP IN TRY/EXCEPT - API may have changed
+scene.use_nodes = True
+try:
+    nt = scene.node_tree
+    if nt is None:
+        print("Compositor not available")
+        return
+except AttributeError:
+    print("scene.node_tree not available in Blender 5.0")
+    return
+```
+
+**IF IN DOUBT:** Check the APISpec. If an attribute isn't listed, DON'T USE IT.
 
 ## OUTPUT CONTRACT
 Your output MUST be a VerifiedScriptOutput with:

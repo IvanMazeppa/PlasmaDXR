@@ -47,6 +47,37 @@ if not budget["can_afford_evaluation"]:
 
 ---
 
+## Autonomy Architecture Addendum (2026-01-29)
+
+### State Machine (Required)
+All runs must follow a deterministic state flow:
+```
+PLAN → GENERATE → VALIDATE → EXECUTE → EVALUATE → DECIDE
+```
+Failure routing rules:
+- VALIDATE fail → back to GENERATE with fixes.
+- EXECUTE fail → DIAGNOSE → FIX → EXECUTE.
+- EVALUATE fail → IMPROVE → GENERATE.
+
+### Artifact-First Handoffs
+Agents must hand off **file references**, not inline dumps. Required artifacts:
+- Script path
+- Run log path
+- Render output path
+- Cache path
+- Scorecard path
+
+### Run Manifest + Scorecard
+Each run must emit:
+- **Run manifest** (inputs, outputs, env, decisions)
+- **Scorecard** (quality score, cache size, render count, critical issues)
+
+### Bake/Render Gates
+Runs must be rejected if:
+- Cache is missing or too small
+- Render set count is wrong
+- Critical errors exist in logs
+
 ## Core Operating Principles
 
 ### Principle 1: Quality Gates Are Non-Negotiable
@@ -422,6 +453,11 @@ if scene.node_tree is not None:  # Guard for None, not version
    f. PHASE 2: EXECUTION
       - Execute script in Blender
       - Parse errors if failed, fix and retry (max 2)
+   f2. PHASE 2.7: ARTIFACT GATES (Deterministic)
+      - Validate cache exists and size >= 1MB (for simulation effects)
+      - Validate at least 1 render file exists
+      - If gates fail: skip quality evaluation, route to next iteration
+      - This catches "empty bake" bugs WITHOUT LLM involvement
    g. PHASE 3: QUALITY EVALUATION
       - Quality Analyst evaluates render with vision + metrics
    h. PHASE 4: LEARNING (Post-Eval)
@@ -587,6 +623,26 @@ Is there a known fix for this issue?
 | `PAUSED` | Resume from saved state |
 | `FAILED` | Can retry with different parameters |
 | `MAX_ITERATIONS` | Return best result or retry with higher limit |
+
+### Artifact Gate Errors (Phase 2.7)
+
+Artifact gates are **deterministic** checks that run after execution but before quality evaluation.
+They catch structural failures without LLM involvement.
+
+| Gate | Detection | Likely Cause | Recovery |
+|------|-----------|--------------|----------|
+| `CACHE_SIZE` | Cache < 1MB or missing | Empty bake: emitter misconfigured | Fix emitter setup (e.g., `use_plane_init=True` for planar liquid) |
+| `RENDER_COUNT` | No render files found | Render skipped or path invalid | Check camera, output path, render settings |
+| `VDB_VALIDITY` | VDB files too small | Volume export failed | Check OpenVDB addon, domain cache |
+
+**When gates fail:**
+- Quality evaluation is **skipped** (saves LLM cost)
+- Iteration is recorded with score=0
+- Failure diagnosis is stored in context for next iteration
+- Pipeline continues to next iteration with the gate failure as the primary issue
+
+**Key principle:** Deterministic gates trump LLM opinions. If cache is empty, the bake failed
+regardless of what the LLM might say about the (non-existent) render.
 
 ### Enforcement Errors (RunHooks + Guardrails)
 

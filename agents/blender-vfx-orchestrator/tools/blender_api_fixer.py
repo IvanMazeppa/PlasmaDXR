@@ -182,16 +182,16 @@ while len(\1) > 1:
         "noise_res_factor removed"
     ),
     # bpy.ops.fluid.free_all() fails on fresh scenes with "grids still in use"
-    # Remove this call entirely - just bake directly
+    # Replace with pass (not just comment) to preserve try/except structure
     (
-        r"(?m)^\s*bpy\.ops\.fluid\.free_all\(\)\s*#?.*$",
-        r"# Blender 5.0: free_all() removed - causes 'grids still in use' on fresh scenes",
+        r"bpy\.ops\.fluid\.free_all\(\)",
+        r"pass  # Blender 5.0: free_all() removed - causes 'grids still in use'",
         "free_all() removed (grids in use error)"
     ),
-    # Also catch the with context override version
+    # Also catch the with context override version - replace entire with block
     (
-        r"(?m)^\s*with\s+bpy\.context\.temp_override.*:\s*\n\s*bpy\.ops\.fluid\.free_all\(\)",
-        r"# Blender 5.0: free_all() removed - causes 'grids still in use' on fresh scenes",
+        r"(?m)^(\s*)with\s+bpy\.context\.temp_override[^:]*:\s*\n\s*bpy\.ops\.fluid\.free_all\(\)[^\n]*\n",
+        r"\1pass  # Blender 5.0: free_all() with temp_override removed\n",
         "free_all() with override removed"
     ),
     # FluidDomainSettings.resolution_divisions does NOT exist - use resolution_max

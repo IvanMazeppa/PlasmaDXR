@@ -100,6 +100,11 @@ from guardrails.api_spec_guardrails import (
     validate_api_spec,
     validate_code_against_spec,
 )
+# Artifact Gates: Deterministic validation of execution outputs (bake/render gates)
+from guardrails.artifact_gates import (
+    validate_execution_artifacts,
+    format_gate_failure_for_diagnosis,
+)
 from agents.extensions import handoff_filters
 # Removed unused handoff prompt imports - standalone agents don't use handoffs
 from openai.types.shared import Reasoning
@@ -2875,6 +2880,68 @@ Execute it and report results."""
 
                     print(f"[Pipeline] Render: {execution.render_path} ({execution.execution_time_seconds:.1f}s)", file=sys.stderr)
 
+                    # ====== PHASE 2.7: ARTIFACT GATES (Deterministic Validation) ======
+                    # Run BEFORE quality evaluation to catch structural failures (empty caches,
+                    # missing renders) without involving LLM. Deterministic first, adaptive second.
+                    print(f"[Pipeline] PHASE 2.7: Artifact Gates", file=sys.stderr)
+
+                    # Derive output_dir from render_path (renders are in output_dir root)
+                    artifact_output_dir = None
+                    if execution.render_path:
+                        artifact_output_dir = str(Path(execution.render_path).parent)
+
+                    gates_passed, gate_results, artifact_summary = validate_execution_artifacts(
+                        output_dir=artifact_output_dir,
+                        run_dir=None,  # Not available in ExecutionOutput
+                        effect_type=request.effect_type.value,
+                        verbose=True,
+                    )
+
+                    if not gates_passed:
+                        # Artifact gates failed - this is a structural issue, not a quality issue
+                        # Route to failure path WITHOUT quality evaluation
+                        failure_diagnosis = format_gate_failure_for_diagnosis(gate_results, artifact_summary)
+                        print(f"[Pipeline] ARTIFACT GATE FAILED - skipping quality evaluation", file=sys.stderr)
+
+                        # Record as execution failure with gate diagnostics
+                        gate_issues = [g.reason for g in gate_results if not g.passed]
+                        quality = QualityOutput(
+                            overall_score=0,
+                            passed=False,
+                            primary_issue=f"Artifact gate failed: {gate_issues[0] if gate_issues else 'Unknown'}",
+                            issues=gate_issues,
+                            suggestions=[
+                                "Check simulation settings (e.g., use_plane_init for liquid emitters)",
+                                "Verify bake completed with non-empty cache",
+                                "Ensure render output path is valid",
+                            ],
+                            vision_assessment=f"No vision evaluation - artifact gates failed. Cache: {artifact_summary.cache_size_mb:.2f}MB, Renders: {artifact_summary.render_count}",
+                        )
+
+                        # Update session tracking
+                        current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
+                        previous_params = current_params
+                        previous_score = 0
+
+                        session_mgr.record_result(
+                            iteration=iteration,
+                            params=current_params,
+                            score=0,
+                            issues=quality.issues,
+                            primary_issue=quality.primary_issue,
+                            technique=script.technique_used if script else None
+                        )
+                        print(f"[Pipeline] Artifact gate failure recorded: {gate_issues}", file=sys.stderr)
+
+                        # Store gate diagnostics in context for potential use by diagnosis agent
+                        context.last_gate_failure = failure_diagnosis
+                        context.last_artifact_summary = artifact_summary
+
+                        # Continue to next iteration (modification may fix the issue)
+                        continue
+
+                    print(f"[Pipeline] Artifact gates PASSED: cache={artifact_summary.cache_size_mb:.2f}MB, renders={artifact_summary.render_count}", file=sys.stderr)
+
                     # Capture baseline snapshot BEFORE quality evaluation updates previous_score
                     # This fixes the "record_baseline not called" bug where baseline was using current score
                     baseline_score_snapshot = previous_score
@@ -2981,12 +3048,24 @@ Provide detailed feedback for improvement."""
                     print(f"[Pipeline] Result recorded: params_changed={len(session_mgr.iteration_history[-1].params_changed) if session_mgr.iteration_history else 0}", file=sys.stderr)
 
                     # Record iteration - create nested models from agent outputs
+                    # Convert validation_errors to strings if they're dicts
+                    validation_issues_str = []
+                    if hasattr(script, 'validation_errors') and script.validation_errors:
+                        for err in script.validation_errors:
+                            if isinstance(err, dict):
+                                # Format: "severity: message (category)"
+                                sev = err.get('severity', 'info')
+                                msg = err.get('message', str(err))
+                                cat = err.get('category', '')
+                                validation_issues_str.append(f"{sev}: {msg}" + (f" ({cat})" if cat else ""))
+                            else:
+                                validation_issues_str.append(str(err))
                     script_mod = ScriptModification(
                         script_path=script.script_path or "unknown",
                         modifications=script.parameters_set if hasattr(script, 'parameters_set') else {},
                         technique_name=script.technique_used,
                         validation_passed=script.validation_passed,
-                        validation_issues=script.validation_errors,
+                        validation_issues=validation_issues_str,
                     )
                     blender_exec = BlenderExecution(
                         success=execution.success,
