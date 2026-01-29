@@ -78,6 +78,10 @@ Runs must be rejected if:
 - Render set count is wrong
 - Critical errors exist in logs
 
+### SDK Feature Notes (2026-01-29)
+- Detailed SDK upgrade plan: `docs/SDK_FEATURES_UPGRADE_PLAN_2026-01-29.md`
+- Patch implementation notes: `docs/ORCHESTRATOR_PATCH_RUNCONFIG_PARALLEL_PREFLIGHT_2026-01-29.md`
+
 ## Core Operating Principles
 
 ### Principle 1: Quality Gates Are Non-Negotiable

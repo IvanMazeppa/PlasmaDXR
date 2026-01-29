@@ -64,6 +64,17 @@ The primary focus of this project is **blender-vfx-orchestrator** - an autonomou
 
 **Location:** `agents/blender-vfx-orchestrator/`
 
+### Ground Truth for LLMs (Read First)
+
+- **Roadmap:** `agents/blender-vfx-orchestrator/docs/MASTER_ROADMAP_2026-01-26.md`
+- **Ops Manual:** `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
+- **Architecture Addendum:** `agents/blender-vfx-orchestrator/docs/MULTI_AGENT_ARCHITECTURE_ADDENDUM_2026-01-29.md`
+- **SDK Enforcement:** `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
+- **Version Truth:** `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
+- **Recent Fixes:** `agents/blender-vfx-orchestrator/docs/WORKLOG_2026-01-29_API_FIXER_RENDER_BAKE.md`
+
+**Important:** Use Blender 5 MCP docs for all API validation. Do not rely on memory. Code can be wrong; validate against docs + runtime behavior.
+
 ### What It Does
 
 - Autonomously generates Blender Python scripts for VFX effects (explosions, fire, smoke, nebulae, solar effects)
@@ -71,6 +82,30 @@ The primary focus of this project is **blender-vfx-orchestrator** - an autonomou
 - Uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions
 - Implements 5 self-learning strategies for continuous improvement
 - Exports NanoVDB volumetric files for use in the DXR renderer
+
+### Required Operational Flow (State Machine)
+
+```
+PLAN → GENERATE → VALIDATE → EXECUTE → EVALUATE → DECIDE
+```
+
+Failure routing:
+- VALIDATE fail → back to GENERATE with fixes
+- EXECUTE fail → DIAGNOSE → FIX → EXECUTE
+- EVALUATE fail → IMPROVE → GENERATE
+
+### Recent Stability Fixes (2026-01-29)
+
+- Render loop limiter now catches common patterns and prevents full-frame renders.
+- `use_plane_init = True` is auto-injected for **all** liquid flows (prevents empty bakes).
+- Headless paths use env overrides (`BLENDER_OUTPUT_DIR`, `BLENDER_CACHE_DIR`).
+
+### Headless Gotchas (Blender 5)
+
+- `bpy.ops.fluid.bake_all()` requires an **active domain object** in **OBJECT** mode.
+- `animation=True` does not emit still frames in headless mode.
+- `cache_type = 'REPLAY'` does not produce full bake data; use `ALL`.
+- `bpy.path.abspath('//')` is not reliable headless; prefer env-based paths.
 
 ---
 

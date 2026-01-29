@@ -1,0 +1,22 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s liquid simulation settings via the Fluid Domain and Flow property groups: configure a Liquid Domain and drive the \u201cFLIP-ness\u201d of the solver through `bpy.types.FluidDomainSettings.flip_ratio`, then feed the domain with an inflow object whose motion/variation can be shaped using `bpy.types.FluidFlowSettings` (including a `noise_texture`). This aligns with the Python API structure where liquid/FLIP behavior is exposed on `FluidDomainSettings` (e.g., `flip_ratio`) and flow/emitter modulation is exposed on `FluidFlowSettings` (e.g., `noise_texture`).",
+  "key_parameters": {
+    "FluidDomainSettings.flip_ratio": "Documented as an attribute on `bpy.types.FluidDomainSettings` (see genindex entry for `flip_ratio`). This is the key FLIP vs PIC control exposed in the API; use it as the primary knob for splashy/energetic liquid behavior.",
+    "FluidDomainSettings.noise_strength": "Documented as an attribute on `bpy.types.FluidDomainSettings` (see genindex entry for `noise_strength`).",
+    "FluidDomainSettings.noise_time_anim": "Documented as an attribute on `bpy.types.FluidDomainSettings` (see genindex entry for `noise_time_anim`).",
+    "FluidDomainSettings.noise_type": "Documented as an attribute on `bpy.types.FluidDomainSettings` (see genindex entry for `noise_type`).",
+    "FluidFlowSettings.noise_texture": "Documented as an attribute on `bpy.types.FluidFlowSettings` (see genindex entry showing `noise_texture (bpy.types.FluidFlowSettings attribute)`). Useful for adding controlled variation to an inflow/stream."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-"
+  ],
+  "timestamp": "2026-01-29T21:52:46.673452"
+}

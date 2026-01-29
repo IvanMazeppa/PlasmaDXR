@@ -182,6 +182,10 @@ If any item is red, **Phase 4 must not start**.
 34. **Learning registry (append-only)**
     - Persist run outcomes and fixes; promote reliable fixes into the API fixer.
 
+35. **SDK feature upgrades (RunConfig, parallel preflight, tooling)**
+    - Track detailed plan in `docs/SDK_FEATURES_UPGRADE_PLAN_2026-01-29.md`.
+    - Validate patch notes in `docs/ORCHESTRATOR_PATCH_RUNCONFIG_PARALLEL_PREFLIGHT_2026-01-29.md`.
+
 ---
 
 ## 5) Execution Plan (Next Actions)

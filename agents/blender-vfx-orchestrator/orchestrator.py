@@ -15,6 +15,7 @@ Key capabilities:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 import json
 import os
@@ -26,6 +27,10 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field, model_validator
 
 from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
+try:
+    from agents import RunConfig
+except Exception:
+    RunConfig = None
 from agents.exceptions import OutputGuardrailTripwireTriggered
 from agents.memory import OpenAIResponsesCompactionSession
 from agents.memory.session import SessionABC
@@ -946,6 +951,7 @@ class BlenderVFXOrchestrator:
             log_file=str(Path(__file__).parent / "traces" / "communication_flow.jsonl")
         )
         self._diagnostic_hooks: Optional[DiagnosticHooks] = None
+        self._enable_parallel_preflight = os.getenv("VFX_PARALLEL_PREFLIGHT", "1").lower() in ("1", "true", "yes")
 
     def _get_model_settings(self, agent_name: str) -> tuple[str, ModelSettings]:
         """
@@ -967,6 +973,133 @@ class BlenderVFXOrchestrator:
             model_settings_kwargs["verbosity"] = "medium"
 
         return settings.model, ModelSettings(**model_settings_kwargs)
+
+    def _supports_run_config(self) -> bool:
+        """Return True if Runner.run accepts run_config in this SDK version."""
+        if RunConfig is None:
+            return False
+        try:
+            return "run_config" in inspect.signature(Runner.run).parameters
+        except Exception:
+            return False
+
+    def _build_run_config(
+        self,
+        session: "SessionState",
+        request: "AssetRequest",
+        iteration: Optional[int] = None,
+        phase: Optional[str] = None,
+    ) -> Optional["RunConfig"]:
+        """Best-effort RunConfig builder. Falls back safely if unsupported."""
+        if RunConfig is None:
+            return None
+        trace_meta = {
+            "asset_name": request.asset_name,
+            "effect_type": request.effect_type.value,
+            "session_id": session.session_id,
+        }
+        if iteration is not None:
+            trace_meta["iteration"] = iteration
+        if phase:
+            trace_meta["phase"] = phase
+        try:
+            return RunConfig(
+                workflow_name="blender-vfx-orchestrator",
+                group_id=session.session_id,
+                trace_metadata=trace_meta,
+            )
+        except TypeError:
+            # Older/newer SDK signature; return default config if possible.
+            try:
+                return RunConfig()
+            except Exception:
+                return None
+
+    async def _run_agent(
+        self,
+        agent: Agent,
+        prompt: str,
+        *,
+        context: SharedContext,
+        session: Optional[SessionABC] = None,
+        hooks: Optional[EnforcementHooks] = None,
+        max_turns: Optional[int] = None,
+        run_config: Optional["RunConfig"] = None,
+    ):
+        """Wrapper for Runner.run with optional RunConfig support."""
+        kwargs: Dict[str, Any] = {
+            "context": context,
+            "session": session,
+            "hooks": hooks,
+            "max_turns": max_turns,
+        }
+        if run_config is not None and self._supports_run_config():
+            kwargs["run_config"] = run_config
+        # Remove None entries to preserve older SDK compat
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        return await Runner.run(agent, prompt, **kwargs)
+
+    async def _run_parallel_preflight(
+        self,
+        request: "AssetRequest",
+        context: SharedContext,
+        sdk_session: Optional[SessionABC],
+        research_hooks: EnforcementHooks,
+        run_config: Optional["RunConfig"],
+    ) -> tuple[Optional[Any], Optional[str]]:
+        """Run research + docs expert in parallel (fan-out/fan-in)."""
+        if not self._enable_parallel_preflight or not self._docs_expert:
+            research_result = await self._run_agent(
+                self._research_agent,
+                f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
+
+Effect Type: {request.effect_type.value}
+Description: {request.description}
+Reference: {request.reference_path or "None"}
+
+Research documentation, patterns, and APIs to find the optimal starting approach.""",
+                context=context,
+                session=sdk_session,
+                hooks=research_hooks,
+                max_turns=4,
+                run_config=run_config,
+            )
+            return research_result, None
+
+        docs_prompt = f"""Search Blender 5.0 docs for high-risk API usage for {request.effect_type.value}.
+
+Focus on Mantaflow domain/flow settings, bake ops, and any known Blender 5.0 renames.
+Return a concise bullet list with doc_refs."""
+
+        research_task = self._run_agent(
+            self._research_agent,
+            f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
+
+Effect Type: {request.effect_type.value}
+Description: {request.description}
+Reference: {request.reference_path or "None"}
+
+Research documentation, patterns, and APIs to find the optimal starting approach.""",
+            context=context,
+            session=sdk_session,
+            hooks=research_hooks,
+            max_turns=4,
+            run_config=run_config,
+        )
+        docs_task = self._run_agent(
+            self._docs_expert,
+            docs_prompt,
+            context=context,
+            session=sdk_session,
+            max_turns=3,
+            run_config=run_config,
+        )
+
+        results = await asyncio.gather(research_task, docs_task, return_exceptions=True)
+        research_result = results[0] if not isinstance(results[0], Exception) else None
+        docs_result = results[1] if not isinstance(results[1], Exception) else None
+        docs_text = getattr(docs_result, "final_output", None) if docs_result else None
+        return research_result, docs_text
 
     async def _run_spec_first_pipeline(
         self,
@@ -1000,6 +1133,12 @@ class BlenderVFXOrchestrator:
         SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
         """
         print(f"[Spec-First] Starting API Spec → Code Writer pipeline", file=sys.stderr)
+        run_config = self._build_run_config(
+            session=context.session,
+            request=request,
+            iteration=context.session.current_iteration or None,
+            phase="spec_first",
+        )
 
         # ====== PHASE 1.0: DETERMINISTIC BUNDLE CALL ======
         # Call bundle programmatically BEFORE running the agent
@@ -1056,13 +1195,14 @@ Key parameters needed for {effect_type}:
 Extract from bundle first, then fill gaps with targeted searches."""
 
         try:
-            spec_result = await Runner.run(
+            spec_result = await self._run_agent(
                 self._api_spec_agent,
                 spec_prompt,
                 context=context,
                 session=sdk_session,
                 hooks=api_spec_hooks,
-                max_turns=8
+                max_turns=8,
+                run_config=run_config,
             )
             api_spec: APISpec = spec_result.final_output
             print(f"[Spec-First] API Spec created: {len(api_spec.domain_attributes)} domain attrs, "
@@ -1110,13 +1250,14 @@ Call write_script to generate the script, then validate_script to check it.
 Return the VerifiedScriptOutput with script_path and apis_used."""
 
         try:
-            code_result = await Runner.run(
+            code_result = await self._run_agent(
                 self._code_writer_agent,
                 code_prompt,
                 context=context,
                 session=sdk_session,
                 hooks=code_writer_hooks,
-                max_turns=8
+                max_turns=8,
+                run_config=run_config,
             )
             verified_output: VerifiedScriptOutput = code_result.final_output
 
@@ -1172,16 +1313,22 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
 - Resolution: {request.resolution}
 - Frames: {request.frame_start}-{request.frame_end}
 
-Generate a complete, validated script. Return the script_path in your output."""
+        Generate a complete, validated script. Return the script_path in your output."""
 
         try:
-            script_result = await Runner.run(
+            script_result = await self._run_agent(
                 self._script_agent_standalone,
                 script_prompt,
                 context=context,
                 session=sdk_session,
                 hooks=script_hooks,
-                max_turns=15
+                max_turns=15,
+                run_config=self._build_run_config(
+                    session=context.session,
+                    request=request,
+                    iteration=context.session.current_iteration or None,
+                    phase="script_fallback",
+                ),
             )
             return script_result.final_output
         except Exception as e:
@@ -1728,28 +1875,25 @@ After executing the script, return a structured ExecutionOutput with:
                 if not is_resuming:
                     # ====== PHASE 0: RESEARCH (once at start) ======
                     print("[Pipeline] PHASE 0: Research", file=sys.stderr)
-                    research_prompt = f"""Research the best approach for creating a {request.effect_type.value} VFX effect.
-
-Effect Type: {request.effect_type.value}
-Description: {request.description}
-Reference: {request.reference_path or "None"}
-
-Research documentation, patterns, and APIs to find the optimal starting approach."""
-
                     # Create research hooks for Phase 0
                     phase0_research_hooks = create_research_hooks()
                     research_output: Optional[ResearchOutput] = None
                     try:
-                        research_result = await Runner.run(
-                            self._research_agent,
-                            research_prompt,
+                        run_config = self._build_run_config(
+                            session=session,
+                            request=request,
+                            iteration=0,
+                            phase="research",
+                        )
+                        research_result, docs_notes = await self._run_parallel_preflight(
+                            request=request,
                             context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            hooks=phase0_research_hooks,
-                            max_turns=4  # Phase 3: Aligned with prompt turn budget
+                            sdk_session=sdk_session,
+                            research_hooks=phase0_research_hooks,
+                            run_config=run_config,
                         )
                         # Phase 3: Structured output - ResearchOutput schema
-                        research_output = research_result.final_output
+                        research_output = research_result.final_output if research_result else None
                         if research_output:
                             # Build text summary from structured output for downstream use
                             research_text = f"""## Research Summary
@@ -1758,6 +1902,8 @@ Key Parameters: {research_output.key_parameters}
 API Modules: {', '.join(research_output.api_modules) if research_output.api_modules else 'None'}
 Warnings: {'; '.join(research_output.warnings) if research_output.warnings else 'None'}
 Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 'None'}"""
+                            if docs_notes:
+                                research_text += f"\n\n## Docs Expert Notes\n{docs_notes}"
                         else:
                             research_text = "No research findings"
                     except LoopDetectedError as e:
@@ -1827,12 +1973,18 @@ Key params: {list(research_output.key_parameters.keys()) if research_output and 
 Select the optimal technique and provide starting parameters."""
 
                     try:
-                        technique_result = await Runner.run(
+                        technique_result = await self._run_agent(
                             self._technique_coordinator,
                             technique_prompt,
                             context=context,
                             session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            max_turns=6  # Coordinators should be fast
+                            max_turns=6,  # Coordinators should be fast
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=0,
+                                phase="technique_select",
+                            ),
                         )
                         selected_technique = technique_result.final_output
                         print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
@@ -2092,13 +2244,19 @@ Generate a complete, validated script using the selected technique. Return the s
 
                             # Run Script Writer for iteration 1 with enforcement hooks
                             try:
-                                script_result = await Runner.run(
+                                script_result = await self._run_agent(
                                     self._script_agent_standalone,
                                     script_prompt,
                                     context=context,
                                     session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                     hooks=script_hooks,
-                                    max_turns=15
+                                    max_turns=15,
+                                    run_config=self._build_run_config(
+                                        session=session,
+                                        request=request,
+                                        iteration=iteration,
+                                        phase="script_writer",
+                                    ),
                                 )
                                 script: ScriptOutput = script_result.final_output
                             except LoopDetectedError as e:
@@ -2316,12 +2474,18 @@ Decide: modify_params, modify_code, OR switch_technique.
 - switch_technique: When the current approach is fundamentally broken after 3+ attempts."""
 
                             try:
-                                mod_result = await Runner.run(
+                                mod_result = await self._run_agent(
                                     self._modification_coordinator,
                                     mod_prompt,
                                     context=context,
                                     session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                    max_turns=4  # Coordinators should be fast
+                                    max_turns=4,  # Coordinators should be fast
+                                    run_config=self._build_run_config(
+                                        session=session,
+                                        request=request,
+                                        iteration=iteration,
+                                        phase="modify_strategy",
+                                    ),
                                 )
                                 mod_decision = mod_result.final_output
                                 print(f"[Pipeline] Coordinator decision: {mod_decision.action}", file=sys.stderr)
@@ -2392,13 +2556,19 @@ Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'
 
                                     try:
                                         code_fix_hooks = create_fallback_script_writer_hooks()
-                                        code_fix_result = await Runner.run(
+                                        code_fix_result = await self._run_agent(
                                             self._script_agent_standalone,
                                             code_fix_prompt,
                                             context=context,
                                             session=sdk_session,
                                             hooks=code_fix_hooks,
                                             max_turns=8,
+                                            run_config=self._build_run_config(
+                                                session=session,
+                                                request=request,
+                                                iteration=iteration,
+                                                phase="code_fix",
+                                            ),
                                         )
                                         code_fix_output = code_fix_result.final_output
                                         if code_fix_output and code_fix_output.script_path:
@@ -2568,13 +2738,19 @@ Fix the primary issue. Read artifacts for details if needed."""
                             # This prevents blocking modify_script when doc queries were done in iter 1
                             iter_script_hooks = create_fallback_script_writer_hooks()
                             try:
-                                script_result = await Runner.run(
+                                script_result = await self._run_agent(
                                     self._script_agent_standalone,
                                     script_prompt,
                                     context=context,
                                     session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                     hooks=iter_script_hooks,
-                                    max_turns=15
+                                    max_turns=15,
+                                    run_config=self._build_run_config(
+                                        session=session,
+                                        request=request,
+                                        iteration=iteration,
+                                        phase="script_modify",
+                                    ),
                                 )
                                 # Structured output: ScriptOutput
                                 script = script_result.final_output
@@ -2755,13 +2931,19 @@ Run the script and report results."""
                         raise_on_doc_missing=False,
                     ))
                     try:
-                        exec_result = await Runner.run(
+                        exec_result = await self._run_agent(
                             self._executor_agent_standalone,
                             exec_prompt,
                             context=context,
                             session=sdk_session,  # Phase 4: SDK session for conversation persistence
                             hooks=exec_hooks,
-                            max_turns=6
+                            max_turns=6,
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=iteration,
+                                phase="execute",
+                            ),
                         )
                         # Structured output: ExecutionOutput
                         execution: ExecutionOutput = exec_result.final_output
@@ -2821,13 +3003,19 @@ but append '_errfix' to the output name."""
 
                             try:
                                 recovery_hooks = create_fallback_script_writer_hooks()
-                                recovery_result = await Runner.run(
+                                recovery_result = await self._run_agent(
                                     self._script_agent_standalone,
                                     recovery_prompt,
                                     context=context,
                                     session=sdk_session,
                                     hooks=recovery_hooks,
                                     max_turns=6,
+                                    run_config=self._build_run_config(
+                                        session=session,
+                                        request=request,
+                                        iteration=iteration,
+                                        phase="recover_script",
+                                    ),
                                 )
 
                                 recovery_script = recovery_result.final_output
@@ -2845,13 +3033,19 @@ Effect: {request.effect_type.value}
 Execute it and report results."""
 
                                     try:
-                                        reexec_result = await Runner.run(
+                                        reexec_result = await self._run_agent(
                                             self._executor_agent_standalone,
                                             reexec_prompt,
                                             context=context,
                                             session=sdk_session,
                                             hooks=re_exec_hooks,
                                             max_turns=4,
+                                            run_config=self._build_run_config(
+                                                session=session,
+                                                request=request,
+                                                iteration=iteration,
+                                                phase="reexecute",
+                                            ),
                                         )
                                         reexec_output = reexec_result.final_output
                                         if reexec_output and reexec_output.success and reexec_output.render_path:
@@ -2996,13 +3190,19 @@ Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
 
                     try:
-                        eval_result = await Runner.run(
+                        eval_result = await self._run_agent(
                             self._quality_agent_standalone,
                             eval_prompt,
                             context=context,
                             session=sdk_session,  # Phase 4: SDK session for conversation persistence
                             hooks=quality_hooks,
-                            max_turns=6
+                            max_turns=6,
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=iteration,
+                                phase="quality",
+                            ),
                         )
                         # Structured output: QualityOutput
                         quality = eval_result.final_output
@@ -3207,13 +3407,19 @@ Then provide parameter_modifications using EXACT identifiers from the analysis.
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
                     try:
-                        learn_result = await Runner.run(
+                        learn_result = await self._run_agent(
                             self._learning_agent_standalone,
                             learn_prompt,
                             context=context,
                             session=sdk_session,  # Phase 4: SDK session for conversation persistence
                             hooks=learning_hooks,
-                            max_turns=8
+                            max_turns=8,
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=iteration,
+                                phase="learning",
+                            ),
                         )
                         # Structured output: LearningOutput
                         learning = learn_result.final_output
@@ -3288,12 +3494,18 @@ Action: {learning.next_action} | Reasoning: {learning.suggested_modifications[0]
 Decide: Is quality gate PASSED? What is the next action?"""
 
                     try:
-                        gate_result = await Runner.run(
+                        gate_result = await self._run_agent(
                             self._quality_gate_coordinator,
                             gate_prompt,
                             context=context,
                             session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            max_turns=3  # Quality gate should be very fast
+                            max_turns=3,  # Quality gate should be very fast
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=iteration,
+                                phase="quality_gate",
+                            ),
                         )
                         gate_decision = gate_result.final_output
                         print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
@@ -3353,13 +3565,19 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
 
                         switch_research_hooks = create_research_hooks()
                         try:
-                            research_result = await Runner.run(
+                            research_result = await self._run_agent(
                                 self._research_agent,
                                 switch_prompt,
                                 context=context,
                                 session=sdk_session,  # Phase 4: SDK session for conversation persistence
                                 hooks=switch_research_hooks,
-                                max_turns=4  # Phase 3: Aligned with prompt turn budget
+                                max_turns=4,  # Phase 3: Aligned with prompt turn budget
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=iteration,
+                                    phase="switch_research",
+                                ),
                             )
                             # Phase 3: Structured output
                             switch_research: Optional[ResearchOutput] = research_result.final_output

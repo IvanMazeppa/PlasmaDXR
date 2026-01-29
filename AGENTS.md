@@ -44,3 +44,31 @@ Headless benchmark mode (no window/swapchain):
 ## Commit & Pull Request Guidelines
 - Follow Conventional Commits used in history: `feat:`, `fix:`, `docs:`, `perf:`, `refactor:`, `chore:` (see `.git_commit_template_probe_grid.txt` for a good long-form body).
 - PRs: include “What/Why”, repro steps, and for visual changes add a screenshot or PIX capture notes; do not commit generated artifacts or large binaries (check `.gitignore`).
+
+## LLM Initialization: Blender VFX Orchestrator (Summary)
+
+This repo contains **blender-vfx-orchestrator**, an autonomous multi-agent system built on the **OpenAI Agents SDK** to generate Blender 5 VFX assets (smoke/fire/liquid/nebulae) via iterative runs.
+
+### Core Docs (Read First)
+- `agents/blender-vfx-orchestrator/docs/MASTER_ROADMAP_2026-01-26.md`
+- `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
+- `agents/blender-vfx-orchestrator/docs/MULTI_AGENT_ARCHITECTURE_ADDENDUM_2026-01-29.md`
+- `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
+- `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
+
+### Operational Flow (Required)
+State machine:
+```
+PLAN → GENERATE → VALIDATE → EXECUTE → EVALUATE → DECIDE
+```
+Failures must route back via DIAGNOSE/FIX/IMPROVE paths (no ad-hoc retries).
+
+### Critical Blender 5 Headless Gotchas
+- `bpy.ops.fluid.bake_all()` requires **active domain object** and **OBJECT** mode.
+- Liquid inflows need `flow_settings.use_plane_init = True` (auto-injected by API fixer).
+- `cache_type = 'REPLAY'` does not produce full bake data; use `ALL`.
+- `animation=True` does not emit stills headless; render representative frames only.
+- Headless paths must use `BLENDER_OUTPUT_DIR` / `BLENDER_CACHE_DIR`.
+
+### Ground Truth Rule
+- Use Blender 5 MCP docs for API verification. Do **not** trust memory or training data.
