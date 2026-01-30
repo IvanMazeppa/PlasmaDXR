@@ -12,13 +12,20 @@ The pattern:
 4. Fix never applied → same error → infinite loop
 
 This module fixes known-bad patterns BEFORE execution.
+
+VECTOR STORE VALIDATION (Option B):
+Additionally validates ALL bpy.*/bmesh.* calls against the Blender 5.0
+vector store to catch API hallucinations that aren't in the static fix list.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Set
 
 # Known-bad patterns and their fixes for Blender 5.0
 # Format: (pattern_regex, replacement, description)
@@ -900,6 +907,301 @@ def _inject_camera_scale_fix(content: str) -> tuple[str, bool]:
     return content, False
 
 
+# =============================================================================
+# VECTOR STORE VALIDATION (Option B - Runtime API Verification)
+# =============================================================================
+# This validates ALL bpy.*/bmesh.* API calls against the Blender 5.0 vector
+# store to catch hallucinations not covered by the static BLENDER_50_FIXES list.
+
+# Enable/disable vector store validation
+VECTOR_STORE_VALIDATION_ENABLED = os.getenv("API_FIXER_VECTOR_VALIDATION", "true").lower() in ("1", "true", "yes")
+
+# Cache for vector store lookups to avoid repeated queries
+_api_signature_cache: Dict[str, Optional[Dict]] = {}
+
+
+def _get_semantic_search():
+    """Lazy import semantic search to avoid circular imports."""
+    try:
+        from tools.semantic_docs_tools import semantic_search_impl
+        return semantic_search_impl
+    except ImportError:
+        return None
+
+
+def _extract_api_calls(content: str) -> List[Tuple[str, str, str, int]]:
+    """
+    Extract all bmesh.ops.* and bpy.ops.* function calls with their parameters.
+
+    Args:
+        content: Script content
+
+    Returns:
+        List of tuples: (full_call, module, function_name, line_number)
+        e.g., ("bmesh.ops.create_cone", "bmesh.ops", "create_cone", 225)
+    """
+    calls = []
+
+    # Pattern for bmesh.ops.function_name( ... )
+    bmesh_pattern = r'(bmesh\.ops)\.(\w+)\s*\('
+    for match in re.finditer(bmesh_pattern, content):
+        full_call = f"{match.group(1)}.{match.group(2)}"
+        line_num = content[:match.start()].count('\n') + 1
+        calls.append((full_call, match.group(1), match.group(2), line_num))
+
+    # Pattern for bpy.ops.module.function_name( ... )
+    bpy_ops_pattern = r'(bpy\.ops)\.(\w+)\.(\w+)\s*\('
+    for match in re.finditer(bpy_ops_pattern, content):
+        full_call = f"{match.group(1)}.{match.group(2)}.{match.group(3)}"
+        line_num = content[:match.start()].count('\n') + 1
+        calls.append((full_call, match.group(1), f"{match.group(2)}.{match.group(3)}", line_num))
+
+    return calls
+
+
+def _extract_call_params(content: str, call_pattern: str) -> List[Tuple[str, str, int]]:
+    """
+    Extract parameter names from a specific API call in the content.
+
+    Args:
+        content: Script content
+        call_pattern: The API call to find (e.g., "bmesh.ops.create_cone")
+
+    Returns:
+        List of tuples: (param_name, param_value, line_number)
+    """
+    params = []
+
+    # Find the call and extract everything until the closing paren
+    # This is complex because calls can span multiple lines
+    escaped_pattern = re.escape(call_pattern)
+    call_match = re.search(rf'{escaped_pattern}\s*\(([^)]+)\)', content, re.DOTALL)
+
+    if call_match:
+        param_str = call_match.group(1)
+        line_num = content[:call_match.start()].count('\n') + 1
+
+        # Extract keyword arguments (name=value)
+        kwarg_pattern = r'(\w+)\s*='
+        for match in re.finditer(kwarg_pattern, param_str):
+            params.append((match.group(1), "", line_num))
+
+    return params
+
+
+def _query_vector_store_for_signature(api_call: str) -> Optional[Dict]:
+    """
+    Query the vector store to get the correct function signature.
+
+    Args:
+        api_call: Full API call (e.g., "bmesh.ops.create_cone")
+
+    Returns:
+        Dict with signature info or None if not found
+    """
+    # Check cache first
+    if api_call in _api_signature_cache:
+        return _api_signature_cache[api_call]
+
+    semantic_search = _get_semantic_search()
+    if semantic_search is None:
+        return None
+
+    try:
+        # Build a more specific query for better vector store matches
+        # Vector store semantic search works better with descriptive terms
+        func_name = api_call.split(".")[-1]
+
+        # For bmesh.ops, include common parameter-like terms to improve match
+        if api_call.startswith("bmesh.ops"):
+            # These terms help find the actual API doc rather than index pages
+            query = f"{api_call} bm {func_name}"
+        elif api_call.startswith("bpy.ops"):
+            query = f"{api_call} operator"
+        else:
+            query = api_call
+
+        # Query the vector store with enhanced query
+        result_str = semantic_search(query, 5)
+        result = json.loads(result_str)
+
+        # If first query doesn't find exact match, try fallback query
+        found_exact = any(api_call in item.get("content", "") for item in result.get("results", []))
+        if not found_exact:
+            # Try alternative query with different context
+            alt_query = f"{api_call} Parameters"
+            result_str = semantic_search(alt_query, 5)
+            result = json.loads(result_str)
+
+        if not result.get("results"):
+            _api_signature_cache[api_call] = None
+            return None
+
+        # Look for exact match in results
+        for item in result["results"]:
+            doc_content = item.get("content", "")
+
+            # Check if this result is for the exact function we're looking for
+            if api_call in doc_content:
+                # Extract the function signature from the doc
+                # Pattern: function_name(param1=default, param2=default, ...)
+                func_name = api_call.split(".")[-1]
+                sig_pattern = rf'{re.escape(func_name)}\s*\(([^)]+)\)'
+                sig_match = re.search(sig_pattern, doc_content)
+
+                if sig_match:
+                    sig_str = sig_match.group(1)
+                    # Extract parameter names
+                    params = []
+                    for param in sig_str.split(","):
+                        param = param.strip()
+                        if "=" in param:
+                            param_name = param.split("=")[0].strip()
+                            params.append(param_name)
+                        elif param and not param.startswith("*"):
+                            params.append(param.strip())
+
+                    signature_info = {
+                        "api_call": api_call,
+                        "parameters": params,
+                        "raw_signature": sig_match.group(0),
+                        "doc_content": doc_content[:500]
+                    }
+                    _api_signature_cache[api_call] = signature_info
+                    return signature_info
+
+        _api_signature_cache[api_call] = None
+        return None
+
+    except Exception as e:
+        print(f"[API Fixer] Vector store query failed for {api_call}: {e}", file=sys.stderr)
+        _api_signature_cache[api_call] = None
+        return None
+
+
+def _generate_param_fix(wrong_param: str, correct_params: List[str]) -> Optional[Tuple[str, str]]:
+    """
+    Generate a fix for a wrong parameter name.
+
+    Args:
+        wrong_param: The parameter name used in the script
+        correct_params: List of correct parameter names from the API
+
+    Returns:
+        Tuple of (wrong_param, correct_param) or None if no fix found
+    """
+    # Common parameter renames (add more as discovered)
+    PARAM_RENAMES = {
+        "diameter1": "radius1",
+        "diameter2": "radius2",
+        "diameter": "radius",
+        "subdivisions": "segments",
+        "resolution_divisions": "resolution_max",
+    }
+
+    # Check known renames
+    if wrong_param in PARAM_RENAMES:
+        correct = PARAM_RENAMES[wrong_param]
+        if correct in correct_params:
+            return (wrong_param, correct)
+
+    # Try fuzzy matching (simple prefix/suffix matching)
+    for correct_param in correct_params:
+        # Check if wrong param is a substring of correct param
+        if wrong_param in correct_param or correct_param in wrong_param:
+            return (wrong_param, correct_param)
+
+    return None
+
+
+def _validate_and_fix_api_calls(content: str) -> Tuple[str, List[str]]:
+    """
+    Validate ALL Blender API calls against the vector store and fix mismatches.
+
+    This is the main entry point for Option B validation.
+
+    Args:
+        content: Script content
+
+    Returns:
+        Tuple of (modified_content, list_of_fixes_applied)
+    """
+    if not VECTOR_STORE_VALIDATION_ENABLED:
+        return content, []
+
+    fixes_applied = []
+
+    # Extract all API calls
+    api_calls = _extract_api_calls(content)
+
+    # Track which APIs we've already validated to avoid duplicates
+    validated_apis: Set[str] = set()
+
+    for full_call, module, func_name, line_num in api_calls:
+        if full_call in validated_apis:
+            continue
+        validated_apis.add(full_call)
+
+        # Skip common, stable APIs that don't need validation
+        SKIP_APIS = {
+            "bpy.ops.object.select_all",
+            "bpy.ops.object.delete",
+            "bpy.ops.object.camera_add",
+            "bpy.ops.object.light_add",
+            "bpy.ops.mesh.primitive_cube_add",
+            "bpy.ops.mesh.primitive_plane_add",
+            "bpy.ops.mesh.primitive_uv_sphere_add",
+            "bpy.ops.mesh.primitive_cylinder_add",
+            "bpy.ops.render.render",
+            "bpy.ops.wm.save_as_mainfile",
+            "bpy.ops.fluid.bake_all",
+            "bpy.ops.fluid.bake_data",
+        }
+        if full_call in SKIP_APIS:
+            continue
+
+        # Query vector store for correct signature
+        signature = _query_vector_store_for_signature(full_call)
+
+        if signature is None:
+            # API not found in vector store - could be valid or could be hallucinated
+            # For now, log a warning but don't block
+            continue
+
+        # Extract parameters used in the script for this call
+        script_params = _extract_call_params(content, full_call)
+        correct_params = signature.get("parameters", [])
+
+        # Check each parameter
+        for param_name, _, param_line in script_params:
+            if param_name not in correct_params:
+                # Parameter not in expected list - try to find a fix
+                fix = _generate_param_fix(param_name, correct_params)
+
+                if fix:
+                    wrong, correct = fix
+                    # Apply the fix to the content
+                    # Use word boundary and capture whitespace to preserve formatting
+                    pattern = rf'\b{re.escape(wrong)}(\s*)='
+                    replacement = rf'{correct}\1='
+
+                    if re.search(pattern, content):
+                        content = re.sub(pattern, replacement, content)
+                        fixes_applied.append(
+                            f"[Vector Store] {full_call}: {wrong} → {correct} "
+                            f"(line ~{param_line})"
+                        )
+                else:
+                    # Unknown parameter - log warning
+                    print(
+                        f"[API Fixer] WARNING: Unknown parameter '{param_name}' in {full_call} "
+                        f"(line ~{param_line}). Expected: {correct_params}",
+                        file=sys.stderr
+                    )
+
+    return content, fixes_applied
+
+
 def validate_and_fix_script(script_path: str) -> Dict:
     """
     Validate script for known-bad Blender 5.0 API patterns and auto-fix.
@@ -932,6 +1234,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
         if re.search(pattern, content):
             content = re.sub(pattern, replacement, content)
             fixes_applied.append(description)
+
+    # VECTOR STORE VALIDATION (Option B): Validate ALL API calls against Blender 5.0 docs
+    # This catches hallucinated parameters not in the static BLENDER_50_FIXES list
+    content, vector_store_fixes = _validate_and_fix_api_calls(content)
+    fixes_applied.extend(vector_store_fixes)
 
     # Camera safety fix: add camera if rendering but no camera setup exists
     has_render_call = re.search(r"bpy\.ops\.render\.render", content) is not None
