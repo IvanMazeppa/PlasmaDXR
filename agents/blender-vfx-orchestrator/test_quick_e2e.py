@@ -40,7 +40,30 @@ EFFECT_CONFIGS = {
     },
     'water': {
         'effect_type': EffectType.WATER,
-        'description': 'Water pouring into a glass cup with splashing and refraction',
+        'description': """SCENE DESCRIPTION:
+A stream of deep red wine pours from an unseen bottle (positioned just above frame) into an elegant stemmed wine glass resting on a dark wooden surface. The pour is steady but vigorous — not a delicate trickle, but a confident stream that creates dynamic splashing as it impacts the rising liquid surface. As the glass fills past the halfway point, wine droplets leap from the surface on impact, some catching the warm light as they arc through the air. A few droplets escape over the rim and trail down the outside of the glass.
+
+MOOD AND LOOK:
+Warm, intimate atmosphere evoking a cozy evening scene. Rich amber/golden key lighting from one side (as if from a nearby fireplace or candle cluster) creates dramatic highlights on the glass rim and wine surface, with the deep burgundy liquid glowing where light passes through it. The background falls into soft, warm darkness. The wine should exhibit convincing subsurface scattering — appearing darker at depth, more translucent and ruby-red where thin areas against the glass walls. Visible caustics pooling on the table surface beneath the glass.
+
+CAMERA:
+Close-up, slightly low angle looking up at the glass to emphasize elegance. Shallow depth of field optional.
+
+PHYSICAL DETAILS:
+Wine glass: Standard Bordeaux style, clear glass with subtle reflections
+Wine color: Deep burgundy/cabernet red with ruby highlights in thin areas
+Pour stream: ~8mm diameter, continuous with slight surface tension wobble
+Table surface: Dark polished wood with subtle reflection of the glass base
+
+HARD CONSTRAINTS:
+Fluid simulation: Blender Mantaflow liquid domain (FLIP solver, not shader-only)
+Domain type: LIQUID with mesh generation enabled
+Renderer: Cycles GPU
+Samples: 256 max
+Frame range: 1-60 (captures fill from ~1/4 to ~3/4 full)
+Resolution: 64-96 for good splash detail
+use_plane_init: True (for inflow emitter)
+cache_type: ALL""",
     },
 }
 
@@ -85,13 +108,17 @@ async def run_quick_test(
     if max_iterations == 3:  # Default value, use preset
         max_iterations = preset_config.get_max_iterations()
 
+    # Effect-specific frame ranges
+    frame_end = 60 if effect.lower() == 'water' else 25
+    resolution = 96 if effect.lower() == 'water' else 64
+
     request = AssetRequest(
         asset_name=name,
         description=config['description'],
         effect_type=config['effect_type'],
-        resolution=64,
+        resolution=resolution,
         frame_start=1,
-        frame_end=25,
+        frame_end=frame_end,
         quality_threshold=70.0,
         max_iterations=max_iterations,
     )
