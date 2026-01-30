@@ -106,6 +106,14 @@ while len(\1) > 1:
         "BSDF Clearcoat Roughness → Coat Roughness"
     ),
 
+    # World Output node input renamed in Blender 5.0
+    # The input socket is named 'Surface' not 'World'
+    (
+        r"\.inputs\[['\"]World['\"]",
+        r".inputs['Surface'",
+        "World Output inputs['World'] → inputs['Surface'] (Blender 5.0)"
+    ),
+
     # Cycles samples path changes
     (
         r"scene\.cycles\.progressive\s*=",
