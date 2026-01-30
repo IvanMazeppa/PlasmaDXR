@@ -696,6 +696,7 @@ async def validate_code_against_spec(
         "bpy.ops.render.render",
         "bpy.ops.wm.save_as_mainfile",
         "bpy.ops.wm.open_mainfile",
+        "bpy.ops.wm.read_factory_settings",  # Scene reset for clean state
         # Data management
         "bpy.ops.outliner.orphans_purge",  # Clean up unused data blocks
         # Fluid/physics (common setup ops)
@@ -754,11 +755,76 @@ async def validate_code_against_spec(
             tripwire_triggered=True,
         )
 
+    # ==========================================================================
+    # SCRIPT COMPLEXITY VALIDATION
+    # ==========================================================================
+    # Enforce minimum script complexity to prevent overly simple/conservative outputs
+    # that pass API validation but produce poor quality results.
+
+    complexity_issues = []
+    line_count = len(script_content.split('\n'))
+
+    # Minimum line count (200 lines is the documented minimum)
+    MIN_LINES = 200
+    if line_count < MIN_LINES:
+        complexity_issues.append(
+            f"Script too short: {line_count} lines (minimum: {MIN_LINES}). "
+            "Add more detail: sophisticated materials, multi-light setup, camera animation."
+        )
+
+    # Required elements check
+    required_elements = {
+        "lighting": (
+            r'light_add|Light\s*\(|bpy\.data\.lights',
+            "Missing lighting setup - add area lights or sun for visibility"
+        ),
+        "camera": (
+            r'camera_add|scene\.camera\s*=|Camera\s*\(',
+            "Missing camera setup - add and position a camera"
+        ),
+        "materials": (
+            r'bpy\.data\.materials|Material\s*\(|\.material_slots|nodes\.new',
+            "Missing materials - add volume shaders and surface materials"
+        ),
+        "render": (
+            r'render\.render|write_still\s*=\s*True',
+            "Missing render call - add bpy.ops.render.render(write_still=True)"
+        ),
+        "blend_save": (
+            r'save_as_mainfile|save_mainfile',
+            "Missing .blend save - add bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)"
+        ),
+    }
+
+    for element_name, (pattern, message) in required_elements.items():
+        if not re.search(pattern, script_content):
+            complexity_issues.append(f"[{element_name}] {message}")
+
+    if complexity_issues:
+        print(
+            f"[Guardrail] COMPLEXITY CHECK FAILED: {len(complexity_issues)} issues",
+            file=sys.stderr
+        )
+        for issue in complexity_issues:
+            print(f"  - {issue}", file=sys.stderr)
+
+        return GuardrailFunctionOutput(
+            output_info={
+                "status": "rejected",
+                "reason": "Script too simple/incomplete",
+                "complexity_issues": complexity_issues,
+                "line_count": line_count,
+                "minimum_lines": MIN_LINES,
+            },
+            tripwire_triggered=True,
+        )
+
     # All good
     verified_count = len(used_domain_attrs) + len(used_flow_attrs)
     print(
         f"[Guardrail] validate_code_against_spec PASSED: "
-        f"{verified_count} attributes, {len(used_ops)} ops verified",
+        f"{verified_count} attributes, {len(used_ops)} ops verified, "
+        f"{line_count} lines",
         file=sys.stderr
     )
     return GuardrailFunctionOutput(
@@ -771,6 +837,7 @@ async def validate_code_against_spec(
                 k: enum_assignments.get(k) for k in enum_allowed.keys()
                 if k in enum_assignments
             },
+            "line_count": line_count,
         },
         tripwire_triggered=False,
     )

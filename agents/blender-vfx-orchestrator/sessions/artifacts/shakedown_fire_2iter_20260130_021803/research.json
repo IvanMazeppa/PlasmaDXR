@@ -1,0 +1,25 @@
+{
+  "recommended_approach": "Use Mantaflow via Blender\u2019s Fluid types by setting up a simulation Domain controlled through `bpy.types.FluidDomainSettings` and at least one emitter/flow object controlled through `bpy.types.FluidFlowSettings` (the documentation bundle surfaced these as the core relevant API types for fluid/fire-style setups).",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings.noise_strength": "Documented FluidDomainSettings attribute (set value based on desired detail; exact recommended numeric defaults not surfaced in the retrieved docs).",
+    "bpy.types.FluidDomainSettings.noise_time_anim": "Documented FluidDomainSettings attribute (controls animated noise; exact recommended numeric defaults not surfaced in the retrieved docs).",
+    "bpy.types.FluidDomainSettings.flip_ratio": "Documented FluidDomainSettings attribute (available tuning parameter; exact recommended numeric defaults not surfaced in the retrieved docs).",
+    "bpy.types.FluidFlowSettings.noise_texture": "Documented FluidFlowSettings attribute (available for adding noise via texture; exact recommended setup not surfaced in the retrieved docs)."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-30T02:18:56.217702"
+}

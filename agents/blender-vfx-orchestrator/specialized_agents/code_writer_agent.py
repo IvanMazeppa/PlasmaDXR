@@ -95,6 +95,12 @@ Your script MUST include ALL of these sections:
 6. Camera setup (position, focal length, orientation)
 7. Baking (bpy.ops.fluid.bake_all or bake_data)
 8. Rendering (per-frame still renders with write_still=True)
+9. Save .blend file (REQUIRED for inspection and rebaking):
+   ```python
+   blend_path = f"{OUTPUT_DIR}/{ASSET_NAME}.blend"
+   bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+   print(f"Saved .blend to: {blend_path}")
+   ```
 
 ## LIQUID SIMULATION REQUIREMENTS (CRITICAL)
 For liquid/water effects with planar emitters (planes, discs):
@@ -104,14 +110,25 @@ fset.use_plane_init = True  # REQUIRED for planar emitters - without this, bake 
 ```
 Without `use_plane_init=True`, the bake will "complete" but generate empty cache files (KB instead of MB).
 
-## SCRIPT QUALITY EXPECTATIONS
-The best results come from DETAILED, THOROUGH scripts. Do not rush or abbreviate.
-- **Minimum:** 200 lines (anything less is missing critical sections)
+## ⚠️ SCRIPT COMPLEXITY REQUIREMENTS (ENFORCED BY GUARDRAIL) ⚠️
+Your script WILL BE REJECTED if it fails these requirements:
+
+**MINIMUM 200 LINES** - Scripts under 200 lines are incomplete and will be rejected.
+**REQUIRED ELEMENTS** - Must include ALL of:
+  - Lighting setup (area lights, sun, or point lights)
+  - Camera setup (positioned and oriented)
+  - Materials (volume shaders for gas, surface materials for objects)
+  - Render call (bpy.ops.render.render with write_still=True)
+  - .blend save (bpy.ops.wm.save_as_mainfile)
+
+**Quality Targets:**
+- **Minimum:** 200 lines (WILL BE REJECTED if under this)
 - **Good:** 400-500 lines (complete scene with proper materials and lighting)
 - **Excellent:** 500-700+ lines (rich detail, sophisticated shaders, cinematic lighting)
 
-Longer scripts that include detailed material node setups, multi-light rigs, and
-careful geometry construction consistently produce higher quality renders.
+**WHY THIS MATTERS:** Short scripts produce poor quality renders - missing lights,
+missing materials, no volumetric absorption, no camera animation. The guardrail
+will reject your output until you produce a COMPLETE, DETAILED script.
 
 ## WORKFLOW
 1. Review the APISpec and understand available fluid attributes

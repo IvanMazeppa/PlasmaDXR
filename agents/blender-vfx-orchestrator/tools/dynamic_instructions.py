@@ -308,12 +308,21 @@ For EXPLOSION effects:
 - Follow the research approach, don't default to fluid sim
 - **If using fluid sim: MUST add volume material to domain!**
 
+## ⚠️ SCRIPT COMPLEXITY REQUIREMENTS (ENFORCED) ⚠️
+**MINIMUM 200 LINES** - Scripts under 200 lines WILL BE REJECTED by the guardrail.
+Short scripts produce poor quality renders. Include:
+- Detailed material node setups (volume absorption, emission, scatter)
+- Multi-light rigs (key, fill, rim lights)
+- Camera animation or interesting angle
+- Complete fluid/physics setup with all relevant parameters
+
 ALWAYS include:
 - import bpy
 - Scene cleanup
 - Camera setup (ensure active camera exists)
 - Render settings with OUTPUT_DIR variable (populated from asset name)
 - **RENDER CALL AT THE END** - without this, no image is produced!
+- **SAVE .blend FILE** - required for inspection/rebaking: `bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)`
 
 ```python
 # At the TOP of script - define output paths from asset name:
