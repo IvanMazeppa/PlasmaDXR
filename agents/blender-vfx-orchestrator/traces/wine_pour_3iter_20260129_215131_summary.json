@@ -1,0 +1,68 @@
+{
+  "trace_file": "wine_pour_3iter_20260129_215131.jsonl",
+  "trace_name": "VFX Pipeline: wine_pour_3iter",
+  "timestamp": "2026-01-29T21:51:32.612239",
+  "total_duration_s": 1243.9,
+  "total_duration_min": 20.73,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 5,
+  "total_tool_calls": 100,
+  "total_doc_searches": 21,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 5,
+      "duration_s": 505.2,
+      "pct_of_total": 40.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 125.3,
+      "pct_of_total": 10.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 4,
+      "duration_s": 83.3,
+      "pct_of_total": 6.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 74.1,
+      "pct_of_total": 6.0,
+      "doc_searches": 21,
+      "top_tools": {
+        "response": 47,
+        "semantic_search_blender_docs": 13,
+        "write_script": 6,
+        "validate_script": 6,
+        "require_research_context": 5
+      }
+    },
+    "Modification Strategist": {
+      "calls": 2,
+      "duration_s": 72.9,
+      "pct_of_total": 5.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 38.9,
+      "pct_of_total": 3.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 1.01,
+    "seconds_per_iteration": 248.8
+  }
+}

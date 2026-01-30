@@ -1142,6 +1142,377 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 
         return research_result, docs_text
 
+    async def _run_parallel_learning_and_gate(
+        self,
+        iteration: int,
+        request: "AssetRequest",
+        context: SharedContext,
+        session: "SessionState",
+        sdk_session: Optional[SessionABC],
+        script: "ScriptOutput",
+        execution: "ExecutionOutput",
+        quality: "QualityOutput",
+        quality_artifact_path: str,
+        scorecard_artifact_path: str,
+        baseline_score_snapshot: float,
+        baseline_params_snapshot: Dict,
+        baseline_render_snapshot: Optional[str],
+        learning_hooks: "EnforcementHooks",
+        session_mgr: "SessionManager",
+        artifact_mgr: "ArtifactManager",
+        previous_score: float,
+    ) -> tuple[Optional["LearningOutput"], Optional["QualityDecision"]]:
+        """
+        Run Learning Agent and Quality Gate Coordinator in parallel.
+
+        Since Quality Gate can make decisions based on quality metrics alone
+        (without needing Learning Agent's recommendation), we can run them
+        concurrently and merge results.
+
+        Returns:
+            Tuple of (LearningOutput, QualityDecision) - either may be None on failure
+        """
+        import time as _time
+        start = _time.perf_counter()
+
+        parallel_enabled = os.getenv("VFX_PARALLEL_LEARNING_GATE", "1").lower() in ("1", "true", "yes")
+        if not parallel_enabled:
+            print(f"[Parallel Learn+Gate] DISABLED, running sequential", file=sys.stderr)
+            return None, None  # Signal to caller to use sequential path
+
+        print(f"[Parallel Learn+Gate] PARALLEL mode for iteration {iteration}", file=sys.stderr)
+
+        # Sync baseline before running
+        try:
+            baseline_params_json = json.dumps(baseline_params_snapshot)
+            baseline_scores_json = json.dumps({"overall": baseline_score_snapshot})
+            record_experiment_baseline(
+                params=baseline_params_json,
+                scores=baseline_scores_json,
+                render_path=baseline_render_snapshot or execution.render_path or "",
+                script_path=script.script_path or ""
+            )
+        except Exception as e:
+            print(f"[Parallel Learn+Gate] WARN: Baseline sync failed: {e}", file=sys.stderr)
+
+        # Build prompts
+        learn_ctx = session_mgr.get_context_for_agents()
+        artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
+        iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
+
+        learn_prompt = f"""Record the experiment results and suggest fixes.
+
+## Current Iteration
+Iteration: {iteration}
+Script: {script.script_path}
+Technique: {script.technique_used}
+Render: {execution.render_path}
+Score: {quality.overall_score:.1f}
+Passed: {quality.passed}
+Primary Issue: {quality.primary_issue or 'None'}
+Quality Artifact: {quality_artifact_path}
+Scorecard Artifact: {scorecard_artifact_path}
+
+{iteration_summary}
+
+## Analysis Needed
+1. Did the score improve? Delta: {learn_ctx.get('best_score', 0) - previous_score:+.1f}
+2. Same issue {learn_ctx.get('consecutive_same_issue', 0)} times in a row
+3. Techniques tried: {', '.join(learn_ctx.get('techniques_tried', []))}
+
+## CRITICAL: Before Suggesting Modifications
+FIRST call analyze_script_modifiable_patterns("{script.script_path}") to understand:
+- What shader_node_inputs exist (these control visual appearance!)
+- What Config class values exist (and if they're used)
+- What settings assignments exist
+Then provide parameter_modifications using EXACT identifiers from the analysis.
+
+## Your Output
+- If score improved significantly (delta >= 5), extract the pattern
+- If same issue 3+ times, recommend 'switch_technique'
+- If issues are parameter-related, provide parameter_modifications using EXACT patterns from script analysis
+- Recommend: 'iterate' | 'switch_technique' | 'complete'"""
+
+        ctx = session_mgr.get_context_for_agents()
+        # Quality Gate prompt WITHOUT Learning Agent recommendation (independent decision)
+        gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
+
+## Key Metrics
+Score: {quality.overall_score:.1f} / Threshold: {request.quality_threshold} / Passed: {quality.passed}
+Primary Issue: {quality.primary_issue or 'None'}
+
+## Artifacts (read if needed)
+Scorecard: {scorecard_artifact_path}
+Quality: {quality_artifact_path}
+
+## Context
+Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
+
+Decide: Is quality gate PASSED? What is the next action?
+Note: Learning Agent is also analyzing in parallel - make your decision based on metrics."""
+
+        # Create parallel tasks
+        learn_task = self._run_agent(
+            self._learning_agent_standalone,
+            learn_prompt,
+            context=context,
+            session=sdk_session,
+            hooks=learning_hooks,
+            max_turns=8,
+            run_config=self._build_run_config(
+                session=session,
+                request=request,
+                iteration=iteration,
+                phase="learning_parallel",
+            ),
+        )
+
+        gate_task = self._run_agent(
+            self._quality_gate_coordinator,
+            gate_prompt,
+            context=context,
+            session=sdk_session,
+            max_turns=3,
+            run_config=self._build_run_config(
+                session=session,
+                request=request,
+                iteration=iteration,
+                phase="quality_gate_parallel",
+            ),
+        )
+
+        # Fan-out/fan-in
+        print(f"[Parallel Learn+Gate] Launching Learning + Quality Gate in parallel...", file=sys.stderr)
+        results = await asyncio.gather(learn_task, gate_task, return_exceptions=True)
+
+        elapsed = _time.perf_counter() - start
+
+        # Extract results
+        learning_result = results[0] if not isinstance(results[0], Exception) else None
+        gate_result = results[1] if not isinstance(results[1], Exception) else None
+
+        learning = None
+        if learning_result and hasattr(learning_result, 'final_output'):
+            learning = learning_result.final_output
+
+        gate_decision = None
+        if gate_result and hasattr(gate_result, 'final_output'):
+            gate_decision = gate_result.final_output
+
+        # Log results
+        learn_ok = learning is not None
+        gate_ok = gate_decision is not None
+
+        if isinstance(results[0], Exception):
+            print(f"[Parallel Learn+Gate] Learning FAILED: {results[0]}", file=sys.stderr)
+        if isinstance(results[1], Exception):
+            print(f"[Parallel Learn+Gate] Quality Gate FAILED: {results[1]}", file=sys.stderr)
+
+        print(f"[Parallel Learn+Gate] Completed in {elapsed:.1f}s", file=sys.stderr)
+        print(f"[Parallel Learn+Gate]   Learning: {'OK - ' + learning.next_action if learn_ok else 'FAILED'}", file=sys.stderr)
+        print(f"[Parallel Learn+Gate]   Gate: {'OK - ' + gate_decision.next_action if gate_ok else 'FAILED'}", file=sys.stderr)
+
+        return learning, gate_decision
+
+    async def _run_api_spec_only(
+        self,
+        effect_type: str,
+        technique_hint: str,
+        request: "AssetRequest",
+        context: SharedContext,
+        sdk_session: Optional[SessionABC] = None,
+    ) -> Optional["APISpec"]:
+        """
+        Run only the API Spec phase (bundle + agent) without Code Writer.
+
+        This is designed to run in parallel with Technique Selection.
+        The technique_hint is a best-guess from research; the final technique
+        from Technique Selector will be used for Code Writer.
+
+        Returns:
+            APISpec if successful, None on failure
+        """
+        import time as _time
+        start = _time.perf_counter()
+
+        run_config = self._build_run_config(
+            session=context.session,
+            request=request,
+            iteration=context.session.current_iteration or 0,
+            phase="api_spec_parallel",
+        )
+
+        # Bundle call (fast, programmatic)
+        try:
+            bundle_results = bundle_search_impl(
+                effect_type=effect_type,
+                description=request.description,
+                intent=f"create {effect_type} effect with {technique_hint}",
+                domain="Mantaflow",
+                max_results=6
+            )
+        except Exception as e:
+            print(f"[API Spec Parallel] Bundle failed: {e}", file=sys.stderr)
+            bundle_results = "{}"
+
+        # API Spec Agent
+        api_spec_hooks = create_api_spec_hooks()
+        spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
+
+## Effect Type: {effect_type}
+## Technique Hint: {technique_hint}
+## Description: {request.description}
+
+## PRE-LOADED BUNDLE RESULTS (from blender_doc_search_bundle)
+```json
+{bundle_results}
+```
+
+## YOUR TASK
+1. Extract attributes and doc_refs from the bundle results above
+2. ONLY use semantic_search_blender_docs for specific attributes NOT found in bundle (max 4 calls)
+3. Construct doc_ref as: blender_python_reference_5_0/bpy.types.{{CLASS}}.html#{{ATTRIBUTE}}
+4. Output the complete APISpec with all verified attributes
+
+Key parameters needed for {effect_type}:
+- Domain: resolution_max, domain_type, use_noise, noise_strength, vorticity
+- Flow: flow_type, flow_behavior, temperature, density, velocity_normal
+- Scene: frame_start, frame_end"""
+
+        try:
+            spec_result = await self._run_agent(
+                self._api_spec_agent,
+                spec_prompt,
+                context=context,
+                session=sdk_session,
+                hooks=api_spec_hooks,
+                max_turns=8,
+                run_config=run_config,
+            )
+            api_spec = spec_result.final_output
+            elapsed = _time.perf_counter() - start
+            print(f"[API Spec Parallel] Completed in {elapsed:.1f}s: "
+                  f"{len(api_spec.domain_attributes)} domain, {len(api_spec.flow_attributes)} flow attrs",
+                  file=sys.stderr)
+            return api_spec
+        except Exception as e:
+            elapsed = _time.perf_counter() - start
+            print(f"[API Spec Parallel] FAILED in {elapsed:.1f}s: {e}", file=sys.stderr)
+            return None
+
+    async def _run_parallel_technique_and_spec(
+        self,
+        request: "AssetRequest",
+        context: SharedContext,
+        research_output: Optional["ResearchOutput"],
+        research_artifact_path: Optional[str],
+        session: "SessionState",
+        sdk_session: Optional[SessionABC],
+    ) -> tuple[Optional["TechniqueDecision"], Optional["APISpec"]]:
+        """
+        Run Technique Selection and API Spec Agent in parallel.
+
+        This reduces latency by ~25s (the Technique Selection time) since
+        API Spec can start immediately using research output as a technique hint.
+
+        Returns:
+            Tuple of (TechniqueDecision, APISpec) - either may be None on failure
+        """
+        import time as _time
+        start = _time.perf_counter()
+
+        # Check if parallel mode should be used
+        parallel_enabled = os.getenv("VFX_PARALLEL_TECHNIQUE_SPEC", "1").lower() in ("1", "true", "yes")
+        if not parallel_enabled or not self._use_spec_first_pipeline or not self._api_spec_agent:
+            print(f"[Parallel Technique+Spec] DISABLED, running sequential", file=sys.stderr)
+            return None, None  # Signal to caller to use sequential path
+
+        print(f"[Parallel Technique+Spec] PARALLEL mode for {request.effect_type.value}", file=sys.stderr)
+
+        # Technique hint from research (used by API Spec while waiting for real technique)
+        technique_hint = "mantaflow_smoke"  # Safe default
+        if research_output and research_output.recommended_approach:
+            # Extract technique name from research
+            approach = research_output.recommended_approach.lower()
+            if "smoke" in approach or "pyro" in approach:
+                technique_hint = "mantaflow_smoke"
+            elif "liquid" in approach or "water" in approach:
+                technique_hint = "mantaflow_liquid"
+            elif "fire" in approach or "flame" in approach:
+                technique_hint = "mantaflow_fire"
+
+        # Build technique prompt
+        research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
+        technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
+
+## Research Summary
+{research_ref}
+Recommended: {research_output.recommended_approach if research_output else 'Default approach'}
+Key params: {list(research_output.key_parameters.keys()) if research_output and research_output.key_parameters else 'None'}
+
+## Effect Parameters
+- Effect Type: {request.effect_type.value}
+- Description: {request.description}
+- Reference: {request.reference_path or "None"}
+- Quality Threshold: {request.quality_threshold}
+
+## Available Alternatives
+{chr(10).join(f'- {a}' for a in session.alternative_approaches[:5]) if session.alternative_approaches else 'None identified'}
+
+Select the optimal technique and provide starting parameters."""
+
+        # Create parallel tasks
+        technique_task = self._run_agent(
+            self._technique_coordinator,
+            technique_prompt,
+            context=context,
+            session=sdk_session,
+            max_turns=6,
+            run_config=self._build_run_config(
+                session=session,
+                request=request,
+                iteration=0,
+                phase="technique_select_parallel",
+            ),
+        )
+
+        api_spec_task = self._run_api_spec_only(
+            effect_type=request.effect_type.value,
+            technique_hint=technique_hint,
+            request=request,
+            context=context,
+            sdk_session=sdk_session,
+        )
+
+        # Fan-out/fan-in
+        print(f"[Parallel Technique+Spec] Launching Technique + API Spec in parallel...", file=sys.stderr)
+        results = await asyncio.gather(technique_task, api_spec_task, return_exceptions=True)
+
+        elapsed = _time.perf_counter() - start
+
+        # Extract results
+        technique_result = results[0] if not isinstance(results[0], Exception) else None
+        api_spec = results[1] if not isinstance(results[1], Exception) else None
+
+        technique_decision = None
+        if technique_result and hasattr(technique_result, 'final_output'):
+            technique_decision = technique_result.final_output
+
+        # Log results
+        technique_ok = technique_decision is not None
+        spec_ok = api_spec is not None
+
+        if isinstance(results[0], Exception):
+            print(f"[Parallel Technique+Spec] Technique FAILED: {results[0]}", file=sys.stderr)
+        if isinstance(results[1], Exception):
+            print(f"[Parallel Technique+Spec] API Spec FAILED: {results[1]}", file=sys.stderr)
+
+        print(f"[Parallel Technique+Spec] Completed in {elapsed:.1f}s", file=sys.stderr)
+        print(f"[Parallel Technique+Spec]   Technique: {'OK - ' + technique_decision.selected_technique if technique_ok else 'FAILED'}", file=sys.stderr)
+        print(f"[Parallel Technique+Spec]   API Spec: {'OK' if spec_ok else 'FAILED'}", file=sys.stderr)
+
+        return technique_decision, api_spec
+
     async def _run_spec_first_pipeline(
         self,
         effect_type: str,
@@ -1181,35 +1552,42 @@ Research documentation, patterns, and APIs to find the optimal starting approach
             phase="spec_first",
         )
 
-        # ====== PHASE 1.0: DETERMINISTIC BUNDLE CALL ======
-        # Call bundle programmatically BEFORE running the agent
-        # This removes reliance on model compliance for bundle-first discipline
-        print(f"[Spec-First] Phase 1.0: Deterministic bundle call", file=sys.stderr)
+        # Check if API Spec was pre-computed during parallel Phase 0.5
+        if hasattr(context, 'api_spec') and context.api_spec is not None:
+            print(f"[Spec-First] Using PRE-COMPUTED API Spec (from parallel Phase 0.5)", file=sys.stderr)
+            api_spec = context.api_spec
+            print(f"[Spec-First] Pre-computed spec: {len(api_spec.domain_attributes)} domain, "
+                  f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
+            # Skip directly to Code Writer (Phase 1.B)
+        else:
+            # ====== PHASE 1.0: DETERMINISTIC BUNDLE CALL ======
+            # Call bundle programmatically BEFORE running the agent
+            # This removes reliance on model compliance for bundle-first discipline
+            print(f"[Spec-First] Phase 1.0: Deterministic bundle call", file=sys.stderr)
 
-        try:
-            # Use bundle_search_impl (direct callable) instead of blender_doc_search_bundle (FunctionTool)
-            bundle_results = bundle_search_impl(
-                effect_type=effect_type,
-                description=request.description,
-                intent=f"create {effect_type} effect with {technique}",
-                domain="Mantaflow",
-                max_results=6
-            )
-            print(f"[Spec-First] Bundle results loaded ({len(bundle_results)} chars)", file=sys.stderr)
-        except Exception as e:
-            print(f"[Spec-First] WARNING: Bundle call failed: {e}", file=sys.stderr)
-            bundle_results = "{}"  # Empty JSON fallback
+            try:
+                # Use bundle_search_impl (direct callable) instead of blender_doc_search_bundle (FunctionTool)
+                bundle_results = bundle_search_impl(
+                    effect_type=effect_type,
+                    description=request.description,
+                    intent=f"create {effect_type} effect with {technique}",
+                    domain="Mantaflow",
+                    max_results=6
+                )
+                print(f"[Spec-First] Bundle results loaded ({len(bundle_results)} chars)", file=sys.stderr)
+            except Exception as e:
+                print(f"[Spec-First] WARNING: Bundle call failed: {e}", file=sys.stderr)
+                bundle_results = "{}"  # Empty JSON fallback
 
-        # Create hooks for each agent
-        api_spec_hooks = create_api_spec_hooks()
-        code_writer_hooks = create_code_writer_hooks()
+            # Create hooks for API Spec agent
+            api_spec_hooks = create_api_spec_hooks()
 
-        # ====== PHASE 1.A: API SPEC AGENT ======
-        # Creates verified API specification from Blender 5.0 docs
-        # Bundle results are pre-loaded - agent only needs targeted searches for gaps
-        print(f"[Spec-First] Phase 1.A: API Spec Agent (with pre-loaded bundle)", file=sys.stderr)
+            # ====== PHASE 1.A: API SPEC AGENT ======
+            # Creates verified API specification from Blender 5.0 docs
+            # Bundle results are pre-loaded - agent only needs targeted searches for gaps
+            print(f"[Spec-First] Phase 1.A: API Spec Agent (with pre-loaded bundle)", file=sys.stderr)
 
-        spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
+            spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
 
 ## Effect Type: {effect_type}
 ## Technique: {technique}
@@ -1235,32 +1613,35 @@ Key parameters needed for {effect_type}:
 
 Extract from bundle first, then fill gaps with targeted searches."""
 
-        try:
-            spec_result = await self._run_agent(
-                self._api_spec_agent,
-                spec_prompt,
-                context=context,
-                session=sdk_session,
-                hooks=api_spec_hooks,
-                max_turns=8,
-                run_config=run_config,
-            )
-            api_spec: APISpec = spec_result.final_output
-            print(f"[Spec-First] API Spec created: {len(api_spec.domain_attributes)} domain attrs, "
-                  f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
+            try:
+                spec_result = await self._run_agent(
+                    self._api_spec_agent,
+                    spec_prompt,
+                    context=context,
+                    session=sdk_session,
+                    hooks=api_spec_hooks,
+                    max_turns=8,
+                    run_config=run_config,
+                )
+                api_spec: APISpec = spec_result.final_output
+                print(f"[Spec-First] API Spec created: {len(api_spec.domain_attributes)} domain attrs, "
+                      f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
 
-            # Store the API spec in context for the Code Writer guardrail
-            context.api_spec = api_spec
+                # Store the API spec in context for the Code Writer guardrail
+                context.api_spec = api_spec
 
-        except Exception as e:
-            print(f"[Spec-First] ERROR: API Spec Agent failed: {e}", file=sys.stderr)
-            # Fall back to the original Script Writer
-            print(f"[Spec-First] Falling back to original Script Writer", file=sys.stderr)
-            return await self._run_original_script_writer(
-                effect_type, technique, request, context, sdk_session
-            )
+            except Exception as e:
+                print(f"[Spec-First] ERROR: API Spec Agent failed: {e}", file=sys.stderr)
+                # Fall back to the original Script Writer
+                print(f"[Spec-First] Falling back to original Script Writer", file=sys.stderr)
+                return await self._run_original_script_writer(
+                    effect_type, technique, request, context, sdk_session
+                )
 
-        print(f"[Spec-First] API Spec hooks stats: {api_spec_hooks.get_stats()}", file=sys.stderr)
+            print(f"[Spec-First] API Spec hooks stats: {api_spec_hooks.get_stats()}", file=sys.stderr)
+
+        # Create hooks for Code Writer (always needed)
+        code_writer_hooks = create_code_writer_hooks()
 
         # ====== PHASE 1.B: CODE WRITER AGENT ======
         # Writes code using ONLY verified APIs from the spec
@@ -2001,14 +2382,43 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
                         )
                         print(f"[Pipeline] Research artifact: {research_artifact_path}", file=sys.stderr)
 
-                    # ====== PHASE 0.5: TECHNIQUE SELECTION (Coordinator Decision) ======
-                    # Phase 2 Enhancement: Use Technique Coordinator to intelligently select
-                    # the initial technique based on research findings.
-                    print("[Pipeline] PHASE 0.5: Technique Selection (Coordinator)", file=sys.stderr)
+                    # ====== PHASE 0.5: TECHNIQUE SELECTION + API SPEC (Parallel) ======
+                    # Run Technique Coordinator and API Spec Agent in parallel to save ~25s
+                    print("[Pipeline] PHASE 0.5: Technique Selection + API Spec (PARALLEL)", file=sys.stderr)
 
-                    # Artifact-First: Reference file instead of inline dump (compact prompt)
-                    research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
-                    technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
+                    # Try parallel path first
+                    precomputed_api_spec = None
+                    parallel_result = await self._run_parallel_technique_and_spec(
+                        request=request,
+                        context=context,
+                        research_output=research_output,
+                        research_artifact_path=research_artifact_path,
+                        session=session,
+                        sdk_session=sdk_session,
+                    )
+
+                    if parallel_result != (None, None):
+                        # Parallel path succeeded
+                        selected_technique, precomputed_api_spec = parallel_result
+
+                        if selected_technique:
+                            print(f"[Pipeline] Parallel Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
+                            session.current_technique = selected_technique.selected_technique
+                            if selected_technique.alternative_techniques:
+                                for alt in selected_technique.alternative_techniques:
+                                    if alt not in session.alternative_approaches:
+                                        session.alternative_approaches.append(alt)
+
+                        if precomputed_api_spec:
+                            # Store in context for later use in Phase 1
+                            context.api_spec = precomputed_api_spec
+                            print(f"[Pipeline] API Spec pre-computed: {len(precomputed_api_spec.domain_attributes)} domain attrs", file=sys.stderr)
+                    else:
+                        # Fall back to sequential path (parallel disabled or not available)
+                        print("[Pipeline] PHASE 0.5: Technique Selection (Sequential fallback)", file=sys.stderr)
+
+                        research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
+                        technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
 
 ## Research Summary
 {research_ref}
@@ -2026,35 +2436,33 @@ Key params: {list(research_output.key_parameters.keys()) if research_output and 
 
 Select the optimal technique and provide starting parameters."""
 
-                    try:
-                        technique_result = await self._run_agent(
-                            self._technique_coordinator,
-                            technique_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            max_turns=6,  # Coordinators should be fast
-                            run_config=self._build_run_config(
-                                session=session,
-                                request=request,
-                                iteration=0,
-                                phase="technique_select",
-                            ),
-                        )
-                        selected_technique = technique_result.final_output
-                        print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
-                        print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
+                        try:
+                            technique_result = await self._run_agent(
+                                self._technique_coordinator,
+                                technique_prompt,
+                                context=context,
+                                session=sdk_session,
+                                max_turns=6,
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=0,
+                                    phase="technique_select",
+                                ),
+                            )
+                            selected_technique = technique_result.final_output
+                            print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
+                            print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
 
-                        # Store in session for use by Script Writer
-                        session.current_technique = selected_technique.selected_technique
-                        if selected_technique.alternative_techniques:
-                            for alt in selected_technique.alternative_techniques:
-                                if alt not in session.alternative_approaches:
-                                    session.alternative_approaches.append(alt)
+                            session.current_technique = selected_technique.selected_technique
+                            if selected_technique.alternative_techniques:
+                                for alt in selected_technique.alternative_techniques:
+                                    if alt not in session.alternative_approaches:
+                                        session.alternative_approaches.append(alt)
 
-                    except Exception as e:
-                        print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
-                        # Fall back to default technique selection
-                        selected_technique = None
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
+                            selected_technique = None
 
                 else:
                     # ====== RESUME: Skip Phase 0 and 0.5 ======
@@ -3402,32 +3810,68 @@ Provide detailed feedback for improvement."""
                     )
                     session.iterations.append(iter_result)
 
-                    # ====== PHASE 4: LEARNING ======
-                    print(f"[Pipeline] PHASE 4: Learning Agent", file=sys.stderr)
+                    # ====== PHASE 4+5: LEARNING + QUALITY GATE (Parallel or Sequential) ======
+                    print(f"[Pipeline] PHASE 4+5: Learning + Quality Gate", file=sys.stderr)
 
-                    # Sync baseline to ExperimentTracker (for Learning Agent's record_experiment_result)
-                    # Uses the snapshot captured BEFORE quality evaluation updated previous_score
-                    try:
-                        baseline_params_json = json.dumps(baseline_params_snapshot)
-                        baseline_scores_json = json.dumps({"overall": baseline_score_snapshot})
-                        record_experiment_baseline(
-                            params=baseline_params_json,
-                            scores=baseline_scores_json,
-                            render_path=baseline_render_snapshot or execution.render_path or "",
-                            script_path=script.script_path or ""
-                        )
-                        print(f"[Pipeline] Baseline recorded: score={baseline_score_snapshot:.1f}", file=sys.stderr)
-                    except Exception as e:
-                        print(f"[Pipeline] WARN: Baseline sync failed: {e}", file=sys.stderr)
+                    # Try parallel Learning + Quality Gate first
+                    learning: Optional[LearningOutput] = None
+                    gate_decision: Optional[QualityDecision] = None
 
-                    # Get context from SessionManager for informed decisions
-                    learn_ctx = session_mgr.get_context_for_agents()
+                    parallel_result = await self._run_parallel_learning_and_gate(
+                        iteration=iteration,
+                        request=request,
+                        context=context,
+                        session=session,
+                        sdk_session=sdk_session,
+                        script=script,
+                        execution=execution,
+                        quality=quality,
+                        quality_artifact_path=quality_artifact_path,
+                        scorecard_artifact_path=scorecard_artifact_path,
+                        baseline_score_snapshot=baseline_score_snapshot,
+                        baseline_params_snapshot=baseline_params_snapshot,
+                        baseline_render_snapshot=baseline_render_snapshot,
+                        learning_hooks=learning_hooks,
+                        session_mgr=session_mgr,
+                        artifact_mgr=artifact_mgr,
+                        previous_score=previous_score,
+                    )
 
-                    # Artifact-First: Reference artifacts instead of inline dumps
-                    artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
-                    iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
+                    if parallel_result != (None, None):
+                        # Parallel path succeeded - use pre-computed results
+                        learning, gate_decision = parallel_result
+                        print(f"[Pipeline] PARALLEL Learning+Gate completed", file=sys.stderr)
+                        if learning:
+                            print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
+                        if gate_decision:
+                            print(f"[Pipeline] Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
+                    else:
+                        # Sequential fallback - parallel disabled or both failed
+                        print(f"[Pipeline] SEQUENTIAL Learning+Gate (parallel disabled/failed)", file=sys.stderr)
 
-                    learn_prompt = f"""Record the experiment results and suggest fixes.
+                        # Sync baseline to ExperimentTracker (for Learning Agent's record_experiment_result)
+                        # Uses the snapshot captured BEFORE quality evaluation updated previous_score
+                        try:
+                            baseline_params_json = json.dumps(baseline_params_snapshot)
+                            baseline_scores_json = json.dumps({"overall": baseline_score_snapshot})
+                            record_experiment_baseline(
+                                params=baseline_params_json,
+                                scores=baseline_scores_json,
+                                render_path=baseline_render_snapshot or execution.render_path or "",
+                                script_path=script.script_path or ""
+                            )
+                            print(f"[Pipeline] Baseline recorded: score={baseline_score_snapshot:.1f}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Baseline sync failed: {e}", file=sys.stderr)
+
+                        # Get context from SessionManager for informed decisions
+                        learn_ctx = session_mgr.get_context_for_agents()
+
+                        # Artifact-First: Reference artifacts instead of inline dumps
+                        artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
+                        iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
+
+                        learn_prompt = f"""Record the experiment results and suggest fixes.
 
 ## Current Iteration
 Iteration: {iteration}
@@ -3460,35 +3904,35 @@ Then provide parameter_modifications using EXACT identifiers from the analysis.
 - If issues are parameter-related, provide parameter_modifications using EXACT patterns from script analysis
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
-                    try:
-                        learn_result = await self._run_agent(
-                            self._learning_agent_standalone,
-                            learn_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            hooks=learning_hooks,
-                            max_turns=8,
-                            run_config=self._build_run_config(
-                                session=session,
-                                request=request,
-                                iteration=iteration,
-                                phase="learning",
-                            ),
-                        )
-                        # Structured output: LearningOutput
-                        learning = learn_result.final_output
-                    except LoopDetectedError as e:
-                        print(f"[Pipeline] WARN: Learning Agent loop: {e}", file=sys.stderr)
-                        learning = LearningOutput(
-                            experiment_recorded=False,
-                            pattern_extracted=False,
-                            pattern_id=None,
-                            next_action="iterate",  # Default to iterate on loop
-                            suggested_modifications=["Learning agent hit loop - using default action"],
-                            parameter_modifications={}
-                        )
-                    print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
-                    print(f"[Pipeline] Learning hooks stats: {learning_hooks.get_stats()}", file=sys.stderr)
+                        try:
+                            learn_result = await self._run_agent(
+                                self._learning_agent_standalone,
+                                learn_prompt,
+                                context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                hooks=learning_hooks,
+                                max_turns=8,
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=iteration,
+                                    phase="learning",
+                                ),
+                            )
+                            # Structured output: LearningOutput
+                            learning = learn_result.final_output
+                        except LoopDetectedError as e:
+                            print(f"[Pipeline] WARN: Learning Agent loop: {e}", file=sys.stderr)
+                            learning = LearningOutput(
+                                experiment_recorded=False,
+                                pattern_extracted=False,
+                                pattern_id=None,
+                                next_action="iterate",  # Default to iterate on loop
+                                suggested_modifications=["Learning agent hit loop - using default action"],
+                                parameter_modifications={}
+                            )
+                        print(f"[Pipeline] Learning: next_action={learning.next_action}", file=sys.stderr)
+                        print(f"[Pipeline] Learning hooks stats: {learning_hooks.get_stats()}", file=sys.stderr)
 
                     # ====== PHASE 4.5: PATTERN EXTRACTION ENFORCEMENT ======
                     # Phase 1.3: Orchestrator MUST handle extracted patterns
@@ -3523,13 +3967,15 @@ Then provide parameter_modifications using EXACT identifiers from the analysis.
 
                     # ====== QUALITY GATE (Coordinator Decision) ======
                     # Phase 2 Enhancement: Use Quality Gate Coordinator for intelligent decision
-                    print(f"[Pipeline] PHASE 5: Quality Gate (Coordinator)", file=sys.stderr)
+                    # Note: gate_decision may already be set from parallel path above
 
-                    gate_decision: Optional[QualityDecision] = None
-                    ctx = session_mgr.get_context_for_agents()
+                    if gate_decision is None:
+                        # Sequential path - run Quality Gate now (with Learning recommendation)
+                        print(f"[Pipeline] PHASE 5: Quality Gate (Sequential)", file=sys.stderr)
+                        ctx = session_mgr.get_context_for_agents()
 
-                    # Artifact-First: Compact prompt with artifact references
-                    gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
+                        # Artifact-First: Compact prompt with artifact references
+                        gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
 
 ## Key Metrics
 Score: {quality.overall_score:.1f} / Threshold: {request.quality_threshold} / Passed: {quality.passed}
@@ -3543,37 +3989,38 @@ Quality: {quality_artifact_path}
 Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
 
 ## Learning Agent Recommendation
-Action: {learning.next_action} | Reasoning: {learning.suggested_modifications[0][:60] if learning.suggested_modifications else 'None'}...
+Action: {learning.next_action if learning else 'unknown'} | Reasoning: {learning.suggested_modifications[0][:60] if learning and learning.suggested_modifications else 'None'}...
 
 Decide: Is quality gate PASSED? What is the next action?"""
 
-                    try:
-                        gate_result = await self._run_agent(
-                            self._quality_gate_coordinator,
-                            gate_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            max_turns=3,  # Quality gate should be very fast
-                            run_config=self._build_run_config(
-                                session=session,
-                                request=request,
-                                iteration=iteration,
-                                phase="quality_gate",
-                            ),
-                        )
-                        gate_decision = gate_result.final_output
-                        print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
-                        print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
+                        try:
+                            gate_result = await self._run_agent(
+                                self._quality_gate_coordinator,
+                                gate_prompt,
+                                context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                max_turns=3,  # Quality gate should be very fast
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=iteration,
+                                    phase="quality_gate",
+                                ),
+                            )
+                            gate_decision = gate_result.final_output
+                            print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
+                            print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
 
-                        # Phase 1.2: Sync escape_level to session IMMEDIATELY after Coordinator returns
-                        # This ensures downstream logic has access to the current escape level
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Quality Gate Coordinator failed: {e}", file=sys.stderr)
+                            # Fall back to simple quality check
+                            gate_decision = None
+
+                    # Sync escape_level to session IMMEDIATELY after Coordinator returns (both paths)
+                    # This ensures downstream logic has access to the current escape level
+                    if gate_decision:
                         session.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
                         context.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
-
-                    except Exception as e:
-                        print(f"[Pipeline] WARN: Quality Gate Coordinator failed: {e}", file=sys.stderr)
-                        # Fall back to simple quality check
-                        gate_decision = None
 
                     # Determine if passed based on Coordinator or simple check
                     if gate_decision:

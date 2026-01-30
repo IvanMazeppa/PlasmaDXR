@@ -1,0 +1,68 @@
+{
+  "trace_file": "shakedown_2iter_20260129_195522.jsonl",
+  "trace_name": "VFX Pipeline: shakedown_fire_2iter",
+  "timestamp": "2026-01-29T19:55:23.410867",
+  "total_duration_s": 632.1,
+  "total_duration_min": 10.54,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 65,
+  "total_doc_searches": 27,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 2,
+      "duration_s": 331.7,
+      "pct_of_total": 52.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 93.5,
+      "pct_of_total": 14.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 84.2,
+      "pct_of_total": 13.3,
+      "doc_searches": 27,
+      "top_tools": {
+        "response": 28,
+        "semantic_search_blender_docs": 22,
+        "require_research_context": 2,
+        "validate_effect_type": 2,
+        "blender_doc_search_bundle": 1
+      }
+    },
+    "Executor": {
+      "calls": 1,
+      "duration_s": 68.4,
+      "pct_of_total": 10.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 25.0,
+      "pct_of_total": 4.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 1,
+      "duration_s": 16.2,
+      "pct_of_total": 2.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 2.56,
+    "seconds_per_iteration": 316.1
+  }
+}

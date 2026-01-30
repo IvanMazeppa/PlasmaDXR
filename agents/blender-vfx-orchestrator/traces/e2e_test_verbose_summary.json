@@ -1,0 +1,82 @@
+{
+  "trace_file": "e2e_test_verbose.jsonl",
+  "trace_name": "VFX Pipeline: test_smoke_e2e",
+  "timestamp": "2026-01-25T07:35:00.061679",
+  "total_duration_s": 9663.4,
+  "total_duration_min": 161.06,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 18,
+  "total_tool_calls": 286,
+  "total_doc_searches": 35,
+  "total_errors": 0,
+  "agents": {
+    "Executor": {
+      "calls": 18,
+      "duration_s": 447.7,
+      "pct_of_total": 4.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Script Writer": {
+      "calls": 10,
+      "duration_s": 337.5,
+      "pct_of_total": 3.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 10,
+      "duration_s": 331.9,
+      "pct_of_total": 3.4,
+      "doc_searches": 35,
+      "top_tools": {
+        "response": 142,
+        "execute_blender_script": 18,
+        "blender_doc_search_bundle": 10,
+        "list_patterns_by_effect": 10,
+        "validate_research_output": 10
+      }
+    },
+    "Quality Analyst": {
+      "calls": 4,
+      "duration_s": 193.2,
+      "pct_of_total": 2.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 10,
+      "duration_s": 122.5,
+      "pct_of_total": 1.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Learning Agent": {
+      "calls": 4,
+      "duration_s": 66.6,
+      "pct_of_total": 0.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate": {
+      "calls": 0,
+      "duration_s": 17.4,
+      "pct_of_total": 0.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate Judge": {
+      "calls": 4,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.22,
+    "seconds_per_iteration": 536.9
+  }
+}

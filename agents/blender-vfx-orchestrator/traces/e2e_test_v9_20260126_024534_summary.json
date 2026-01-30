@@ -1,0 +1,19 @@
+{
+  "trace_file": "e2e_test_v9_20260126_024534.jsonl",
+  "trace_name": "E2E Test v9",
+  "timestamp": "2026-01-26T02:45:36.765578",
+  "total_duration_s": 0.0,
+  "total_duration_min": 0.0,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 0,
+  "total_doc_searches": 0,
+  "total_errors": 0,
+  "agents": {},
+  "efficiency": {
+    "doc_searches_per_minute": 0.0,
+    "seconds_per_iteration": 0.0
+  }
+}

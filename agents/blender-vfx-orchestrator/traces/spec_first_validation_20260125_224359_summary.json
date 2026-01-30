@@ -1,0 +1,54 @@
+{
+  "trace_file": "spec_first_validation_20260125_224359.jsonl",
+  "trace_name": "VFX Pipeline: spec_first_fire_v2",
+  "timestamp": "2026-01-25T22:44:00.999661",
+  "total_duration_s": 165.5,
+  "total_duration_min": 2.76,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 58,
+  "total_doc_searches": 47,
+  "total_errors": 0,
+  "agents": {
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 93.8,
+      "pct_of_total": 56.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 30.9,
+      "pct_of_total": 18.7,
+      "doc_searches": 47,
+      "top_tools": {
+        "semantic_search_blender_docs": 44,
+        "response": 7,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "validate_research_output": 1
+      }
+    },
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 29.5,
+      "pct_of_total": 17.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 11.3,
+      "pct_of_total": 6.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 17.04,
+    "seconds_per_iteration": 165.5
+  }
+}

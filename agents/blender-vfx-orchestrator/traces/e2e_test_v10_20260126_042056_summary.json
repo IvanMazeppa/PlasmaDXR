@@ -1,0 +1,61 @@
+{
+  "trace_file": "e2e_test_v10_20260126_042056.jsonl",
+  "trace_name": "VFX Pipeline: test_smoke_e2e",
+  "timestamp": "2026-01-26T04:20:58.002963",
+  "total_duration_s": 313.9,
+  "total_duration_min": 5.23,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 76,
+  "total_doc_searches": 43,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 102.8,
+      "pct_of_total": 32.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 67.0,
+      "pct_of_total": 21.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 64.0,
+      "pct_of_total": 20.4,
+      "doc_searches": 43,
+      "top_tools": {
+        "semantic_search_blender_docs": 39,
+        "response": 20,
+        "write_script": 2,
+        "validate_script": 2,
+        "execute_blender_script": 2
+      }
+    },
+    "Executor": {
+      "calls": 2,
+      "duration_s": 60.3,
+      "pct_of_total": 19.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 19.7,
+      "pct_of_total": 6.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 8.22,
+    "seconds_per_iteration": 156.9
+  }
+}

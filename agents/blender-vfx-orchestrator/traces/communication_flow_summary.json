@@ -1,0 +1,19 @@
+{
+  "trace_file": "communication_flow.jsonl",
+  "trace_name": "",
+  "timestamp": "",
+  "total_duration_s": 331964.8,
+  "total_duration_min": 5532.75,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 0,
+  "total_doc_searches": 0,
+  "total_errors": 0,
+  "agents": {},
+  "efficiency": {
+    "doc_searches_per_minute": 0.0,
+    "seconds_per_iteration": 331964.8
+  }
+}

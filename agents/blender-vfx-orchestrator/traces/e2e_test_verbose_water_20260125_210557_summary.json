@@ -1,0 +1,54 @@
+{
+  "trace_file": "e2e_test_verbose_water_20260125_210557.jsonl",
+  "trace_name": "VFX Pipeline: test_smoke_e2e",
+  "timestamp": "2026-01-25T21:05:58.731532",
+  "total_duration_s": 114.8,
+  "total_duration_min": 1.91,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 26,
+  "total_doc_searches": 4,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 45.5,
+      "pct_of_total": 39.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 35.6,
+      "pct_of_total": 31.0,
+      "doc_searches": 4,
+      "top_tools": {
+        "response": 13,
+        "execute_blender_script": 2,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "validate_research_output": 1
+      }
+    },
+    "Executor": {
+      "calls": 2,
+      "duration_s": 22.2,
+      "pct_of_total": 19.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 11.5,
+      "pct_of_total": 10.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 2.09,
+    "seconds_per_iteration": 57.4
+  }
+}

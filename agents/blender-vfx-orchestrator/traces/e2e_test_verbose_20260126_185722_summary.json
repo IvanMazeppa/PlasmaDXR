@@ -1,0 +1,89 @@
+{
+  "trace_file": "e2e_test_verbose_20260126_185722.jsonl",
+  "trace_name": "VFX Pipeline: test_smoke_e2e",
+  "timestamp": "2026-01-26T18:57:22.970285",
+  "total_duration_s": 452.5,
+  "total_duration_min": 7.54,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 39,
+  "total_doc_searches": 7,
+  "total_errors": 0,
+  "agents": {
+    "Executor": {
+      "calls": 1,
+      "duration_s": 117.7,
+      "pct_of_total": 26.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Analyst": {
+      "calls": 1,
+      "duration_s": 81.8,
+      "pct_of_total": 18.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 78.5,
+      "pct_of_total": 17.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 71.9,
+      "pct_of_total": 15.9,
+      "doc_searches": 7,
+      "top_tools": {
+        "response": 19,
+        "semantic_search_blender_docs": 3,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "search_code_patterns": 1
+      }
+    },
+    "Learning Agent": {
+      "calls": 1,
+      "duration_s": 36.9,
+      "pct_of_total": 8.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 36.6,
+      "pct_of_total": 8.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 18.5,
+      "pct_of_total": 4.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate": {
+      "calls": 0,
+      "duration_s": 10.5,
+      "pct_of_total": 2.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate Judge": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.93,
+    "seconds_per_iteration": 452.5
+  }
+}
