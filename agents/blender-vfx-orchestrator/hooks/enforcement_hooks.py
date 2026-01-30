@@ -720,14 +720,21 @@ def create_quality_analyst_hooks() -> EnforcementHooks:
 
     No doc query requirement, focus on preventing
     excessive evaluation loops.
+
+    Note: analyze_with_vision may be called once per frame (typically 3 frames
+    for representative sampling), so we exempt it from loop detection.
     """
     config = EnforcementConfig(
-        max_same_tool_calls=2,  # Evaluation should be decisive
-        max_consecutive_same_tool=2,  # Very strict - QA should not loop
-        max_exempt_tool_calls=4,
-        max_turns=6,
-        hard_turn_limit=10,
+        max_same_tool_calls=4,  # May analyze 3+ frames
+        max_consecutive_same_tool=4,  # Allow analyzing multiple frames in sequence
+        max_exempt_tool_calls=6,
+        max_turns=8,
+        hard_turn_limit=12,
         require_doc_query_before=[],  # QA doesn't write code
+        exempt_from_loop_detection=[
+            "analyze_with_vision",  # Called once per frame (3 frames typical)
+            "analyze_temporal_quality",  # May need multiple temporal analyses
+        ],
         raise_on_loop=True,
         raise_on_doc_missing=False,
     )
