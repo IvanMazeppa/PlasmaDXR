@@ -378,6 +378,34 @@ while len(\1) > 1:
         r"\1 = os.environ.get('BLENDER_OUTPUT_DIR') or bpy.path.abspath('//') or os.path.dirname(os.path.abspath(__file__))  # API Fixer: output root",
         "bpy.path.abspath('//') → env-aware output root"
     ),
+
+    # =============================================================================
+    # BMESH OPERATORS API CHANGES (Blender 5.0)
+    # =============================================================================
+    # bmesh.ops.create_cone: diameter1/diameter2 renamed to radius1/radius2 in Blender 5.0
+    # Note: The values also changed semantically (diameter was actually treated as radius
+    # in older versions, so the new naming is more accurate)
+    (
+        r"bmesh\.ops\.create_cone\(([^)]*)\bdiameter1\s*=",
+        r"bmesh.ops.create_cone(\1radius1 =",
+        "bmesh.ops.create_cone: diameter1 → radius1 (Blender 5.0)"
+    ),
+    (
+        r"bmesh\.ops\.create_cone\(([^)]*)\bdiameter2\s*=",
+        r"bmesh.ops.create_cone(\1radius2 =",
+        "bmesh.ops.create_cone: diameter2 → radius2 (Blender 5.0)"
+    ),
+    # Also fix standalone diameter references in bmesh context (less common)
+    (
+        r",\s*diameter1\s*=",
+        r", radius1 =",
+        "diameter1 → radius1 (bmesh cone)"
+    ),
+    (
+        r",\s*diameter2\s*=",
+        r", radius2 =",
+        "diameter2 → radius2 (bmesh cone)"
+    ),
 ]
 
 

@@ -225,8 +225,8 @@ def create_cylinder(name: str, radius=0.5, depth=1.0, segments=24):
     bmesh.ops.create_cone(
         bm,
         segments=segments,
-        diameter1=radius * 2.0,
-        diameter2=radius * 2.0,
+        radius1 =radius * 2.0,
+        radius2 =radius * 2.0,
         depth=depth,
         cap_ends=True,
     )

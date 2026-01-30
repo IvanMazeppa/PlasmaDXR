@@ -194,6 +194,15 @@ mesh.auto_smooth_angle = math.radians(30)
 # Auto-smooth is now automatic or use "Smooth by Angle" modifier
 ```
 
+### BMESH OPERATORS - RENAMED IN 5.0:
+```python
+# ❌ WRONG - diameter1/diameter2 renamed in Blender 5.0
+bmesh.ops.create_cone(bm, diameter1=0.5, diameter2=0.5, depth=1.0, ...)
+
+# ✅ CORRECT - Use radius1/radius2
+bmesh.ops.create_cone(bm, radius1=0.5, radius2=0.5, depth=1.0, ...)
+```
+
 ### COMPOSITOR - CHANGED IN 5.0:
 ```python
 # ⚠️ WRAP IN TRY/EXCEPT - API may have changed
