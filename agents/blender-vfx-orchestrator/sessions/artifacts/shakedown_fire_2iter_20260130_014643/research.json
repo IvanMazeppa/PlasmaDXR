@@ -1,0 +1,27 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow fluid simulation system by configuring a gas domain via the `bpy.types.FluidDomainSettings` API (the primary domain settings container exposed in the Blender 5.0 Python reference). Drive the effect through the domain\u2019s settings and bake the simulation using Blender\u2019s fluid bake operators (queried as `bpy.ops.fluid.*` in the documentation search bundle).",
+  "key_parameters": {
+    "domain_settings_documented_attributes_found": {
+      "noise_strength": "Documented as `bpy.types.FluidDomainSettings.noise_strength` (attribute)",
+      "noise_time_anim": "Documented as `bpy.types.FluidDomainSettings.noise_time_anim` (attribute)",
+      "flip_ratio": "Documented as `bpy.types.FluidDomainSettings.flip_ratio` (attribute)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings"
+  ],
+  "warnings": [
+    "The documentation search bundle did not return a dedicated Mantaflow/Quick Smoke \u2018fire\u2019 setup page; results primarily surfaced Python reference index entries mentioning `bpy.types.FluidDomainSettings` and a few of its attributes (e.g., `noise_strength`, `noise_time_anim`, `flip_ratio`). You may need to verify the exact Quick Smoke operator name and fire-specific domain/flow properties directly in Blender\u2019s UI/Python console for Blender 5.0."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-30T01:48:02.465589"
+}

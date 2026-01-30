@@ -1708,6 +1708,144 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
         print(f"[Spec-First] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
         return script
 
+    async def _run_spec_first_modification(
+        self,
+        previous_script: "ScriptOutput",
+        modification_instructions: str,
+        quality_feedback: Optional["QualityOutput"],
+        request: "AssetRequest",
+        context: SharedContext,
+        iteration: int,
+        sdk_session: Optional[SessionABC] = None,
+    ) -> ScriptOutput:
+        """
+        Run Spec-First modification for iteration 2+.
+
+        This ensures all script modifications use only verified APIs from the
+        existing APISpec, preventing hallucination of deprecated attributes.
+
+        Args:
+            previous_script: The script to modify
+            modification_instructions: What changes to make (from Coordinator)
+            quality_feedback: Quality issues to address
+            request: Asset generation request
+            context: Shared context (must contain api_spec from iteration 0)
+            iteration: Current iteration number
+            sdk_session: SDK session for conversation persistence
+
+        Returns:
+            ScriptOutput with the modified script
+        """
+        print(f"[Spec-First Modify] Starting modification for iteration {iteration}", file=sys.stderr)
+
+        # Get the APISpec from context (set during iteration 0)
+        api_spec = getattr(context, 'api_spec', None)
+        if not api_spec:
+            print(f"[Spec-First Modify] WARNING: No APISpec in context, falling back to fresh spec", file=sys.stderr)
+            # Fall back to running full Spec-First pipeline
+            return await self._run_spec_first_pipeline(
+                effect_type=request.effect_type.value,
+                technique=previous_script.technique_used or "unknown",
+                request=request,
+                context=context,
+                sdk_session=sdk_session,
+            )
+
+        print(f"[Spec-First Modify] Using existing APISpec: {len(api_spec.domain_attributes)} domain, "
+              f"{len(api_spec.flow_attributes)} flow attrs", file=sys.stderr)
+
+        # Format the API spec for the prompt
+        spec_text = format_api_spec_for_prompt(api_spec)
+
+        # Build quality feedback section
+        quality_section = ""
+        if quality_feedback:
+            quality_section = f"""## Quality Feedback (What to Fix)
+Score: {quality_feedback.overall_score:.1f}
+Primary Issue: {quality_feedback.primary_issue or 'None'}
+Issues: {', '.join(quality_feedback.issues[:5]) if quality_feedback.issues else 'None'}
+Suggestions: {', '.join(quality_feedback.suggestions[:3]) if quality_feedback.suggestions else 'None'}
+"""
+
+        # Create the modification prompt
+        code_prompt = f"""REWRITE this Blender script to fix issues, using ONLY the verified APIs below.
+
+{spec_text}
+
+## Current Script to Modify
+Path: {previous_script.script_path}
+Technique: {previous_script.technique_used}
+
+## Modification Instructions (from Coordinator)
+{modification_instructions}
+
+{quality_section}
+
+## Asset Parameters
+- Asset Name: {request.asset_name}
+- Effect Type: {request.effect_type.value}
+- Description: {request.description}
+- Resolution: {request.resolution}
+- Frames: {request.frame_start}-{request.frame_end}
+
+## CRITICAL RULES
+1. ONLY use attributes listed in the VERIFIED API SPECIFICATION above
+2. DO NOT search for or use any other Blender APIs
+3. Read the current script first to understand existing structure
+4. Fix the issues while keeping working parts intact
+5. Use variable names: dset for domain_settings, fset for flow_settings
+6. Output name: {request.asset_name}_script_iter{iteration}_specfix
+
+Call write_script to generate the fixed script, then validate_script to check it.
+Return the VerifiedScriptOutput with script_path and apis_used."""
+
+        # Create hooks for Code Writer
+        code_writer_hooks = create_code_writer_hooks()
+
+        run_config = self._build_run_config(
+            session=context.session,
+            request=request,
+            iteration=iteration,
+            phase="spec_first_modify",
+        )
+
+        try:
+            code_result = await self._run_agent(
+                self._code_writer_agent,
+                code_prompt,
+                context=context,
+                session=sdk_session,
+                hooks=code_writer_hooks,
+                max_turns=8,
+                run_config=run_config,
+            )
+            verified_output: VerifiedScriptOutput = code_result.final_output
+
+            # Convert VerifiedScriptOutput to ScriptOutput for pipeline compatibility
+            script = ScriptOutput(
+                script_path=verified_output.script_path,
+                technique_used=verified_output.technique_used + " (spec-modified)",
+                parameters_set=verified_output.parameters_set,
+                validation_passed=verified_output.validation_passed,
+                validation_errors=verified_output.validation_errors,
+            )
+            print(f"[Spec-First Modify] Script modified: {script.script_path}", file=sys.stderr)
+            print(f"[Spec-First Modify] APIs used: {verified_output.apis_used}", file=sys.stderr)
+
+        except Exception as e:
+            print(f"[Spec-First Modify] ERROR: Code Writer failed: {e}", file=sys.stderr)
+            # Create error output
+            script = ScriptOutput(
+                script_path="",
+                technique_used=previous_script.technique_used or "unknown",
+                parameters_set={},
+                validation_passed=False,
+                validation_errors=[f"Spec-First modification failed: {e}"],
+            )
+
+        print(f"[Spec-First Modify] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
+        return script
+
     async def _run_original_script_writer(
         self,
         effect_type: str,
@@ -2978,13 +3116,36 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         print(f"[Pipeline] Spec-first switch failed: {e}, falling back to Script Writer", file=sys.stderr)
                                         # Fall through to existing Script Writer path
 
-                                # MODIFY CODE: Route to Script Writer with structural fix instructions
-                                # This uses write_script (full code gen) not modify_script (param swap)
+                                # MODIFY CODE: Route through Spec-First pipeline to prevent API hallucination
+                                # Uses Code Writer (no doc search tools) with existing verified APISpec
                                 if mod_decision.action == 'modify_code' and mod_decision.code_change_description and previous_script and previous_script.script_path:
-                                    print(f"[Pipeline] MODIFY CODE → Structural script rewrite", file=sys.stderr)
+                                    print(f"[Pipeline] MODIFY CODE → Spec-First modification (prevents hallucination)", file=sys.stderr)
                                     print(f"[Pipeline] Changes requested: {mod_decision.code_change_description[:120]}", file=sys.stderr)
 
-                                    code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
+                                    # Use Spec-First modification if available (prevents doc search / hallucination)
+                                    if self._use_spec_first_pipeline and self._code_writer_agent:
+                                        try:
+                                            code_fix_output = await self._run_spec_first_modification(
+                                                previous_script=previous_script,
+                                                modification_instructions=mod_decision.code_change_description,
+                                                quality_feedback=quality,
+                                                request=request,
+                                                context=context,
+                                                iteration=iteration,
+                                                sdk_session=sdk_session,
+                                            )
+                                            if code_fix_output and code_fix_output.script_path:
+                                                print(f"[Pipeline] Spec-First fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
+                                                script = code_fix_output
+                                                direct_modification_success = True
+                                            else:
+                                                print(f"[Pipeline] Spec-First fix produced no script_path", file=sys.stderr)
+                                        except Exception as e:
+                                            print(f"[Pipeline] Spec-First fix failed: {e}", file=sys.stderr)
+                                    else:
+                                        # Fallback: Original Script Writer (has doc search - can hallucinate)
+                                        print(f"[Pipeline] WARN: Spec-First unavailable, using Script Writer (may hallucinate)", file=sys.stderr)
+                                        code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
 
 ## Current Script
 Path: {previous_script.script_path}
@@ -3006,41 +3167,33 @@ Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'
 2. Make the structural changes described above
 3. Keep everything that's working — only fix what's broken
 4. Use write_script to output the complete fixed script
-5. Name the output: {request.asset_name}_script_iter{iteration}_codefix
+5. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
 
-## Common Structural Fixes
-- Bake context: set domain as active_object + selected before bpy.ops.fluid.bake_data()
-- Effectors: glass/solid meshes need Fluid modifier with fluid_type='EFFECTOR'
-- Object context: bpy.ops calls need correct context override
-- Missing depsgraph: call bpy.context.view_layer.depsgraph.update() after setup changes
-- Material assignment: ensure materials are assigned to correct objects
-- Frame range: align cache_frame_start/end with scene.frame_start/end"""
-
-                                    try:
-                                        code_fix_hooks = create_fallback_script_writer_hooks()
-                                        code_fix_result = await self._run_agent(
-                                            self._script_agent_standalone,
-                                            code_fix_prompt,
-                                            context=context,
-                                            session=sdk_session,
-                                            hooks=code_fix_hooks,
-                                            max_turns=8,
-                                            run_config=self._build_run_config(
-                                                session=session,
-                                                request=request,
-                                                iteration=iteration,
-                                                phase="code_fix",
-                                            ),
-                                        )
-                                        code_fix_output = code_fix_result.final_output
-                                        if code_fix_output and code_fix_output.script_path:
-                                            print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
-                                            script = code_fix_output
-                                            direct_modification_success = True
-                                        else:
-                                            print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
-                                    except Exception as e:
-                                        print(f"[Pipeline] Code fix failed: {e}, falling back to Script Writer", file=sys.stderr)
+                                        try:
+                                            code_fix_hooks = create_fallback_script_writer_hooks()
+                                            code_fix_result = await self._run_agent(
+                                                self._script_agent_standalone,
+                                                code_fix_prompt,
+                                                context=context,
+                                                session=sdk_session,
+                                                hooks=code_fix_hooks,
+                                                max_turns=8,
+                                                run_config=self._build_run_config(
+                                                    session=session,
+                                                    request=request,
+                                                    iteration=iteration,
+                                                    phase="code_fix_fallback",
+                                                ),
+                                            )
+                                            code_fix_output = code_fix_result.final_output
+                                            if code_fix_output and code_fix_output.script_path:
+                                                print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
+                                                script = code_fix_output
+                                                direct_modification_success = True
+                                            else:
+                                                print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
+                                        except Exception as e:
+                                            print(f"[Pipeline] Code fix failed: {e}, falling back to Script Writer", file=sys.stderr)
 
                                 # If Coordinator provides parameter changes, try direct modification
                                 if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
@@ -3103,151 +3256,113 @@ Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'
                                 # Fall through to Script Writer
                                 mod_decision = None
 
-                        # If still no success, use Script Writer
+                        # If still no success, use Spec-First modification (prevents hallucination)
                         if not direct_modification_success:
-                            # Include quality feedback and learning suggestions
-                            feedback_parts = []
+                            print(f"[Pipeline] Fallback modification via Spec-First (iter {iteration})", file=sys.stderr)
 
-                            # Add iteration history from SessionManager (prevents repeating failures)
-                            if iteration_summary:
-                                feedback_parts.append(iteration_summary)
-
-                            # Add what we've learned about params
+                            # Build modification instructions from all available feedback
+                            mod_instructions_parts = []
                             ctx = session_mgr.get_context_for_agents()
-                            if ctx.get("params_that_helped"):
-                                feedback_parts.append("## Parameters That Improved Scores")
-                                for p, (v, d) in ctx["params_that_helped"].items():
-                                    feedback_parts.append(f"- {p}={v} (+{d:.1f})")
-                            if ctx.get("params_that_hurt"):
-                                feedback_parts.append("## Parameters To AVOID (hurt scores)")
-                                for p, (v, d) in ctx["params_that_hurt"].items():
-                                    feedback_parts.append(f"- {p}={v} ({d:.1f})")
-                            if ctx.get("stuck_issues"):
-                                feedback_parts.append(f"## STUCK: These issues persist - try different approach")
-                                feedback_parts.append(f"- {', '.join(ctx['stuck_issues'])}")
 
-                            # Phase 2: Include knowledge base learnings from Phase 0.95
-                            if kb_suggestions:
-                                feedback_parts.append("## Knowledge Base Learnings (from previous experiments)")
-                                for kb_entry in kb_suggestions[:3]:
-                                    if isinstance(kb_entry, dict):
-                                        kb_text = kb_entry.get('learning', kb_entry.get('text', str(kb_entry)))
-                                    else:
-                                        kb_text = str(kb_entry)
-                                    feedback_parts.append(f"- {kb_text[:150]}...")
-
-                            if quality:
-                                feedback_parts.append(f"## Quality Assessment (Score: {quality.overall_score:.1f})")
-                                feedback_parts.append(f"Vision Assessment: {quality.vision_assessment}")
-                                if quality.primary_issue:
-                                    feedback_parts.append(f"Primary Issue: {quality.primary_issue}")
-                                if quality.suggestions:
-                                    feedback_parts.append(f"Suggestions: {chr(10).join(f'- {s}' for s in quality.suggestions)}")
+                            if quality and quality.primary_issue:
+                                mod_instructions_parts.append(f"Fix primary issue: {quality.primary_issue}")
+                            if quality and quality.suggestions:
+                                mod_instructions_parts.append(f"Suggestions: {'; '.join(quality.suggestions[:3])}")
                             if learning and learning.suggested_modifications:
-                                feedback_parts.append(f"## Learning Agent Recommendations")
-                                feedback_parts.append(chr(10).join(f'- {m}' for m in learning.suggested_modifications))
-                            # Also include concrete params as guidance for Script Writer
-                            if learning and learning.parameter_modifications:
-                                feedback_parts.append(f"## Concrete Parameter Changes")
-                                for param, value in learning.parameter_modifications.items():
-                                    feedback_parts.append(f"- {param}: {value}")
+                                mod_instructions_parts.append(f"Learning recommendations: {'; '.join(learning.suggested_modifications[:3])}")
+                            if ctx.get("stuck_issues"):
+                                mod_instructions_parts.append(f"Persistent issues (try different approach): {', '.join(ctx['stuck_issues'])}")
 
-                            # Artifact-First: Compact references instead of inline dumps
-                            research_ref = artifact_mgr.get_research_path()
-                            prev_quality_ref = artifact_mgr.get_quality_path(iteration - 1) if iteration > 1 else None
+                            mod_instructions = "\n".join(mod_instructions_parts) or "Improve overall quality"
 
-                            # Build compact alternatives/techniques lists
-                            untried = [a for a in session.alternative_approaches if a not in session.techniques_tried][:5]
-                            untried_str = ", ".join(untried) if untried else "None"
-                            tried_str = ", ".join(session.techniques_tried) if session.techniques_tried else "None"
+                            # Use Spec-First modification if available (prevents hallucination)
+                            if self._use_spec_first_pipeline and self._code_writer_agent and previous_script:
+                                try:
+                                    script = await self._run_spec_first_modification(
+                                        previous_script=previous_script,
+                                        modification_instructions=mod_instructions,
+                                        quality_feedback=quality,
+                                        request=request,
+                                        context=context,
+                                        iteration=iteration,
+                                        sdk_session=sdk_session,
+                                    )
+                                    print(f"[Pipeline] Spec-First modification result: {script.script_path or 'failed'}", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"[Pipeline] WARN: Spec-First modification failed: {e}", file=sys.stderr)
+                                    script = ScriptOutput(
+                                        script_path="",
+                                        technique_used="spec_first_failed",
+                                        parameters_set={},
+                                        validation_passed=False,
+                                        validation_errors=[str(e)]
+                                    )
+                            else:
+                                # Fallback: Original Script Writer (has doc search - can hallucinate)
+                                print(f"[Pipeline] WARN: Spec-First unavailable, using Script Writer (may hallucinate)", file=sys.stderr)
 
-                            # Recommend technique switch if stuck
-                            switch_flag = ""
-                            if ctx.get("stuck_issues") or ctx.get("consecutive_same_issue", 0) >= 2:
-                                switch_flag = "**TECHNIQUE SWITCH RECOMMENDED** - current approach not resolving issues."
+                                # Build compact alternatives/techniques lists
+                                untried = [a for a in session.alternative_approaches if a not in session.techniques_tried][:5]
+                                untried_str = ", ".join(untried) if untried else "None"
+                                tried_str = ", ".join(session.techniques_tried) if session.techniques_tried else "None"
 
-                            # Compact feedback from learning agent
-                            feedback_str = quality.primary_issue or "No primary issue"
-                            if learning and learning.parameter_modifications:
-                                param_changes = ", ".join(f"{k}={v}" for k, v in learning.parameter_modifications.items())
-                                feedback_str += f" | Suggested params: {param_changes}"
-
-                            script_prompt = f"""Modify the existing script to fix quality issues.
+                                script_prompt = f"""Modify the existing script to fix quality issues.
 
 ## Script
 Path: {previous_script.script_path if previous_script else 'Unknown'}
 Technique: {previous_script.technique_used if previous_script else 'Unknown'}
 
-## Artifacts (read if needed)
-Research: {research_ref or 'None'}
-Previous Quality: {prev_quality_ref or 'None'}
+## Issue to Fix
+{mod_instructions}
 
 ## Context
 Untried approaches: {untried_str}
 Already tried: {tried_str}
-{switch_flag}
-
-## Issue to Fix
-{feedback_str}
 
 ## Target
 Previous: {previous_score:.1f} | Target: {request.quality_threshold}
 
-Fix the primary issue. Read artifacts for details if needed."""
+Fix the primary issue."""
 
-                            # Create fresh hooks for this iteration (reset counters)
-                            # Use fallback hooks for iteration 2+ since Research Agent already queried docs
-                            # This prevents blocking modify_script when doc queries were done in iter 1
-                            iter_script_hooks = create_fallback_script_writer_hooks()
-                            try:
-                                script_result = await self._run_agent(
-                                    self._script_agent_standalone,
-                                    script_prompt,
-                                    context=context,
-                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                    hooks=iter_script_hooks,
-                                    max_turns=15,
-                                    run_config=self._build_run_config(
-                                        session=session,
-                                        request=request,
-                                        iteration=iteration,
-                                        phase="script_modify",
-                                    ),
-                                )
-                                # Structured output: ScriptOutput
-                                script = script_result.final_output
-                            except LoopDetectedError as e:
-                                print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}): {e}", file=sys.stderr)
-                                script = ScriptOutput(
-                                    script_path="",
-                                    technique_used="loop_detected",
-                                    parameters_set={},
-                                    validation_passed=False,
-                                    validation_errors=[str(e)]
-                                )
-                            except DocQueryRequiredError as e:
-                                print(f"[Pipeline] ERROR: Script Writer missing doc query (iter {iteration}): {e}", file=sys.stderr)
-                                script = ScriptOutput(
-                                    script_path="",
-                                    technique_used="doc_query_missing",
-                                    parameters_set={},
-                                    validation_passed=False,
-                                    validation_errors=[str(e)]
-                                )
-                            except Exception as e:
-                                # SDK wraps LoopDetectedError in UserError - check for it
-                                if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
-                                    print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}, wrapped): {e}", file=sys.stderr)
+                                iter_script_hooks = create_fallback_script_writer_hooks()
+                                try:
+                                    script_result = await self._run_agent(
+                                        self._script_agent_standalone,
+                                        script_prompt,
+                                        context=context,
+                                        session=sdk_session,
+                                        hooks=iter_script_hooks,
+                                        max_turns=15,
+                                        run_config=self._build_run_config(
+                                            session=session,
+                                            request=request,
+                                            iteration=iteration,
+                                            phase="script_modify_fallback",
+                                        ),
+                                    )
+                                    script = script_result.final_output
+                                except LoopDetectedError as e:
+                                    print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}): {e}", file=sys.stderr)
                                     script = ScriptOutput(
                                         script_path="",
                                         technique_used="loop_detected",
                                         parameters_set={},
                                         validation_passed=False,
-                                        validation_errors=["Loop detected - agent made too many consecutive doc queries"]
+                                        validation_errors=[str(e)]
                                     )
-                                else:
-                                    raise  # Re-raise if it's a different error
-                            print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
+                                except Exception as e:
+                                    if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                        print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}, wrapped): {e}", file=sys.stderr)
+                                        script = ScriptOutput(
+                                            script_path="",
+                                            technique_used="loop_detected",
+                                            parameters_set={},
+                                            validation_passed=False,
+                                            validation_errors=["Loop detected"]
+                                        )
+                                    else:
+                                        raise
+                                print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
 
                     # Always capture script_path if available (for subsequent iterations)
                     if script.script_path:
@@ -3464,23 +3579,57 @@ Fix the script and output it with write_script. Keep the same technique name
 but append '_errfix' to the output name."""
 
                             try:
-                                recovery_hooks = create_fallback_script_writer_hooks()
-                                recovery_result = await self._run_agent(
-                                    self._script_agent_standalone,
-                                    recovery_prompt,
-                                    context=context,
-                                    session=sdk_session,
-                                    hooks=recovery_hooks,
-                                    max_turns=6,
-                                    run_config=self._build_run_config(
-                                        session=session,
-                                        request=request,
-                                        iteration=iteration,
-                                        phase="recover_script",
-                                    ),
-                                )
+                                # Use Spec-First modification for error recovery to prevent
+                                # hallucinated APIs. The Code Writer will fix the script
+                                # using ONLY verified APIs from the existing APISpec.
+                                recovery_instructions = f"""CRITICAL FIX REQUIRED - Script execution FAILED.
 
-                                recovery_script = recovery_result.final_output
+## Error Message
+{error_msg}
+
+## What Went Wrong
+This is a STRUCTURAL code issue. You must fix the script using ONLY the verified
+Blender APIs provided in the API spec above. Do NOT guess or search for new APIs.
+
+## Common Structural Fixes
+- Bake context: bpy.ops.fluid.bake_data() requires the domain object to be
+  bpy.context.view_layer.objects.active AND selected
+- Effector setup: Collision objects need a Fluid modifier with fluid_type='EFFECTOR'
+- Object context: bpy.ops calls require correct context (active object, selection)
+- Missing depsgraph update: call bpy.context.view_layer.depsgraph.update() after setup
+
+Fix the script completely. Keep the same technique but append '_errfix' to the output name."""
+
+                                if self._use_spec_first_pipeline and self._code_writer_agent and script:
+                                    # Spec-First path: Use Code Writer with verified APIs
+                                    recovery_script = await self._run_spec_first_modification(
+                                        previous_script=script,
+                                        modification_instructions=recovery_instructions,
+                                        quality_feedback=None,  # No quality feedback for error recovery
+                                        request=request,
+                                        context=context,
+                                        iteration=iteration,
+                                        sdk_session=sdk_session,
+                                    )
+                                else:
+                                    # Legacy fallback: Use Script Writer (has doc search - can hallucinate)
+                                    recovery_hooks = create_fallback_script_writer_hooks()
+                                    recovery_result = await self._run_agent(
+                                        self._script_agent_standalone,
+                                        recovery_prompt,
+                                        context=context,
+                                        session=sdk_session,
+                                        hooks=recovery_hooks,
+                                        max_turns=6,
+                                        run_config=self._build_run_config(
+                                            session=session,
+                                            request=request,
+                                            iteration=iteration,
+                                            phase="recover_script",
+                                        ),
+                                    )
+                                    recovery_script = recovery_result.final_output
+
                                 if recovery_script and recovery_script.script_path:
                                     print(f"[Pipeline] Recovery produced: {recovery_script.script_path}", file=sys.stderr)
 

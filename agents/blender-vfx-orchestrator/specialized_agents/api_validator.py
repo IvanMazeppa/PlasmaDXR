@@ -146,9 +146,14 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "reason": "cache_format does not exist. Correct attribute is cache_data_format (with 'data' in the name)."
     },
     # FluidFlowSettings.velocity does NOT exist - use velocity_factor, velocity_normal, etc.
-    ".velocity": {
-        "correction": ".velocity_factor",
+    # NOTE: Use " =" suffix to avoid matching valid attrs like velocity_normal, velocity_factor
+    ".velocity =": {
+        "correction": ".velocity_factor =",
         "reason": "FluidFlowSettings.velocity does not exist. Use velocity_factor, velocity_normal, velocity_random, or use_initial_velocity."
+    },
+    ".velocity=": {
+        "correction": ".velocity_factor =",
+        "reason": "FluidFlowSettings.velocity does not exist (no space variant)."
     },
     # =============================================================================
     # LLM HALLUCINATED ATTRIBUTES (Phase 3: 2026-01-25)
