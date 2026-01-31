@@ -642,6 +642,7 @@ async def validate_code_against_spec(
         "bpy.ops.object.select_all",
         "bpy.ops.object.delete",
         "bpy.ops.object.modifier_add",
+        "bpy.ops.object.modifier_apply",  # Applying modifiers (solidify, subsurf, etc.)
         "bpy.ops.object.mode_set",
         "bpy.ops.object.origin_set",
         "bpy.ops.object.shade_smooth",
@@ -673,11 +674,15 @@ async def validate_code_against_spec(
         "bpy.ops.mesh.primitive_monkey_add",
         # Mesh editing operations
         "bpy.ops.mesh.select_all",
+        "bpy.ops.mesh.select_mode",  # Mode switching (vert/edge/face)
         "bpy.ops.mesh.select_face_by_sides",
         "bpy.ops.mesh.delete",
         "bpy.ops.mesh.fill",
         "bpy.ops.mesh.extrude_region",
+        "bpy.ops.mesh.extrude_region_move",  # Composite: extrude + transform
         "bpy.ops.mesh.extrude_faces",
+        "bpy.ops.mesh.extrude_faces_move",  # Composite: extrude + transform
+        "bpy.ops.mesh.extrude_vertices_move",  # Composite: extrude + transform
         "bpy.ops.mesh.subdivide",
         "bpy.ops.mesh.loop_cut",
         "bpy.ops.mesh.bevel",
@@ -702,6 +707,25 @@ async def validate_code_against_spec(
         # Fluid/physics (common setup ops)
         "bpy.ops.ptcache.bake_all",
         "bpy.ops.ptcache.free_bake_all",
+        # Fluid baking ops - essential for Mantaflow simulations
+        "bpy.ops.fluid.bake_all",
+        "bpy.ops.fluid.bake_data",
+        "bpy.ops.fluid.bake_noise",
+        "bpy.ops.fluid.bake_mesh",
+        "bpy.ops.fluid.bake_particles",
+        "bpy.ops.fluid.bake_guides",
+        "bpy.ops.fluid.free_all",
+        "bpy.ops.fluid.free_data",
+        "bpy.ops.fluid.free_noise",
+        "bpy.ops.fluid.free_mesh",
+        "bpy.ops.fluid.free_particles",
+        "bpy.ops.fluid.free_guides",
+        "bpy.ops.fluid.preset_add",
+        # Transform operations - standard scene construction
+        "bpy.ops.transform.resize",
+        "bpy.ops.transform.rotate",
+        "bpy.ops.transform.translate",
+        "bpy.ops.transform.transform",
     }
     op_violations = op_violations - safe_ops
 

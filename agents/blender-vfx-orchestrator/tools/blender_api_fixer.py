@@ -421,6 +421,31 @@ while len(\1) > 1:
         r", radius2 =",
         "diameter2 → radius2 (bmesh cone)"
     ),
+
+    # =============================================================================
+    # NODE LINKING DIRECTION FIX (LLM Hallucination)
+    # =============================================================================
+    # LLMs sometimes try to link INPUT → INPUT which is invalid.
+    # nt.links.new(source, dest) requires: source = output socket, dest = input socket.
+    # Pattern: nt.links.new(xxx.inputs[N], yyy.inputs[M]) is ALWAYS wrong.
+    # Fix: Comment out the invalid line since we can't infer correct behavior.
+    (
+        r"(?m)^(\s*)((?:nt|node_tree|mat\.node_tree)\.links\.new\(\s*\w+\.inputs\[\d+\]\s*,\s*\w+\.inputs\[\d+\]\s*\))",
+        r"\1# API Fixer: REMOVED - input→input link invalid (must be output→input)\n\1# \2",
+        "Removed invalid input→input node link (must be output→input)"
+    ),
+    # Also catch named input sockets: .inputs['Name']
+    (
+        r"(?m)^(\s*)((?:nt|node_tree|mat\.node_tree)\.links\.new\(\s*\w+\.inputs\[['\"][^'\"]+['\"]\]\s*,\s*\w+\.inputs)",
+        r"\1# API Fixer: REMOVED - input→input link invalid (must be output→input)\n\1# \2",
+        "Removed invalid input→input node link (named sockets)"
+    ),
+    # Catch output→output links too (equally invalid)
+    (
+        r"(?m)^(\s*)((?:nt|node_tree|mat\.node_tree)\.links\.new\(\s*\w+\.outputs\[\d+\]\s*,\s*\w+\.outputs\[\d+\]\s*\))",
+        r"\1# API Fixer: REMOVED - output→output link invalid (must be output→input)\n\1# \2",
+        "Removed invalid output→output node link (must be output→input)"
+    ),
 ]
 
 
