@@ -1,0 +1,40 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow liquid workflow via the Python API types exposed on fluid objects/modifiers: configure the simulation domain through `bpy.types.FluidDomainSettings` (notably the FLIP-related control `flip_ratio`), and configure the emitter/inflow through `bpy.types.FluidFlowSettings` (including per-flow noise inputs like `noise_texture`). For additional small-scale motion detail, use the domain noise controls exposed on `bpy.types.FluidDomainSettings` (e.g., `noise_strength`, `noise_time_anim`) to drive higher-frequency surface variation on top of the main FLIP motion.",
+  "key_parameters": {
+    "domain_settings": {
+      "flip_ratio": {
+        "api": "bpy.types.FluidDomainSettings.flip_ratio",
+        "recommended_start": "TBD (tune; exposed FLIP control)"
+      },
+      "noise_strength": {
+        "api": "bpy.types.FluidDomainSettings.noise_strength",
+        "recommended_start": "TBD (tune; exposed noise control)"
+      },
+      "noise_time_anim": {
+        "api": "bpy.types.FluidDomainSettings.noise_time_anim",
+        "recommended_start": "TBD (enable/adjust if using animated noise detail)"
+      }
+    },
+    "flow_settings": {
+      "noise_texture": {
+        "api": "bpy.types.FluidFlowSettings.noise_texture",
+        "recommended_start": "Optional (assign a texture if using per-flow noise modulation)"
+      }
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-01-30T04:37:25.758195"
+}
