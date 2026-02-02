@@ -115,13 +115,23 @@ def discover_execution_artifacts(
             if blends:
                 blend_path = str(blends[0])
 
-    # Search run_dir for logs
+    # Search run_dir for logs and fallback artifacts
     if run_dir:
         run_path = Path(run_dir)
         if run_path.exists():
             logs = list(run_path.glob("*.log")) + list(run_path.glob("*.txt"))
             if logs:
                 log_path = str(logs[0])
+
+            # Check for cache in run_dir if not found in output_dir
+            if not cache_exists:
+                run_cache_path = run_path / "cache"
+                if run_cache_path.exists() and run_cache_path.is_dir():
+                    cache_exists = True
+                    for f in run_cache_path.rglob("*"):
+                        if f.is_file():
+                            cache_file_count += 1
+                            cache_size_bytes += f.stat().st_size
 
             # Also check for renders/VDBs in run_dir if not found in output_dir
             if not render_paths:

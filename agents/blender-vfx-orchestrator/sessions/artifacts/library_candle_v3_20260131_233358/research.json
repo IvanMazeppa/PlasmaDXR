@@ -1,0 +1,55 @@
+{
+  "recommended_approach": "Use Mantaflow as a gas simulation driven through Blender\u2019s Fluid Domain settings (accessible via `bpy.types.FluidDomainSettings`), then add higher-frequency detail using the domain\u2019s noise-related controls (the Python reference index lists `noise_strength` and `noise_time_anim` as `FluidDomainSettings` attributes). Bake the simulation after configuring the domain/flow objects, and render in Cycles with the fire/smoke shading driven by the baked fields.",
+  "key_parameters": {
+    "simulation_constraints_from_request": {
+      "domain_type": "GAS (Mantaflow)",
+      "use_noise": true,
+      "reaction_speed_target": 0.3,
+      "reaction_speed_range": [
+        0.3,
+        0.5
+      ],
+      "smoke_amount_target": 0.05,
+      "smoke_amount_range": [
+        0.05,
+        0.1
+      ],
+      "vorticity_target": 0.6,
+      "vorticity_range": [
+        0.5,
+        0.7
+      ],
+      "temperature_difference": "High (for strong buoyancy / candle updraft)",
+      "frame_range": [
+        1,
+        120
+      ],
+      "resolution": "64\u201396 (good smoke detail target)",
+      "adaptive_domain": true,
+      "cache_type": "ALL",
+      "renderer": "Cycles (GPU)",
+      "samples_max": 256
+    },
+    "fluid_domainsettings_attributes_found_in_docs": {
+      "noise_strength": "`bpy.types.FluidDomainSettings.noise_strength` is indexed in the Blender 5.0 Python reference.",
+      "noise_time_anim": "`bpy.types.FluidDomainSettings.noise_time_anim` is indexed in the Blender 5.0 Python reference.",
+      "flip_ratio": "`bpy.types.FluidDomainSettings.flip_ratio` is indexed in the Blender 5.0 Python reference (general domain attribute, not fire-specific)."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_u_0.md"
+  ],
+  "timestamp": "2026-01-31T23:35:03.483300"
+}

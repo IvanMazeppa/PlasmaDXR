@@ -1,0 +1,43 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow fluid system via its Python API types (notably `bpy.types.FluidDomainSettings` for the GAS domain and `bpy.types.FluidFlowSettings` for the emitter/flow object), and drive \u201cslow, graceful\u201d candle-flame detail primarily through the domain\u2019s noise controls (documented attributes include `FluidDomainSettings.noise_strength` and `FluidDomainSettings.noise_time_anim`) plus per-flow noise inputs (documented attribute `FluidFlowSettings.noise_texture`). The documentation returned in this search bundle is API-index level (attributes/classes) rather than a full Mantaflow fire tutorial, so the optimal starting approach that can be grounded here is: configure a GAS domain/flow setup through these API types and animate noise time for slow-motion flicker.",
+  "key_parameters": {
+    "FluidDomainSettings.noise_strength": "Documented as a `bpy.types.FluidDomainSettings` attribute (use to control added noise detail strength).",
+    "FluidDomainSettings.noise_time_anim": "Documented as a `bpy.types.FluidDomainSettings` attribute (use to animate noise evolution over time; useful for slow, meditative flicker).",
+    "FluidFlowSettings.noise_texture": "Documented as a `bpy.types.FluidFlowSettings` attribute (use to inject texture-driven variation into the flow/emission).",
+    "FluidDomainSettings.flip_ratio": "Documented as a `bpy.types.FluidDomainSettings` attribute (appears in the API index; included here as a known available setting, though not fire-specific in the retrieved snippets)."
+  },
+  "api_modules": [
+    "bpy.types.ShaderNodeTexNoise",
+    "bpy.types.GreasePencilNoiseModifier",
+    "bpy.types.DistortedNoiseTexture",
+    "bpy.ops.mesh",
+    "bpy.ops.lattice",
+    "bpy.ops.armature",
+    "bpy.data.materials",
+    "bpy.types.PropertyGroupItem",
+    "bpy.types.ThemeBoneColorSet",
+    "bpy.types.LineStyleGeometryModifier_SpatialNoise",
+    "bpy.types.LineStyleGeometryModifier_PerlinNoise1D",
+    "bpy.types.LineStyleGeometryModifier_PerlinNoise2D",
+    "bpy.types.LineStyleGeometryModifier_GuidingLines",
+    "bpy.types.LineStyleGeometryModifier_2DOffset",
+    "bpy.types.LineStyleGeometryModifier_BackboneStretcher",
+    "bpy.types.LineStyleColorModifier_Noise",
+    "bpy.types.LineStyleColorModifier_Material",
+    "bpy.types.LineStyleColorModifier_CreaseAngle",
+    "bpy.types.LineStyleAlphaModifier_Material"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_u_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-31T22:39:08.258685"
+}

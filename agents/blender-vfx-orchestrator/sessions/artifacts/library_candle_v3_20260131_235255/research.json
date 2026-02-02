@@ -1,0 +1,47 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow fire/smoke simulation controls through the RNA API (notably `bpy.types.FluidDomainSettings` for the GAS domain and `bpy.types.FluidFlowSettings` for flow/emitter objects). For the requested \u201cslow, graceful\u201d candle flame with extra detail, rely on the domain\u2019s noise controls (e.g., `FluidDomainSettings.noise_strength`, `FluidDomainSettings.noise_time_anim`) and bake the simulation (including noise) via the fluid baking operators (searched: `bpy.ops.fluid.bake_data`, `bpy.ops.fluid.bake_noise`).",
+  "key_parameters": {
+    "domain_api": "bpy.types.FluidDomainSettings",
+    "flow_api": "bpy.types.FluidFlowSettings",
+    "noise_controls": [
+      "FluidDomainSettings.noise_strength",
+      "FluidDomainSettings.noise_time_anim"
+    ],
+    "other_domain_attribute_seen_in_docs": [
+      "FluidDomainSettings.flip_ratio"
+    ]
+  },
+  "api_modules": [
+    "bpy.ops.mesh",
+    "bpy.types.LineStyleColorModifier_Material",
+    "bpy.types.ThemeBoneColorSet",
+    "bpy.types.LineStyleGeometryModifier_SinusDisplacement",
+    "bpy.ops.lattice",
+    "bpy.types.LineStyleGeometryModifier_SpatialNoise",
+    "bpy.types.LineStyleGeometryModifier_Blueprint",
+    "bpy.types.ParticleSettings",
+    "bpy.data.materials",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.types.LineStyleColorModifier_DistanceFromCamera",
+    "bpy.types.LineStyleThicknessModifier_AlongStroke",
+    "bpy.types.LineStyleGeometryModifier_2DTransform",
+    "bpy.types.Mesh",
+    "bpy.ops.pose",
+    "bpy.types.VoronoiTexture",
+    "bpy.ops.armature",
+    "bpy.types.LineStyleGeometryModifier_TipRemover",
+    "bpy.types.ThemeView3D",
+    "bpy.types.Action"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_u_0.md"
+  ],
+  "timestamp": "2026-01-31T23:53:49.312174"
+}

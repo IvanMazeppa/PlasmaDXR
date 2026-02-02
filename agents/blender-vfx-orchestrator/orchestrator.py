@@ -165,6 +165,7 @@ class ExecutionOutput(BaseModel):
     success: bool = Field(description="Whether Blender execution succeeded")
     render_path: Optional[str] = Field(default=None, description="Path to rendered output")
     vdb_path: Optional[str] = Field(default=None, description="Path to VDB volume data")
+    run_dir: Optional[str] = Field(default=None, description="Executor output directory containing cache and logs")
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
     execution_time_seconds: float = Field(default=0.0, description="Total execution time")
 
@@ -2167,8 +2168,11 @@ After executing the script, return a structured ExecutionOutput with:
 - success: Whether Blender executed without errors
 - render_path: Path to the rendered output image/sequence
 - vdb_path: Path to VDB volume data (if generated)
+- run_dir: The executor's output directory (from execute_blender_script result's run_dir field - contains cache/)
 - error_message: Error details if execution failed
-- execution_time_seconds: How long execution took""",
+- execution_time_seconds: How long execution took
+
+IMPORTANT: Always include run_dir from the execute_blender_script result - this is where the simulation cache lives.""",
             model=executor_model,
             model_settings=executor_settings,
             output_type=AgentOutputSchema(ExecutionOutput, strict_json_schema=False),
@@ -3530,6 +3534,7 @@ Run the script and report results."""
                             success=False,
                             render_path=None,
                             vdb_path=None,
+                            run_dir=None,
                             error_message=f"Executor loop detected: {e}",
                             execution_time_seconds=0.0
                         )
@@ -3711,14 +3716,24 @@ Execute it and report results."""
                     # missing renders) without involving LLM. Deterministic first, adaptive second.
                     print(f"[Pipeline] PHASE 2.7: Artifact Gates", file=sys.stderr)
 
-                    # Derive output_dir from render_path (renders are in output_dir root)
+                    # Derive output_dir from render_path
+                    # Render path is typically: .../output_dir/renders/image.png
+                    # We need output_dir (parent of renders/) which contains cache/ sibling
                     artifact_output_dir = None
                     if execution.render_path:
-                        artifact_output_dir = str(Path(execution.render_path).parent)
+                        render_parent = Path(execution.render_path).parent
+                        # If renders are in a "renders" subdirectory, go up one more level
+                        if render_parent.name == "renders":
+                            artifact_output_dir = str(render_parent.parent)
+                        else:
+                            artifact_output_dir = str(render_parent)
+
+                    # Use run_dir from executor for cache location (may differ from render path)
+                    executor_run_dir = execution.run_dir
 
                     gates_passed, gate_results, artifact_summary = validate_execution_artifacts(
                         output_dir=artifact_output_dir,
-                        run_dir=None,  # Not available in ExecutionOutput
+                        run_dir=executor_run_dir,  # Executor's actual output dir with cache
                         effect_type=request.effect_type.value,
                         verbose=True,
                     )

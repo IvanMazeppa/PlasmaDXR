@@ -180,8 +180,10 @@ async def create_asset(
         )
 
         # Get orchestrator and create asset
+        # NOTE: Uses create_asset_pipeline() (agents-as-tools architecture)
+        # NOT create_asset() (deprecated handoff-based architecture)
         orchestrator = await get_orchestrator()
-        session = await orchestrator.create_asset(request)
+        session = await orchestrator.create_asset_pipeline(request)
 
         # Format result
         result = {

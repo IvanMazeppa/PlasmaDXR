@@ -1,0 +1,26 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s Python API surface via a gas fluid domain and a flow/emitter object: configure the simulation through `bpy.types.FluidDomainSettings` (domain-level controls, including noise animation/strength) and `bpy.types.FluidFlowSettings` (flow-level controls, including a noise texture hookup). For a slow, detailed candle-flame style motion, leverage the domain noise controls (`noise_strength`, `noise_time_anim`) and, where applicable, a flow noise texture (`noise_texture`) to drive subtle, time-varying detail.",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings": {
+      "noise_strength": "(Fluid domain noise control; see API index entry for `noise_strength` on FluidDomainSettings)",
+      "noise_time_anim": "(Fluid domain noise time animation; see API index entry for `noise_time_anim` on FluidDomainSettings)",
+      "flip_ratio": "(Domain solver-related ratio; see API index entry for `flip_ratio` on FluidDomainSettings)"
+    },
+    "bpy.types.FluidFlowSettings": {
+      "noise_texture": "(Flow-level noise texture slot; see API index entry for `noise_texture` on FluidFlowSettings)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-"
+  ],
+  "timestamp": "2026-01-31T22:53:58.899590"
+}

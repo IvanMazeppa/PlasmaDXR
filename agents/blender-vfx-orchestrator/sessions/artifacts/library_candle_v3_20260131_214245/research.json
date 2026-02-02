@@ -1,0 +1,25 @@
+{
+  "recommended_approach": "Use a Mantaflow Gas setup driven and controlled through Blender\u2019s fluid RNA types: configure the simulation Domain via `bpy.types.FluidDomainSettings` and the emitter (Flow) via `bpy.types.FluidFlowSettings`, leveraging the documented noise-related attributes (`FluidDomainSettings.noise_strength`, `FluidDomainSettings.noise_time_anim`) and flow noise input (`FluidFlowSettings.noise_texture`) to add/animate fine-scale detail appropriate for a slow, candle-like flame.",
+  "key_parameters": {
+    "FluidDomainSettings.noise_strength": "Primary control for how strong added noise detail is in the gas domain (documented as `bpy.types.FluidDomainSettings.noise_strength`).",
+    "FluidDomainSettings.noise_time_anim": "Use to time-animate noise detail in the domain for evolving flame/smoke structure (documented as `bpy.types.FluidDomainSettings.noise_time_anim`).",
+    "FluidFlowSettings.noise_texture": "Optional texture input used to modulate/drive flow noise at the emitter level (documented as `bpy.types.FluidFlowSettings.noise_texture`).",
+    "FluidDomainSettings.flip_ratio": "Domain attribute available on `bpy.types.FluidDomainSettings` (listed in the API index as `flip_ratio`)."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-31T21:43:44.432420"
+}

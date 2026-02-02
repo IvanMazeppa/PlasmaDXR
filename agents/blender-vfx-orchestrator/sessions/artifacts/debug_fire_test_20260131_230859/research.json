@@ -1,0 +1,21 @@
+{
+  "recommended_approach": "Use Blender\u2019s fluid simulation API types for a Mantaflow-style setup: configure a Domain object via `bpy.types.FluidDomainSettings` and one or more Flow/emitter objects via `bpy.types.FluidFlowSettings`, then bake the simulation cache before rendering the resulting volume (fire is typically achieved through a gas/volume simulation workflow driven by these settings types).",
+  "key_parameters": {},
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.Struct.bl_rna_get_subclass_py"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md"
+  ],
+  "timestamp": "2026-01-31T23:09:51.753642"
+}

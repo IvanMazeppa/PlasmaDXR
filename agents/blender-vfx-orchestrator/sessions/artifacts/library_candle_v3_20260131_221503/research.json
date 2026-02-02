@@ -1,0 +1,29 @@
+{
+  "recommended_approach": "Use Mantaflow via Blender\u2019s Fluid settings data blocks: configure a fluid **Domain** through `bpy.types.FluidDomainSettings` and the flame/smoke source through `bpy.types.FluidFlowSettings`. For detail shaping/slow, meditative motion, drive the domain\u2019s noise-related controls (notably `noise_strength` and `noise_time_anim`) and, where applicable, use the flow\u2019s noise input (`noise_texture`) to influence emitted variation.",
+  "key_parameters": {
+    "domain_settings": {
+      "noise_strength": "`bpy.types.FluidDomainSettings.noise_strength` (available control for domain noise influence)",
+      "noise_time_anim": "`bpy.types.FluidDomainSettings.noise_time_anim` (available control for animating/evolving noise over time)",
+      "flip_ratio": "`bpy.types.FluidDomainSettings.flip_ratio` (domain attribute listed in the API index)"
+    },
+    "flow_settings": {
+      "noise_texture": "`bpy.types.FluidFlowSettings.noise_texture` (flow-side noise input/texture reference for variation)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-31T22:15:56.957137"
+}

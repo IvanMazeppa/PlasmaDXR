@@ -1,0 +1,67 @@
+{
+  "recommended_approach": "Use Mantaflow via the Blender Python API by configuring a GAS fluid domain (bpy.types.FluidDomainSettings) and a flow/emitter (bpy.types.FluidFlowSettings) for a small candle-wick source, then bake sim data and add post-detail with the domain noise controls (FluidDomainSettings.noise_strength / noise_time_anim) and (as queried in the doc bundle) bpy.ops.fluid bake operators (e.g., bpy.ops.fluid.bake_data / bpy.ops.fluid.bake_noise).",
+  "key_parameters": {
+    "frame_range": {
+      "start": 1,
+      "end": 120
+    },
+    "renderer": "Cycles (GPU)",
+    "samples_max": 256,
+    "domain_type": "GAS",
+    "use_noise": true,
+    "adaptive_domain": true,
+    "cache_type": "ALL",
+    "resolution": {
+      "recommended_start_range": [
+        64,
+        96
+      ]
+    },
+    "fire_reaction_speed": {
+      "recommended_range": [
+        0.3,
+        0.5
+      ]
+    },
+    "smoke_amount": {
+      "recommended_range": [
+        0.05,
+        0.1
+      ]
+    },
+    "vorticity": {
+      "recommended_range": [
+        0.5,
+        0.7
+      ]
+    },
+    "noise_controls_from_api_index": {
+      "noise_strength": "FluidDomainSettings.noise_strength",
+      "noise_time_anim": "FluidDomainSettings.noise_time_anim"
+    },
+    "other_indexed_domain_attr_seen_in_docs": {
+      "flip_ratio": "FluidDomainSettings.flip_ratio"
+    },
+    "indexed_flow_attr_seen_in_docs": {
+      "noise_texture": "FluidFlowSettings.noise_texture"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.fluid",
+    "bpy.utils"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-01-31T22:27:53.254758"
+}
