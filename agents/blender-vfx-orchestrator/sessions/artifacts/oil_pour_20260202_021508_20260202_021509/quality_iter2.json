@@ -1,0 +1,26 @@
+{
+  "overall_score": 15.0,
+  "passed": false,
+  "primary_issue": "Scene is essentially blown out to white; oil stream, liquid surface, and glass details are not visible, so the intended effect cannot be evaluated.",
+  "issues": [
+    "Severe overexposure/highlight clipping across most of the frame; detail lost.",
+    "No readable oil stream (no continuous ribbon/column).",
+    "No readable liquid surface inside the glass (no meniscus, ripples, or rising fill level).",
+    "Oil material not readable (no golden/amber transmission/absorption cues visible).",
+    "Glass is barely readable (only faint vertical edges; lacks refraction/rim highlights).",
+    "Only 3 frames available (0006/0024/0048), so animation quality and fill-level progression can\u2019t be reliably judged."
+  ],
+  "suggestions": [
+    "Reduce exposure aggressively: lower key/fill/rim light energies by ~5\u201310\u00d7 and/or reduce scene exposure by ~1\u20132 stops so highlights don\u2019t clip.",
+    "Increase contrast at the liquid-air interface: use a darker/neutral background and stronger side/back rim highlights so the oil surface and meniscus read clearly.",
+    "Make the oil visible: ensure the fluid mesh is actually being rendered and assigned the oil shader; add stronger volume absorption (or increase its density) to get a distinct amber tone.",
+    "Improve glass readability: add clearer rim highlights and ensure glass thickness/refraction is contributing (avoid lighting that washes out specular/refraction).",
+    "Render/collect more frames (ideally full 1\u201348) or at least a denser sampling so motion (continuous stream, surface ripples, level rise) can be assessed.",
+    "After changes, re-check a mid-frame histogram: you should see midtones and highlights not pegged at 1.0 (white) so oil/glass detail survives. \u0633\u067e\u0633 re-render and re-evaluate. (Ignore if non-English is undesired.)"
+  ],
+  "vision_assessment": "Across sampled frames (0006, 0024, 0048), the image is dominated by near-white values with very low contrast. Only two faint vertical bands suggest the presence of a centered object (possibly the glass), but there is no clearly visible fluid stream, no liquid surface inside the container, and no discernible amber oil coloration. Because the render is heavily clipped/washed out, the shot does not communicate the intended viscous olive-oil pour and cannot meet production quality standards.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260202_023924_oil_pour_20260202_021508_script_iter2_specfix/frames",
+  "iteration": 2,
+  "timestamp": "2026-02-02T02:56:01.552901"
+}

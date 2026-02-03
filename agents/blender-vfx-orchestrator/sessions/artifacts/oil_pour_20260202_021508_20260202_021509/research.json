@@ -1,0 +1,31 @@
+{
+  "recommended_approach": "Drive the effect as a Mantaflow liquid setup via the Blender Python API by configuring a liquid Domain (properties on `bpy.types.FluidDomainSettings`) plus one or more Flow objects (properties on `bpy.types.FluidFlowSettings`), then bake the simulation/cache via the fluid operators (the doc bundle queries targeted `bpy.ops.fluid.bake`). The documentation hits available from the bundle are primarily the Python reference entry points (types/attributes) rather than step-by-step Mantaflow authoring guidance, but they indicate the core API objects to manipulate for a liquid pour setup: Domain settings for simulation-wide behavior and Flow settings for inflow/emission behavior (including noise texture references on flows).",
+  "key_parameters": {
+    "domain_settings_attributes_mentioned_in_docs": {
+      "flip_ratio": "`bpy.types.FluidDomainSettings` attribute (listed in Python reference genindex)",
+      "noise_strength": "`bpy.types.FluidDomainSettings` attribute (listed in Python reference genindex)",
+      "noise_time_anim": "`bpy.types.FluidDomainSettings` attribute (listed in Python reference genindex)"
+    },
+    "flow_settings_attributes_mentioned_in_docs": {
+      "noise_texture": "`bpy.types.FluidFlowSettings` attribute (listed in Python reference genindex)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "The bundled Blender 5.0 doc hits returned by search were largely Python-reference genindex entries (attribute listings) rather than Mantaflow manual pages; you may need to inspect `bpy.types.FluidDomainSettings` / `bpy.types.FluidFlowSettings` directly in Blender (RNA) to locate exact property names for viscosity, adaptive domain, cache type, meshing/smoothing, etc., since those specific properties were not surfaced in the retrieved snippets."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-02T02:16:05.738570"
+}

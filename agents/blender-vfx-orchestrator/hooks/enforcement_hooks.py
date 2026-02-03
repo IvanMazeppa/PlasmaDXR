@@ -688,12 +688,22 @@ def create_fallback_script_writer_hooks() -> EnforcementHooks:
     """
     Create hooks for Script Writer when running as FALLBACK from Spec-First pipeline.
 
-    CRITICAL DIFFERENCE from create_script_writer_hooks():
-    - NO doc query requirement because Research Agent already queried docs
-    - The Spec-First pipeline failed AFTER research, so we trust the context
+    CRITICAL FIX (2026-02-02): Re-enabled doc query requirement.
 
-    This prevents the "Cannot call 'write_script' without first querying documentation"
-    error when falling back from a failed API Spec Agent.
+    The previous assumption that "Research Agent already queried docs" was WRONG:
+    - Research Agent queries docs for GENERAL APPROACHES (physics concepts, workflow)
+    - Research Agent does NOT verify EXACT API ATTRIBUTE NAMES
+
+    This caused 50+ AttributeErrors from hallucinated attributes like:
+    - resolution_divisions → should be resolution_max
+    - use_adaptive_time_steps → should be use_adaptive_timesteps
+    - use_dissolve → should be use_dissolve_smoke
+    - velocity → should be velocity_factor/velocity_normal
+    - absolute_density → should be density + use_absolute
+    - timesteps_maximum → DOES NOT EXIST (hallucinated)
+
+    The Script Writer MUST query docs to verify exact attribute names before writing code.
+    See: docs/HYBRID_SEARCH_HALLUCINATION_FIX_2026-02-02.md
     """
     config = EnforcementConfig(
         max_same_tool_calls=6,  # Standard limit for non-exempt tools
@@ -701,7 +711,10 @@ def create_fallback_script_writer_hooks() -> EnforcementHooks:
         max_exempt_tool_calls=10,  # Hard ceiling even for doc searches
         max_turns=12,
         hard_turn_limit=18,
-        require_doc_query_before=[],  # NO requirement - research already done
+        require_doc_query_before=[
+            "write_script",
+            "modify_script",
+        ],  # CRITICAL: Re-enabled to prevent API hallucination
         exempt_from_loop_detection=[
             "validate_script",  # May need multiple validation calls
             "semantic_search_blender_docs",  # Still allow doc searches if needed
@@ -709,7 +722,7 @@ def create_fallback_script_writer_hooks() -> EnforcementHooks:
             "blender_doc_search_bundle",  # Bundled doc search
         ],
         raise_on_loop=True,
-        raise_on_doc_missing=False,  # Explicitly disabled for fallback
+        raise_on_doc_missing=True,  # CRITICAL: Now enforced to prevent hallucination
     )
     return EnforcementHooks(config)
 

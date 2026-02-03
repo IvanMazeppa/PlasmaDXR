@@ -218,6 +218,72 @@ CORRECT: "Cannot use absolute_density (invalid). Use separate attributes:
 `fsettings.density = 5.0`
 `fsettings.use_absolute = True`"
 
+### Example 7: adaptive_domain (WRONG NAME - missing prefix)
+User: "Enable adaptive domain"
+WRONG: `dsettings.adaptive_domain = True`
+CORRECT: "Cannot use adaptive_domain (wrong name in Blender 5.0).
+Use `dsettings.use_adaptive_domain = True` (note the 'use_' prefix)."
+
+### Example 8: cache_format (WRONG NAME - missing 'data')
+User: "Set cache format to OpenVDB"
+WRONG: `dsettings.cache_format = 'OPENVDB'`
+CORRECT: "Cannot use cache_format (invalid attribute).
+Use `dsettings.cache_data_format = 'OPENVDB'` (note the 'data' in the name)."
+
+### Example 9: timesteps_maximum (DOES NOT EXIST - HALLUCINATED)
+User: "Set timesteps maximum"
+WRONG: `dsettings.timesteps_maximum = 4`
+CORRECT: "Cannot use timesteps_maximum (this attribute DOES NOT EXIST - it's hallucinated).
+For simulation timing in Blender 5.0, use:
+- `dsettings.timesteps_per_frame` (int) for subframes per frame
+- `dsettings.cfl_condition` (float) for adaptive time stepping"
+
+### Example 10: bake_frame_start (DOES NOT EXIST)
+User: "Set bake start frame"
+WRONG: `dsettings.bake_frame_start = 1`
+CORRECT: "Cannot use bake_frame_start (attribute does not exist).
+Frame range is controlled by scene, not domain:
+`scene.frame_start = 1`
+`scene.frame_end = 100`"
+
+### Example 11: use_high_resolution (DOES NOT EXIST)
+User: "Enable high resolution"
+WRONG: `dsettings.use_high_resolution = True`
+CORRECT: "Cannot use use_high_resolution (does not exist in Blender 5.0).
+For high-res smoke, use:
+`dsettings.use_noise = True` (enables noise)
+`dsettings.noise_scale = 2` (must be int, increases resolution)"
+
+### Example 12: use_caching (REMOVED in Blender 5.0)
+User: "Enable caching"
+WRONG: `dsettings.use_caching = True`
+CORRECT: "Cannot use use_caching (REMOVED in Blender 5.0).
+Caching is now always enabled. Configure cache type with:
+`dsettings.cache_type = 'ALL'` (or 'MODULAR', 'REPLAY')"
+
+### Example 13: noise_res_factor (REMOVED in Blender 5.0)
+User: "Set noise resolution factor"
+WRONG: `dsettings.noise_res_factor = 2`
+CORRECT: "Cannot use noise_res_factor (REMOVED in Blender 5.0).
+Use `dsettings.noise_scale = 2` instead (must be int)."
+
+### Example 14: velocity_factor_normal (WRONG NAME - combined)
+User: "Set velocity normal factor"
+WRONG: `fsettings.velocity_factor_normal = 1.5`
+CORRECT: "Cannot use velocity_factor_normal (invalid combination).
+These are SEPARATE attributes:
+`fsettings.velocity_factor = 1.5` (multiplier)
+`fsettings.velocity_normal = 1.0` (normal direction strength)"
+
+### Example 15: Scene.node_tree (NOT DIRECTLY ACCESSIBLE)
+User: "Set up compositor nodes"
+WRONG: `scene.node_tree.nodes.new(...)`
+CORRECT: "Cannot access scene.node_tree directly in Blender 5.0.
+For compositor:
+`scene.use_nodes = True`
+`compositor = bpy.context.scene.node_tree`  # After use_nodes = True
+Or SKIP compositor entirely - fire/smoke renders fine without glare."
+
 ## GOLDEN RULE: WHEN IN DOUBT, REFUSE AND SEARCH
 If you're not 100% certain an attribute exists with the exact spelling and type,
 DO NOT write it. Search the docs first. Guessing wastes iterations.

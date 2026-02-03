@@ -1,0 +1,24 @@
+{
+  "session_id": "oil_pour_20260202_021508_20260202_021509",
+  "iteration": 3,
+  "overall_score": 19.0,
+  "passed": false,
+  "critical_issues": [
+    "No visible ripples, meniscus, or bubbles\u2014key interaction cues are missing or lost to clipping."
+  ],
+  "warnings": [
+    "Reduce exposure substantially (e.g., -2 to -4 stops) and/or reduce light intensities by ~5\u201320\u00d7 until the glass silhouette and oil color are readable.",
+    "Avoid a pure-white background/overpowering backlight; introduce controlled rim lighting and a slightly darker background to separate the stream and glass edges.",
+    "Ensure the oil material has visible absorption/tint (amber-gold) so it reads against the background; make sure transmission/refraction highlights are not clipping.",
+    "Add/adjust lighting to create specular rims on the glass (edge highlights) and visible refractive distortion through the cylinder.",
+    "Verify the simulation mesh is actually visible in render (not hidden/fully transparent) and that the stream intersects the glass opening at the intended height.",
+    "Render the full frame range (1\u201348) so temporal criteria (continuous pour, rising level, ripple damping, occasional bubbles) can be judged."
+  ],
+  "cache_size_mb": 1240.82741355896,
+  "render_count": 3,
+  "vdb_count": 500,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 1067.203862743001,
+  "utility_score": 0.345,
+  "timestamp": "2026-02-02T03:14:22.498930"
+}

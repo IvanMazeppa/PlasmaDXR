@@ -1,0 +1,15 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/oil_pour_20260202_021508_iter3_paramfix.py",
+  "technique_used": "mantaflow_liquid_domain_oil_pour_iter2_outputdriven (spec-modified) (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260202_025754_oil_pour_20260202_021508_iter3_paramfix/frames",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260202_025754_oil_pour_20260202_021508_iter3_paramfix/cache",
+  "score": 19.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/clipped whites: the frame is essentially washed out, so the oil stream, glass, and liquid surface are not readable.",
+  "parameter_changes": {
+    "settings.exposure": -2.0
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-02T03:15:01.425767"
+}
