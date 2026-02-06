@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s fluid **Domain** settings (RNA: `bpy.types.FluidDomainSettings`) for a GAS simulation and drive the \u201cflame-front propagation\u201d primarily by **animating the Flow/emitter object over time** (i.e., the emitter\u2019s shape/coverage changes to sweep across the tray), while leveraging the domain\u2019s **noise controls** to add high-frequency detail. The Blender 5.0 API references surfaced `FluidDomainSettings` noise-related attributes (e.g., `noise_strength`, `noise_time_anim`) and a Flow-side `noise_texture` attribute (`bpy.types.FluidFlowSettings.noise_texture`), which are the key documented handles found for adding turbulent detail and temporal variation on top of an animated emission pattern.",
+  "key_parameters": {
+    "domain_settings": {
+      "noise_strength": "Use `bpy.types.FluidDomainSettings.noise_strength` to increase/decrease added noise detail in the gas domain (exact numeric recommendation not found in retrieved docs chunk).",
+      "noise_time_anim": "Use `bpy.types.FluidDomainSettings.noise_time_anim` to animate noise evolution over time (exact numeric recommendation not found in retrieved docs chunk)."
+    },
+    "flow_settings": {
+      "noise_texture": "Use `bpy.types.FluidFlowSettings.noise_texture` to drive flow/noise modulation from a texture (texture choice/values not found in retrieved docs chunk)."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "The retrieved Blender 5.0 documentation chunks did not include fire-specific Mantaflow properties (e.g., temperature/burning/flame controls) or bake operator details; you may need to consult the specific `bpy.types.FluidDomainSettings` / `bpy.types.FluidFlowSettings` property pages directly for exact property names and valid ranges beyond the noise-related attributes surfaced here."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-03T23:23:47.820156"
+}

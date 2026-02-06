@@ -71,6 +71,7 @@ MIN_VDB_SIZE_BYTES = 10_000  # 10KB
 def discover_execution_artifacts(
     output_dir: Optional[str],
     run_dir: Optional[str] = None,
+    script_path: Optional[str] = None,
 ) -> ExecutionArtifactSummary:
     """
     Discover all artifacts from an execution run.
@@ -78,6 +79,7 @@ def discover_execution_artifacts(
     Args:
         output_dir: Primary output directory (contains cache/, renders)
         run_dir: CLI runner log directory (may contain additional logs)
+        script_path: Path to the executed script (used to find cache in script dir)
 
     Returns:
         ExecutionArtifactSummary with discovered artifacts
@@ -90,18 +92,28 @@ def discover_execution_artifacts(
     blend_path: Optional[str] = None
     log_path: Optional[str] = None
 
-    # Search output_dir
+    def _scan_cache_dir(cache_path: Path) -> tuple[bool, int, int]:
+        """Helper to scan a cache directory and return (exists, size, count)."""
+        if not cache_path.exists() or not cache_path.is_dir():
+            return False, 0, 0
+        size = 0
+        count = 0
+        for f in cache_path.rglob("*"):
+            if f.is_file():
+                count += 1
+                try:
+                    size += f.stat().st_size
+                except OSError:
+                    pass
+        return True, size, count
+
+    # Search output_dir (primary location)
     if output_dir:
         output_path = Path(output_dir)
         if output_path.exists():
             # Check cache subdirectory
             cache_path = output_path / "cache"
-            if cache_path.exists() and cache_path.is_dir():
-                cache_exists = True
-                for f in cache_path.rglob("*"):
-                    if f.is_file():
-                        cache_file_count += 1
-                        cache_size_bytes += f.stat().st_size
+            cache_exists, cache_size_bytes, cache_file_count = _scan_cache_dir(cache_path)
 
             # Find renders
             for ext in ["*.png", "*.jpg", "*.jpeg", "*.exr", "*.tiff"]:
@@ -126,12 +138,9 @@ def discover_execution_artifacts(
             # Check for cache in run_dir if not found in output_dir
             if not cache_exists:
                 run_cache_path = run_path / "cache"
-                if run_cache_path.exists() and run_cache_path.is_dir():
-                    cache_exists = True
-                    for f in run_cache_path.rglob("*"):
-                        if f.is_file():
-                            cache_file_count += 1
-                            cache_size_bytes += f.stat().st_size
+                exists, size, count = _scan_cache_dir(run_cache_path)
+                if exists:
+                    cache_exists, cache_size_bytes, cache_file_count = exists, size, count
 
             # Also check for renders/VDBs in run_dir if not found in output_dir
             if not render_paths:
@@ -140,6 +149,29 @@ def discover_execution_artifacts(
 
             if not vdb_paths:
                 vdb_paths.extend(str(p) for p in run_path.rglob("*.vdb"))
+
+    # Search script directory for cache (R1 fix: scripts may write cache here)
+    if script_path and not cache_exists:
+        script_dir = Path(script_path).parent
+        # Check common Mantaflow cache locations relative to script
+        for cache_subpath in ["cache", "cache/FluidDomain", "../cache", "../cache/FluidDomain"]:
+            potential_cache = script_dir / cache_subpath
+            exists, size, count = _scan_cache_dir(potential_cache)
+            if exists and size > 0:
+                cache_exists, cache_size_bytes, cache_file_count = exists, size, count
+                break
+
+    # Also check /tmp/blender_vfx/ as common default location
+    if not cache_exists:
+        tmp_vfx = Path("/tmp/blender_vfx")
+        if tmp_vfx.exists():
+            # Find most recent cache directory
+            cache_dirs = list(tmp_vfx.rglob("cache"))
+            for cd in sorted(cache_dirs, key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+                exists, size, count = _scan_cache_dir(cd)
+                if exists and size > 0:
+                    cache_exists, cache_size_bytes, cache_file_count = exists, size, count
+                    break
 
     return ExecutionArtifactSummary(
         cache_exists=cache_exists,
@@ -336,6 +368,7 @@ def validate_execution_artifacts(
     min_render_count: int = MIN_RENDER_COUNT,
     require_vdb: bool = False,
     verbose: bool = True,
+    script_path: Optional[str] = None,
 ) -> tuple[bool, List[ArtifactGateResult], ExecutionArtifactSummary]:
     """
     Run all artifact gates and return combined result.
@@ -351,12 +384,13 @@ def validate_execution_artifacts(
         min_render_count: Minimum render count
         require_vdb: Whether VDB output is required
         verbose: If True, print gate results to stderr
+        script_path: Path to executed script (helps find cache in script dir)
 
     Returns:
         Tuple of (all_passed, gate_results, summary)
     """
-    # Discover artifacts
-    summary = discover_execution_artifacts(output_dir, run_dir)
+    # Discover artifacts (R1 fix: also check script directory for cache)
+    summary = discover_execution_artifacts(output_dir, run_dir, script_path)
 
     if verbose:
         print(f"[ArtifactGates] Discovered artifacts:", file=sys.stderr)

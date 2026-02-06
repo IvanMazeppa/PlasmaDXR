@@ -173,11 +173,11 @@ def setup_scene():
     scene.render.image_settings.color_mode = 'RGBA'
     scene.render.film_transparent = False
 
-    # Warm product look - iter5 lighting (conservative exposure)
+    # Warm product look - adjusted for proper exposure
     try:
-        scene.view_settings.view_transform = 'Filmic'
-        scene.view_settings.look = 'None'  # No extra contrast curve
-        scene.view_settings.exposure = -2.5  # Strong exposure reduction
+        scene.view_settings.view_transform = 'Standard'
+        scene.view_settings.look = 'None'
+        scene.view_settings.exposure = -5.0
     except Exception:
         pass
 
@@ -190,7 +190,7 @@ def setup_world_background():
     bpy.context.scene.world = world
 
     # Ensure nodes are enabled
-    world.use_nodes = True
+    world.use_nodes = True  # Deprecated in 5.0, but still works
     nt = world.node_tree
     nodes = nt.nodes
     links = nt.links
@@ -412,19 +412,19 @@ def create_flow_initial_pool():
 # -------------------------------------------------------------
 
 def create_lighting():
-    # Iter5 lighting values (worked well with exposure -2.5)
+    # Product photography style - much softer lighting
     bpy.ops.object.light_add(type='AREA', location=(0.0, 0.35, 0.25))
     key = bpy.context.active_object
     key.name = "Light_Key_Back"
-    key.data.energy = 120.0  # Iter5 value (balanced with exposure -2.5)
+    key.data.energy = 25  # Dramatically reduced - was causing massive overexposure
     key.data.size = 0.35
-    key.data.color = (1.0, 0.92, 0.75)
+    key.data.color = (1.0, 0.92, 0.75)  # Warmer, less saturated
     look_at(key, Vector((0, 0, 0.08)), track='-Z', up='Y')
 
     bpy.ops.object.light_add(type='AREA', location=(-0.22, -0.25, 0.18))
     fill = bpy.context.active_object
     fill.name = "Light_Fill"
-    fill.data.energy = 25.0  # Iter5 value
+    fill.data.energy = 10  # Very soft fill
     fill.data.size = 0.45
     fill.data.color = (1.0, 0.97, 0.92)
     look_at(fill, Vector((0, 0, 0.08)), track='-Z', up='Y')
@@ -432,7 +432,7 @@ def create_lighting():
     bpy.ops.object.light_add(type='AREA', location=(0.25, -0.10, 0.20))
     rim = bpy.context.active_object
     rim.name = "Light_Rim"
-    rim.data.energy = 15.0  # Iter5 value
+    rim.data.energy = 8  # Subtle rim highlight
     rim.data.size = 0.25
     rim.data.color = (1.0, 0.95, 0.85)
     look_at(rim, Vector((0, 0, 0.08)), track='-Z', up='Y')

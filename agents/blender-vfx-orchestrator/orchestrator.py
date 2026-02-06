@@ -3166,12 +3166,16 @@ Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'
 ## Effect Type: {request.effect_type.value}
 ## Description: {request.description}
 
+## CRITICAL: Doc Query Required
+You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to verify APIs before writing code.
+
 ## Instructions
-1. Read the current script to understand the existing setup
-2. Make the structural changes described above
-3. Keep everything that's working — only fix what's broken
-4. Use write_script to output the complete fixed script
-5. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
+1. FIRST: Call blender_doc_search_bundle("{request.effect_type.value}") to get verified Blender APIs
+2. Read the current script to understand the existing setup
+3. Make the structural changes described above using ONLY verified APIs from the bundle
+4. Keep everything that's working — only fix what's broken
+5. Use write_script to output the complete fixed script
+6. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
 
                                         try:
                                             code_fix_hooks = create_fallback_script_writer_hooks()
@@ -3326,7 +3330,12 @@ Already tried: {tried_str}
 ## Target
 Previous: {previous_score:.1f} | Target: {request.quality_threshold}
 
-Fix the primary issue."""
+## CRITICAL: Doc Query Required
+You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to verify APIs before modifying code.
+
+## Instructions
+1. FIRST: Call blender_doc_search_bundle("{request.effect_type.value}") to get verified Blender APIs
+2. Then fix the primary issue using ONLY verified APIs from the bundle"""
 
                                 iter_script_hooks = create_fallback_script_writer_hooks()
                                 try:
@@ -3731,11 +3740,14 @@ Execute it and report results."""
                     # Use run_dir from executor for cache location (may differ from render path)
                     executor_run_dir = execution.run_dir
 
+                    # R1 fix: Also pass script_path to help find cache in script dir
+                    current_script_path = script.script_path if script and hasattr(script, 'script_path') else None
                     gates_passed, gate_results, artifact_summary = validate_execution_artifacts(
                         output_dir=artifact_output_dir,
                         run_dir=executor_run_dir,  # Executor's actual output dir with cache
                         effect_type=request.effect_type.value,
                         verbose=True,
+                        script_path=current_script_path,
                     )
 
                     if not gates_passed:
