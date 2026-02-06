@@ -423,6 +423,53 @@ while len(\1) > 1:
     ),
 
     # =============================================================================
+    # CRASH PATTERN FIXES (Blender 5.0 Cycles Segfaults)
+    # =============================================================================
+    # ShaderNodeMixRGB was renamed to ShaderNodeMix in Blender 3.4+.
+    # Using the old name in volume shader chains causes Cycles to crash with
+    # EXCEPTION_ACCESS_VIOLATION in ccl::MixNode::is_linear_operation.
+    # This is the #1 cause of exit code 139 (segfault) during renders.
+    (
+        r"nodes\.new\(['\"]ShaderNodeMixRGB['\"]\)",
+        r"nodes.new('ShaderNodeMix')  # API Fixer: ShaderNodeMixRGB → ShaderNodeMix (crash fix)",
+        "ShaderNodeMixRGB → ShaderNodeMix (Cycles volume crash fix)"
+    ),
+    # ShaderNodeSeparateRGB → ShaderNodeSeparateColor (renamed in Blender 3.4+)
+    (
+        r"nodes\.new\(['\"]ShaderNodeSeparateRGB['\"]\)",
+        r"nodes.new('ShaderNodeSeparateColor')  # API Fixer: SeparateRGB → SeparateColor",
+        "ShaderNodeSeparateRGB → ShaderNodeSeparateColor"
+    ),
+    # ShaderNodeCombineRGB → ShaderNodeCombineColor (renamed in Blender 3.4+)
+    (
+        r"nodes\.new\(['\"]ShaderNodeCombineRGB['\"]\)",
+        r"nodes.new('ShaderNodeCombineColor')  # API Fixer: CombineRGB → CombineColor",
+        "ShaderNodeCombineRGB → ShaderNodeCombineColor"
+    ),
+    # BLENDER_EEVEE_NEXT → BLENDER_EEVEE (renamed in Blender 4.2+)
+    (
+        r"['\"]BLENDER_EEVEE_NEXT['\"]",
+        r"'BLENDER_EEVEE'  # API Fixer: EEVEE_NEXT → EEVEE (renamed in 4.2+)",
+        "BLENDER_EEVEE_NEXT → BLENDER_EEVEE"
+    ),
+    # ShaderNodeSeparateColor uses 'Red', 'Green', 'Blue' instead of 'R', 'G', 'B'
+    (
+        r"\.outputs\[['\"]R['\"]\]",
+        r".outputs['Red']  # API Fixer: R → Red (ShaderNodeSeparateColor)",
+        "SeparateColor output R → Red"
+    ),
+    (
+        r"\.outputs\[['\"]G['\"]\]",
+        r".outputs['Green']  # API Fixer: G → Green (ShaderNodeSeparateColor)",
+        "SeparateColor output G → Green"
+    ),
+    (
+        r"\.outputs\[['\"]B['\"]\]",
+        r".outputs['Blue']  # API Fixer: B → Blue (ShaderNodeSeparateColor)",
+        "SeparateColor output B → Blue"
+    ),
+
+    # =============================================================================
     # NODE LINKING DIRECTION FIX (LLM Hallucination)
     # =============================================================================
     # LLMs sometimes try to link INPUT → INPUT which is invalid.
@@ -647,6 +694,70 @@ else:
     print("[API Fixer] No fluid domain found - skipping bake.")
 # ==== END API FIXER: Bake Fluid Simulation ====
 '''
+
+
+def _fix_mix_node_sockets(content: str) -> tuple[str, bool]:
+    """
+    Fix ShaderNodeMix socket names after MixRGB→Mix conversion.
+
+    ShaderNodeMixRGB used: inputs['Fac'], inputs['Color1'], inputs['Color2'], outputs['Color']
+    ShaderNodeMix uses:    inputs['Factor'], inputs['A'], inputs['B'], outputs['Result']
+
+    Also injects data_type='RGBA' since MixRGB was always color mode.
+
+    Returns:
+        Tuple of (modified_content, was_modified)
+    """
+    # Only run if we converted MixRGB → Mix
+    if "ShaderNodeMix" not in content:
+        return content, False
+
+    # Find all variable names assigned as ShaderNodeMix
+    mix_vars = set()
+    for match in re.finditer(
+        r"(\w+)\s*=\s*nodes\.new\(['\"]ShaderNodeMix['\"]\)",
+        content
+    ):
+        mix_vars.add(match.group(1))
+
+    if not mix_vars:
+        return content, False
+
+    modified = False
+    for var in mix_vars:
+        escaped = re.escape(var)
+
+        # Inject data_type='RGBA' after the node creation line if not already set
+        dtype_pattern = rf"({escaped}\s*=\s*nodes\.new\(['\"]ShaderNodeMix['\"]\)[^\n]*\n)"
+        dtype_check = rf"{escaped}\.data_type"
+        if not re.search(dtype_check, content):
+            def _add_dtype(m):
+                return m.group(1) + f"    {var}.data_type = 'RGBA'  # MixRGB was always color mode\n"
+            content = re.sub(dtype_pattern, _add_dtype, content, count=1)
+            modified = True
+
+        # Fac → Factor
+        pattern_fac = rf"({escaped}\.inputs\[)['\"]Fac['\"]\]"
+        if re.search(pattern_fac, content):
+            content = re.sub(pattern_fac, r"\g<1>'Factor']", content)
+            modified = True
+        # Color1 → A
+        pattern_c1 = rf"({escaped}\.inputs\[)['\"]Color1['\"]\]"
+        if re.search(pattern_c1, content):
+            content = re.sub(pattern_c1, r"\g<1>'A']", content)
+            modified = True
+        # Color2 → B
+        pattern_c2 = rf"({escaped}\.inputs\[)['\"]Color2['\"]\]"
+        if re.search(pattern_c2, content):
+            content = re.sub(pattern_c2, r"\g<1>'B']", content)
+            modified = True
+        # outputs['Color'] → outputs['Result']
+        pattern_out = rf"({escaped}\.outputs\[)['\"]Color['\"]\]"
+        if re.search(pattern_out, content):
+            content = re.sub(pattern_out, r"\g<1>'Result']", content)
+            modified = True
+
+    return content, modified
 
 
 def _inject_animation_to_stills(content: str) -> tuple[str, bool]:
@@ -1267,6 +1378,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
         if re.search(pattern, content):
             content = re.sub(pattern, replacement, content)
             fixes_applied.append(description)
+
+    # Fix ShaderNodeMix socket names (Color1→A, Color2→B) after MixRGB conversion
+    content, mix_sockets_fixed = _fix_mix_node_sockets(content)
+    if mix_sockets_fixed:
+        fixes_applied.append("Fixed ShaderNodeMix socket names (Color1→A, Color2→B)")
 
     # VECTOR STORE VALIDATION (Option B): Validate ALL API calls against Blender 5.0 docs
     # This catches hallucinated parameters not in the static BLENDER_50_FIXES list

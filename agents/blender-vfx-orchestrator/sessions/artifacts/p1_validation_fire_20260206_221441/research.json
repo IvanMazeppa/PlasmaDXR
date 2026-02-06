@@ -1,0 +1,29 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s fluid simulation data model by setting up a **Fluid Domain** (API: `bpy.types.FluidDomainSettings`) and one or more **Flow** emitters (API: `bpy.types.FluidFlowSettings`). For a small fire plume look, the API reference indicates domain-level \u201cnoise\u201d controls (e.g., `noise_strength`, `noise_time_anim`) and flow-level noise input (`noise_texture`) that can be used to add turbulent detail/variation to the simulated volume; then apply a suitable volumetric shader setup for fire (note: the provided doc hits did not include a dedicated \u201cblackbody\u201d/fire shading page, only API index references to the fluid settings and noise-related attributes).",
+  "key_parameters": {
+    "domain_settings": {
+      "noise_strength": "`bpy.types.FluidDomainSettings.noise_strength` (documented as an attribute in the API index; tune to increase/decrease added noise detail)",
+      "noise_time_anim": "`bpy.types.FluidDomainSettings.noise_time_anim` (documented as an attribute; animate/advance noise over time)",
+      "flip_ratio": "`bpy.types.FluidDomainSettings.flip_ratio` (documented as an attribute; simulation behavior control depending on solver setup)"
+    },
+    "flow_settings": {
+      "noise_texture": "`bpy.types.FluidFlowSettings.noise_texture` (documented as an attribute; can be used to drive per-emitter noise variation)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [
+    "The documentation search results returned **API index entries** (attribute listings) rather than Mantaflow/fire setup manual pages, so exact recommended numeric defaults for a \u2018small orange fire plume\u2019 and specific \u2018blackbody shading\u2019 node guidance were not present in the retrieved sources."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-06T22:15:43.849057"
+}

@@ -1,0 +1,28 @@
+{
+  "overall_score": 50.0,
+  "passed": false,
+  "primary_issue": "Simulation/emitter/domain boundary is visibly cutting the flame (hard rectangular edge at the top), plus strong speckled noise/clipping in highlights\u2014this reads as a broken render rather than clean blackbody fire.",
+  "issues": [
+    "Visible rectangular cutoff/band at the top of the plume (looks like domain boundary or masked emitter edge).",
+    "Bright highlight region at the top appears clipped/overexposed with detail loss.",
+    "Heavy speckling/grain in the hottest areas (sampling noise or noisy emission), inconsistent with smooth blackbody glow.",
+    "Weak/unclear temperature gradient: mostly uniform orange-beige without a convincing hot white/yellow core transitioning to cooler orange/red.",
+    "Plume appears overly symmetric/smoothed with limited turbulent detail (reads more like a static column).",
+    "Alpha/compositing artifacts: isolated bright pixels and hard transitions near the cutoff edge."
+  ],
+  "suggestions": [
+    "Increase the domain height and/or move the emitter lower so the flame never reaches the domain ceiling (remove the hard rectangular cutoff).",
+    "If using adaptive domain in your setup, increase its margin so the adaptive bounds don\u2019t clip the visible flame (or disable adaptive domain until stable).",
+    "Reduce highlight clipping: lower volume emission strength / blackbody intensity multiplier (e.g., halve flame multiplier/emission strength) and/or use Filmic + exposure adjustments rather than raw intensity.",
+    "Reduce speckling: raise Cycles samples (e.g., 256\u2013512 for volumes), enable denoising for the render, and consider limiting max bounces for volume if noise persists.",
+    "Improve blackbody look: drive the Principled Volume temperature (or blackbody) from a simulation attribute (often a temperature/heat field) instead of a constant, so you get a real hot core \u2192 cooler edges gradient.",
+    "Add more small-scale motion/detail: increase sim resolution and/or enable noise/high-res refinement; tune vorticity/turbulence and add slight lateral wind to break symmetry.",
+    "Smooth emission: ensure your flow emission isn\u2019t producing a hard mask (avoid non-manifold emitters; consider slightly increasing surface emission distance and lowering full-volume emission if it causes artifacts).",
+    "Check for banding from very low-density ranges: adjust density multiplier and absorption so midtones aren\u2019t compressed into a narrow range (helps avoid stepped gradients)."
+  ],
+  "vision_assessment": "The render shows a small, vertically rising warm orange plume over a dark ground, which broadly reads as fire/smoke. However, a very noticeable rectangular cutoff/band appears at the top of the plume, strongly suggesting the sim is being clipped by a domain boundary or a hard mask. The hottest region near the top is speckled and partially blown out, with bright noisy pixels rather than a smooth luminous core. Color variation is limited\u2014there isn\u2019t a clear white/yellow hot core transitioning to orange/red cooler regions that you\u2019d expect from blackbody shading. Overall, it looks like a Mantaflow fire test with technical artifacts (clipping + noise) that prevent it from reaching production quality.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/p2_validation_fire.png",
+  "iteration": 1,
+  "timestamp": "2026-02-06T22:37:54.352488"
+}

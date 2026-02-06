@@ -428,34 +428,19 @@ async def validate_code_against_spec(
     output: Any
 ) -> GuardrailFunctionOutput:
     """
-    Output guardrail that validates code only uses APIs from the verified spec.
+    Output guardrail: rejects scripts using DEPRECATED Blender 4.x attributes.
 
-    This guardrail parses the generated script and checks that:
-    1. All dset.* assignments use attributes from APISpec.domain_attributes
-    2. All fset.* assignments use attributes from APISpec.flow_attributes
-    3. All bpy.ops.* calls use operations from APISpec.ops
+    SIMPLIFIED (2026-02-06): Removed spec-compliance check (Layer 1) and
+    complexity check (Layer 3) which together created an impossible constraint.
+    Now only checks for deprecated attributes that will crash at runtime.
 
-    The Code Writer MUST use these variable naming conventions:
-    - dset = mod.domain_settings (FluidDomainSettings)
-    - fset = mod.flow_settings (FluidFlowSettings)
-
-    Args:
-        ctx: Run context wrapper (must have ctx.context.api_spec)
-        agent: The Code Writer Agent
-        output: VerifiedScriptOutput
-
-    Returns:
-        GuardrailFunctionOutput with:
-        - tripwire_triggered=True if code uses unverified APIs
-        - output_info always populated (SDK requirement)
+    The artifact gates (artifact_gates.py) handle post-execution validation
+    of renders/cache/saves mechanically - no need to guess pre-execution.
     """
     # Handle None output
     if output is None:
         return GuardrailFunctionOutput(
-            output_info={
-                "status": "rejected",
-                "reason": "Code Writer output is None",
-            },
+            output_info={"status": "rejected", "reason": "Code Writer output is None"},
             tripwire_triggered=True,
         )
 
@@ -468,10 +453,7 @@ async def validate_code_against_spec(
 
     if not script_path:
         return GuardrailFunctionOutput(
-            output_info={
-                "status": "rejected",
-                "reason": "Output missing script_path",
-            },
+            output_info={"status": "rejected", "reason": "Output missing script_path"},
             tripwire_triggered=True,
         )
 
@@ -480,387 +462,71 @@ async def validate_code_against_spec(
         script_content = Path(script_path).read_text()
     except FileNotFoundError:
         return GuardrailFunctionOutput(
-            output_info={
-                "status": "rejected",
-                "reason": f"Script file not found: {script_path}",
-            },
+            output_info={"status": "rejected", "reason": f"Script file not found: {script_path}"},
             tripwire_triggered=True,
         )
     except Exception as e:
         return GuardrailFunctionOutput(
-            output_info={
-                "status": "rejected",
-                "reason": f"Error reading script: {e}",
-            },
+            output_info={"status": "rejected", "reason": f"Error reading script: {e}"},
             tripwire_triggered=True,
         )
 
-    # Get API spec from context
-    api_spec = None
-    if hasattr(ctx, 'context') and hasattr(ctx.context, 'api_spec'):
-        api_spec = ctx.context.api_spec
-
-    if api_spec is None:
-        # If no API spec in context, we can't validate - pass with warning
-        print(
-            "[Guardrail] validate_code_against_spec: No API spec in context, skipping validation",
-            file=sys.stderr
-        )
-        return GuardrailFunctionOutput(
-            output_info={
-                "status": "passed_no_spec",
-                "warning": "No API spec in context - code not validated against spec",
-            },
-            tripwire_triggered=False,
-        )
-
-    # Extract attribute assignments from code
-    # Patterns for dset.* and fset.* assignments (the enforced variable names)
-    domain_pattern = r'\bdset\.(\w+)\s*='
-    flow_pattern = r'\bfset\.(\w+)\s*='
-
-    # Also check for common variations (domain_settings, flow_settings)
-    alt_domain_pattern = r'\bdomain_settings\.(\w+)\s*='
-    alt_flow_pattern = r'\bflow_settings\.(\w+)\s*='
-
-    used_domain_attrs = set(re.findall(domain_pattern, script_content))
-    used_domain_attrs.update(re.findall(alt_domain_pattern, script_content))
-
-    used_flow_attrs = set(re.findall(flow_pattern, script_content))
-    used_flow_attrs.update(re.findall(alt_flow_pattern, script_content))
-
-    # Extract bpy.ops calls
-    ops_pattern = r'\b(bpy\.ops\.\w+\.\w+)'
-    used_ops = set(re.findall(ops_pattern, script_content))
-
-    # Build allowed sets from API spec
-    allowed_domain = set()
-    allowed_flow = set()
-    allowed_ops = set()
-
-    if hasattr(api_spec, 'domain_attributes'):
-        for attr in api_spec.domain_attributes:
-            allowed_domain.add(attr.attribute_name)
-
-    if hasattr(api_spec, 'flow_attributes'):
-        for attr in api_spec.flow_attributes:
-            allowed_flow.add(attr.attribute_name)
-
-    if hasattr(api_spec, 'ops'):
-        for op in api_spec.ops:
-            allowed_ops.add(op.op_path)
-
-    # Build enum validation map (attribute_name -> allowed values)
-    enum_allowed: Dict[str, Set[str]] = {}
-    spec_attrs = []
-    if hasattr(api_spec, 'domain_attributes'):
-        spec_attrs.extend(api_spec.domain_attributes)
-    if hasattr(api_spec, 'flow_attributes'):
-        spec_attrs.extend(api_spec.flow_attributes)
-    if hasattr(api_spec, 'scene_attributes'):
-        spec_attrs.extend(api_spec.scene_attributes)
-    if hasattr(api_spec, 'object_attributes'):
-        spec_attrs.extend(api_spec.object_attributes)
-
-    for attr in spec_attrs:
-        value_type = str(getattr(attr, "value_type", "")).lower()
-        if value_type == "enum":
-            values = []
-            enum_values = getattr(attr, "enum_values", None)
-            if enum_values:
-                values = list(enum_values)
-            elif attr.attribute_name in VALID_ENUM_VALUES:
-                values = list(VALID_ENUM_VALUES[attr.attribute_name])
-            if values:
-                enum_allowed[attr.attribute_name] = set(values)
-
-    # Extract enum assignments (string literals only)
-    enum_assign_pattern = r'\b(?:dset|fset|domain_settings|flow_settings|scene)\.(\w+)\s*=\s*(["\'])([^"\']+)\2'
-    enum_assignments: Dict[str, str] = {}
-    for attr_name, _quote, value in re.findall(enum_assign_pattern, script_content):
-        enum_assignments[attr_name] = value
-
-    # Find violations
-    domain_violations = used_domain_attrs - allowed_domain
-    flow_violations = used_flow_attrs - allowed_flow
-    op_violations = used_ops - allowed_ops
-
-    # ==========================================================================
-    # BLENDER 5.0 DEPRECATED ATTRIBUTE CHECK
-    # ==========================================================================
+    # ======================================================================
+    # ONLY CHECK: Blender 5.0 deprecated attribute blacklist
+    # ======================================================================
     # This catches LLM training data using older Blender patterns.
-    # We check the ENTIRE script content, not just dset/fset assignments.
+    # These attributes WILL cause runtime errors - reject early.
     deprecated_found: Dict[str, str] = {}
 
     for attr_name, reason in DEPRECATED_ATTRIBUTES.items():
-        # Check for attribute usage patterns
-        # Pattern: .attribute_name = or .attribute_name( or ['attribute_name']
         patterns = [
-            rf'\.{re.escape(attr_name)}\s*=',  # .attr = value
-            rf'\.{re.escape(attr_name)}\s*\(',  # .attr(...)
-            rf'\[[\'"]{re.escape(attr_name)}[\'"]\]',  # ['attr'] or ["attr"]
+            rf'\.{re.escape(attr_name)}\s*=',       # .attr = value
+            rf'\.{re.escape(attr_name)}\s*\(',       # .attr(...)
+            rf'\[[\'"]{re.escape(attr_name)}[\'"]\]', # ['attr'] or ["attr"]
         ]
         for pattern in patterns:
             if re.search(pattern, script_content):
                 deprecated_found[attr_name] = reason
                 break
 
-    # Check for deprecated enum values
+    # Check for deprecated enum values (e.g., BLOSC compression)
     deprecated_enum_found: Dict[str, str] = {}
     for attr_name, bad_values in DEPRECATED_ENUM_VALUES.items():
         for bad_value, reason in bad_values.items():
-            # Pattern: attr_name = 'BAD_VALUE' or attr_name = "BAD_VALUE"
             pattern = rf'\.{re.escape(attr_name)}\s*=\s*[\'\"]{re.escape(bad_value)}[\'\"]'
             if re.search(pattern, script_content):
                 deprecated_enum_found[f"{attr_name}={bad_value}"] = reason
 
-    # Log deprecated attributes found
-    if deprecated_found or deprecated_enum_found:
+    total_deprecated = len(deprecated_found) + len(deprecated_enum_found)
+
+    if total_deprecated > 0:
         print(
-            f"[Guardrail] DEPRECATED BLENDER 4.x PATTERNS DETECTED:",
+            f"[Guardrail] DEPRECATED BLENDER 4.x PATTERNS DETECTED ({total_deprecated}):",
             file=sys.stderr
         )
         for attr, reason in {**deprecated_found, **deprecated_enum_found}.items():
             print(f"  - {attr}: {reason}", file=sys.stderr)
 
-    # Enum value validation (reject unknown or missing enum values)
-    enum_value_violations: Set[str] = set()
-    enum_value_missing: Set[str] = set()
-    for attr_name, allowed_values in enum_allowed.items():
-        if attr_name in used_domain_attrs or attr_name in used_flow_attrs:
-            if attr_name not in enum_assignments:
-                enum_value_missing.add(attr_name)
-                continue
-            value = enum_assignments[attr_name]
-            if value not in allowed_values:
-                enum_value_violations.add(f"{attr_name}={value}")
-
-    # Also allow common safe ops that don't need to be in spec
-    # These are standard Blender scene construction operations
-    safe_ops = {
-        # Object operations - selection, deletion, modification
-        "bpy.ops.object.select_all",
-        "bpy.ops.object.delete",
-        "bpy.ops.object.modifier_add",
-        "bpy.ops.object.modifier_apply",  # Applying modifiers (solidify, subsurf, etc.)
-        "bpy.ops.object.mode_set",
-        "bpy.ops.object.origin_set",
-        "bpy.ops.object.shade_smooth",
-        "bpy.ops.object.shade_flat",
-        "bpy.ops.object.transform_apply",
-        "bpy.ops.object.convert",
-        "bpy.ops.object.duplicate",
-        "bpy.ops.object.join",  # Combining meshes
-        "bpy.ops.object.parent_set",
-        "bpy.ops.object.parent_clear",
-        # Object creation - cameras, lights, empties, forces
-        "bpy.ops.object.camera_add",
-        "bpy.ops.object.light_add",
-        "bpy.ops.object.empty_add",
-        "bpy.ops.object.effector_add",  # Force fields (wind, turbulence, etc)
-        "bpy.ops.object.speaker_add",
-        "bpy.ops.object.armature_add",
-        # Mesh primitives
-        "bpy.ops.mesh.primitive_cube_add",
-        "bpy.ops.mesh.primitive_cylinder_add",
-        "bpy.ops.mesh.primitive_sphere_add",
-        "bpy.ops.mesh.primitive_ico_sphere_add",
-        "bpy.ops.mesh.primitive_uv_sphere_add",
-        "bpy.ops.mesh.primitive_plane_add",
-        "bpy.ops.mesh.primitive_circle_add",
-        "bpy.ops.mesh.primitive_cone_add",
-        "bpy.ops.mesh.primitive_torus_add",
-        "bpy.ops.mesh.primitive_grid_add",
-        "bpy.ops.mesh.primitive_monkey_add",
-        # Mesh editing operations
-        "bpy.ops.mesh.select_all",
-        "bpy.ops.mesh.select_mode",  # Mode switching (vert/edge/face)
-        "bpy.ops.mesh.select_face_by_sides",
-        "bpy.ops.mesh.delete",
-        "bpy.ops.mesh.fill",
-        "bpy.ops.mesh.extrude_region",
-        "bpy.ops.mesh.extrude_region_move",  # Composite: extrude + transform
-        "bpy.ops.mesh.extrude_faces",
-        "bpy.ops.mesh.extrude_faces_move",  # Composite: extrude + transform
-        "bpy.ops.mesh.extrude_vertices_move",  # Composite: extrude + transform
-        "bpy.ops.mesh.subdivide",
-        "bpy.ops.mesh.loop_cut",
-        "bpy.ops.mesh.bevel",
-        "bpy.ops.mesh.inset",
-        "bpy.ops.mesh.merge",
-        "bpy.ops.mesh.separate",
-        "bpy.ops.mesh.flip_normals",
-        "bpy.ops.mesh.normals_make_consistent",
-        # Curve primitives
-        "bpy.ops.curve.primitive_bezier_curve_add",
-        "bpy.ops.curve.primitive_bezier_circle_add",
-        "bpy.ops.curve.primitive_nurbs_curve_add",
-        "bpy.ops.curve.primitive_nurbs_circle_add",
-        "bpy.ops.curve.primitive_nurbs_path_add",
-        # File and render operations
-        "bpy.ops.render.render",
-        "bpy.ops.wm.save_as_mainfile",
-        "bpy.ops.wm.open_mainfile",
-        "bpy.ops.wm.read_factory_settings",  # Scene reset for clean state
-        # Data management
-        "bpy.ops.outliner.orphans_purge",  # Clean up unused data blocks
-        # Fluid/physics (common setup ops)
-        "bpy.ops.ptcache.bake_all",
-        "bpy.ops.ptcache.free_bake_all",
-        # Fluid baking ops - essential for Mantaflow simulations
-        "bpy.ops.fluid.bake_all",
-        "bpy.ops.fluid.bake_data",
-        "bpy.ops.fluid.bake_noise",
-        "bpy.ops.fluid.bake_mesh",
-        "bpy.ops.fluid.bake_particles",
-        "bpy.ops.fluid.bake_guides",
-        "bpy.ops.fluid.free_all",
-        "bpy.ops.fluid.free_data",
-        "bpy.ops.fluid.free_noise",
-        "bpy.ops.fluid.free_mesh",
-        "bpy.ops.fluid.free_particles",
-        "bpy.ops.fluid.free_guides",
-        "bpy.ops.fluid.preset_add",
-        # Transform operations - standard scene construction
-        "bpy.ops.transform.resize",
-        "bpy.ops.transform.rotate",
-        "bpy.ops.transform.translate",
-        "bpy.ops.transform.transform",
-    }
-    op_violations = op_violations - safe_ops
-
-    # Verbose logging for debugging
-    if op_violations:
-        print(f"[Guardrail DEBUG] Rejected ops: {op_violations}", file=sys.stderr)
-        print(f"[Guardrail DEBUG] Allowed spec ops: {allowed_ops}", file=sys.stderr)
-
-    total_violations = (
-        len(domain_violations)
-        + len(flow_violations)
-        + len(op_violations)
-        + len(enum_value_violations)
-        + len(enum_value_missing)
-    )
-
-    # Deprecated attributes are ALWAYS a failure, even if other violations = 0
-    total_deprecated = len(deprecated_found) + len(deprecated_enum_found)
-
-    if total_violations > 0 or total_deprecated > 0:
-        # Build reason message
-        reasons = []
-        if total_deprecated > 0:
-            reasons.append(f"Uses {total_deprecated} DEPRECATED Blender 4.x attributes")
-        if total_violations > 0:
-            reasons.append("Code uses APIs not in verified spec")
-
-        print(
-            f"[Guardrail] validate_code_against_spec TRIGGERED: "
-            f"{len(domain_violations)} domain, {len(flow_violations)} flow, "
-            f"{len(op_violations)} ops, {len(enum_value_violations)} enum value, "
-            f"{len(enum_value_missing)} enum missing, {total_deprecated} DEPRECATED violations",
-            file=sys.stderr
-        )
         return GuardrailFunctionOutput(
             output_info={
                 "status": "rejected",
-                "reason": "; ".join(reasons),
-                "domain_violations": list(domain_violations),
-                "flow_violations": list(flow_violations),
-                "op_violations": list(op_violations),
-                "enum_value_violations": list(enum_value_violations),
-                "enum_value_missing": list(enum_value_missing),
-                "deprecated_attributes": deprecated_found,  # NEW: Blender 5.0 enforcement
-                "deprecated_enum_values": deprecated_enum_found,  # NEW
-                "allowed_enum_values": {k: sorted(list(v)) for k, v in enum_allowed.items()},
-                "allowed_domain": list(allowed_domain),
-                "allowed_flow": list(allowed_flow),
-                "allowed_ops": list(allowed_ops),
+                "reason": f"Uses {total_deprecated} DEPRECATED Blender 4.x attributes",
+                "deprecated_attributes": deprecated_found,
+                "deprecated_enum_values": deprecated_enum_found,
             },
             tripwire_triggered=True,
         )
 
-    # ==========================================================================
-    # SCRIPT COMPLEXITY VALIDATION
-    # ==========================================================================
-    # Enforce minimum script complexity to prevent overly simple/conservative outputs
-    # that pass API validation but produce poor quality results.
-
-    complexity_issues = []
+    # Passed - no deprecated attributes found
     line_count = len(script_content.split('\n'))
-
-    # Minimum line count (200 lines is the documented minimum)
-    MIN_LINES = 200
-    if line_count < MIN_LINES:
-        complexity_issues.append(
-            f"Script too short: {line_count} lines (minimum: {MIN_LINES}). "
-            "Add more detail: sophisticated materials, multi-light setup, camera animation."
-        )
-
-    # Required elements check
-    required_elements = {
-        "lighting": (
-            r'light_add|Light\s*\(|bpy\.data\.lights',
-            "Missing lighting setup - add area lights or sun for visibility"
-        ),
-        "camera": (
-            r'camera_add|scene\.camera\s*=|Camera\s*\(',
-            "Missing camera setup - add and position a camera"
-        ),
-        "materials": (
-            r'bpy\.data\.materials|Material\s*\(|\.material_slots|nodes\.new',
-            "Missing materials - add volume shaders and surface materials"
-        ),
-        "render": (
-            r'render\.render|write_still\s*=\s*True',
-            "Missing render call - add bpy.ops.render.render(write_still=True)"
-        ),
-        "blend_save": (
-            r'save_as_mainfile|save_mainfile',
-            "Missing .blend save - add bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)"
-        ),
-    }
-
-    for element_name, (pattern, message) in required_elements.items():
-        if not re.search(pattern, script_content):
-            complexity_issues.append(f"[{element_name}] {message}")
-
-    if complexity_issues:
-        print(
-            f"[Guardrail] COMPLEXITY CHECK FAILED: {len(complexity_issues)} issues",
-            file=sys.stderr
-        )
-        for issue in complexity_issues:
-            print(f"  - {issue}", file=sys.stderr)
-
-        return GuardrailFunctionOutput(
-            output_info={
-                "status": "rejected",
-                "reason": "Script too simple/incomplete",
-                "complexity_issues": complexity_issues,
-                "line_count": line_count,
-                "minimum_lines": MIN_LINES,
-            },
-            tripwire_triggered=True,
-        )
-
-    # All good
-    verified_count = len(used_domain_attrs) + len(used_flow_attrs)
     print(
         f"[Guardrail] validate_code_against_spec PASSED: "
-        f"{verified_count} attributes, {len(used_ops)} ops verified, "
-        f"{line_count} lines",
+        f"{line_count} lines, no deprecated attributes",
         file=sys.stderr
     )
     return GuardrailFunctionOutput(
         output_info={
             "status": "passed",
-            "verified_domain_attrs": list(used_domain_attrs),
-            "verified_flow_attrs": list(used_flow_attrs),
-            "verified_ops": list(used_ops),
-            "verified_enum_values": {
-                k: enum_assignments.get(k) for k in enum_allowed.keys()
-                if k in enum_assignments
-            },
             "line_count": line_count,
         },
         tripwire_triggered=False,

@@ -1,0 +1,24 @@
+{
+  "session_id": "p2_validation_fire_20260206_223251",
+  "iteration": 1,
+  "overall_score": 50.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase the domain height and/or move the emitter lower so the flame never reaches the domain ceiling (remove the hard rectangular cutoff).",
+    "If using adaptive domain in your setup, increase its margin so the adaptive bounds don\u2019t clip the visible flame (or disable adaptive domain until stable).",
+    "Reduce highlight clipping: lower volume emission strength / blackbody intensity multiplier (e.g., halve flame multiplier/emission strength) and/or use Filmic + exposure adjustments rather than raw intensity.",
+    "Reduce speckling: raise Cycles samples (e.g., 256\u2013512 for volumes), enable denoising for the render, and consider limiting max bounces for volume if noise persists.",
+    "Improve blackbody look: drive the Principled Volume temperature (or blackbody) from a simulation attribute (often a temperature/heat field) instead of a constant, so you get a real hot core \u2192 cooler edges gradient.",
+    "Add more small-scale motion/detail: increase sim resolution and/or enable noise/high-res refinement; tune vorticity/turbulence and add slight lateral wind to break symmetry.",
+    "Smooth emission: ensure your flow emission isn\u2019t producing a hard mask (avoid non-manifold emitters; consider slightly increasing surface emission distance and lowering full-volume emission if it causes artifacts).",
+    "Check for banding from very low-density ranges: adjust density multiplier and absorption so midtones aren\u2019t compressed into a narrow range (helps avoid stepped gradients)."
+  ],
+  "cache_size_mb": 14.302102088928223,
+  "render_count": 1,
+  "vdb_count": 25,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 229.61291022099977,
+  "utility_score": 0.5586559081491669,
+  "timestamp": "2026-02-06T22:37:54.352817"
+}

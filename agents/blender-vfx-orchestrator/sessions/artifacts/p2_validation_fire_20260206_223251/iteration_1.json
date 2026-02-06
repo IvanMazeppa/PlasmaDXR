@@ -1,0 +1,59 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/p2_validation_fire_v1.py",
+  "technique_used": "mantaflow_fire_domain_flow_blackbody_volume",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/p2_validation_fire.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/cache",
+  "score": 50.0,
+  "passed": false,
+  "primary_issue": "Simulation/emitter/domain boundary is visibly cutting the flame (hard rectangular edge at the top), plus strong speckled noise/clipping in highlights\u2014this reads as a broken render rather than clean blackbody fire.",
+  "parameter_changes": {
+    "asset_name": "p2_validation_fire",
+    "frames": {
+      "frame_start": 1,
+      "frame_end": 25
+    },
+    "domain": {
+      "resolution_max": 64,
+      "cache_type": "MODULAR",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/cache",
+      "noise_strength": 0.25,
+      "noise_time_anim": 0.5,
+      "flip_ratio": 0.0,
+      "vorticity": 2.0,
+      "buoyancy_heat": 1.5
+    },
+    "flow_emitter": {
+      "flow_type": "FIRE",
+      "flow_behavior": "INFLOW",
+      "flow_source": "MESH",
+      "volume_density": 1.0,
+      "temperature": 1.5,
+      "fuel_amount": 1.0,
+      "sampling_substeps": 2
+    },
+    "shading": {
+      "domain_volume_shader": "ShaderNodeVolumePrincipled",
+      "attributes_used": [
+        "density",
+        "flame"
+      ],
+      "blackbody_temperature_K": 1800.0,
+      "density_multiplier": 2.0,
+      "flame_multiplier": 5.0
+    },
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU",
+      "samples": 96,
+      "resolution": [
+        512,
+        512
+      ],
+      "output_image": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/p2_validation_fire.png",
+      "output_blend": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/p2_validation_fire/p2_validation_fire.blend"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-06T22:39:08.402905"
+}

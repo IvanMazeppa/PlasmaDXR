@@ -53,9 +53,10 @@ class ExecutionArtifactSummary:
 # GATE THRESHOLDS (Tunable)
 # ============================================================================
 
-# Minimum cache size in bytes (1MB = meaningful simulation data)
-# Based on postmortem: empty caches were ~1.3KB, valid caches were ~23MB
-MIN_CACHE_SIZE_BYTES = 1_000_000  # 1MB
+# Minimum cache size in bytes (100KB = meaningful simulation data)
+# Based on postmortem: empty caches were ~1.3KB, valid low-res (64) caches were ~350KB,
+# production-res caches were ~23MB. 100KB catches empty bakes while allowing low-res tests.
+MIN_CACHE_SIZE_BYTES = 100_000  # 100KB
 
 # Minimum number of render files
 MIN_RENDER_COUNT = 1

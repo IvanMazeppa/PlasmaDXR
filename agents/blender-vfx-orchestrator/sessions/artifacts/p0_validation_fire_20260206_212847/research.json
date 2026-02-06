@@ -1,0 +1,27 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s fluid simulation API by configuring a gas-style domain via `bpy.types.FluidDomainSettings` and driving it with one or more emitter/flow objects via `bpy.types.FluidFlowSettings`. The API indices also highlight domain/flow noise controls (e.g., `FluidDomainSettings.noise_strength`, `FluidDomainSettings.noise_time_anim`, and `FluidFlowSettings.noise_texture`) as key knobs to shape a small plume-like result.",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings.noise_strength": "Domain noise intensity control (listed as an attribute of `FluidDomainSettings`).",
+    "bpy.types.FluidDomainSettings.noise_time_anim": "Domain noise animation control (listed as an attribute of `FluidDomainSettings`).",
+    "bpy.types.FluidFlowSettings.noise_texture": "Flow/emitter noise texture input/control (listed as an attribute of `FluidFlowSettings`).",
+    "bpy.types.FluidDomainSettings.flip_ratio": "Domain FLIP ratio control (listed as an attribute of `FluidDomainSettings`; may be relevant depending on chosen solver setup)."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ShaderNodeTexNoise",
+    "bpy.ops.mesh"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-06T21:29:46.946140"
+}

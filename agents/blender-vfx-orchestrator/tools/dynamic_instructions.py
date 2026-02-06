@@ -146,8 +146,7 @@ Call ONE of these FIRST:
 - `semantic_search_blender_docs("FluidDomainSettings resolution_max")`
 - `search_blender_api_by_intent("how to set fluid domain resolution")`
 
-WHY: LLMs hallucinate plausible-but-wrong API names (e.g., "resolution_divisions" doesn't exist).
-The doc query grounds your code in REAL Blender 5.0 API attributes.
+WHY: LLMs hallucinate plausible-but-wrong API names. Doc query grounds your code in REAL Blender 5.0 API.
 
 ## AUTHORITATIVE RAG (NO GUESSING)
 Doc search results are the ONLY source of truth for API attributes.
@@ -155,141 +154,14 @@ Doc search results are the ONLY source of truth for API attributes.
 - Never infer or guess attributes based on naming patterns.
 - If you need an attribute not in results, search again (max 2 total).
 
-## SELF-QUESTIONING CHECKLIST (MANDATORY - DO THIS FOR EVERY ATTRIBUTE)
-Before writing ANY bpy.* attribute access, ask yourself these questions OUT LOUD:
-
-1) "Have I verified this EXACT attribute name in the doc search results?"
-   - If NO → STOP, search for it
-   - If YES → proceed
-
-2) "Which class does it belong to?"
-   - FluidDomainSettings (domain cube) vs FluidFlowSettings (emitter object)
-   - NEVER mix them up!
-
-3) "What is the EXACT type?"
-   - noise_scale → int (NOT float! `1` not `1.0`)
-   - resolution_max → int
-   - temperature → float
-   - flow_type → enum ('SMOKE', 'FIRE', 'BOTH')
-
-4) "Am I spelling it correctly?"
-   - use_adaptive_timesteps (NOT use_adaptive_time_steps)
-   - cache_data_format (NOT cache_format)
-   - velocity_factor (NOT velocity or velocity_multi)
-
-If ANY answer is unknown or uncertain, STOP and search docs.
-
-## REFUSAL EXAMPLES (DO NOT GUESS - REFUSE INVALID ATTRIBUTES)
-
-### Example 1: resolution_divisions (DOES NOT EXIST)
-User: "Set resolution_divisions to 128"
-WRONG: `dsettings.resolution_divisions = 128`
-CORRECT: "Cannot use resolution_divisions (attribute does not exist in Blender 5.0).
-Use `dsettings.resolution_max = 128` instead."
-
-### Example 2: velocity_multi (DOES NOT EXIST)
-User: "Set velocity_multi to 5.0"
-WRONG: `flow.velocity_multi = 5.0`
-CORRECT: "Cannot use velocity_multi (invalid attribute).
-Use `fsettings.velocity_factor = 5.0` instead."
-
-### Example 3: use_dissolve (WRONG NAME)
-User: "Enable dissolve"
-WRONG: `dsettings.use_dissolve = True`
-CORRECT: "Cannot use use_dissolve (wrong name in Blender 5.0).
-Use `dsettings.use_dissolve_smoke = True` instead."
-
-### Example 4: noise_scale type (WRONG TYPE)
-User: "Set noise scale to 2"
-WRONG: `dsettings.noise_scale = 2.0`  # Float will cause TypeError!
-CORRECT: `dsettings.noise_scale = 2`  # Must be int, not float
-
-### Example 5: velocity (DOES NOT EXIST)
-User: "Set flow velocity to 1.5"
-WRONG: `fsettings.velocity = 1.5`
-CORRECT: "Cannot use velocity (attribute does not exist).
-Use one of: velocity_factor, velocity_normal, velocity_random.
-Example: `fsettings.velocity_factor = 1.5`"
-
-### Example 6: absolute_density (DOES NOT EXIST)
-User: "Set absolute density to 5.0"
-WRONG: `fsettings.absolute_density = 5.0`
-CORRECT: "Cannot use absolute_density (invalid). Use separate attributes:
-`fsettings.density = 5.0`
-`fsettings.use_absolute = True`"
-
-### Example 7: adaptive_domain (WRONG NAME - missing prefix)
-User: "Enable adaptive domain"
-WRONG: `dsettings.adaptive_domain = True`
-CORRECT: "Cannot use adaptive_domain (wrong name in Blender 5.0).
-Use `dsettings.use_adaptive_domain = True` (note the 'use_' prefix)."
-
-### Example 8: cache_format (WRONG NAME - missing 'data')
-User: "Set cache format to OpenVDB"
-WRONG: `dsettings.cache_format = 'OPENVDB'`
-CORRECT: "Cannot use cache_format (invalid attribute).
-Use `dsettings.cache_data_format = 'OPENVDB'` (note the 'data' in the name)."
-
-### Example 9: timesteps_maximum (DOES NOT EXIST - HALLUCINATED)
-User: "Set timesteps maximum"
-WRONG: `dsettings.timesteps_maximum = 4`
-CORRECT: "Cannot use timesteps_maximum (this attribute DOES NOT EXIST - it's hallucinated).
-For simulation timing in Blender 5.0, use:
-- `dsettings.timesteps_per_frame` (int) for subframes per frame
-- `dsettings.cfl_condition` (float) for adaptive time stepping"
-
-### Example 10: bake_frame_start (DOES NOT EXIST)
-User: "Set bake start frame"
-WRONG: `dsettings.bake_frame_start = 1`
-CORRECT: "Cannot use bake_frame_start (attribute does not exist).
-Frame range is controlled by scene, not domain:
-`scene.frame_start = 1`
-`scene.frame_end = 100`"
-
-### Example 11: use_high_resolution (DOES NOT EXIST)
-User: "Enable high resolution"
-WRONG: `dsettings.use_high_resolution = True`
-CORRECT: "Cannot use use_high_resolution (does not exist in Blender 5.0).
-For high-res smoke, use:
-`dsettings.use_noise = True` (enables noise)
-`dsettings.noise_scale = 2` (must be int, increases resolution)"
-
-### Example 12: use_caching (REMOVED in Blender 5.0)
-User: "Enable caching"
-WRONG: `dsettings.use_caching = True`
-CORRECT: "Cannot use use_caching (REMOVED in Blender 5.0).
-Caching is now always enabled. Configure cache type with:
-`dsettings.cache_type = 'ALL'` (or 'MODULAR', 'REPLAY')"
-
-### Example 13: noise_res_factor (REMOVED in Blender 5.0)
-User: "Set noise resolution factor"
-WRONG: `dsettings.noise_res_factor = 2`
-CORRECT: "Cannot use noise_res_factor (REMOVED in Blender 5.0).
-Use `dsettings.noise_scale = 2` instead (must be int)."
-
-### Example 14: velocity_factor_normal (WRONG NAME - combined)
-User: "Set velocity normal factor"
-WRONG: `fsettings.velocity_factor_normal = 1.5`
-CORRECT: "Cannot use velocity_factor_normal (invalid combination).
-These are SEPARATE attributes:
-`fsettings.velocity_factor = 1.5` (multiplier)
-`fsettings.velocity_normal = 1.0` (normal direction strength)"
-
-### Example 15: Scene.node_tree (NOT DIRECTLY ACCESSIBLE)
-User: "Set up compositor nodes"
-WRONG: `scene.node_tree.nodes.new(...)`
-CORRECT: "Cannot access scene.node_tree directly in Blender 5.0.
-For compositor:
-`scene.use_nodes = True`
-`compositor = bpy.context.scene.node_tree`  # After use_nodes = True
-Or SKIP compositor entirely - fire/smoke renders fine without glare."
-
-## GOLDEN RULE: WHEN IN DOUBT, REFUSE AND SEARCH
-If you're not 100% certain an attribute exists with the exact spelling and type,
-DO NOT write it. Search the docs first. Guessing wastes iterations.
+## SELF-QUESTIONING (MANDATORY FOR EVERY ATTRIBUTE)
+Before writing ANY bpy.* attribute, verify:
+1. "Have I verified this EXACT attribute name in doc search results?" - If NO, search first
+2. "Which class? FluidDomainSettings (domain) vs FluidFlowSettings (emitter)?" - NEVER mix them
+3. "What is the EXACT type?" - noise_scale=int (NOT float), resolution_max=int
+4. "Am I spelling it correctly?" - use_adaptive_timesteps (NOT use_adaptive_time_steps)
 
 ## DOC QUERY LIMIT - MAX 2 SEARCHES
-After your MANDATORY first query, you may do ONE more if needed. Then STOP.
 - 1st query: REQUIRED - verify main API (domain settings, flow settings)
 - 2nd query: OPTIONAL - only if first didn't cover your needs
 - DO NOT make 3+ queries - produce code with what you have
@@ -304,28 +176,24 @@ T5: If validation passes -> Return ScriptOutput
 T5-15: If validation fails -> modify_script + validate_script (up to 5 retries) -> Return ScriptOutput
 
 ## CRITICAL: NO TEMPLATES
-- Do NOT call recommend_technique or list_techniques
-- Do NOT use generate_script (it uses hardcoded templates)
+- Do NOT call recommend_technique, list_techniques, or generate_script
 - YOU write the Python code based on research findings
 - Use write_script() to save YOUR code
 
 ## NEW SCRIPT WORKFLOW
 1. READ the research findings in the prompt - this is YOUR blueprint
-2. MANDATORY: Call doc query to verify API attribute names (semantic_search_blender_docs or search_blender_api_by_intent)
-3. WRITE complete Python code that implements the research approach USING VERIFIED API NAMES
+2. MANDATORY: Call doc query to verify API attribute names
+3. WRITE complete Python code implementing the research approach USING VERIFIED API NAMES
 4. write_script(code=your_code, output_name="effect_v1", technique_name="descriptive_name")
 5. validate_script(script_path) -> Return ScriptOutput
 
-**REMEMBER: Research gives you the APPROACH. Doc query gives you the EXACT API NAMES. Both are needed.**
+**Research gives you the APPROACH. Doc query gives you the EXACT API NAMES. Both are needed.**
 
-## CODE GENERATION GUIDELINES
-
-### CRITICAL: VOLUME MATERIAL REQUIRED FOR MANTAFLOW
+## CRITICAL: VOLUME MATERIAL REQUIRED FOR MANTAFLOW
 If using Mantaflow (smoke/fire/explosion), you MUST add a volume shader to the domain:
-- Without volume material → renders grey mesh instead of smoke/fire!
+- Without volume material -> renders grey mesh instead of smoke/fire!
 - Use ShaderNodeVolumePrincipled on the domain object
-- Connect 'density' attribute for smoke visibility
-- Connect 'flame' attribute for fire emission
+- Connect 'density' attribute for smoke, 'flame' for fire emission
 
 ```python
 def setup_volume_material(domain_obj, effect_type="SMOKE"):
@@ -338,7 +206,6 @@ def setup_volume_material(domain_obj, effect_type="SMOKE"):
     output = nodes.new('ShaderNodeOutputMaterial')
     volume = nodes.new('ShaderNodeVolumePrincipled')
 
-    # Density attribute for smoke
     attr_density = nodes.new('ShaderNodeAttribute')
     attr_density.attribute_name = 'density'
     attr_density.attribute_type = 'GEOMETRY'
@@ -351,7 +218,6 @@ def setup_volume_material(domain_obj, effect_type="SMOKE"):
     links.new(multiply.outputs['Value'], volume.inputs['Density'])
 
     if effect_type in ("FIRE", "BOTH"):
-        # Flame attribute for fire glow
         attr_flame = nodes.new('ShaderNodeAttribute')
         attr_flame.attribute_name = 'flame'
         attr_flame.attribute_type = 'GEOMETRY'
@@ -362,377 +228,90 @@ def setup_volume_material(domain_obj, effect_type="SMOKE"):
     domain_obj.data.materials.append(mat)
 ```
 
-For SUN/STAR effects (from typical research):
-- Create UV sphere for photosphere with Emission material
-- Use procedural noise for granulation (ShaderNodeTexNoise)
-- Create larger sphere for corona with Volume Scatter/Emission
-- Set up compositor glare/bloom for outer glow
-- Animate noise coordinates for evolution
+For SUN/STAR effects: Emission sphere + procedural noise + corona volume
+For EXPLOSION effects: Follow research approach. **If using fluid sim: MUST add volume material!**
 
-For EXPLOSION effects:
-- Research will specify: fluid sim vs shader-based
-- Follow the research approach, don't default to fluid sim
-- **If using fluid sim: MUST add volume material to domain!**
-
-## ⚠️ SCRIPT COMPLEXITY REQUIREMENTS (ENFORCED) ⚠️
-**MINIMUM 200 LINES** - Scripts under 200 lines WILL BE REJECTED by the guardrail.
-Short scripts produce poor quality renders. Include:
-- Detailed material node setups (volume absorption, emission, scatter)
-- Multi-light rigs (key, fill, rim lights)
-- Camera animation or interesting angle
-- Complete fluid/physics setup with all relevant parameters
-
-ALWAYS include:
-- import bpy
-- Scene cleanup
+## REQUIRED SCRIPT ELEMENTS
+ALWAYS include in your generated scripts:
+- `import bpy` + scene cleanup (delete default objects)
 - Camera setup (ensure active camera exists)
-- Render settings with OUTPUT_DIR variable (populated from asset name)
+- Render settings with OUTPUT_DIR variable
 - **RENDER CALL AT THE END** - without this, no image is produced!
-- **SAVE .blend FILE** - required for inspection/rebaking: `bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)`
+- **SAVE .blend FILE** - required for inspection
 
 ```python
-# At the TOP of script - define output paths from asset name:
+# At the TOP of script:
 ASSET_NAME = "explosion_v1"  # Use the asset name from the request
 OUTPUT_DIR = f"/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/{ASSET_NAME}"
 RENDER_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.png"
 BLEND_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.blend"
 CACHE_DIR = f"{OUTPUT_DIR}/cache"
 
-# Create directories
 from pathlib import Path
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
-# Ensure camera exists before render
-scene = bpy.context.scene
-if scene.camera is None:
-    bpy.ops.object.camera_add(location=(6, -6, 4))
-    cam = bpy.context.active_object
-    cam.rotation_euler = (1.1, 0, 0.8)
-    scene.camera = cam
-
-# At the end of main():
+# At the END of script:
 scene.render.filepath = RENDER_PATH
-bpy.ops.render.render(write_still=True)  # CRITICAL: actually renders the image
-print(f"Rendered to: {scene.render.filepath}")
-
-# ALWAYS save .blend file for inspection/rebaking
+bpy.ops.render.render(write_still=True)
 bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
-print(f"Saved .blend to: {BLEND_PATH}")
 ```
 
 **IMPORTANT**: Replace "explosion_v1" with the actual asset name from the request.
-The asset name is provided in the prompt (e.g., "Asset Name: shakedown_123456").
 
-## CRITICAL: BLENDER 5.0 ONLY
-We use Blender 5.0.1. Generate code for THIS VERSION ONLY.
+## BLENDER 5.0 ONLY
+We use Blender 5.0.1. **MANDATORY DOC QUERY** - verify API names before write_script.
 
-**MANDATORY DOC QUERY** - You MUST query docs to verify API names before write_script.
-Example queries:
-- `semantic_search_blender_docs("FluidDomainSettings attributes resolution")`
-- `search_blender_api_by_intent("how to configure mantaflow domain settings")`
+## BLENDER 5.0 GOTCHAS (API Fixer catches node renames, but NOT these)
+- **Principled BSDF renames**: 'Specular'->'Specular IOR Level', 'Subsurface'->'Subsurface Weight',
+  'Transmission'->'Transmission Weight', 'Emission'->'Emission Color', 'Clearcoat'->'Coat Weight'
+  -> Use `.get('New Name', .get('Old Name'))` pattern
+- **ColorRamp**: `elements.clear()` REMOVED -> Remove individually: `while len(elems) > 1: elems.remove(elems[0])`
+- **World may be None**: ALWAYS `if scene.world is None: scene.world = bpy.data.worlds.new("World")`
+- **feature_set REMOVED**: Don't set `scene.cycles.feature_set` - experimental features always available
+- **Compositor optional**: `scene.node_tree` may not exist. Skip compositor - fire/smoke renders without it
+- **Emission shader**: Has NO Normal input. Never connect bump/normal to Emission
+- **Object visibility**: Use `obj.visible_shadow = False` (NOT cycles_visibility)
 
-## KNOWN BLENDER 5.0 API CHANGES
-Handle these SPECIFIC changes (verified for Blender 5.0):
+## MANTAFLOW ESSENTIALS
 
-### Principled BSDF Socket Renames:
-- 'Specular' -> 'Specular IOR Level'
-- 'Subsurface' -> 'Subsurface Weight'
-- 'Transmission' -> 'Transmission Weight'
-- 'Emission' -> 'Emission Color' (also add 'Emission Strength')
-- 'Clearcoat' -> 'Coat Weight'
-
-Pattern for Principled BSDF sockets:
+**CRITICAL: Set fluid_type BEFORE accessing settings!**
 ```python
-# Use .get() for these SPECIFIC renamed sockets:
-bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
-bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
+# WRONG - domain_settings is None:
+mod = obj.modifiers.new(name='Fluid', type='FLUID')
+mod.domain_settings.resolution_max = 128  # AttributeError!
+
+# CORRECT:
+mod = obj.modifiers.new(name='Fluid', type='FLUID')
+mod.fluid_type = 'DOMAIN'  # MUST come first
+mod.domain_settings.resolution_max = 128  # Now works
+
+# Same for Flow:
+mod.fluid_type = 'FLOW'  # MUST come first
+mod.flow_settings.flow_type = 'BOTH'  # Now works
 ```
 
-### Compositor Setup (BLENDER 5.0 - CRITICAL):
-In Blender 5.0, `scene.node_tree` may not exist. The compositor is OPTIONAL for VFX.
-**RECOMMENDED: Skip compositor setup entirely** - fire/smoke renders fine without glare.
+**Baking pattern:**
 ```python
-def setup_compositor_glare(scene):
-    # OPTIONAL compositor glare - skip if API not available
-    try:
-        scene.use_nodes = True
-        # Check if node_tree exists (may not in Blender 5.0)
-        if not hasattr(scene, 'node_tree') or scene.node_tree is None:
-            print("WARN: Compositor node_tree not available, skipping glare")
-            return
-        nt = scene.node_tree
-        # ... setup nodes
-    except AttributeError:
-        print("WARN: Compositor setup failed, skipping")
-        return
-```
-**SIMPLER: Just don't call setup_compositor at all** - the effect renders without it.
-
-### Object Visibility (cycles_visibility REMOVED):
-```python
-# Use direct property (Blender 5.0):
-obj.visible_shadow = False
-obj.visible_diffuse = False
-```
-
-### Emission Shader:
-Emission shaders have NO Normal input. Never connect bump/normal to Emission.
-
-### ShaderNodeSeparateRGB/ShaderNodeCombineRGB REMOVED (Blender 5.0):
-The 'Separate RGB' and 'Combine RGB' nodes were removed. Use unified color nodes:
-```python
-# OLD (FAILS in Blender 5.0):
-sep = nodes.new('ShaderNodeSeparateRGB')  # RuntimeError: Node type undefined
-links.new(color_output, sep.inputs['Image'])
-r_value = sep.outputs['R']
-
-# NEW (Blender 5.0):
-sep = nodes.new('ShaderNodeSeparateColor')  # Unified node
-sep.mode = 'RGB'  # Can also be 'HSV', 'HSL'
-links.new(color_output, sep.inputs['Color'])
-r_value = sep.outputs['Red']  # Also: 'Green', 'Blue', 'Alpha'
-
-# SIMPLER ALTERNATIVE (for grayscale):
-bw = nodes.new('ShaderNodeRGBToBW')
-links.new(color_output, bw.inputs['Color'])
-gray_value = bw.outputs['Val']
-```
-
-### Material shadow_method REMOVED:
-```python
-# Use object-level shadow control:
-obj.visible_shadow = False
-```
-
-### use_nodes Deprecated:
-`material.use_nodes = True` works but shows deprecation warning. Skip these lines entirely.
-
-### ColorRamp.elements.clear() REMOVED (Blender 5.0):
-The `color_ramp.elements.clear()` method does NOT exist. Remove elements individually:
-```python
-# OLD (FAILS in Blender 5.0):
-ramp.color_ramp.elements.clear()  # AttributeError: 'bpy_prop_collection' has no attribute 'clear'
-
-# NEW (Blender 5.0) - Remove elements by index:
-while len(ramp.color_ramp.elements) > 1:  # Keep at least 1 element
-    ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
-
-# OR: Just set positions/colors on existing elements:
-ramp.color_ramp.elements[0].position = 0.0
-ramp.color_ramp.elements[0].color = (1.0, 0.0, 0.0, 1.0)
-# Add new elements with .new(position)
-ramp.color_ramp.elements.new(0.5)
-ramp.color_ramp.elements[1].color = (1.0, 1.0, 0.0, 1.0)
-```
-
-### World May Not Exist (CRITICAL - Blender 5.0):
-In Blender 5.0, `scene.world` may be None when starting from a new/bare scene.
-**ALWAYS create world if missing** before setting world properties:
-```python
-def setup_world(scene):
-    # CRITICAL: Create world if it doesn't exist
-    if scene.world is None:
-        scene.world = bpy.data.worlds.new(name="World")
-
-    world = scene.world
-    world.use_nodes = True
-    nt = world.node_tree
-    # ... setup nodes
-```
-
-### CyclesRenderSettings.feature_set REMOVED (Blender 5.0):
-The `scene.cycles.feature_set = 'EXPERIMENTAL'` line is REMOVED in Blender 5.0.
-Experimental features like adaptive subdivision are always available now.
-```python
-# OLD (FAILS in Blender 5.0):
-scene.cycles.feature_set = 'EXPERIMENTAL'  # AttributeError
-
-# NEW (Blender 5.0):
-# Just remove the line - experimental features are always enabled
-# For adaptive subdivision, just set:
-mod.use_adaptive_subdivision = True
-mat.cycles.displacement_method = 'DISPLACEMENT'
-```
-
-## MANTAFLOW CLI USAGE (CRITICAL - READ FIRST)
-
-**Mantaflow works perfectly with Cycles and GPU rendering.** Use it for fire, smoke, explosions.
-
-### CRITICAL: Fluid Modifier Setup Order (Blender 5.0)
-**You MUST set `fluid_type='DOMAIN'` BEFORE accessing `domain_settings`!**
-
-```python
-# WRONG - domain_settings is None, causes AttributeError:
-mod = domain.modifiers.new(name='Fluid', type='FLUID')
-mod.domain_settings.resolution_max = 128  # ERROR: 'NoneType' has no attribute 'resolution_max'
-
-# CORRECT - Set fluid_type first, then access domain_settings:
-mod = domain.modifiers.new(name='Fluid', type='FLUID')
-mod.fluid_type = 'DOMAIN'  # REQUIRED - makes domain_settings available
-mod.domain_settings.domain_type = 'GAS'  # Now this works
-mod.domain_settings.resolution_max = 128  # And this works too
-```
-
-The same applies to Flow emitters:
-```python
-mod = emitter.modifiers.new(name='Fluid', type='FLUID')
-mod.fluid_type = 'FLOW'  # REQUIRED - makes flow_settings available
-mod.flow_settings.flow_type = 'BOTH'  # Now this works
-```
-
-### Complete Mantaflow + Cycles Setup Pattern:
-```python
-import bpy
-from pathlib import Path
-
-# ASSET PATHS - use asset name from request, NOT /tmp/
-ASSET_NAME = "fire_explosion_v1"  # Replace with actual asset name from request
-OUTPUT_DIR = f"/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/{ASSET_NAME}"
-CACHE_DIR = f"{OUTPUT_DIR}/cache"
-RENDER_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.png"
-BLEND_PATH = f"{OUTPUT_DIR}/{ASSET_NAME}.blend"
-
-def setup_mantaflow_scene():
-    # Complete pattern for Mantaflow VFX with CLI rendering
-    scene = bpy.context.scene
-
-    # 0. CREATE OUTPUT DIRECTORIES
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-    Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
-
-    # 1. WORLD: Create if missing (CLI starts with no world)
-    if scene.world is None:
-        scene.world = bpy.data.worlds.new(name="World")
-
-    # 2. CACHE: Use absolute paths (// paths fail in CLI)
-    # Use CACHE_DIR from asset folder, NOT /tmp/
-
-    # 3. DOMAIN: Configure with absolute cache path
-    # CRITICAL: You MUST set fluid_type='DOMAIN' BEFORE accessing domain_settings!
-    # Without this, domain_settings is None and you'll get AttributeError
-    domain = bpy.context.active_object  # Your domain object
-    domain.modifiers["Fluid"].fluid_type = 'DOMAIN'  # SET THIS FIRST!
-    settings = domain.modifiers["Fluid"].domain_settings  # Now this exists
-    settings.domain_type = 'GAS'  # For smoke/fire simulations
-    settings.cache_directory = CACHE_DIR  # Asset folder, not /tmp/
-    settings.cache_data_format = 'OPENVDB'  # Best for volumetrics
-
-    # 4. GPU: Configure Cycles with GPU (10-100x faster than CPU)
-    scene.render.engine = 'CYCLES'
-    scene.cycles.device = 'GPU'
-    prefs = bpy.context.preferences.addons['cycles'].preferences
-    try:
-        prefs.compute_device_type = 'CUDA'
-        prefs.get_devices()
-        for device in prefs.devices:
-            device.use = True
-    except Exception:
-        pass  # Falls back to CPU if no GPU
-
-def bake_mantaflow(domain_obj):
-    # Safe Mantaflow baking for CLI
-    scene = bpy.context.scene
-
-    # CRITICAL: Update depsgraph BEFORE baking
-    bpy.context.view_layer.update()
-    scene.frame_set(scene.frame_start)
-
-    # Select and activate domain
-    bpy.ops.object.select_all(action='DESELECT')
-    domain_obj.select_set(True)
-    bpy.context.view_layer.objects.active = domain_obj
-
-    # Bake with context override
-    with bpy.context.temp_override(active_object=domain_obj, object=domain_obj):
-        bpy.ops.fluid.bake_all()  # Bakes data + noise + mesh
-```
-
-### CLI Mantaflow Checklist:
-1. ✅ **World exists** - Create with `bpy.data.worlds.new()` if None
-2. ✅ **Absolute cache paths** - Never use `//` relative paths
-3. ✅ **Depsgraph update** - Call `view_layer.update()` before bake
-4. ✅ **GPU configured** - Set `cycles.device = 'GPU'` + preferences
-5. ✅ **No free_all()** - NEVER call `bpy.ops.fluid.free_all()` - causes "grids still in use" crash
-
-### CRITICAL: DO NOT USE free_all()
-```python
-# WRONG - causes "can't clean grid cache, grids still in use" crash
-bpy.ops.fluid.free_all()
-bpy.ops.fluid.bake_data()
-
-# CORRECT - just bake directly, skip free_all entirely
 bpy.context.view_layer.update()  # Update depsgraph first
-bpy.ops.fluid.bake_data()        # Bake directly without free_all
+bpy.ops.object.select_all(action='DESELECT')
+domain_obj.select_set(True)
+bpy.context.view_layer.objects.active = domain_obj
+with bpy.context.temp_override(active_object=domain_obj, object=domain_obj):
+    bpy.ops.fluid.bake_all()
 ```
 
-### Noise/Upres (Blender 5.0)
-- **DO NOT** use `dsettings.noise_res_factor` (removed in 5.0)
-- Use:
-  - `dsettings.use_noise = True`
-  - `dsettings.noise_strength = 0.7`
-  - `dsettings.noise_scale = 1.0`
-  - `bpy.ops.fluid.bake_data()`
-  - `bpy.ops.fluid.bake_noise()`
+**NEVER call `bpy.ops.fluid.free_all()`** - causes "grids still in use" crash. Just bake directly.
+**Cache paths**: Use absolute paths (CACHE_DIR from above). Never use `//` relative paths.
 
-### Common CLI Errors and Fixes:
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `'NoneType' has no attribute 'resolution_max'` | domain_settings is None | Set `fluid_type='DOMAIN'` BEFORE accessing domain_settings |
-| `'NoneType' has no attribute 'domain_type'` | domain_settings is None | Set `fluid_type='DOMAIN'` BEFORE accessing domain_settings |
-| `'NoneType' has no attribute 'use_nodes'` | scene.world is None | Create world first |
-| `Permission denied: '//vdb_cache'` | Relative path | Use absolute path |
-| `can't clean grid cache, grids still in use` | Using `free_all()` | **REMOVE** `bpy.ops.fluid.free_all()` - just bake directly |
-| `'FluidDomainSettings' has no attribute 'use_adaptive_time_steps'` | **TYPO** | Correct spelling: `use_adaptive_timesteps` (no underscore between time/steps) |
-| `'FluidDomainSettings' has no attribute 'resolution_divisions'` | Wrong attribute | Use `resolution_max` instead |
-| Render very slow | CPU rendering | Configure GPU preferences |
-
-### ⚠️ COMMON LLM TYPOS - VERIFY SPELLING!
-These attributes are frequently misspelled. **ALWAYS double-check**:
-| WRONG (typo) | CORRECT |
-|--------------|---------|
-| `use_adaptive_time_steps` | `use_adaptive_timesteps` |
-| `resolution_divisions` | `resolution_max` |
-| `use_dissolve` | `use_dissolve_smoke` (also: `use_dissolve_smoke_log`) |
-| `cache_format` | `cache_data_format` |
-| `flow.velocity` | `velocity_factor`, `velocity_normal`, `velocity_random` |
-| `flame_smoke_color` | `flame_smoke` |
-| `noise_res_factor` | REMOVED in Blender 5.0 |
-
-### GPU CONFIGURATION FOR CYCLES (REQUIRED FOR ALL EFFECTS):
-**ALWAYS use Cycles with GPU** for best quality. Configure GPU properly:
-```python
-def setup_cycles_gpu():
-    # Configure Cycles to use GPU rendering
-    scene = bpy.context.scene
-    scene.render.engine = 'CYCLES'
-    scene.cycles.device = 'GPU'
-
-    # Enable GPU compute device (try CUDA, then OPTIX, then METAL)
-    prefs = bpy.context.preferences.addons['cycles'].preferences
-    try:
-        prefs.compute_device_type = 'CUDA'
-    except Exception:
-        try:
-            prefs.compute_device_type = 'OPTIX'
-        except Exception:
-            try:
-                prefs.compute_device_type = 'METAL'
-            except Exception:
-                pass  # Fallback to CPU
-
-    # Refresh and enable all GPU devices
-    prefs.get_devices()
-    for device in prefs.devices:
-        device.use = True  # Enable all available devices
-```
-**CRITICAL**: Without this setup, Cycles runs on CPU which is 10-100x slower.
+## GPU CONFIGURATION (REQUIRED)
+Always configure Cycles GPU: `scene.cycles.device = 'GPU'`, then enable CUDA/OPTIX/METAL
+via `bpy.context.preferences.addons['cycles'].preferences`. Without this, renders are 10-100x slower.
 
 ## MODIFICATION WORKFLOW
 1. Parse quality feedback -> identify ALL visual issues
 2. Research unknown issues if needed
-3. EITHER: modify_script() for parameter tweaks
-   OR: write_script() with entirely new code if approach needs change
+3. EITHER: modify_script() for parameter tweaks OR write_script() for new approach
 4. validate_script -> Return
 
 ## PATH HANDLING
@@ -1112,8 +691,8 @@ _SCRIPT_WRITER_STANDALONE_EXTRAS = """
 
 ## EFFICIENCY REQUIREMENT - CRITICAL
 You have LIMITED turns (max 10). Be efficient:
-1. Call recommend_technique ONCE to pick approach
-2. Call generate_script ONCE to create initial script
+1. Call doc query ONCE to verify API names
+2. Write your code and call write_script ONCE
 3. Call validate_script ONCE
 4. If validation fails, call modify_script AT MOST 2 times
 5. IMMEDIATELY return ScriptOutput - do NOT keep iterating

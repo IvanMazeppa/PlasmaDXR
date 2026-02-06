@@ -137,15 +137,16 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `cache_format` | `cache_data_format` | Missing 'data' in name |
 | `noise_res_factor` | REMOVED | Doesn't exist in 5.0 |
 | `use_caching` | REMOVED | Doesn't exist in 5.0 |
-| `timesteps_per_frame` | `timesteps_maximum` | HALLUCINATED (2026-01-25) |
-| `time_scale` | `timesteps_maximum` or `cfl_condition` | HALLUCINATED (2026-01-25) |
+| `timesteps_per_frame` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
+| `timesteps_maximum` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
+| `time_scale` | `timesteps_max` or `cfl_condition` | HALLUCINATED (2026-01-25) |
 
 ### TYPE REQUIREMENTS - CORRECT TYPES
 | Attribute | Type | Common Mistake |
 |-----------|------|----------------|
 | `noise_scale` | **int** | LLMs write `1.0` (float) - use `1` (int) |
 | `resolution_max` | **int** | Must be integer |
-| `timesteps_maximum` | **int** | Range 1-100 |
+| `timesteps_max` | **int** | Range 1-45 |
 | `dissolve_speed` | **int** | Must be integer |
 
 ### Shader Nodes - CORRECT NAMES

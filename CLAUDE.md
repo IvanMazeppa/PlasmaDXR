@@ -23,6 +23,8 @@ Before making ANY changes, read: `agents/blender-vfx-orchestrator/VERSION_TRUTH.
 | `use_adaptive_time_steps` | `use_adaptive_timesteps` |
 | `use_dissolve` | `use_dissolve_smoke` |
 | `absolute_density` | `density` + `use_absolute` |
+| `timesteps_per_frame` | `timesteps_max` |
+| `timesteps_maximum` | `timesteps_max` |
 
 **Before using ANY bpy attribute:** Call `semantic_search_blender_docs()` to verify.
 

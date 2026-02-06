@@ -161,21 +161,30 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
     # =============================================================================
     # FluidDomainSettings.timesteps_per_frame does NOT exist
     ".timesteps_per_frame": {
-        "correction": ".timesteps_maximum",
-        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_maximum (int 1-100) or cfl_condition (float 0-10) for simulation stability."
+        "correction": ".timesteps_max",
+        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_max (int 1-45) or cfl_condition (float 0-10) for simulation stability."
     },
     "timesteps_per_frame": {
-        "correction": "timesteps_maximum",
-        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_maximum (int 1-100) or cfl_condition (float 0-10) for simulation stability."
+        "correction": "timesteps_max",
+        "reason": "HALLUCINATED: timesteps_per_frame does not exist. Use timesteps_max (int 1-45) or cfl_condition (float 0-10) for simulation stability."
+    },
+    # FluidDomainSettings.timesteps_maximum does NOT exist (also hallucinated)
+    ".timesteps_maximum": {
+        "correction": ".timesteps_max",
+        "reason": "HALLUCINATED: timesteps_maximum does not exist. The correct attribute is timesteps_max (int 1-45)."
+    },
+    "timesteps_maximum": {
+        "correction": "timesteps_max",
+        "reason": "HALLUCINATED: timesteps_maximum does not exist. The correct attribute is timesteps_max (int 1-45)."
     },
     # FluidDomainSettings.time_scale does NOT exist (common hallucination)
     ".time_scale": {
-        "correction": ".time_scale = # DELETE - use cfl_condition or timesteps_maximum instead",
-        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_maximum or cfl_condition."
+        "correction": ".time_scale = # DELETE - use cfl_condition or timesteps_max instead",
+        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_max or cfl_condition."
     },
     "time_scale": {
-        "correction": "# time_scale removed - use timesteps_maximum or cfl_condition",
-        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_maximum or cfl_condition."
+        "correction": "# time_scale removed - use timesteps_max or cfl_condition",
+        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_max or cfl_condition."
     },
     # =============================================================================
     # HALLUCINATED ATTRIBUTES - FluidFlowSettings (Phase 4: 2026-01-26)

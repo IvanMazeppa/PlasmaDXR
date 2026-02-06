@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s fluid simulation data-blocks exposed in the Blender 5.0 Python API\u2014specifically configure a fluid Domain via `bpy.types.FluidDomainSettings` and drive it with one or more flow/inflow objects via `bpy.types.FluidFlowSettings`. For higher-detail appearance, leverage the Domain\u2019s noise-related controls (e.g., `noise_strength`, `noise_time_anim`) and tune solver behavior using available Domain settings (e.g., `flip_ratio`).",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings.noise_strength": "(value not specified in retrieved docs; parameter exists and is intended to be tuned)",
+    "bpy.types.FluidDomainSettings.noise_time_anim": "(value not specified in retrieved docs; parameter exists and is intended to be tuned/animated)",
+    "bpy.types.FluidDomainSettings.flip_ratio": "(value not specified in retrieved docs; parameter exists and is intended to be tuned)",
+    "bpy.types.FluidFlowSettings.noise_texture": "(value not specified in retrieved docs; parameter exists\u2014flow-side noise texture input)"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.PropertyGroupItem",
+    "bpy.types.CloudsTexture",
+    "bpy.types.DistortedNoiseTexture",
+    "bpy.types.MusgraveTexture",
+    "bpy.types.StucciTexture",
+    "bpy.types.VoronoiTexture"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-06T22:33:34.252362"
+}

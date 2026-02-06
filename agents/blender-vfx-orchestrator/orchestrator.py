@@ -5,7 +5,7 @@ Main orchestrator that coordinates specialized agents to autonomously
 generate and iterate on VFX assets until quality thresholds are met.
 
 Key capabilities:
-- Multi-agent coordination via handoffs
+- Multi-agent coordination via code-based pipeline
 - Quality gate enforcement
 - Stuck detection and escape strategies
 - Budget enforcement ($20/month limit)
@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
 
-from agents import Agent, ModelSettings, Runner, handoff, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
+from agents import Agent, ModelSettings, Runner, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
 try:
     from agents import RunConfig
 except Exception:
@@ -110,8 +110,6 @@ from guardrails.artifact_gates import (
     validate_execution_artifacts,
     format_gate_failure_for_diagnosis,
 )
-from agents.extensions import handoff_filters
-# Removed unused handoff prompt imports - standalone agents don't use handoffs
 from openai.types.shared import Reasoning
 
 
@@ -406,101 +404,6 @@ def visualize_agents(agent, filename: str = "agent_graph") -> Optional[str]:
 
 
 # =============================================================================
-# ORCHESTRATOR INSTRUCTIONS
-# =============================================================================
-
-ORCHESTRATOR_INSTRUCTIONS = """## ROLE
-Coordinate specialized agents for autonomous VFX asset generation through iterative improvement.
-
-## STATE MACHINE (STRICT SEQUENCE - NO DEVIATION)
-```
-iter=1: [Research tools] → Script Writer → Executor → Quality → Learning → GATE
-iter>1: [pre_iteration_check] → Script Writer → Executor → Quality → Learning → GATE
-
-GATE: passed OR max_iter → END | else → Script Writer (with mods)
-```
-
-CRITICAL: After each handoff returns, IMMEDIATELY proceed to next step. NO extra research between steps.
-
-## AGENTS (one handoff at a time)
-- delegate_to_script_writer: generate/modify Blender scripts (UCB1 technique selection)
-- delegate_to_executor: run scripts, parse errors
-- delegate_to_quality_analyst: evaluate quality (vision + reference comparison)
-- delegate_to_learning_agent: record experiments, suggest fixes
-- delegate_to_docs_expert: search Blender docs (Phase 0 research, when stuck)
-
-## PHASE 0: RESEARCH (iter=1 only)
-Use tools DIRECTLY (no handoffs):
-1. blender_doc_search_bundle(effect_type, description, intent="create {effect_type} effect")
-2. search_code_patterns("initial generation", effect_type)
-
-Then handoff to Script Writer with research findings.
-
-## PHASE 1: PRE-ITERATION CHECK (iter>1 only)
-pre_iteration_research(current_issue, current_approach, iteration_history, effect_type)
-→ warning_level: none|early|stuck
-→ escape_action: continue|check_knowledge_then_modify|switch_technique_or_mine_docs
-
-## PHASE 2: SCRIPT
-iter=1: delegate_to_script_writer with research findings
-iter>1: delegate_to_script_writer with FULL visual context:
-"VISION ANALYSIS: {vision_assessment}
-PRIMARY ISSUE: {primary_issue}
-VISUAL DETAILS: {what it looks like, what's wrong, target appearance}
-SUGGESTED FIXES: {suggestions}
-Current script: {path}, Score: {score}"
-
-## PHASE 3: EXECUTE
-delegate_to_executor with script_path
-If failed → parse error, modify, retry
-
-## PHASE 4: EVALUATE
-delegate_to_quality_analyst with:
-- render_path, effect_type, iteration
-- Request: analyze_with_vision + find_reference_images + compare_to_reference
-
-## PHASE 5: LEARN
-IF score_delta >= 5:
-  extract_successful_pattern(original, modified, issue, improvement, effect_type)
-  record_code_pattern(issue, code_snippet, effect_type, improvement)
-
-ALWAYS: delegate_to_learning_agent with iteration, issue, params, score_before/after, visual observations
-
-GATE: passed (score>=60, no critical) → complete | else → check escape_level, loop
-
-## ESCAPE VELOCITY (0-4)
-L0 NORMAL: apply mods, continue
-L1 KNOWLEDGE_CHECK: query KB first, if failure_rate>50% → L2
-L2 SWITCH_TECHNIQUE: NEW script, DIFFERENT technique, mark current failed
-L3 MINE_DOCS: semantic search for novel approaches not in library
-L4 REQUEST_GUIDANCE: report exhausted, request human input
-
-Step-down: 2 consecutive +5 score iterations → escape_level can decrease
-
-## TOOLS
-Research: blender_doc_search_bundle, find_alternative_approaches
-Patterns: search_code_patterns, record_code_pattern, get_pattern_code, report_pattern_outcome
-Distillation: extract_successful_pattern, apply_pattern_to_script, analyze_script_for_patterns
-Escape: pre_iteration_research, evaluate_escape_velocity, search_alternative_approaches
-
-## QUALITY GATES
-PASS: score>=60 AND no critical issues (ZERO_LIGHTS, BLACK_SCREEN)
-
-## EARLY WARNING
-2+ iter same issue OR score plateau → escape_level 1-2
-3+ iter same issue OR plateau → escape_level 3-4
-
-## BUDGET
-Monthly: $20 ($10 vision, $8 docs, $2 buffer)
-80% → warn, reduce profile | 100% → stop, return best
-
-## OUTPUT
-Each iteration: iter#, score, improvement, primary_issue, escape_level, next_action
-Complete: final score, iter count, output paths, techniques tried, cost
-"""
-
-
-# =============================================================================
 # COORDINATOR AGENT INSTRUCTIONS (Phase 2: Agents-as-Tools Pattern)
 # =============================================================================
 # The Coordinator Agent is called at DECISION POINTS only, not for every step.
@@ -559,65 +462,6 @@ Decrease level when: 2 consecutive improvements of +5 score
 """
 
 
-# =============================================================================
-# AGENT TOOL WRAPPERS WITH TURN LIMITS
-# =============================================================================
-# SDK Update (v0.6.9+): agent.as_tool() now supports max_turns parameter.
-# Reference: https://openai.github.io/openai-agents-python/tools
-# Pattern: agent.as_tool(tool_name="name", tool_description="desc", max_turns=X)
-
-def create_agent_tool_wrappers(
-    research_agent: Agent,
-    script_agent: Agent,
-    executor_agent: Agent,
-    quality_agent: Agent,
-    learning_agent: Agent,
-) -> list:
-    """
-    Create agent-as-tool wrappers with explicit turn limits using native SDK pattern.
-
-    SDK Pattern (v0.6.9+): Use agent.as_tool(max_turns=X) for turn-limited sub-agents.
-    This is cleaner than wrapping in @function_tool with Runner.run().
-
-    Turn limits are set based on task complexity:
-    - Research: 4 turns (query docs, analyze, synthesize)
-    - Script: 6 turns (may need iteration on generation)
-    - Executor: 3 turns (execute, parse errors, report)
-    - Quality: 4 turns (evaluate, analyze issues, report)
-    - Learning: 3 turns (record, query knowledge, suggest)
-
-    Returns:
-        List of Tool objects for coordinator agents
-    """
-    return [
-        research_agent.as_tool(
-            tool_name="research_approach",
-            tool_description="Research best approach for VFX effect type. Use at iteration 1 to find optimal technique, parameters, and alternatives. Returns research summary.",
-            max_turns=4,
-        ),
-        script_agent.as_tool(
-            tool_name="generate_script",
-            tool_description="Generate or modify Blender Python script for VFX effect. Provide effect_type, description, and technique. Returns script_path, technique_used, parameters.",
-            max_turns=6,
-        ),
-        executor_agent.as_tool(
-            tool_name="execute_script",
-            tool_description="Execute Blender script and render VFX asset. Provide script_path. Returns success, render_path, vdb_path, execution_time.",
-            max_turns=3,
-        ),
-        quality_agent.as_tool(
-            tool_name="evaluate_render",
-            tool_description="Evaluate render quality using vision and metrics. Provide render_path, effect_type. Returns overall_score, passed, issues, suggestions.",
-            max_turns=4,
-        ),
-        learning_agent.as_tool(
-            tool_name="record_experiment",
-            tool_description="Record experiment results and suggest next action. Provide iteration, score, issues, params. Returns next_action, parameter_modifications.",
-            max_turns=3,
-        ),
-    ]
-
-
 def create_research_tool_wrapper(research_agent: Agent):
     """
     Create a single research_approach tool wrapper with turn limit using native as_tool.
@@ -640,62 +484,6 @@ def create_research_tool_wrapper(research_agent: Agent):
 # =============================================================================
 # COORDINATOR AGENT FACTORY
 # =============================================================================
-
-def create_coordinator_agent(
-    research_agent: Agent,
-    script_agent: Agent,
-    executor_agent: Agent,
-    quality_agent: Agent,
-    learning_agent: Agent,
-) -> Agent:
-    """
-    Create the Coordinator Agent with all sub-agents wrapped as tools.
-
-    SDK Pattern (v0.6.9+): Uses agent.as_tool(max_turns=X) for turn-limited
-    sub-agents. This is the "Manager" pattern from SDK documentation.
-
-    Args:
-        research_agent: Research Agent instance
-        script_agent: Script Writer Agent instance
-        executor_agent: Executor Agent instance
-        quality_agent: Quality Analyst Agent instance
-        learning_agent: Learning Agent Agent instance
-
-    Returns:
-        Coordinator Agent with all sub-agents as tools (turn-limited)
-    """
-    from specialized_agents.api_validator import get_api_validator_as_tool
-
-    # Create turn-limited agent tools using native as_tool(max_turns=X)
-    agent_tools = create_agent_tool_wrappers(
-        research_agent=research_agent,
-        script_agent=script_agent,
-        executor_agent=executor_agent,
-        quality_agent=quality_agent,
-        learning_agent=learning_agent,
-    )
-
-    # API validator already provides its own as_tool wrapper
-    agent_tools.append(get_api_validator_as_tool())
-
-    # Also include direct research tools for the Coordinator to use
-    research_tools = [
-        blender_doc_search_bundle,
-        find_alternative_approaches,
-        search_code_patterns,
-        list_patterns_by_effect,
-        pre_iteration_research_tool,
-        evaluate_escape_velocity,
-    ]
-
-    return Agent[SharedContext](
-        name="VFX Coordinator",
-        instructions=COORDINATOR_INSTRUCTIONS,
-        model=os.getenv("COORDINATOR_MODEL", get_config().preset.default_model),
-        model_settings=ModelSettings(verbosity="medium"),
-        tools=agent_tools + research_tools,
-    )
-
 
 def create_technique_selection_coordinator(
     research_agent: Agent,
@@ -912,13 +700,6 @@ class BlenderVFXOrchestrator:
 
     def __init__(self):
         """Initialize the orchestrator (call initialize() before use)."""
-        self._orchestrator: Optional[Agent] = None
-        self._script_writer: Optional[Agent] = None
-        self._executor: Optional[Agent] = None
-        self._quality_analyst: Optional[Agent] = None
-        self._learning_agent: Optional[Agent] = None
-        self._docs_expert: Optional[Agent] = None
-
         # Standalone agents for code-based orchestration (no handoffs)
         self._research_agent: Optional[Agent] = None
         self._script_agent_standalone: Optional[Agent] = None
@@ -937,7 +718,11 @@ class BlenderVFXOrchestrator:
         # Two-phase approach: API Spec Agent → Code Writer Agent
         self._api_spec_agent: Optional[Agent] = None
         self._code_writer_agent: Optional[Agent] = None
-        self._use_spec_first_pipeline: bool = True  # Feature flag for gradual rollout
+        # DISABLED (2026-02-06): Spec-First pipeline creates deadlock between
+        # validate_code_against_spec (spec compliance) and complexity guardrail.
+        # See docs/DEEP_ANALYSIS_FINDINGS_2026-02-06.md for full analysis.
+        # The Script Writer Standalone path with doc search works correctly.
+        self._use_spec_first_pipeline: bool = False
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
@@ -1903,200 +1688,20 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
 
     async def initialize(self) -> None:
         """
-        Initialize all specialized agents and create the orchestrator.
+        Initialize all specialized agents for code-based pipeline orchestration.
 
-        Must be called before create_asset().
+        Must be called before create_asset_pipeline().
 
-        All 5 specialized agents are initialized synchronously. DocsExpert uses
+        All standalone agents are initialized synchronously. DocsExpert uses
         in-process function_tools (extracted from blender-manual MCP server),
         which avoids the anyio TaskGroup conflicts that blocked MCP tool handlers.
-
-        IMPORTANT: Sub-agents have handoffs back to the orchestrator to maintain
-        the iteration loop. Without return handoffs, the run ends when any
-        sub-agent outputs a message.
         """
         if self._initialized:
             return
 
-        print("[Orchestrator] Initializing all 5 specialized agents...", file=sys.stderr)
+        print("[Orchestrator] Initializing standalone agents...", file=sys.stderr)
 
-        # Step 1: Create orchestrator first (without sub-agent handoffs yet)
-        # This breaks the circular dependency
-        orchestrator_tools = [
-            # Proactive research tools (Strategy 3)
-            pre_iteration_research_tool,
-            evaluate_escape_velocity,
-            search_alternative_approaches,
-            # Semantic docs tools (Strategy 1)
-            blender_doc_search_bundle,
-            find_alternative_approaches,
-            # Code pattern tools (Strategy 4)
-            record_code_pattern,
-            search_code_patterns,
-            get_pattern_code,
-            report_pattern_outcome,
-            get_pattern_library_stats,
-            list_patterns_by_effect,
-            # Knowledge distillation tools (Strategy 2)
-            extract_successful_pattern,
-            apply_pattern_to_script,
-            analyze_script_for_patterns,
-            compare_scripts,
-        ]
-
-        # Create a temporary orchestrator (will be replaced with full version)
-        temp_orchestrator = Agent[SharedContext](
-            name="Blender VFX Orchestrator",
-            instructions=ORCHESTRATOR_INSTRUCTIONS,
-            model=os.getenv("ORCHESTRATOR_MODEL", get_config().preset.default_model),
-            model_settings=ModelSettings(verbosity="medium"),
-            tools=orchestrator_tools,
-        )
-
-        # =============================================================
-        # DEPRECATED: Handoff-based agents (Steps 2-4)
-        # =============================================================
-        # These handoff-based agents are DEPRECATED as of v3.3.0.
-        # Use create_asset_pipeline() for new asset generation.
-        #
-        # Kept ONLY for resume_session() backwards compatibility.
-        # TODO: Create resume_session_pipeline() and remove this section.
-        #
-        # Step 2: Create sub-agents with handoffs back to the orchestrator
-        # This allows the iteration loop to continue after each specialist finishes
-        # IMPORTANT: Use remove_all_tools filter to strip reasoning items from history,
-        # which prevents gpt-5.2 API error about "reasoning item without following item"
-        return_to_orchestrator = handoff(
-            temp_orchestrator,
-            tool_name_override="return_to_orchestrator",
-            tool_description_override="Return control to the Orchestrator to continue the VFX generation pipeline. ALWAYS use this when you have completed your task.",
-            input_filter=handoff_filters.remove_all_tools
-        )
-
-        # Create specialized handoffs with explicit NEXT_ACTION directives
-        # This tells the orchestrator exactly what to do next after each agent returns
-        return_from_script_writer = handoff(
-            temp_orchestrator,
-            tool_name_override="script_complete_execute_next",
-            tool_description_override="Script generation complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_executor to run the script. Do NOT research.",
-            input_filter=handoff_filters.remove_all_tools
-        )
-
-        return_from_executor = handoff(
-            temp_orchestrator,
-            tool_name_override="execution_complete_evaluate_next",
-            tool_description_override="Script execution complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_quality_analyst to evaluate the render. Do NOT research.",
-            input_filter=handoff_filters.remove_all_tools
-        )
-
-        return_from_quality_analyst = handoff(
-            temp_orchestrator,
-            tool_name_override="evaluation_complete_learn_next",
-            tool_description_override="Quality evaluation complete. Use this to signal the orchestrator to IMMEDIATELY delegate_to_learning_agent to record results. Do NOT research.",
-            input_filter=handoff_filters.remove_all_tools
-        )
-
-        return_from_learning_agent = handoff(
-            temp_orchestrator,
-            tool_name_override="learning_complete_decide_next",
-            tool_description_override="Learning recorded. Use this to signal the orchestrator to CHECK if quality passed. If passed, output final result. If not, delegate_to_script_writer with modifications.",
-            input_filter=handoff_filters.remove_all_tools
-        )
-
-        # Create all 5 specialized agents with specific return handoffs
-        # NOTE: Handoff agents use STATIC instructions (use_dynamic_instructions=False)
-        # because we need to append handoff-specific text. Dynamic instructions are
-        # used by the STANDALONE agents in create_asset_pipeline().
-        base_sw = create_script_writer(use_dynamic_instructions=False)
-        self._script_writer = base_sw.clone(
-            handoffs=[return_from_script_writer],
-            instructions=base_sw.instructions + """
-
-CRITICAL: After generating and validating a script, use script_complete_execute_next to hand off.
-This signals the orchestrator to IMMEDIATELY run the script - no more research needed."""
-        )
-
-        base_exec = create_executor()
-        self._executor = base_exec.clone(
-            handoffs=[return_from_executor],
-            instructions=base_exec.instructions + """
-
-CRITICAL: After executing a script (success or failure), use execution_complete_evaluate_next to hand off.
-This signals the orchestrator to IMMEDIATELY evaluate the render - no more research needed."""
-        )
-
-        base_qa = create_quality_analyst(use_dynamic_instructions=False)
-        self._quality_analyst = base_qa.clone(
-            handoffs=[return_from_quality_analyst],
-            instructions=base_qa.instructions + """
-
-CRITICAL: After evaluating render quality, use evaluation_complete_learn_next to hand off.
-This signals the orchestrator to IMMEDIATELY record learnings - no more research needed."""
-        )
-
-        base_la = create_learning_agent(use_dynamic_instructions=False)
-        self._learning_agent = base_la.clone(
-            handoffs=[return_from_learning_agent],
-            instructions=base_la.instructions + """
-
-CRITICAL: After recording experiments, use learning_complete_decide_next to hand off.
-This signals the orchestrator to decide: if quality passed, finish. If not, modify script."""
-        )
-
-        base_docs = create_docs_expert()
-        self._docs_expert = base_docs.clone(
-            handoffs=[return_to_orchestrator],
-            instructions=base_docs.instructions + """
-
-CRITICAL: After searching documentation, use return_to_orchestrator to hand off."""
-        )
-
-        # Step 3: Build handoffs list with all 5 sub-agents
-        # Use remove_all_tools filter on all handoffs to prevent reasoning item issues
-        handoffs_list = [
-            handoff(
-                self._script_writer,
-                tool_name_override="delegate_to_script_writer",
-                tool_description_override="Delegate to Script Writer for generating or modifying Blender scripts",
-                input_filter=handoff_filters.remove_all_tools
-            ),
-            handoff(
-                self._executor,
-                tool_name_override="delegate_to_executor",
-                tool_description_override="Delegate to Executor for running Blender scripts and handling errors",
-                input_filter=handoff_filters.remove_all_tools
-            ),
-            handoff(
-                self._quality_analyst,
-                tool_name_override="delegate_to_quality_analyst",
-                tool_description_override="Delegate to Quality Analyst for evaluating render quality",
-                input_filter=handoff_filters.remove_all_tools
-            ),
-            handoff(
-                self._learning_agent,
-                tool_name_override="delegate_to_learning_agent",
-                tool_description_override="Delegate to Learning Agent for fix suggestions and experiment recording",
-                input_filter=handoff_filters.remove_all_tools
-            ),
-            handoff(
-                self._docs_expert,
-                tool_name_override="delegate_to_docs_expert",
-                tool_description_override="Delegate to Docs Expert for searching Blender documentation (use when stuck)",
-                input_filter=handoff_filters.remove_all_tools
-            ),
-        ]
-
-        # Step 4: Create the final orchestrator with handoffs to sub-agents
-        self._orchestrator = Agent[SharedContext](
-            name="Blender VFX Orchestrator",
-            instructions=ORCHESTRATOR_INSTRUCTIONS,
-            model=os.getenv("ORCHESTRATOR_MODEL", get_config().preset.default_model),
-            model_settings=ModelSettings(verbosity="medium"),
-            handoffs=handoffs_list,
-            tools=orchestrator_tools,
-        )
-
-        # Step 5: Create STANDALONE agents for code-based orchestration
+        # Create STANDALONE agents for code-based orchestration
         # These have NO handoffs - Python controls the pipeline sequence directly
         # Using structured outputs (output_type) for type-safe data passing between agents
         research_model, research_settings = self._get_model_settings("research_agent")
@@ -2274,84 +1879,10 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
             print("[Orchestrator] Spec-First Pipeline agents ready", file=sys.stderr)
 
         self._initialized = True
-        agent_count = "5 agents + 5 standalone + 3 coordinators"
+        agent_count = "5 standalone + 3 coordinators"
         if self._use_spec_first_pipeline:
             agent_count += " + 2 spec-first"
         print(f"[Orchestrator] Initialization complete ({agent_count} ready)", file=sys.stderr)
-
-    async def create_asset(self, request: AssetRequest) -> SessionState:
-        """
-        DEPRECATED: Use create_asset_pipeline() instead.
-
-        This method uses the handoff-based architecture which has been superseded
-        by the code-based pipeline with Coordinator agents (Phase 2 of Architecture
-        Optimization Plan).
-
-        The handoff pattern is problematic because:
-        1. Handoffs transfer control completely to sub-agents
-        2. Relies on LLM instruction-following for workflow
-        3. Cannot enforce mechanical guardrails
-
-        Use create_asset_pipeline() for:
-        - Deterministic Python-controlled workflow
-        - Coordinator agents for intelligent decisions
-        - Mechanical enforcement via hooks
-
-        Args:
-            request: Asset generation request parameters
-
-        Returns:
-            SessionState with final results
-        """
-        import warnings
-        warnings.warn(
-            "create_asset() is deprecated. Use create_asset_pipeline() instead. "
-            "The handoff-based architecture has been superseded by the code-based "
-            "pipeline with Coordinator agents (Phase 2).",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        if not self._initialized:
-            await self.initialize()
-
-        # Check budget before starting
-        if not self._budget_tracker.can_afford_evaluation():
-            raise RuntimeError(
-                f"Budget exhausted. Monthly limit: ${self._budget_tracker.monthly_limit}"
-            )
-
-        # Create session
-        session_id = generate_session_id(request.asset_name)
-        context = create_session_from_request(request, session_id)
-
-        # Build initial prompt
-        prompt = self._build_generation_prompt(request, context)
-
-        # Run orchestrator (autonomous iteration loop)
-        # gpt-5.2 with high reasoning effort needs more turns than default 10
-        # Using trace() for end-to-end observability across iterations
-        try:
-            with trace(f"VFX Asset: {request.asset_name}"):
-                result = await Runner.run(
-                    self._orchestrator,
-                    prompt,
-                    context=context,  # Typed SharedContext for RunContextWrapper access
-                    max_turns=25  # Increased for gpt-5.2 reasoning
-                )
-
-            # Parse and update session state from result
-            session = self._parse_result(result, context)
-
-        except Exception as e:
-            # Handle errors gracefully
-            context.session.status = SessionStatus.FAILED
-            context.session.current_issues.append(f"Orchestration error: {str(e)}")
-            session = context.session
-
-        # Save session state
-        self._persistence.save_session(session)
-
-        return session
 
     async def create_asset_pipeline(
         self,
@@ -4363,113 +3894,6 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
             resume_session_id=session_id,
             max_iterations_override=max_iterations_override,
         )
-
-    def _build_generation_prompt(
-        self,
-        request: AssetRequest,
-        context: SharedContext
-    ) -> str:
-        """Build the initial prompt for asset generation."""
-        return f"""Generate a VFX asset with the following specifications:
-
-## Request
-- Asset Name: {request.asset_name}
-- Effect Type: {request.effect_type.value}
-- Description: {request.description}
-
-## Parameters
-- Resolution: {request.resolution}
-- Frame Range: {request.frame_start} - {request.frame_end}
-- Quality Threshold: {request.quality_threshold}
-- Max Iterations: {request.max_iterations}
-
-## Reference Materials
-- Reference Image: {request.reference_path or "None provided"}
-- Semantic Query: {request.semantic_query or request.description}
-
-## Instructions
-1. Start by generating a script using the Script Writer
-2. Execute the script using the Executor
-3. Evaluate quality using the Quality Analyst
-4. If quality is below threshold, iterate with fixes
-5. Continue until quality threshold met or max iterations reached
-
-Session ID: {context.session.session_id}
-Current Budget Used: ${self._budget_tracker.get_spent():.2f} / ${self._budget_tracker.monthly_limit}
-
-Begin the asset generation process."""
-
-    def _build_resumption_prompt(self, context: SharedContext) -> str:
-        """Build the prompt for resuming a session."""
-        session = context.session
-        request = session.request
-
-        # Get recent history
-        recent_iterations = session.iterations[-3:] if session.iterations else []
-        history_summary = "\n".join([
-            f"  - Iteration {it.iteration}: score={it.score:.1f}, passed={it.passed}"
-            for it in recent_iterations
-        ])
-
-        return f"""Resume VFX asset generation session.
-
-## Session Info
-- Session ID: {session.session_id}
-- Asset Name: {request.asset_name}
-- Effect Type: {request.effect_type.value}
-
-## Progress
-- Current Iteration: {session.current_iteration}
-- Best Score: {session.best_score:.1f} (iteration {session.best_iteration})
-- Max Iterations: {request.max_iterations}
-
-## Recent History
-{history_summary or "  No iterations completed yet"}
-
-## Current State
-- Script Path: {session.current_script_path or "None"}
-- Current Issues: {', '.join(session.current_issues) or "None"}
-
-## Instructions
-Continue from where you left off. Review the current state and proceed
-with the next appropriate action.
-
-Current Budget Used: ${self._budget_tracker.get_spent():.2f} / ${self._budget_tracker.monthly_limit}
-
-Resume the asset generation process."""
-
-    def _parse_result(
-        self,
-        result: Any,
-        context: SharedContext
-    ) -> SessionState:
-        """Parse the orchestrator result and update session state."""
-        session = context.session
-
-        # Try to extract structured output
-        if hasattr(result, 'final_output'):
-            output = result.final_output
-
-            # Try to parse as JSON
-            if isinstance(output, str):
-                try:
-                    data = json.loads(output)
-                    if 'passed' in data:
-                        session.status = SessionStatus.PASSED if data['passed'] else SessionStatus.IN_PROGRESS
-                    if 'final_score' in data:
-                        session.best_score = max(session.best_score, data['final_score'])
-                    if 'final_render_path' in data:
-                        session.final_render_path = data['final_render_path']
-                except json.JSONDecodeError:
-                    pass
-
-        # Check for max iterations
-        if session.current_iteration >= session.request.max_iterations:
-            if session.status == SessionStatus.IN_PROGRESS:
-                session.status = SessionStatus.MAX_ITERATIONS
-
-        session.update_timestamp()
-        return session
 
     async def close(self) -> None:
         """Clean up resources.
