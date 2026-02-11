@@ -6,8 +6,8 @@ nest_asyncio>=1.5.0  # For async/sync bridging in MCP tool context
 
 # OpenAI Agents SDK (multi-agent orchestration)
 # IMPORTANT: Check https://github.com/openai/openai-agents-python for updates
-# v0.7.0 (2025-01-23): Nested handoffs now opt-in, MCPServerManager added
-openai-agents==0.7.0
+# v0.8.3 (2025-02-10): Annotated Field support, ToolContext includes agent, tracing fixes
+openai-agents==0.8.3
 
 # Pydantic for structured data models
 pydantic>=2.0.0

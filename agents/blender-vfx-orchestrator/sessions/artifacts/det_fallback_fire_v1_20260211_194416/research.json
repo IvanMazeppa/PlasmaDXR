@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Drive the Mantaflow fire setup through the Python API using the fluid settings types exposed in `bpy.types`, in particular `bpy.types.FluidDomainSettings` (domain-level controls) and `bpy.types.FluidFlowSettings` (flow/emitter-level controls). The Blender 5.0 Python reference indicates that these settings include domain noise controls (e.g., `noise_strength`, `noise_time_anim`) and flow noise inputs (e.g., `noise_texture`), which can be used as the primary levers for flame flicker/variation while keeping the sim configuration deterministic and scriptable. If extending/packaging the setup as an add-on or reusable tool, follow the documented registration/access pattern for custom classes via `bpy.types`/`bpy.utils.register_class()`.",
+  "key_parameters": {
+    "FluidDomainSettings.noise_strength": "Documented as a `bpy.types.FluidDomainSettings` attribute (set to control strength of domain noise; exact numeric value not specified in retrieved reference chunk).",
+    "FluidDomainSettings.noise_time_anim": "Documented as a `bpy.types.FluidDomainSettings` attribute (use to animate/time-vary the noise for flicker; exact usage/value not specified in retrieved reference chunk).",
+    "FluidDomainSettings.flip_ratio": "Documented as a `bpy.types.FluidDomainSettings` attribute (available for domain behavior control; details not present in retrieved chunk).",
+    "FluidFlowSettings.noise_texture": "Documented as a `bpy.types.FluidFlowSettings` attribute (use a texture input to modulate/noise the flow; details not present in retrieved chunk)."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.utils.register_class"
+  ],
+  "warnings": [
+    "The documentation search results retrieved here are largely index-level entries (attribute/name references) rather than the full Mantaflow/fire manual pages, so specific fire-simulation properties (e.g., reaction/burning parameters) are not confirmed in these retrieved chunks and should be validated against the Mantaflow domain/flow/fire sections in the Blender Manual/Python API pages."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_u_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-11T19:45:13.597394"
+}

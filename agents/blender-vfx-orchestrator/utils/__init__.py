@@ -32,6 +32,12 @@ from .artifact_manager import (
     ScorecardArtifact,
     ManifestArtifact,
 )
+from .quality_parameter_map import (
+    ParameterSuggestion,
+    map_quality_issues_to_params,
+    merge_suggestions_to_modifications,
+    format_suggestions_for_prompt,
+)
 
 __all__ = [
     "MCPConnectionPool",
@@ -58,4 +64,9 @@ __all__ = [
     "IterationArtifact",
     "ScorecardArtifact",
     "ManifestArtifact",
+    # Quality Parameter Map (Deterministic Fallback)
+    "ParameterSuggestion",
+    "map_quality_issues_to_params",
+    "merge_suggestions_to_modifications",
+    "format_suggestions_for_prompt",
 ]

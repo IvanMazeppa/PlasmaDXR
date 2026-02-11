@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Use Mantaflow via the Blender Python API by configuring a gas fluid domain through `bpy.types.FluidDomainSettings`, driving emission/behavior with flow objects configured via `bpy.types.FluidFlowSettings`, then baking the simulation/cache (e.g., using fluid bake operators) before shading/rendering in Cycles.",
+  "key_parameters": {
+    "domain_settings_attributes_seen_in_docs": [
+      "noise_strength",
+      "noise_time_anim",
+      "flip_ratio"
+    ],
+    "flow_settings_attributes_seen_in_docs": [
+      "noise_texture"
+    ],
+    "notes_from_docs_context": [
+      "`bpy.types.FluidDomainSettings` and `bpy.types.FluidFlowSettings` are the core API entry points referenced by the Blender 5.0 Python reference indexes for fluid simulation setup.",
+      "Noise-related settings (`noise_strength`, `noise_time_anim`, and `noise_texture`) are explicitly indexed for fluid settings and are the primary documented levers visible from the retrieved references for adding time-varying detail to the sim."
+    ]
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md"
+  ],
+  "timestamp": "2026-02-06T23:26:10.719052"
+}

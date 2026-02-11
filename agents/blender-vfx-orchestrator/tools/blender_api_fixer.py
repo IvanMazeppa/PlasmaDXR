@@ -264,6 +264,30 @@ while len(\1) > 1:
         r".velocity_factor =",
         "velocity_multi → velocity_factor (FluidFlowSettings)"
     ),
+    # LLM HALLUCINATION: FluidDomainSettings.reaction_speed does NOT exist in Blender 5.0
+    # The correct attribute is burning_rate (float 0.0-4.0, default 0.75)
+    (
+        r"\.reaction_speed\s*=",
+        r".burning_rate =",
+        "reaction_speed → burning_rate (FluidDomainSettings)"
+    ),
+    # LLM HALLUCINATION: fire_reaction_speed also does NOT exist
+    (
+        r"\.fire_reaction_speed\s*=",
+        r".burning_rate =",
+        "fire_reaction_speed → burning_rate (FluidDomainSettings)"
+    ),
+    # String key variants for rna_set / set_if_exists helpers
+    (
+        r"['\"]reaction_speed['\"]",
+        r"'burning_rate'",
+        "reaction_speed key → burning_rate"
+    ),
+    (
+        r"['\"]fire_reaction_speed['\"]",
+        r"'burning_rate'",
+        "fire_reaction_speed key → burning_rate"
+    ),
     # Type fix: noise_scale must be int, not float
     # Match patterns like: noise_scale = 1.0, noise_scale = 2.0, etc.
     (

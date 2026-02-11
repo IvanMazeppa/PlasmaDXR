@@ -110,6 +110,7 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `use_dissolve_smoke_log` | bool | Logarithmic dissolve |
 | `dissolve_speed` | int | Dissolve speed value |
 | `use_adaptive_domain` | bool | NOT "adaptive_domain" |
+| `burning_rate` | float | Fire reaction speed (NOT reaction_speed!) 0.0-4.0, default 0.75 |
 | `cache_type` | enum | 'MODULAR', 'ALL', etc. |
 | `cache_directory` | str | Absolute path required |
 
@@ -140,6 +141,8 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `timesteps_per_frame` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
 | `timesteps_maximum` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
 | `time_scale` | `timesteps_max` or `cfl_condition` | HALLUCINATED (2026-01-25) |
+| `reaction_speed` | `burning_rate` | HALLUCINATED (2026-02-06) |
+| `fire_reaction_speed` | `burning_rate` | HALLUCINATED (2026-02-06) |
 
 ### TYPE REQUIREMENTS - CORRECT TYPES
 | Attribute | Type | Common Mistake |

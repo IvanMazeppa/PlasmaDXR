@@ -291,6 +291,13 @@ from tools.knowledge_distillation_tools import (
 # Script modification for direct parameter changes
 from tools.script_generator_tools import _modify_script_impl
 
+# Deterministic quality-to-parameter mapping (zero LLM fallback)
+from utils.quality_parameter_map import (
+    map_quality_issues_to_params,
+    merge_suggestions_to_modifications,
+    format_suggestions_for_prompt,
+)
+
 # Dynamic instruction wrappers for standalone agents (SDK dynamic instructions pattern)
 from tools.dynamic_instructions import (
     dynamic_script_writer_standalone_instructions,
@@ -986,6 +993,14 @@ Research documentation, patterns, and APIs to find the optimal starting approach
         artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
         iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
 
+        # Generate deterministic parameter suggestions for Learning Agent
+        _learn_det_suggestions = map_quality_issues_to_params(
+            issues=quality.issues,
+            primary_issue=quality.primary_issue,
+            effect_type=request.effect_type.value if hasattr(request.effect_type, 'value') else str(request.effect_type),
+        )
+        _learn_det_section = format_suggestions_for_prompt(_learn_det_suggestions)
+
         learn_prompt = f"""Record the experiment results and suggest fixes.
 
 ## Current Iteration
@@ -1006,12 +1021,15 @@ Scorecard Artifact: {scorecard_artifact_path}
 2. Same issue {learn_ctx.get('consecutive_same_issue', 0)} times in a row
 3. Techniques tried: {', '.join(learn_ctx.get('techniques_tried', []))}
 
+{_learn_det_section}
+
 ## CRITICAL: Before Suggesting Modifications
 FIRST call analyze_script_modifiable_patterns("{script.script_path}") to understand:
 - What shader_node_inputs exist (these control visual appearance!)
 - What Config class values exist (and if they're used)
 - What settings assignments exist
 Then provide parameter_modifications using EXACT identifiers from the analysis.
+Refine the deterministic suggestions above using the ACTUAL identifiers you find in the script.
 
 ## Your Output
 - If score improved significantly (delta >= 5), extract the pattern
@@ -2572,6 +2590,43 @@ Generate a complete, validated script using the selected technique. Return the s
                             else:
                                 print(f"[Pipeline] Direct modification FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
 
+                        # ====== DETERMINISTIC FALLBACK (zero LLM cost) ======
+                        # If neither pattern application nor Learning Agent provided params,
+                        # use keyword matching on quality issues to suggest concrete changes.
+                        if not direct_modification_success and quality and previous_script and previous_script.script_path:
+                            det_suggestions = map_quality_issues_to_params(
+                                issues=quality.issues,
+                                primary_issue=quality.primary_issue,
+                                effect_type=request.effect_type.value,
+                            )
+                            if det_suggestions:
+                                det_params = merge_suggestions_to_modifications(det_suggestions)
+                                if det_params:
+                                    print(f"[Pipeline] DETERMINISTIC FALLBACK: {len(det_params)} params from keyword matching", file=sys.stderr)
+                                    print(f"[Pipeline] Deterministic params: {det_params}", file=sys.stderr)
+
+                                    output_name = f"{request.asset_name}_iter{iteration}_detfix"
+                                    modify_result_json = _modify_script_impl(
+                                        script_path=previous_script.script_path,
+                                        modifications=det_params,
+                                        output_name=output_name,
+                                    )
+                                    modify_result = json.loads(modify_result_json)
+
+                                    if modify_result.get("success") and modify_result.get("modified_path"):
+                                        matched_count = len(modify_result.get("changes_made", []))
+                                        print(f"[Pipeline] Deterministic fallback SUCCESS: {modify_result['modified_path']} ({matched_count} changes)", file=sys.stderr)
+                                        script = ScriptOutput(
+                                            script_path=modify_result["modified_path"],
+                                            technique_used=previous_script.technique_used + " (det-fallback)",
+                                            parameters_set=det_params,
+                                            validation_passed=True,
+                                            validation_errors=[],
+                                        )
+                                        direct_modification_success = True
+                                    else:
+                                        print(f"[Pipeline] Deterministic fallback: no params matched script targets", file=sys.stderr)
+
                         # If no direct modifications (or they failed), consult Modification Coordinator
                         if not direct_modification_success:
                             # ====== PHASE 1.1: MODIFICATION STRATEGY (Coordinator Decision) ======
@@ -2581,6 +2636,14 @@ Generate a complete, validated script using the selected technique. Return the s
                             mod_decision: Optional[ModificationDecision] = None
                             ctx = session_mgr.get_context_for_agents()
                             iteration_summary = session_mgr.get_iteration_summary()
+
+                            # Build deterministic suggestions section for coordinator prompt
+                            _coord_det_suggestions = map_quality_issues_to_params(
+                                issues=quality.issues if quality else [],
+                                primary_issue=quality.primary_issue if quality else None,
+                                effect_type=request.effect_type.value,
+                            )
+                            _coord_det_section = format_suggestions_for_prompt(_coord_det_suggestions)
 
                             mod_prompt = f"""Decide modification strategy for iteration {iteration}.
 
@@ -2594,6 +2657,8 @@ Generate a complete, validated script using the selected technique. Return the s
 {quality.vision_assessment if quality else 'No assessment'}
 Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'}
 
+{_coord_det_section}
+
 ## Iteration History
 {iteration_summary}
 
@@ -2604,7 +2669,7 @@ Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'
 {', '.join(session.alternative_approaches[:3]) if session.alternative_approaches else 'None'}
 
 Decide: modify_params, modify_code, OR switch_technique.
-- modify_params: Provide CONCRETE parameter values for tuning issues.
+- modify_params: Provide CONCRETE parameter values for tuning issues. Use the deterministic suggestions above as starting points.
 - modify_code: Describe structural changes needed (missing objects, wrong setup, broken logic).
 - switch_technique: When the current approach is fundamentally broken after 3+ attempts."""
 
@@ -3578,6 +3643,14 @@ Provide detailed feedback for improvement."""
                         artifact_paths_section = artifact_mgr.get_artifact_paths_summary()
                         iteration_summary = artifact_mgr.get_iteration_summary(max_iterations=3)
 
+                        # Generate deterministic parameter suggestions for Learning Agent (resume path)
+                        _learn_det_suggestions_r = map_quality_issues_to_params(
+                            issues=quality.issues,
+                            primary_issue=quality.primary_issue,
+                            effect_type=request.effect_type.value if hasattr(request.effect_type, 'value') else str(request.effect_type),
+                        )
+                        _learn_det_section_r = format_suggestions_for_prompt(_learn_det_suggestions_r)
+
                         learn_prompt = f"""Record the experiment results and suggest fixes.
 
 ## Current Iteration
@@ -3598,12 +3671,15 @@ Scorecard Artifact: {scorecard_artifact_path}
 2. Same issue {learn_ctx.get('consecutive_same_issue', 0)} times in a row
 3. Techniques tried: {', '.join(learn_ctx.get('techniques_tried', []))}
 
+{_learn_det_section_r}
+
 ## CRITICAL: Before Suggesting Modifications
 FIRST call analyze_script_modifiable_patterns("{script.script_path}") to understand:
 - What shader_node_inputs exist (these control visual appearance!)
 - What Config class values exist (and if they're used)
 - What settings assignments exist
 Then provide parameter_modifications using EXACT identifiers from the analysis.
+Refine the deterministic suggestions above using the ACTUAL identifiers you find in the script.
 
 ## Your Output
 - If score improved significantly (delta >= 5), extract the pattern
