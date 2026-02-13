@@ -1,0 +1,35 @@
+{
+  "recommended_approach": "Use Mantaflow via the RNA settings objects exposed in the Blender 5.0 Python API: configure a Liquid simulation through `bpy.types.FluidDomainSettings` (e.g., attributes indexed in the API such as `flip_ratio`, `noise_strength`, `noise_time_anim`) and drive emission/flow behavior via `bpy.types.FluidFlowSettings` (e.g., `noise_texture`). This establishes the core water simulation settings in a way that can be baked and iterated through Blender\u2019s fluid system operators/workflow.",
+  "key_parameters": {
+    "world_background_color_rgba": [
+      0.02,
+      0.025,
+      0.035,
+      1.0
+    ],
+    "world_background_strength": 0.4,
+    "water_bsdf_base_color_rgba": [
+      0.65,
+      0.75,
+      0.9,
+      1.0
+    ],
+    "water_bsdf_roughness": 0.03
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-12T04:00:29.408362"
+}

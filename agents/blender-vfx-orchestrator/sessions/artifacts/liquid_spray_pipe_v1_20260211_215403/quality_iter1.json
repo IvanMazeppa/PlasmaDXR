@@ -1,0 +1,27 @@
+{
+  "overall_score": 38.0,
+  "passed": false,
+  "primary_issue": "The render does not read as water at all (no visible liquid jet/splash/puddle). It looks like a misconfigured simulation/render (volume/smoke-like banding) or a missing liquid surface mesh/secondary particles.",
+  "issues": [
+    "Critical: No recognizable water spray, splash impact, or growing puddle visible at frame 35.",
+    "Critical: Material/lighting behavior is not water-like (missing clear transmission/refraction + strong specular highlights).",
+    "High: Strong banding/striping/ghosting artifacts across the main element; reads like volume stepping/slicing or duplicated layers rather than fluid surface detail.",
+    "High: Lack of microdetail\u2014no droplets, breakup, or surface turbulence; overall too smooth/abstract.",
+    "Medium: Composition/framing under-sells the action; too much empty frame and the main effect doesn\u2019t clearly connect pipe breach to floor impact.",
+    "Medium: Scene grounding is weak (little/no readable contact shadowing/wet sheen interaction on the floor)."
+  ],
+  "suggestions": [
+    "Simulation correctness (highest priority): ensure the fluid domain is truly LIQUID and that the liquid surface mesh is enabled + baked. Verify you are rendering the liquid mesh, not the domain bounds/volume cache. If your cache output is VDB \u201cfluid_data_####.vdb\u201d, you may be baking a gas/smoke cache\u2014fix domain_type and rebake from scratch.",
+    "Enable/boost secondary particles for spray: turn on Spray/Foam/Mist (as needed), and render them with instanced tiny spheres or a dedicated droplet material; increase particle amount gradually (start low, then scale up).",
+    "Emitter shaping: use plane-init inflow but add breakup (inflow noise / slight angular spread) so the fan becomes droplets after a short distance; keep velocity in the 2\u20133 m/s range but add variation so it doesn\u2019t form a uniform sheet.",
+    "Shading: use a physically plausible water shader (Transmission=1, IOR\u22481.333, very low roughness ~0.01\u20130.03). Add subtle volume absorption to avoid milky/flat appearance and ensure enough refraction/transmission bounces.",
+    "Lighting: add a strong, cool rim/key light or HDRI so the spray catches sharp specular highlights (the \u201csilvery-white\u201d look). Increase contrast/exposure to make droplets readable against the dim basement.",
+    "Kill banding: if any volume is being rendered, reduce volume step rate / increase resolution. Prefer surface mesh for liquid; output 16/32-bit (EXR) during lookdev to avoid posterization.",
+    "Grounding: increase floor wetness response\u2014ensure puddle is thin and glossy with clear reflections; add contact shadows/AO so water reads as touching the floor."
+  ],
+  "vision_assessment": "The image does not depict a believable basement pipe rupture water event. Instead of a fan-shaped jet with visible droplets, splash crown, and a reflective puddle on the concrete, the render shows an abstract, semi-opaque cylindrical form with repeated horizontal/parallel banding and low-contrast shading. The expected water cues\u2014strong specular glints, clear transmission/refraction, droplet breakup, and wet-floor reflections\u2014are largely absent, so the shot fails both effect readability and realism.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/run_outputs/liquid_spray_pipe_v1_errfix_20260211/liquid_spray_pipe_v1.png",
+  "iteration": 1,
+  "timestamp": "2026-02-11T22:09:20.228472"
+}

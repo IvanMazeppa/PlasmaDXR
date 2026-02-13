@@ -1,0 +1,30 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s liquid system by configuring a Fluid Domain via `bpy.types.FluidDomainSettings`, driving the continuous spray with a Flow (inflow) object configured via `bpy.types.FluidFlowSettings` (including texture-driven breakup via its `noise_texture`), and then baking the simulation cache with the fluid baking operators (e.g., `bpy.ops.fluid.bake`).",
+  "key_parameters": {
+    "domain_settings": {
+      "flip_ratio": "Use the `bpy.types.FluidDomainSettings.flip_ratio` setting (leave at default initially; this parameter exists in the API and is the primary liquid FLIP/PIC blending control).",
+      "noise_strength": "`bpy.types.FluidDomainSettings.noise_strength` is available (default initially).",
+      "noise_time_anim": "`bpy.types.FluidDomainSettings.noise_time_anim` is available (default initially)."
+    },
+    "flow_settings": {
+      "noise_texture": "`bpy.types.FluidFlowSettings.noise_texture` can be used to assign a texture to modulate/break up the inflow emission."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.fluid.bake"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-11T23:48:44.559642"
+}

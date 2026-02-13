@@ -1,0 +1,34 @@
+{
+  "recommended_approach": "Drive the water VFX as a Mantaflow liquid simulation by configuring the simulation \u201cDomain\u201d object through `bpy.types.FluidDomainSettings`, and configuring emitter/flow behavior through `bpy.types.FluidFlowSettings` (noted in the API index as having fluid-related attributes such as `noise_texture`). The docs material returned by search is largely API-index level, but it does confirm the relevant Blender RNA types to target for domain/flow setup and exposes domain/flow tunables (e.g., `flip_ratio`, `noise_strength`, `noise_time_anim`, and flow `noise_texture`) that are part of the fluid simulation settings surface in Blender\u2019s Python API.",
+  "key_parameters": {
+    "domain_settings_attributes_found_in_docs": [
+      "flip_ratio",
+      "noise_strength",
+      "noise_time_anim"
+    ],
+    "flow_settings_attributes_found_in_docs": [
+      "noise_texture"
+    ],
+    "note": "No Blender Manual/Mantaflow liquid how-to pages were returned by the doc bundle in this run; only API index entries confirming the relevant RNA types/attributes."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.Struct",
+    "bpy.utils"
+  ],
+  "warnings": [
+    "The documentation search results returned mostly API index pages (genindex) rather than Mantaflow liquid workflow docs; expect to rely on RNA introspection (`dir()` / UI-to-RNA) to discover additional required properties beyond the few attributes surfaced here."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-12T00:32:27.870238"
+}

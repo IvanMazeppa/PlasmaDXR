@@ -30,6 +30,13 @@ from typing import Dict, List, Tuple, Optional, Set
 # Known-bad patterns and their fixes for Blender 5.0
 # Format: (pattern_regex, replacement, description)
 BLENDER_50_FIXES: List[Tuple[str, str, str]] = [
+    # ShaderNodeTexMusgrave removed in Blender 4.0+ → use ShaderNodeTexNoise
+    (
+        r"ShaderNodeTexMusgrave",
+        r"ShaderNodeTexNoise",
+        "ShaderNodeTexMusgrave → ShaderNodeTexNoise (Musgrave removed in 4.0)"
+    ),
+
     # ColorRamp.elements.clear() was removed in Blender 5.0
     (
         r"(\w+\.color_ramp\.elements)\.clear\(\)",
@@ -114,6 +121,24 @@ while len(\1) > 1:
         "World Output inputs['World'] → inputs['Surface'] (Blender 5.0)"
     ),
 
+    # Brick Texture node: LLMs hallucinate 'Mortar Color' but correct name is 'Mortar'
+    (
+        r"\.inputs\[['\"]Mortar Color['\"]",
+        r".inputs['Mortar'",
+        "Brick Texture inputs['Mortar Color'] → inputs['Mortar']"
+    ),
+    # Brick Texture node: LLMs hallucinate 'Brick Color 1/2' but correct is 'Color 1/2'
+    (
+        r"\.inputs\[['\"]Brick Color 1['\"]",
+        r".inputs['Color 1'",
+        "Brick Texture inputs['Brick Color 1'] → inputs['Color 1']"
+    ),
+    (
+        r"\.inputs\[['\"]Brick Color 2['\"]",
+        r".inputs['Color 2'",
+        "Brick Texture inputs['Brick Color 2'] → inputs['Color 2']"
+    ),
+
     # Cycles samples path changes
     (
         r"scene\.cycles\.progressive\s*=",
@@ -145,6 +170,13 @@ while len(\1) > 1:
         r"(?m)^.*\.use_auto_smooth\s*=\s*.*$",
         r"# Blender 4.1+: use_auto_smooth removed (handled automatically)",
         "use_auto_smooth removed"
+    ),
+
+    # FluidFlowSettings.sampling_substeps does NOT EXIST - correct is subframes
+    (
+        r"\.sampling_substeps\s*=",
+        r".subframes =",
+        "sampling_substeps → subframes (FluidFlowSettings)"
     ),
 
     # FluidDomainSettings.use_dissolve does NOT EXIST - correct is use_dissolve_smoke
@@ -737,9 +769,10 @@ def _fix_mix_node_sockets(content: str) -> tuple[str, bool]:
         return content, False
 
     # Find all variable names assigned as ShaderNodeMix
+    # Match any node tree variable (nodes, mat_nodes, copper_nodes, etc.)
     mix_vars = set()
     for match in re.finditer(
-        r"(\w+)\s*=\s*nodes\.new\(['\"]ShaderNodeMix['\"]\)",
+        r"(\w+)\s*=\s*\w+\.new\(['\"]ShaderNodeMix['\"]\)",
         content
     ):
         mix_vars.add(match.group(1))
@@ -751,14 +784,20 @@ def _fix_mix_node_sockets(content: str) -> tuple[str, bool]:
     for var in mix_vars:
         escaped = re.escape(var)
 
-        # Inject data_type='RGBA' after the node creation line if not already set
-        dtype_pattern = rf"({escaped}\s*=\s*nodes\.new\(['\"]ShaderNodeMix['\"]\)[^\n]*\n)"
-        dtype_check = rf"{escaped}\.data_type"
-        if not re.search(dtype_check, content):
+        # Inject data_type='RGBA' after EVERY node creation line for this var
+        # (scripts may create multiple mix nodes with the same variable name in different functions)
+        dtype_pattern = rf"([ \t]*{escaped}\s*=\s*\w+\.new\(['\"]ShaderNodeMix['\"]\)[^\n]*\n)"
+        if re.search(dtype_pattern, content):
             def _add_dtype(m):
-                return m.group(1) + f"    {var}.data_type = 'RGBA'  # MixRGB was always color mode\n"
-            content = re.sub(dtype_pattern, _add_dtype, content, count=1)
-            modified = True
+                # Match the indent of the creation line
+                line_text = m.group(1)
+                indent = re.match(r'^(\s*)', line_text).group(1)
+                return line_text + f"{indent}{var}.data_type = 'RGBA'  # MixRGB was always color mode\n"
+            # Replace ALL occurrences (count=0), not just the first
+            new_content = re.sub(dtype_pattern, _add_dtype, content)
+            if new_content != content:
+                content = new_content
+                modified = True
 
         # Fac → Factor
         pattern_fac = rf"({escaped}\.inputs\[)['\"]Fac['\"]\]"
@@ -956,8 +995,14 @@ def _inject_volume_material_setup(content: str) -> tuple[str, bool]:
 
     # Check if domain is LIQUID — liquid domains render via mesh surface, not volume shader.
     # Volume material injection would overwrite the correct water/glass material.
+    # Match both direct assignment (ds.domain_type = 'LIQUID') and safe_set patterns
+    # (safe_set(ds, 'domain_type', 'LIQUID', ...)).
     is_liquid_domain = re.search(
-        r"domain_type\s*[=,]\s*['\"]LIQUID['\"]",
+        r"domain_type\s*[=,]\s*['\"]LIQUID['\"]|"
+        r"['\"]domain_type['\"]\s*,\s*['\"]LIQUID['\"]|"
+        r"Domain\s*Type['\"]?\s*,\s*['\"]Liquid['\"]|"
+        r"set_enum_by_predicate\([^)]*['\"]LIQUID['\"]|"
+        r"domain_settings[^)]*['\"]LIQUID['\"]",
         content,
         re.IGNORECASE
     ) is not None
@@ -1026,6 +1071,41 @@ def _inject_plane_init_for_liquid_flow(content: str) -> tuple[str, bool]:
     insert = f"\n{indent}{var_name}.use_plane_init = True  # Planar liquid emitter\n"
     content = content[:match.end()] + insert + content[match.end():]
     return content, True
+
+
+def _fix_particle_radius_value(content: str) -> tuple[str, bool]:
+    """
+    Fix absurdly small particle_radius values on Mantaflow liquid domains.
+
+    The LLM often hallucinates real-world units (e.g. 0.0025 for 2.5mm) when
+    particle_radius is measured in cell sizes (default 1.0, range 0-10).
+    Values < 0.1 produce empty mesh output. Fix to 1.0 (default).
+    """
+    # Match: safe_set(ds, 'particle_radius', 0.0025, ...) or ds.particle_radius = 0.0025
+    pattern = r"((?:safe_set\s*\([^,]+,\s*['\"]particle_radius['\"],\s*)(\d*\.?\d+)|(\.particle_radius\s*=\s*)(\d*\.?\d+))"
+    modified = False
+
+    def _check_and_fix(m):
+        nonlocal modified
+        full = m.group(0)
+        # Extract numeric value from either pattern
+        val_str = m.group(2) or m.group(4)
+        try:
+            val = float(val_str)
+        except (TypeError, ValueError):
+            return full
+        if val < 0.1:
+            modified = True
+            return full.replace(val_str, "1.0")
+        return full
+
+    new_content = re.sub(pattern, _check_and_fix, content)
+    if modified:
+        # Add a comment explaining the fix
+        new_content = new_content.replace(
+            "particle_radius", "particle_radius"  # No-op to avoid double comments
+        )
+    return new_content, modified
 
 
 def _inject_camera_scale_fix(content: str) -> tuple[str, bool]:
@@ -1398,6 +1478,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     original_content = content
     fixes_applied = []
 
+    # Fix mixed tabs/spaces globally (common LLM issue)
+    if '\t' in content:
+        content = content.replace('\t', '    ')
+        fixes_applied.append("Replaced tabs with spaces")
+
     for pattern, replacement, description in BLENDER_50_FIXES:
         if re.search(pattern, content):
             content = re.sub(pattern, replacement, content)
@@ -1467,6 +1552,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     if plane_init_fixed:
         fixes_applied.append("Enabled use_plane_init for liquid flow emitter")
 
+    # P2 FIX: Fix hallucinated particle_radius values (must be in cell sizes, not real-world)
+    content, particle_radius_fixed = _fix_particle_radius_value(content)
+    if particle_radius_fixed:
+        fixes_applied.append("Fixed particle_radius: value < 0.1 is nonsensical (reset to 1.0)")
+
     # P0 FIX: Camera scale normalization (look_at matrix corruption causes black renders)
     content, camera_fixed = _inject_camera_scale_fix(content)
     if camera_fixed:
@@ -1476,6 +1566,33 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, stills_fixed = _inject_animation_to_stills(content)
     if stills_fixed:
         fixes_applied.append("Replaced animation=True with representative still renders (headless fix)")
+
+    # Post-fix: Python syntax validation (catches errors introduced by fixers)
+    # Loop to handle cascading indentation errors (fix one → new error on next line → repeat)
+    for _syntax_pass in range(10):  # max 10 passes
+        try:
+            compile(content, str(path), 'exec')
+            break  # All good
+        except SyntaxError as e:
+            if 'unexpected indent' in str(e.msg) and e.lineno:
+                lines = content.split('\n')
+                idx = e.lineno - 1  # 0-indexed
+                if 0 <= idx < len(lines):
+                    stripped = lines[idx].lstrip()
+                    # Find indent of previous non-blank line
+                    prev_indent = 0
+                    for j in range(idx - 1, -1, -1):
+                        if lines[j].strip():
+                            prev_indent = len(lines[j]) - len(lines[j].lstrip())
+                            break
+                    lines[idx] = ' ' * prev_indent + stripped
+                    content = '\n'.join(lines)
+                    if _syntax_pass == 0:
+                        fixes_applied.append(f"Fixed indentation error at line {e.lineno}")
+                    continue
+            # Non-indentation error or can't fix — warn and stop
+            fixes_applied.append(f"WARNING: Unfixable syntax error at line {e.lineno}: {e.msg}")
+            break
 
     if fixes_applied:
         # Write fixed content back

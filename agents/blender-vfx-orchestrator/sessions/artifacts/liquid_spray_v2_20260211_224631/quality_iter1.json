@@ -1,0 +1,27 @@
+{
+  "overall_score": 26.0,
+  "passed": false,
+  "primary_issue": "No visible water effect (jet/spray/puddle) in the render; the frame is also heavily overexposed/clipped, destroying scene readability.",
+  "issues": [
+    "CRITICAL: Water simulation result is not visible at all (no jet, droplets, splashes, or puddle by frame 35).",
+    "CRITICAL: Severe overexposure/highlight clipping across most of the frame; contrast is effectively gone.",
+    "HIGH: Scene context is missing/indistinct (floor and wall don\u2019t read as concrete; the shot looks like bright void + pale cylinders).",
+    "HIGH: Materials are not selling the brief (copper reads washed out; water refraction/specular cues are absent).",
+    "MEDIUM: Composition doesn\u2019t communicate the action (breach point/impact point not clearly readable; spray angle can\u2019t be verified).",
+    "MEDIUM: Lack of secondary detail (no mist/spray breakup, no wet reflections around impact zone)."
+  ],
+  "suggestions": [
+    "Make the liquid renderable: do NOT set the liquid domain object to `hide_render=True` if it is the object that displays the liquid mesh. If you need the *container* hidden, hide only viewport display (wire) but keep render enabled for the liquid surface.",
+    "Ensure liquid meshing is actually generated: verify Domain \u25b8 Liquid \u25b8 Mesh is enabled and that the cache contains a mesh/surface output (not just fluid_data VDB). If only VDB data exists, you may be baking data but not the mesh pass.",
+    "Fix exposure first (before tweaking sim): reduce key/fill/rim light energies substantially (e.g., area key from ~1200 down to ~150\u2013300 for that size), and/or set Color Management exposure to around -2 to -3 until midtones return. Keep Filmic and avoid crushing with bloom.",
+    "Rebuild water shading once visibility is restored: use a dielectric water shader (IOR\u22481.333, Transmission=1.0, very low roughness 0.02\u20130.06) and add slight volume absorption (very subtle blue/cyan, scaled to meters) so thickness reads.",
+    "Add readable droplet/spray breakup: enable/raise liquid secondary particles (spray/foam/bubbles) and light them with a rim/key so droplets catch specular hits; add motion blur if droplets are fast.",
+    "Make the environment read: use concrete textures (albedo/roughness/normal) and keep the basement world dim; then rely on a strong directional/key highlight to create \u2018silvery\u2019 water glints. Add localized wetness around the impact zone (shader mix driven by proximity or a painted mask as a first pass).",
+    "Camera/framing: nudge the camera so the rupture point, spray cone, and the floor impact are all clearly in frame (your brief depends on seeing both the breach and the puddle growth)."
+  ],
+  "vision_assessment": "The frame does not meet the intended \u2018ruptured pipe spraying water\u2019 brief. Two cylindrical pipe forms are visible, but the image is extremely washed out/overexposed, and there is no readable liquid jet, spray mist, impact splash, or puddle on the floor. Because highlights are clipped to near-white, material identity (copper vs concrete vs water) is largely lost and the scene reads as pale geometry on a bright background rather than an industrial basement emergency shot. Overall this is a major miss on both effect readability and render/lighting control.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/run_002/liquid_spray_v2.png",
+  "iteration": 1,
+  "timestamp": "2026-02-11T23:15:47.639653"
+}

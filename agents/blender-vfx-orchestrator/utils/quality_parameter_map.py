@@ -117,6 +117,41 @@ QUALITY_ISSUE_MAP: List[dict] = [
         "params": {"noise_scale": 2.5, "vorticity": 1.0},
         "explanation": "Increase noise scale and vorticity for more turbulent, detailed volumes",
     },
+    # --- Liquid-specific issues ---
+    {
+        "keywords": ["coarse", "faceted", "bead-like", "beaded", "chunky stream", "low-res fluid",
+                      "discretized", "stacked blobs", "chunky", "blobby", "stepped",
+                      "instanced blobs", "lobe", "quantized"],
+        "category": "liquid_resolution",
+        "params": {"resolution_max": 200, "sampling_substeps": 8, "particle_radius": 1.2, "use_mesh": True},
+        "explanation": "Increase liquid resolution and sampling substeps to reduce discretized/blobby jet appearance",
+    },
+    {
+        "keywords": ["no water", "no fluid", "fluid not visible", "no liquid", "empty fluid", "no splash"],
+        "category": "liquid_visibility",
+        "params": {"resolution_max": 128, "use_plane_init": True},
+        "explanation": "Ensure fluid source is active with sufficient resolution for visible output",
+    },
+    {
+        "keywords": ["no spray", "no foam", "missing particles", "no mist", "no droplets",
+                      "missing micro-droplets", "no micro", "no secondary"],
+        "category": "liquid_particles",
+        "params": {"use_spray_particles": True, "use_foam_particles": True, "use_bubble_particles": True},
+        "explanation": "Enable secondary particle types (spray, foam, bubbles) for realistic liquid",
+    },
+    {
+        "keywords": ["sharp edges", "jagged", "staircase", "aliased mesh", "mesh artifacts"],
+        "category": "liquid_mesh",
+        "params": {"mesh_concavity_upper": 3.5, "mesh_concavity_lower": 1.0, "mesh_particle_radius": 1.5},
+        "explanation": "Smooth liquid mesh by adjusting concavity and particle radius settings",
+    },
+    {
+        "keywords": ["weak splash", "no puddle", "puddle sheen", "flat puddle", "no reflection",
+                      "no refraction", "dull water"],
+        "category": "liquid_material",
+        "params": {"ior": 1.33, "roughness": 0.02, "light_energy": 200.0},
+        "explanation": "Improve liquid material (water IOR 1.33, low roughness for reflections, adequate lighting)",
+    },
 ]
 
 

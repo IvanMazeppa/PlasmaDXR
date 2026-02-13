@@ -259,6 +259,209 @@ bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
 
 **IMPORTANT**: Replace "explosion_v1" with the actual asset name from the request.
 
+## BANNED: ABSTRACTION LAYERS FOR BLENDER API
+DO NOT write helper functions that introspect Blender's RNA properties to find attributes
+dynamically (e.g. `set_enum_by_predicate`, `find_pointer_by_rna_identifier`, `set_int_by_keywords`).
+These wrappers SILENTLY SWALLOW ALL ERRORS and make debugging impossible.
+
+**USE DIRECT PROPERTY ACCESS:**
+```python
+# GOOD — direct, debuggable, API-fixer can validate:
+mod.fluid_type = 'DOMAIN'
+ds = mod.domain_settings
+ds.domain_type = 'LIQUID'
+ds.resolution_max = 96
+ds.cache_type = 'ALL'
+
+# BAD — silent failures, unfixable:
+set_enum_by_predicate(mod, 'DOMAIN', require_items={'DOMAIN'})
+find_pointer_by_rna_identifier(mod, 'FluidDomainSettings')
+set_int_by_keywords(ds, 96, 'resolution')
+```
+
+The API fixer can catch and correct `resolution_divisions` → `resolution_max` in direct code.
+It CANNOT inspect runtime RNA introspection wrappers. Direct = safe. Wrappers = silent failure.
+
+## CRITICAL: GUARD ALL MODIFIER CREATION
+`obj.modifiers.new(name, type)` returns None if the object is invalid or not a mesh.
+ALWAYS guard it:
+```python
+m = obj.modifiers.new(name='Fluid', type='FLUID')
+if m is None:
+    print(f"WARNING: Could not add Fluid modifier to {obj.name}")
+else:
+    m.fluid_type = 'EFFECTOR'
+```
+
+## SCENE DESIGN REQUIREMENTS (MANDATORY — THIS IS 40% OF YOUR JOB)
+Your script creates a COMPLETE, VISUALLY RICH SCENE. The environment, lighting, and
+atmosphere are what make the render look professional versus a tech demo.
+
+**MINIMUM SCENE COMPLEXITY:**
+- 8+ distinct objects (not counting domain/emitter/effectors)
+- 5+ distinct materials with procedural texture variation
+- 3+ lights (key, fill, accent/practical)
+- Environmental context: floor, walls/ceiling, props, practical objects
+
+A 400-line script with 50 lines of scene building = BAD RENDER.
+A 600-line script with 200 lines of scene building = GOOD RENDER.
+The prompt describes a LOCATION — build that location, not a grey void with one prop in it.
+
+### World Background (REQUIRED)
+- NEVER leave the default white/grey background. Set a dark or contextual world color.
+- For indoor scenes: near-black world (0.01-0.03 RGB), scene lit entirely by placed lights.
+- For outdoor scenes: dark blue/grey gradient or simple sky color.
+```python
+scene.world = bpy.data.worlds.new("World") if scene.world is None else scene.world
+scene.world.use_nodes = True
+bg = scene.world.node_tree.nodes.get('Background')
+if bg:
+    bg.inputs['Color'].default_value = (0.01, 0.01, 0.015, 1.0)  # Near-black
+    bg.inputs['Strength'].default_value = 0.1
+```
+
+### Lighting (MINIMUM 3 LIGHTS)
+Every scene MUST have at least 3 lights. 2-light scenes look flat.
+
+**CRITICAL — LIGHT ENERGY vs SCENE SCALE (Cycles):**
+Light energy in Watts drops off with inverse-square distance. For CLOSE-UP scenes
+(objects < 2m from camera), use LOW energy values. High values = washed-out white render.
+
+| Scene Scale        | Key Light Energy | Fill Light Energy | Notes                    |
+|--------------------|-----------------|-------------------|--------------------------|
+| Macro (<0.5m)      | 5-20 W          | 1-5 W             | Very close = very dim    |
+| Close-up (0.5-2m)  | 20-80 W         | 5-20 W            | Most VFX shots           |
+| Medium (2-5m)      | 100-400 W       | 25-100 W          | Room-scale scenes        |
+| Wide (5m+)         | 500-2000 W      | 100-500 W         | Large environments       |
+
+**Rule of thumb:** Fill energy = 15-25% of key energy. Rim/accent = 30-50% of key.
+**HARD RULE:** For close-up (<2m), key light MUST be <=80W. Going above this = white washout.
+
+**3-Point Lighting Pattern (use this as your baseline):**
+```python
+# Example for close-up scene (~0.6m from camera):
+# Key light — primary illumination, warm
+bpy.ops.object.light_add(type='AREA', location=(x, y, z))
+key = bpy.context.active_object
+key.data.energy = 50   # Close-up scene = low energy!
+key.data.size = 0.5    # Larger = softer shadows
+key.data.color = (1.0, 0.95, 0.9)  # Slightly warm
+
+# Fill light — prevents pitch-black shadows, cool
+bpy.ops.object.light_add(type='AREA', location=(x2, y2, z2))
+fill = bpy.context.active_object
+fill.data.energy = 12  # ~25% of key
+fill.data.size = 1.0   # Very soft
+fill.data.color = (0.85, 0.9, 1.0)  # Cool for contrast
+
+# Accent/rim light — edge definition, separates subject from background
+bpy.ops.object.light_add(type='AREA', location=(x3, y3, z3))
+rim = bpy.context.active_object
+rim.data.energy = 25  # ~50% of key
+rim.data.size = 0.3
+rim.data.color = (1.0, 0.92, 0.85)  # Warm
+```
+
+**Practical lights** (lights that are visible objects in the scene, like lamps, overhead
+fixtures, LED strips) add enormous realism. If the scene has a lamp or fixture, add a
+point/spot light at that location AND a mesh object representing the fixture.
+
+### Environmental Geometry (REQUIRED — THIS IS WHERE MOST SCRIPTS FAIL)
+If the prompt describes a location (basement, lab, kitchen, workshop), you MUST create
+a BELIEVABLE version of that space. A flat floor plane and a flat wall plane is NOT a room.
+
+**MINIMUM for indoor scenes:**
+- Floor with appropriate material (tile, wood, concrete)
+- 2-3 wall surfaces (back wall + at least one side wall)
+- Ceiling or overhead element (even partial)
+- The primary subject/object
+- 3-5 CONTEXT PROPS that belong in the described location
+
+**Context props are essential.** They tell the viewer WHERE this scene is. Examples:
+- Kitchen: cabinet boxes, countertop slab, sink basin, dish rack, bottles, towel
+- Bathroom: vanity box, mirror plane, towel bar cylinder, tile grid on walls
+- Basement: exposed beam, pipe runs, shelving unit, cardboard boxes, bare bulb fixture
+- Workshop: workbench slab, tool silhouettes, vise block, pegboard plane
+- Lab: bench surface, flask/beaker cylinders, monitor box, cable runs
+
+Props can be simple primitives (cubes, cylinders, planes) with good materials.
+A cube with wood material = cabinet. A cylinder with chrome material = pipe.
+Silhouette + material > geometric detail.
+
+### Material Variety (MINIMUM 5 MATERIALS)
+Use at least 5 distinct materials. Scenes with identical surfaces look artificial.
+
+**Every material should have procedural texture variation.** A flat color reads as plastic.
+```python
+# GOOD: Tile material with procedural grout lines
+def make_tile_material(name="Tiles", tile_color=(0.82, 0.78, 0.72, 1.0), grout_color=(0.3, 0.28, 0.25, 1.0)):
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    bsdf = nodes.get('Principled BSDF')
+
+    # Brick texture for tile grid
+    brick = nodes.new('ShaderNodeTexBrick')
+    brick.inputs['Color1'].default_value = tile_color
+    brick.inputs['Color2'].default_value = grout_color
+    brick.inputs['Mortar'].default_value = grout_color  # NOT 'Mortar Color' — that was removed
+    brick.inputs['Scale'].default_value = 8.0
+    brick.inputs['Mortar Size'].default_value = 0.02
+    links.new(brick.outputs['Color'], bsdf.inputs['Base Color'])
+    # Roughness variation from brick pattern
+    links.new(brick.outputs['Fac'], bsdf.inputs['Roughness'])
+    return mat
+
+# GOOD: Wood material with grain
+def make_wood_material(name="Wood", base_color=(0.35, 0.2, 0.1, 1.0)):
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    bsdf = nodes.get('Principled BSDF')
+
+    noise = nodes.new('ShaderNodeTexNoise')
+    noise.inputs['Scale'].default_value = 30.0
+    noise.inputs['Detail'].default_value = 6.0
+    noise.inputs['Distortion'].default_value = 2.0
+
+    ramp = nodes.new('ShaderNodeValToRGB')
+    elems = ramp.color_ramp.elements
+    elems[0].color = base_color
+    e1 = elems.new(0.6)
+    e1.color = (base_color[0]*0.7, base_color[1]*0.7, base_color[2]*0.7, 1.0)
+    links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
+    links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
+    bsdf.inputs['Roughness'].default_value = 0.4
+    return mat
+```
+
+**BAD: Flat single-color materials.** `bsdf.inputs['Base Color'] = (0.3, 0.3, 0.3, 1.0)` with
+nothing else reads as untextured plastic.
+
+**CRITICAL for LIQUID domains:** Water/liquid uses Glass BSDF (IOR ~1.333), NOT volume shaders.
+Volume Principled is for GAS domains (smoke/fire) only.
+```python
+# Water material for LIQUID domain
+water_mat = bpy.data.materials.new(name="Water")
+water_mat.use_nodes = True
+nodes = water_mat.node_tree.nodes
+bsdf = nodes.get('Principled BSDF')
+if bsdf:
+    bsdf.inputs['Base Color'].default_value = (0.8, 0.9, 1.0, 1.0)  # Slight blue tint
+    bsdf.inputs['Roughness'].default_value = 0.0       # Smooth glass-like surface
+    bsdf.inputs['IOR'].default_value = 1.333            # Water
+    bsdf.inputs['Transmission Weight'].default_value = 1.0  # Fully transparent
+```
+
+### Camera Composition
+- Frame the VFX EFFECT as the focal point, not just the geometry
+- Use moderate DOF (f/4.0-f/8.0) unless the prompt explicitly requests shallow DOF
+- Ensure the camera can see the full extent of the simulation domain
+- Point look_at toward the action (spray impact, flame tips, explosion center)
+- Include environmental context in frame — don't crop so tight that the setting is invisible
+
 ## BLENDER 5.0 ONLY
 We use Blender 5.0.1. **MANDATORY DOC QUERY** - verify API names before write_script.
 
@@ -272,6 +475,9 @@ We use Blender 5.0.1. **MANDATORY DOC QUERY** - verify API names before write_sc
 - **Compositor optional**: `scene.node_tree` may not exist. Skip compositor - fire/smoke renders without it
 - **Emission shader**: Has NO Normal input. Never connect bump/normal to Emission
 - **Object visibility**: Use `obj.visible_shadow = False` (NOT cycles_visibility)
+- **FluidFlowSettings**: `subframes` NOT `sampling_substeps` (API fixer auto-corrects but verify)
+- **ShaderNodeTexBrick**: inputs are `Color 1`, `Color 2`, `Mortar` (NOT 'Mortar Color', 'Brick Color 1')
+- **ShaderNodeTexMusgrave**: REMOVED in Blender 4.0 → use `ShaderNodeTexNoise` instead
 
 ## MANTAFLOW ESSENTIALS
 

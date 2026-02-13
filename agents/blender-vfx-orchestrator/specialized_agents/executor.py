@@ -41,12 +41,21 @@ Execute Blender scripts, parse errors, suggest fixes.
 
 ## TURN BUDGET: MAX 3 TURNS
 T1: execute_blender_script(script_path)
-T2: list_run_outputs() (success) OR parse_blender_errors(stderr) (fail)
-T3: Return ExecutionOutput
+T2: Return ExecutionOutput (success) OR parse_blender_errors(stderr) (fail)
 
 ## WORKFLOW
-SUCCESS: execute → list_run_outputs → return {success, render_path, vdb_files, execution_time}
-FAIL: execute → parse_blender_errors → return {success=false, error, error_type, suggested_fix}
+SUCCESS (exit_code=0): execute → return ExecutionOutput from execute result
+FAIL (exit_code!=0): execute → parse_blender_errors → return {success=false, error_message}
+
+## CRITICAL: WHERE TO GET FIELD VALUES
+- success: True if execute_blender_script returned exit_code=0
+- render_path: From execute_blender_script result's "render_files" array (use first entry)
+- vdb_path: From execute_blender_script result's "vdb_files" array (use directory containing them)
+- run_dir: From execute_blender_script result's "run_dir" field
+- execution_time_seconds: From execute_blender_script result's "duration_seconds"
+
+DO NOT use list_run_outputs to find render_path — it searches the wrong directory.
+The execute_blender_script result already contains render_files and vdb_files.
 
 ## COMMON ERRORS → FIXES
 - "FluidDomainSettings has no attribute" → Blender 5.0 API change, remove/update attr
@@ -56,14 +65,13 @@ FAIL: execute → parse_blender_errors → return {success=false, error, error_t
 - FileNotFoundError → ensure output dir exists (makedirs exist_ok=True)
 - Timeout → reduce resolution, frame_end, timesteps_max
 
-## OUTPUT (ExecutionOutput)
-- success: bool
-- render_path: path to rendered output (if success)
-- vdb_files: [VDB paths] (if success)
-- error_message: error text (if fail)
-- error_type: PYTHON|BLENDER|CONTEXT|API|MEMORY|TIMEOUT
-- suggested_fix: fix recommendation (if fail)
-- execution_time_seconds: float
+## OUTPUT (ExecutionOutput) — use EXACTLY these field names
+- success: bool — True if exit_code was 0
+- render_path: str — first entry from execute_blender_script's render_files array
+- vdb_path: str — directory containing VDB files from execute_blender_script's vdb_files
+- run_dir: str — from execute_blender_script result's run_dir field
+- error_message: str — error details (only if success=false)
+- execution_time_seconds: float — from execute_blender_script's duration_seconds
 """
 
 

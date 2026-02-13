@@ -78,6 +78,7 @@ from hooks.enforcement_hooks import (
     create_research_hooks,
     create_script_writer_hooks,
     create_fallback_script_writer_hooks,
+    create_error_recovery_hooks,
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
     create_api_spec_hooks,
@@ -2774,7 +2775,7 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
 6. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
 
                                         try:
-                                            code_fix_hooks = create_fallback_script_writer_hooks()
+                                            code_fix_hooks = create_error_recovery_hooks()
                                             code_fix_result = await self._run_agent(
                                                 self._script_agent_standalone,
                                                 code_fix_prompt,
@@ -3145,6 +3146,37 @@ Run the script and report results."""
                         )
                     print(f"[Pipeline] Executor hooks stats: {exec_hooks.get_stats()}", file=sys.stderr)
 
+                    # Deterministic render discovery: ALWAYS run when render_path is missing.
+                    # The executor LLM often reports success=False because list_run_outputs
+                    # searches CLI logs (wrong dir). If a render exists on disk, override.
+                    if not execution.render_path:
+                        import glob as _glob
+                        _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        _discover_dirs = []
+                        _vdb_base = os.path.join(_project_root, "build", "vdb_output", request.asset_name)
+                        _discover_dirs.append(_vdb_base)
+                        if os.path.isdir(_vdb_base):
+                            for _subdir in sorted(Path(_vdb_base).iterdir(), reverse=True):
+                                if _subdir.is_dir() and _subdir.name.startswith("run_"):
+                                    _discover_dirs.append(str(_subdir))
+                        if execution.run_dir:
+                            _discover_dirs.append(execution.run_dir)
+                        for _dir in _discover_dirs:
+                            for _ext in ("*.png", "*.exr"):
+                                _found = sorted(_glob.glob(os.path.join(_dir, _ext)))
+                                if _found:
+                                    execution.render_path = _found[-1]
+                                    print(f"[Pipeline] Render discovered: {execution.render_path}", file=sys.stderr)
+                                    break
+                            if execution.render_path:
+                                break
+
+                        # Override false-positive: executor said failure but render exists
+                        if execution.render_path and not execution.success:
+                            print(f"[Pipeline] OVERRIDE: Executor reported failure but render exists on disk. Setting success=True.", file=sys.stderr)
+                            execution.success = True
+                            execution.error_message = None
+
                     if not execution.success or not execution.render_path:
                         error_msg = execution.error_message or "Unknown execution error"
                         print(f"[Pipeline] ERROR: Execution failed: {error_msg}", file=sys.stderr)
@@ -3223,7 +3255,7 @@ Fix the script completely. Keep the same technique but append '_errfix' to the o
                                     )
                                 else:
                                     # Legacy fallback: Use Script Writer (has doc search - can hallucinate)
-                                    recovery_hooks = create_fallback_script_writer_hooks()
+                                    recovery_hooks = create_error_recovery_hooks()
                                     recovery_result = await self._run_agent(
                                         self._script_agent_standalone,
                                         recovery_prompt,
@@ -3269,6 +3301,32 @@ Execute it and report results."""
                                             ),
                                         )
                                         reexec_output = reexec_result.final_output
+                                        # Deterministic render discovery (same as main path)
+                                        if reexec_output and not reexec_output.render_path:
+                                            import glob as _glob
+                                            _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                                            _vdb_base = os.path.join(_project_root, "build", "vdb_output", request.asset_name)
+                                            _search_dirs = [_vdb_base]
+                                            if os.path.isdir(_vdb_base):
+                                                for _sd in sorted(Path(_vdb_base).iterdir(), reverse=True):
+                                                    if _sd.is_dir() and _sd.name.startswith("run_"):
+                                                        _search_dirs.append(str(_sd))
+                                            if reexec_output.run_dir:
+                                                _search_dirs.append(reexec_output.run_dir)
+                                            for _dir in _search_dirs:
+                                                for _ext in ("*.png", "*.exr"):
+                                                    _found = sorted(_glob.glob(os.path.join(_dir, _ext)))
+                                                    if _found:
+                                                        reexec_output.render_path = _found[-1]
+                                                        print(f"[Pipeline] Recovery render discovered: {reexec_output.render_path}", file=sys.stderr)
+                                                        break
+                                                if reexec_output.render_path:
+                                                    break
+                                            # Override false-positive
+                                            if reexec_output.render_path and not reexec_output.success:
+                                                print(f"[Pipeline] OVERRIDE: Recovery executor reported failure but render exists. Setting success=True.", file=sys.stderr)
+                                                reexec_output.success = True
+                                                reexec_output.error_message = None
                                         if reexec_output and reexec_output.success and reexec_output.render_path:
                                             print(f"[Pipeline] Recovery SUCCEEDED - render: {reexec_output.render_path}", file=sys.stderr)
                                             # Replace the failed execution with recovered one

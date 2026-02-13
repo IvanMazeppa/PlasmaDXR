@@ -1,0 +1,22 @@
+{
+  "session_id": "liquid_spray_v2_20260211_234758",
+  "iteration": 1,
+  "overall_score": 60.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Simulation/meshing (stay at domain res 96): reduce FLIP particle radius / particle scale (or equivalent) and increase liquid mesh/surface smoothing iterations; target removing \u2018bead-chain\u2019 topology and preserving thin sheets.",
+    "Enable and tune secondary particles (spray/splash/foam) and render them (as instanced droplets or small meshed particles) to get the pressurized atomization and impact micro-spray.",
+    "Fix collisions: ensure floor/wall/pipe are valid liquid effectors, apply object scales, reduce collider thickness/margin, and confirm the domain actually contains the floor impact region (domain placement/size). Re-bake after any of these changes.",
+    "Emitter: use a smaller, more physically-shaped emitter at the 3mm gap (thin slit/arc) and add a bit of velocity randomness/turbulence at emission (via flow noise_texture and/or initial velocity spread) to create a fan-shaped jet that breaks up naturally.",
+    "Shading/lighting: make water neutral-clear (IOR ~1.333, very low base tint, low roughness) and upgrade copper to true metallic with roughness variation and patina map; add a sharper overhead area light/HDRI to create crisp specular streaks on the jet and puddle sheen.",
+    "Add explicit wetness: drive floor roughness down in the puddle area (either via a mask or a simple projected wet map) so the puddle reads even if the liquid layer is thin."
+  ],
+  "cache_size_mb": 290.66234016418457,
+  "render_count": 1,
+  "vdb_count": 250,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 580.5298339990004,
+  "utility_score": 0.55,
+  "timestamp": "2026-02-11T23:57:58.706910"
+}

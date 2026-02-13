@@ -1,0 +1,25 @@
+{
+  "session_id": "liquid_spray_v2_20260212_003140",
+  "iteration": 1,
+  "overall_score": 50.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase inflow emission temporal sampling to avoid \u201cper-frame stepping\u201d: raise Flow > Sampling Substeps from 2 to ~4\u20138 (keep an eye on bake time).",
+    "Increase solver time-stepping stability/detail (without changing Resolution 96): raise domain max substeps/time steps (e.g., Max Substeps 6\u20138) and ensure adaptive time stepping is enabled so the jet doesn\u2019t quantize into segments.",
+    "Tune liquid mesh generation so the jet doesn\u2019t become chunky lobes: adjust liquid mesh settings (particle radius factor / smoothing / concavity) to produce a smoother, more continuous sheet/stream before breakup.",
+    "Ensure secondary spray is actually being produced *and rendered*: enable spray particles in the domain and assign renderable particle geometry/material (small spheres/instances) so micro-droplets appear around the jet edges and impact zone.",
+    "Refine the emitter to better form a fan: keep plane_init true, but adjust emitter plane aspect and orientation/spread so it starts as a thin sheet that tears into ligaments (rather than a thick slug). Slightly reduce plane thickness and add small velocity variation/turbulence to break repetition.",
+    "Improve floor wet look: drive a wetness mask centered at the impact point (not global origin) and increase specular + lower roughness only where wet; add subtle concrete normal/roughness texture for scale.",
+    "Water shader: reduce blue tint (water should be near-clear in thin layers), keep IOR ~1.333, very low roughness, and rely on strong specular highlights; consider enabling caustics options if available/desired for sharper refractive highlights.",
+    "Lighting: make the overhead fluorescent more tube-like/rectangular and increase intensity contrast to get sharper, silvery-white streak highlights on the jet and puddle.",
+    "Add slight motion blur (small shutter) for fast droplets, and/or slightly stronger DOF focus on the rupture/impact zone to increase photographic realism."
+  ],
+  "cache_size_mb": 317.84687519073486,
+  "render_count": 1,
+  "vdb_count": 100,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 510.9952104410004,
+  "utility_score": 0.5,
+  "timestamp": "2026-02-12T00:40:41.743068"
+}

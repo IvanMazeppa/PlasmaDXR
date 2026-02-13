@@ -1,0 +1,41 @@
+{
+  "recommended_approach": "Use Blender Mantaflow liquid simulation configured through the RNA settings classes (notably `bpy.types.FluidDomainSettings` for the LIQUID domain and `bpy.types.FluidFlowSettings` for the inflow/flow object), then bake/cache the simulation and render in Cycles. The doc bundle specifically surfaced Mantaflow-related RNA entry points via `bpy.types.FluidDomainSettings` / `bpy.types.FluidFlowSettings` attributes (e.g., `flip_ratio`, `noise_strength`, `noise_time_anim`) which indicates the intended programmatic control surface for setting up and tuning a liquid spray + splash + pooling shot.",
+  "key_parameters": {
+    "domain_settings": {
+      "type": "LIQUID (constraint)",
+      "flip_ratio": "(FluidDomainSettings attribute referenced in docs index; use as key tuning control for liquid solver behavior)",
+      "noise_strength": "(FluidDomainSettings attribute referenced in docs index; available for adding detail/noise where applicable)",
+      "noise_time_anim": "(FluidDomainSettings attribute referenced in docs index; time animation control for noise where applicable)"
+    },
+    "flow_settings": {
+      "flow_type": "Inflow/Flow object controlled via bpy.types.FluidFlowSettings (class referenced by docs index)"
+    },
+    "simulation_constraints_from_brief": {
+      "use_plane_init": true,
+      "inflow_velocity_m_s": "2-3",
+      "resolution": "96",
+      "frame_range": "1-50",
+      "cache_type": "ALL",
+      "render_engine": "CYCLES (GPU), 128 samples",
+      "render_frame": "35"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.FluidDomainSettings"
+  ],
+  "warnings": [
+    "Doc bundle results emphasize accessing Blender runtime types via `bpy.types` (Python API overview). If you introduce any custom PropertyGroup helpers in tooling, registration order matters (register lowest-level classes first; unregister in reverse), otherwise Blender raises registration errors (see Python API overview on class registration)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-11T23:33:02.044502"
+}

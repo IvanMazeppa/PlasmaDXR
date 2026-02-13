@@ -1,0 +1,72 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_v2_v1_errfix.py",
+  "technique_used": "mantaflow_liquid_domain_pipe_rupture_inflow",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/run_002/liquid_spray_v2.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/run_002/cache",
+  "score": 26.0,
+  "passed": false,
+  "primary_issue": "No visible water effect (jet/spray/puddle) in the render; the frame is also heavily overexposed/clipped, destroying scene readability.",
+  "parameter_changes": {
+    "asset_name": "liquid_spray_v2",
+    "argv_override": {
+      "supports_flag": "--output_dir",
+      "default_output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2",
+      "render_path_template": "{OUTPUT_DIR}/liquid_spray_v2.png",
+      "blend_path_template": "{OUTPUT_DIR}/liquid_spray_v2.blend",
+      "cache_dir_template": "{OUTPUT_DIR}/cache"
+    },
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 35,
+    "render_engine": "CYCLES",
+    "cycles_device": "GPU",
+    "samples": 128,
+    "domain": {
+      "intended_domain_type": "LIQUID",
+      "intended_resolution_max": 96,
+      "intended_cache_type": "ALL",
+      "noise_strength": 0.15,
+      "flip_ratio": 0.5,
+      "render_visibility": {
+        "display_type": "WIRE",
+        "hide_render": true
+      }
+    },
+    "flow": {
+      "intended_flow_type": "LIQUID",
+      "intended_flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "sampling_substeps_attempted": 2,
+      "jet_speed_m_s": 2.5,
+      "jet_dir": "(0, +1, -1) normalized"
+    },
+    "scene": {
+      "world_color": [
+        0.01,
+        0.012,
+        0.016
+      ],
+      "lights": [
+        "Key_Fluorescent(AREA)",
+        "Fill(AREA)",
+        "Rim(SPOT)"
+      ],
+      "materials": [
+        "WetConcrete",
+        "WallConcrete",
+        "CopperPatina",
+        "Water"
+      ],
+      "hidden_from_render": [
+        "WaterInflowEmitter",
+        "JetWind",
+        "LiquidDomain(container)"
+      ]
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-11T23:16:53.321929"
+}

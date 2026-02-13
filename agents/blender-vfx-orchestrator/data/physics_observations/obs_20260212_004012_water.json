@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-02-12T00:40:12.197890",
+  "effect_type": "water",
+  "observation": "Water jet appears discretized into a repeating stack of pancake-like blobs rather than a continuous pressurized fan-shaped stream; suggests per-frame emission stepping or low-res meshing/particle conversion.",
+  "expected_behavior": "A continuous, coherent jet/sheet that breaks up into ligaments and droplets with non-periodic spacing, especially at 2\u20133 m/s pressurized rupture.",
+  "actual_behavior": "Regularly spaced, similar-sized lobes/segments along the jet path; limited ligament formation and micro-spray; floor impact lacks energetic splash crown/ejecta.",
+  "suspected_parameters": {
+    "flow_sampling_substeps": 2,
+    "domain_resolution_max": 96,
+    "domain_use_liquid_mesh": true,
+    "mesh_settings": "may be default/coarse",
+    "adaptive_time_steps": "possibly low",
+    "inflow_plane_size_m": [
+      0.15,
+      0.02
+    ],
+    "inflow_velocity_m_s": 2.5
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/liquid_spray_v2.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_v2.py",
+  "iteration": 2,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "flow_settings.sampling_substeps",
+    "domain_settings.resolution_max",
+    "domain_solver.max_substeps/time_steps",
+    "liquid_mesh_settings (particle radius/smoothing)"
+  ],
+  "correlation_confidence": 0.72,
+  "recommended_fix": "Increase inflow temporal sampling to reduce emission stepping (Flow > Sampling Substeps: 2 \u2192 6\u20138). Increase solver max substeps/time steps (e.g., 4 \u2192 6\u20138) and keep adaptive time stepping on. If mesh looks chunky, adjust liquid mesh generation smoothing/particle radius; optionally raise domain resolution (96 \u2192 128) if bake time allows.",
+  "analysis_notes": "Regularly spaced jet lobes are characteristic of per-frame/under-sampled emission or insufficient substeps, especially for fast inflows. Resolution 96 may be adequate but time stepping and mesh settings can still produce quantized segments.",
+  "analyzed_at": "2026-02-12T00:41:38.898956"
+}

@@ -1,0 +1,24 @@
+{
+  "pattern_id": "pat_ca888279f962",
+  "name": "water_readability_slightly_improved_via_lighting_s_water_fix",
+  "issue_category": "water_readability_slightly_improved_via_lighting_s",
+  "code_snippet": "bg.inputs['Color'].default_value = [0.02, 0.025, 0.035, 1.0]\n        bg.inputs['Strength'].default_value = 0.4\n        bsdf.inputs['Base Color'].default_value = [0.65, 0.75, 0.9, 1.0]\n        bsdf.inputs['Roughness'].default_value = 0.03",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "    nt = scene.world.node_tree\n    bg = nt.nodes.get('Background')\n    if bg:\n",
+  "context_after": "        spec = bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular'))\n        if spec:\n            spec.default_value = 0.25\n",
+  "parameters_affected": [
+    "default_value"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 5.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "a97bc2d1"
+  ],
+  "created_at": "2026-02-12T01:11:48.485346",
+  "updated_at": "2026-02-12T01:11:48.485355"
+}

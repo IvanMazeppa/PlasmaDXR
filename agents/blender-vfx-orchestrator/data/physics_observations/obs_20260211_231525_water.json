@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-02-11T23:15:25.329836",
+  "effect_type": "water",
+  "observation": "Frame 35 render shows pipes but no visible liquid jet/spray, splashes, or puddle; scene appears washed-out/overexposed.",
+  "expected_behavior": "A continuous fan-shaped liquid jet (approx 45\u00b0 downward) hitting the floor with splashes/droplets and a growing puddle by frame 35.",
+  "actual_behavior": "No visible liquid surface or droplets; only pipe geometry is readable and lighting is heavily clipped, making water (if present) invisible.",
+  "suspected_parameters": {
+    "domain_hide_render": true,
+    "domain_use_mesh": true,
+    "domain_cache_type": "ALL",
+    "flow_use_plane_init": true,
+    "flow_behavior": "INFLOW",
+    "flow_velocity_props_maybe_unset": true,
+    "light_energy_high": true
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/run_002/liquid_spray_v2.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_v2_v1_errfix.py",
+  "iteration": 2,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "domain.hide_render",
+    "key.data.energy",
+    "fill.data.energy",
+    "rim.data.energy",
+    "FluidDomainSettings.use_mesh"
+  ],
+  "correlation_confidence": 0.75,
+  "recommended_fix": "Set liquid domain to be render-visible (domain.hide_render=False) or render the generated liquid mesh object; reduce light energies by ~4-8x or lower scene exposure; ensure liquid mesh baking/output is enabled (Domain > Liquid > Mesh).",
+  "analysis_notes": "Render shows no liquid and is washed out; script explicitly hides domain from render and uses high-intensity lights. VDB cache exists, suggesting bake ran, but if mesh isn't rendered (or domain hidden) liquid will not appear.",
+  "analyzed_at": "2026-02-11T23:16:42.079226"
+}

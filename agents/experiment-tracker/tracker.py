@@ -27,7 +27,18 @@ def _normalize_observed_effect(effect_dict: Dict[str, Any]) -> ObservedEffect:
     # Extract fields with defaults
     metric = effect_dict.get('metric', 'unknown')
     direction = effect_dict.get('direction', 'unknown')
-    magnitude = float(effect_dict.get('magnitude', 0.0))
+
+    # LLM often passes qualitative strings like "high", "medium", "low"
+    _mag_raw = effect_dict.get('magnitude', 0.0)
+    _QUAL_TO_FLOAT = {"high": 0.9, "medium": 0.5, "low": 0.2, "none": 0.0}
+    if isinstance(_mag_raw, str):
+        magnitude = _QUAL_TO_FLOAT.get(_mag_raw.lower().strip(), 0.5)
+    else:
+        try:
+            magnitude = float(_mag_raw)
+        except (TypeError, ValueError):
+            magnitude = 0.0
+
     expected = bool(effect_dict.get('expected', False))
 
     # Handle side_effect - can be bool, string, or missing
@@ -277,9 +288,15 @@ class ExperimentTracker:
             result_params
         )
 
-        # Calculate score changes
+        # Calculate score changes (coerce to float — LLM may pass string values)
+        def _to_float(v):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return 0.0
+
         score_changes = {
-            metric: result_scores.get(metric, 0) - self._baseline_state['scores'].get(metric, 0)
+            metric: _to_float(result_scores.get(metric, 0)) - _to_float(self._baseline_state['scores'].get(metric, 0))
             for metric in set(result_scores.keys()) | set(self._baseline_state['scores'].keys())
         }
 

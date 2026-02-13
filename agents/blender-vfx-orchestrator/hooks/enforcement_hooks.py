@@ -659,13 +659,14 @@ def create_script_writer_hooks() -> EnforcementHooks:
 
     Loop detection: Doc search tools are exempt from the normal limit (6),
     but they still have:
-    - max_consecutive_same_tool=5 (can't call same tool 5+ times in a row)
-    - max_exempt_tool_calls=10 (hard ceiling even for exempt tools)
+    - max_consecutive_same_tool=3 (can't call same tool 3+ times in a row)
+    - max_exempt_tool_calls=6 (hard ceiling even for doc searches)
+    Tightened from 5/10 because models waste all turns on doc queries otherwise.
     """
     config = EnforcementConfig(
         max_same_tool_calls=6,  # Standard limit for non-exempt tools
-        max_consecutive_same_tool=5,  # No tool should be called 5+ times in a row
-        max_exempt_tool_calls=10,  # Hard ceiling even for doc searches
+        max_consecutive_same_tool=3,  # Tightened: model wastes all turns on searches otherwise
+        max_exempt_tool_calls=6,  # Hard ceiling even for doc searches
         max_turns=12,
         hard_turn_limit=18,
         require_doc_query_before=[
@@ -723,6 +724,35 @@ def create_fallback_script_writer_hooks() -> EnforcementHooks:
         ],
         raise_on_loop=True,
         raise_on_doc_missing=True,  # CRITICAL: Now enforced to prevent hallucination
+    )
+    return EnforcementHooks(config)
+
+
+def create_error_recovery_hooks() -> EnforcementHooks:
+    """
+    Create hooks for Script Writer in ERROR RECOVERY mode (Phase 2.5).
+
+    NO doc query requirement. The Script Writer already has:
+    - The exact error message and traceback
+    - The failed script content
+    - Research context from earlier phases
+
+    Forcing a doc query here wastes ~180s of generation and then blocks write_script.
+    """
+    config = EnforcementConfig(
+        max_same_tool_calls=4,
+        max_consecutive_same_tool=3,
+        max_exempt_tool_calls=6,
+        max_turns=6,
+        hard_turn_limit=8,
+        require_doc_query_before=[],  # NO doc query required for error recovery
+        exempt_from_loop_detection=[
+            "validate_script",
+            "semantic_search_blender_docs",
+            "search_blender_api_by_intent",
+        ],
+        raise_on_loop=True,
+        raise_on_doc_missing=False,  # Explicitly disabled for error recovery
     )
     return EnforcementHooks(config)
 

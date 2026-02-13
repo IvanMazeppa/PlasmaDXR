@@ -1,0 +1,55 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_pipe_v1_errfix.py",
+  "technique_used": "mantaflow_liquid_inflow_plane",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/run_outputs/liquid_spray_pipe_v1_errfix_20260211/liquid_spray_pipe_v1.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/run_outputs/liquid_spray_pipe_v1_errfix_20260211/cache",
+  "score": 38.0,
+  "passed": false,
+  "primary_issue": "The render does not read as water at all (no visible liquid jet/splash/puddle). It looks like a misconfigured simulation/render (volume/smoke-like banding) or a missing liquid surface mesh/secondary particles.",
+  "parameter_changes": {
+    "asset_name": "liquid_spray_pipe_v1",
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 35,
+    "domain": {
+      "name": "LiquidDomain",
+      "domain_type": "LIQUID (best-effort via safe_set)",
+      "resolution_max": 96,
+      "cache_type": "ALL",
+      "cache_directory": "(prefers CLI --output_dir if provided; else /home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_pipe_v1/cache)",
+      "use_mesh": true,
+      "noise_strength": 0.15,
+      "noise_time_anim": 0.0,
+      "hide_render": true,
+      "display_type": "WIRE"
+    },
+    "flow": {
+      "name": "Pipe_Breach_Inflow",
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "use_initial_velocity": true,
+      "velocity_normal": 2.5,
+      "hide_render": true
+    },
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU",
+      "samples": 128,
+      "file_format": "PNG",
+      "primary_render_path": "<OUTPUT_DIR>/liquid_spray_pipe_v1.png",
+      "secondary_render_path": "<CWD>/liquid_spray_pipe_v1.png"
+    },
+    "structural_fixes": {
+      "output_dir_override_from_cli": "--output_dir supported (prevents missing renders in automation)",
+      "bake_context_fix": "domain is selected+active; poll check before bpy.ops.fluid.bake_all",
+      "depsgraph_update": "view_layer.update() wrapped in try/except",
+      "output_visibility_fix": "also copies render & blend into current working directory"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-11T22:10:17.360724"
+}

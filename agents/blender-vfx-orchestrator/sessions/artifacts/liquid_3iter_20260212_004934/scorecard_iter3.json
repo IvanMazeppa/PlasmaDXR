@@ -1,0 +1,24 @@
+{
+  "session_id": "liquid_3iter_20260212_004934",
+  "iteration": 3,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase render readability first: add a strong key/rim (area light) aimed to rake across the jet so specular highlights pop; also add an HDRI or bright environment reflection source.",
+    "Fix water material: Principled BSDF with Transmission=1.0, IOR\u22481.333, very low Roughness (~0.0\u20130.03). Ensure the fluid mesh is actually using this material.",
+    "If the sim exists but isn\u2019t visible, verify liquid mesh generation is enabled (domain liquid mesh) and that the mesh object is rendered (not hidden, correct collection/view layer).",
+    "Increase emitted volume: enlarge inflow plane area slightly and/or raise `velocity_normal` (still within \u201cmoderate pressure\u201d but enough to form a visible sheet/jet).",
+    "Enable and render secondary spray: turn on liquid domain secondary particles (spray/foam/bubbles as appropriate) and render droplets via instancing tiny spheres or a dedicated droplet material so breakup reads on camera.",
+    "Make the floor interaction visible: add a separate wetness/puddle shader (darken roughness, increase specular) driven by a mask near the impact zone if the simulated puddle is too thin to read at this resolution.",
+    "Reduce washout: lower exposure / increase contrast in Color Management (Filmic) so thin water edges separate from the background; render 16-bit/EXR to avoid banding.",
+    "Debug at frame 35: inspect the domain mesh and particle display in viewport (or render a clay pass) to confirm there is actual liquid geometry where expected."
+  ],
+  "cache_size_mb": 74.74595260620117,
+  "render_count": 1,
+  "vdb_count": 100,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 218.4238465749986,
+  "utility_score": 0.46798012785416787,
+  "timestamp": "2026-02-12T01:10:48.843424"
+}

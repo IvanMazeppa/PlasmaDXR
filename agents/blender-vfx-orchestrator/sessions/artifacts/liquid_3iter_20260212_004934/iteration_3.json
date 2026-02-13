@@ -1,0 +1,29 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_3iter_iter3_paramfix.py",
+  "technique_used": "mantaflow_liquid_inflow_plane (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/liquid_3iter.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/cache",
+  "score": 30.0,
+  "passed": false,
+  "primary_issue": "Water is not readable: the stream/spray has extremely low contrast with almost no specular/refraction, so it\u2019s nearly invisible and doesn\u2019t sell as pressurized water.",
+  "parameter_changes": {
+    "bg.inputs['Strength'].default_value": 0.4,
+    "bg.inputs['Color'].default_value": [
+      0.02,
+      0.025,
+      0.035,
+      1.0
+    ],
+    "bsdf.inputs['Base Color'].default_value": [
+      0.65,
+      0.75,
+      0.9,
+      1.0
+    ],
+    "bsdf.inputs['Roughness'].default_value": 0.03,
+    "bsdf.inputs['IOR'].default_value": 1.333
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-12T01:12:07.418111"
+}

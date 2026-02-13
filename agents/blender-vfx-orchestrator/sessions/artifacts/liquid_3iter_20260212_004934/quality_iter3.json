@@ -1,0 +1,30 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "Water is not readable: the stream/spray has extremely low contrast with almost no specular/refraction, so it\u2019s nearly invisible and doesn\u2019t sell as pressurized water.",
+  "issues": [
+    "No clear pressurized fan-shaped spray: effect reads as a faint, smooth streak rather than a jet that breaks into droplets.",
+    "No visible splash/impact behavior on the floor (no radial splatter, no secondary droplets).",
+    "No readable puddle growth or wet concrete sheen at the stated render frame (35).",
+    "Water shading looks too opaque/matte: lacking convincing transmission/refraction and Fresnel-driven highlights.",
+    "Lighting is too flat/washed, giving insufficient contrast and rim highlights to define thin water sheets/droplets.",
+    "Composition/scale cues are weak: little interaction to anchor the water in the scene, making the shot feel empty/unfinished.",
+    "Edges/details appear overly blurred/low-frequency, suggesting insufficient sim mesh detail, insufficient particle spray render, or overly soft shading/denoise.",
+    "Minor background banding/low-contrast gradients reduce perceived realism and make the water even harder to see."
+  ],
+  "suggestions": [
+    "Increase render readability first: add a strong key/rim (area light) aimed to rake across the jet so specular highlights pop; also add an HDRI or bright environment reflection source.",
+    "Fix water material: Principled BSDF with Transmission=1.0, IOR\u22481.333, very low Roughness (~0.0\u20130.03). Ensure the fluid mesh is actually using this material.",
+    "If the sim exists but isn\u2019t visible, verify liquid mesh generation is enabled (domain liquid mesh) and that the mesh object is rendered (not hidden, correct collection/view layer).",
+    "Increase emitted volume: enlarge inflow plane area slightly and/or raise `velocity_normal` (still within \u201cmoderate pressure\u201d but enough to form a visible sheet/jet).",
+    "Enable and render secondary spray: turn on liquid domain secondary particles (spray/foam/bubbles as appropriate) and render droplets via instancing tiny spheres or a dedicated droplet material so breakup reads on camera.",
+    "Make the floor interaction visible: add a separate wetness/puddle shader (darken roughness, increase specular) driven by a mask near the impact zone if the simulated puddle is too thin to read at this resolution.",
+    "Reduce washout: lower exposure / increase contrast in Color Management (Filmic) so thin water edges separate from the background; render 16-bit/EXR to avoid banding.",
+    "Debug at frame 35: inspect the domain mesh and particle display in viewport (or render a clay pass) to confirm there is actual liquid geometry where expected."
+  ],
+  "vision_assessment": "The frame shows a mostly flat, pale industrial background with a thin vertical streak that is too faint and smooth to convincingly read as water. There is no recognizable fan-shaped jet exiting a ruptured elbow, no visible droplet breakup, and no clear splash pattern or expanding puddle on the floor. The water lacks the strong silvery specular highlights and refraction/distortion you\u2019d expect under harsh fluorescent lighting, so it blends into the background instead of popping. Overall it feels like an early placeholder where the simulation or rendering of the liquid mesh/secondary droplets is either missing, under-emitting, or shaded/illuminated in a way that makes it effectively invisible.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/liquid_3iter.png",
+  "iteration": 3,
+  "timestamp": "2026-02-12T01:10:48.842985"
+}

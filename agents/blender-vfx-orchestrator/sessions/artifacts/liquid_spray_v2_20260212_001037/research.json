@@ -1,0 +1,32 @@
+{
+  "recommended_approach": "Use Mantaflow via the Blender Python API by configuring a Liquid simulation domain through `bpy.types.FluidDomainSettings`, and drive the pressurized pipe spray using a Flow/Emitter object configured through `bpy.types.FluidFlowSettings` (for an inflow-style source).",
+  "key_parameters": {
+    "domain_settings_api": "bpy.types.FluidDomainSettings",
+    "domain_attributes_seen_in_docs_search": [
+      "flip_ratio",
+      "noise_strength",
+      "noise_time_anim"
+    ],
+    "flow_settings_api": "bpy.types.FluidFlowSettings",
+    "flow_attributes_seen_in_docs_search": [
+      "noise_texture"
+    ]
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_u_0.md"
+  ],
+  "timestamp": "2026-02-12T00:11:34.201496"
+}

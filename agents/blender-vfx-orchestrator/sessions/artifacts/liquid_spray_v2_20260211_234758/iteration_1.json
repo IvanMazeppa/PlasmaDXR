@@ -1,0 +1,58 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_v2_v1_api_fixed.py",
+  "technique_used": "mantaflow_liquid_pipe_rupture_inflow (api-corrected)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/liquid_spray_v2.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/cache",
+  "score": 60.0,
+  "passed": false,
+  "primary_issue": "The liquid does not convincingly behave/render like a pressurized pipe rupture: it reads as a coarse ribbon/beaded stream with weak atomization and (critically) no clear floor-impact splash or accumulating puddle by frame 35.",
+  "parameter_changes": {
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 35,
+    "cycles": {
+      "device": "GPU",
+      "samples": 128,
+      "resolution_px": [
+        1280,
+        720
+      ]
+    },
+    "domain": {
+      "type": "LIQUID (set if available)",
+      "target_resolution": 96,
+      "dimensions_m": [
+        1.0,
+        0.6,
+        0.8
+      ],
+      "flip_ratio": 0.05,
+      "cache_type": "ALL (set if available)",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/cache"
+    },
+    "flow_inflow": {
+      "type": "LIQUID (set if available)",
+      "behavior": "INFLOW (set if available)",
+      "use_plane_init": "True (set if available / discovered)",
+      "velocity_vector_m_s": [
+        1.77,
+        0.0,
+        -1.77
+      ],
+      "sampling_substeps": 2,
+      "noise_texture": "Assigned via flow_settings.noise_texture (best-effort)"
+    },
+    "effectors": [
+      "floor",
+      "wall",
+      "pipe",
+      "pipe_down",
+      "elbow_vis"
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-11T23:59:38.710479"
+}

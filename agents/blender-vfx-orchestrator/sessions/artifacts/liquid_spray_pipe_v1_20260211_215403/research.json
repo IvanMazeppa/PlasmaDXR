@@ -1,0 +1,32 @@
+{
+  "recommended_approach": "Use Blender\u2019s Fluid (Mantaflow) data model via the RNA types exposed in `bpy.types`: configure the simulation domain through `bpy.types.FluidDomainSettings`, configure emitters/flows through `bpy.types.FluidFlowSettings` (notably including per-flow noise input via its `noise_texture` attribute), and drive the look/detail through domain-side noise controls (e.g., `noise_strength`, `noise_time_anim`) available on `bpy.types.FluidDomainSettings`.",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings": {
+      "noise_strength": "(documented attribute; value not provided in retrieved docs)",
+      "noise_time_anim": "(documented attribute; value not provided in retrieved docs)",
+      "flip_ratio": "(documented attribute; value not provided in retrieved docs)"
+    },
+    "bpy.types.FluidFlowSettings": {
+      "noise_texture": "(documented attribute; value not provided in retrieved docs)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.BakeSettings"
+  ],
+  "warnings": [
+    "If you create custom Python classes (e.g., PropertyGroup/Operator) as part of a pipeline, Blender requires registration before use; otherwise Blender raises registration errors (as described in the API \u2018Class Registration\u2019 documentation)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-11T21:54:50.963863"
+}

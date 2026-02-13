@@ -1,0 +1,121 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_3iter_script_iter2_codefix.py",
+  "technique_used": "mantaflow_liquid_inflow_plane",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/liquid_3iter.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/cache",
+  "score": 25.0,
+  "passed": false,
+  "primary_issue": "The water effect is essentially missing: no readable pressurized spray cone/droplet breakup and no visible puddle/wet floor interaction at frame 35.",
+  "parameter_changes": {
+    "asset_name": "liquid_3iter",
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 35,
+    "structural_fixes": {
+      "cache_dir_cleared_via_shutil": true,
+      "domain_repositioned_and_rescaled": {
+        "location": [
+          0.25,
+          -0.05,
+          0.25
+        ],
+        "scale": [
+          0.6,
+          0.55,
+          0.6
+        ],
+        "reason": "ensure domain contains pipe/emitter at y\u2248-0.23 and includes floor at z=0"
+      },
+      "emitter_repositioned_outside_pipe": {
+        "offset": [
+          0.0,
+          "PIPE_RADIUS+0.004",
+          0.0
+        ],
+        "additional_offset_along_spray": 0.006,
+        "reason": "avoid emitter overlapping pipe geometry/collider"
+      },
+      "emitter_oriented_to_spray_direction": {
+        "normal_aligned_to": "INFLOW_DIR via to_track_quat('Z','Y')",
+        "reason": "so velocity_normal pushes liquid along spray axis"
+      },
+      "pipe_removed_as_effector": true
+    },
+    "domain": {
+      "fluid_type": "DOMAIN",
+      "domain_type": "LIQUID",
+      "resolution_target": 96,
+      "cache_type": "ALL",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_3iter/cache",
+      "cache_frame_start": 1,
+      "cache_frame_end": 50,
+      "use_mesh": true,
+      "flip_ratio": 1.0
+    },
+    "flow": {
+      "fluid_type": "FLOW",
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "sampling_substeps": 2,
+      "initial_velocity": {
+        "use_initial_velocity": true,
+        "velocity_normal": 2.5,
+        "velocity_coord": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "effectors": [
+      "Floor",
+      "Wall"
+    ],
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU",
+      "samples": 128,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "camera": {
+        "lens_mm": 50,
+        "dof_fstop": 5.6,
+        "focus_distance_m": 0.6
+      }
+    },
+    "scene_design": {
+      "world_color": [
+        0.01,
+        0.01,
+        0.015,
+        1.0
+      ],
+      "lights": [
+        {
+          "name": "Key_Fluorescent",
+          "type": "AREA",
+          "energy_w": 280.0
+        },
+        {
+          "name": "Fill_Side",
+          "type": "AREA",
+          "energy_w": 55.0
+        }
+      ],
+      "materials": [
+        "ConcreteFloor",
+        "ConcreteWall",
+        "CopperPatina",
+        "Water"
+      ]
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-12T01:06:00.124672"
+}

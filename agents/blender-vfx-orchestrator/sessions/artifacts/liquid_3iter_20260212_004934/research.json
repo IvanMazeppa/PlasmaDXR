@@ -1,0 +1,43 @@
+{
+  "recommended_approach": "Drive a Mantaflow liquid setup through Blender\u2019s fluid RNA types: configure the liquid simulation using `bpy.types.FluidDomainSettings` (notably solver-related attributes like `flip_ratio` and noise controls), and configure the emitter/flow object(s) using `bpy.types.FluidFlowSettings` (which exposes flow-side noise input such as `noise_texture`).",
+  "key_parameters": {
+    "bpy.types.FluidDomainSettings.flip_ratio": "(value not present in retrieved doc excerpt; attribute identified in Blender 5.0 API index)",
+    "bpy.types.FluidDomainSettings.noise_strength": "(value not present in retrieved doc excerpt; attribute identified in Blender 5.0 API index)",
+    "bpy.types.FluidDomainSettings.noise_time_anim": "(value not present in retrieved doc excerpt; attribute identified in Blender 5.0 API index)",
+    "bpy.types.FluidFlowSettings.noise_texture": "(value not present in retrieved doc excerpt; attribute identified in Blender 5.0 API index)"
+  },
+  "api_modules": [
+    "bpy.types.PropertyGroupItem",
+    "bpy.types.MeshCacheModifier",
+    "bpy.types.MarbleTexture",
+    "bpy.ops.pose",
+    "bpy.types.SolidifyModifier",
+    "bpy.types.LightProbeVolume",
+    "bpy.types.ImagePaint",
+    "bpy.types.FluidDomainSettings",
+    "bpy.ops.armature",
+    "bpy.types.CloudsTexture",
+    "bpy.ops.lattice",
+    "bpy.types.Action",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ThemeBoneColorSet",
+    "bpy.types.DistortedNoiseTexture",
+    "bpy.types.MusgraveTexture",
+    "bpy.types.StucciTexture",
+    "bpy.data.materials",
+    "bpy.ops.mesh"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b26_blender_python_reference_5_0_gpu_types_html_gpu_types_GPUFrameBuffer_read_depth_.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-12T00:50:44.547433"
+}

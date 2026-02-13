@@ -1,0 +1,23 @@
+{
+  "session_id": "liquid_spray_pipe_v1_20260211_215403",
+  "iteration": 1,
+  "overall_score": 38.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Simulation correctness (highest priority): ensure the fluid domain is truly LIQUID and that the liquid surface mesh is enabled + baked. Verify you are rendering the liquid mesh, not the domain bounds/volume cache. If your cache output is VDB \u201cfluid_data_####.vdb\u201d, you may be baking a gas/smoke cache\u2014fix domain_type and rebake from scratch.",
+    "Enable/boost secondary particles for spray: turn on Spray/Foam/Mist (as needed), and render them with instanced tiny spheres or a dedicated droplet material; increase particle amount gradually (start low, then scale up).",
+    "Emitter shaping: use plane-init inflow but add breakup (inflow noise / slight angular spread) so the fan becomes droplets after a short distance; keep velocity in the 2\u20133 m/s range but add variation so it doesn\u2019t form a uniform sheet.",
+    "Shading: use a physically plausible water shader (Transmission=1, IOR\u22481.333, very low roughness ~0.01\u20130.03). Add subtle volume absorption to avoid milky/flat appearance and ensure enough refraction/transmission bounces.",
+    "Lighting: add a strong, cool rim/key light or HDRI so the spray catches sharp specular highlights (the \u201csilvery-white\u201d look). Increase contrast/exposure to make droplets readable against the dim basement.",
+    "Kill banding: if any volume is being rendered, reduce volume step rate / increase resolution. Prefer surface mesh for liquid; output 16/32-bit (EXR) during lookdev to avoid posterization.",
+    "Grounding: increase floor wetness response\u2014ensure puddle is thin and glossy with clear reflections; add contact shadows/AO so water reads as touching the floor."
+  ],
+  "cache_size_mb": 147.60692310333252,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 919.4039954769996,
+  "utility_score": 0.44,
+  "timestamp": "2026-02-11T22:09:20.228819"
+}

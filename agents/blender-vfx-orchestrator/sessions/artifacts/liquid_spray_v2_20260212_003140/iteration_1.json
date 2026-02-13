@@ -1,0 +1,39 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/liquid_spray_v2.py",
+  "technique_used": "mantaflow_liquid_inflow_domain",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/liquid_spray_v2.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/cache",
+  "score": 50.0,
+  "passed": false,
+  "primary_issue": "Water jet reads as discretized, repeating \u201cstacked blobs\u201d instead of a continuous pressurized fan-shaped stream with believable breakup.",
+  "parameter_changes": {
+    "frame_start": 1,
+    "frame_end": 50,
+    "render_frame": 35,
+    "domain_resolution_max": 96,
+    "domain_cache_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/liquid_spray_v2/cache",
+    "domain_domain_type": "LIQUID (best-effort)",
+    "flow_type": "LIQUID (best-effort)",
+    "flow_behavior": "INFLOW (best-effort)",
+    "use_plane_init": true,
+    "inflow_speed_m_s": 2.5,
+    "inflow_direction": "(+X, -Z) 45deg",
+    "renderer": "CYCLES (GPU best-effort)",
+    "samples": 128,
+    "materials": [
+      "ConcreteFloor (with wet sheen mix)",
+      "ConcreteWall",
+      "CopperPatina",
+      "Water (IOR 1.333, Transmission=1.0)"
+    ],
+    "lights": [
+      "FluorescentKey",
+      "Fill",
+      "Rim"
+    ],
+    "bake_operator": "bpy.ops.fluid.bake_all() (guarded)"
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-12T00:41:55.790844"
+}

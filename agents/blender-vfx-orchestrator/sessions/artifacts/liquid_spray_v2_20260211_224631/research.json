@@ -1,0 +1,44 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s Liquid setup driven through Blender\u2019s Fluid data-blocks: configure the liquid *domain* via `bpy.types.FluidDomainSettings` and the pressurized pipe rupture as a *flow/inflow* via `bpy.types.FluidFlowSettings`. For added small-scale breakup/detail over the 50 frames, rely on the domain\u2019s noise-related controls exposed on `FluidDomainSettings` (e.g., `noise_strength`, `noise_time_anim`) and the flow\u2019s noise input (`FluidFlowSettings.noise_texture`).",
+  "key_parameters": {
+    "domain": {
+      "type": "LIQUID (required by brief)",
+      "settings_api": "bpy.types.FluidDomainSettings",
+      "detail_controls_from_docs": [
+        "noise_strength (bpy.types.FluidDomainSettings attribute)",
+        "noise_time_anim (bpy.types.FluidDomainSettings attribute)",
+        "flip_ratio (bpy.types.FluidDomainSettings attribute)"
+      ]
+    },
+    "flow_inflow_emitter": {
+      "settings_api": "bpy.types.FluidFlowSettings",
+      "detail_controls_from_docs": [
+        "noise_texture (bpy.types.FluidFlowSettings attribute)"
+      ],
+      "init_constraint": "use_plane_init = True (required by brief)"
+    },
+    "cache_bake": {
+      "cache_type": "ALL (required by brief)",
+      "frame_range": "1-50 (required by brief)",
+      "render_target_frame": "35 (required by brief)"
+    },
+    "render": {
+      "engine": "Cycles GPU (required by brief)",
+      "samples": "128 max (required by brief)"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "b27_blender_python_reference_5_0_info_overview_html_class-registration-_0.md",
+    "b27_blender_python_reference_5_0_info_overview_html_registration-_0.md"
+  ],
+  "timestamp": "2026-02-11T22:47:28.741352"
+}
