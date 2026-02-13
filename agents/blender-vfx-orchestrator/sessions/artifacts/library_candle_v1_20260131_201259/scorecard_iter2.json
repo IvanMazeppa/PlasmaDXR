@@ -1,0 +1,24 @@
+{
+  "session_id": "library_candle_v1_20260131_201259",
+  "iteration": 2,
+  "overall_score": 10.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "First fix visibility (debug pass): temporarily set World strength to ~0.2\u20130.5 and/or increase Exposure by +2 to +4 stops to confirm geometry is in frame.",
+    "Ensure the flow actually emits in this Blender build: print available Flow settings via `fs.bl_rna.properties` and set the correct enable flag (your run log showed `FluidFlowSettings` has no `use_flow`). If emission is off, you\u2019ll get empty flame grids.",
+    "Verify the domain has non-zero grids at the rendered frame: render a diagnostic shader that outputs `Volume Info -> Flame` and `Density` to confirm they\u2019re nonzero. If they\u2019re zero, the sim isn\u2019t producing fire/smoke.",
+    "Boost flame emission for candle scale: increase Principled Volume `Blackbody Intensity` multiplier (e.g., 18 \u2192 50\u2013150) during lookdev; reduce once you have visibility. Candle flames often need artistic boost in Cycles.",
+    "Raise key light energy substantially or use physically plausible units for scene scale (e.g., Point light 45 \u2192 500\u20135000) until the candle/holder is readable, then tune down.",
+    "Confirm camera is aimed and clipping correctly: set `camera.clip_start = 0.001` and disable DOF while debugging; re-enable DOF after the flame is visible.",
+    "If using Mantaflow noise: ensure noise bake exists and `use_noise` doesn\u2019t hide the base sim when noise cache is missing (can display empty domain).",
+    "After fixes, re-render a mid-sim frame (e.g., frame 60\u201390) and check that flame shape is ~3\u20134cm tall relative to candle diameter; adjust domain/emitter scale accordingly."
+  ],
+  "cache_size_mb": 328.1411771774292,
+  "render_count": 1,
+  "vdb_count": 230,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 863.2257100419997,
+  "utility_score": 0.3,
+  "timestamp": "2026-02-13T03:10:36.009472"
+}

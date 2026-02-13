@@ -1,0 +1,28 @@
+{
+  "overall_score": 10.0,
+  "passed": false,
+  "primary_issue": "Render is effectively black/underexposed: flame, smoke, candle, and illumination are not visible at all.",
+  "issues": [
+    "Critical: No visible candle flame (no blue core/yellow body/orange tip structure).",
+    "Critical: No visible smoke wisps (scene reads as empty/black).",
+    "Critical: No candlelight contribution to the environment (desk/candle/holder not readable).",
+    "Major: Volumetric shading/emission appears not contributing (possible empty sim grids, wrong volume material hookup, or extreme underexposure).",
+    "Major: Composition/DOF cannot be evaluated because the subject is not visible.",
+    "Technical: Likely pipeline/config mismatch\u2014previous run log indicated Flow setting property mismatch (e.g., flow enable flag missing), which may result in no emission/sim content."
+  ],
+  "suggestions": [
+    "First fix visibility (debug pass): temporarily set World strength to ~0.2\u20130.5 and/or increase Exposure by +2 to +4 stops to confirm geometry is in frame.",
+    "Ensure the flow actually emits in this Blender build: print available Flow settings via `fs.bl_rna.properties` and set the correct enable flag (your run log showed `FluidFlowSettings` has no `use_flow`). If emission is off, you\u2019ll get empty flame grids.",
+    "Verify the domain has non-zero grids at the rendered frame: render a diagnostic shader that outputs `Volume Info -> Flame` and `Density` to confirm they\u2019re nonzero. If they\u2019re zero, the sim isn\u2019t producing fire/smoke.",
+    "Boost flame emission for candle scale: increase Principled Volume `Blackbody Intensity` multiplier (e.g., 18 \u2192 50\u2013150) during lookdev; reduce once you have visibility. Candle flames often need artistic boost in Cycles.",
+    "Raise key light energy substantially or use physically plausible units for scene scale (e.g., Point light 45 \u2192 500\u20135000) until the candle/holder is readable, then tune down.",
+    "Confirm camera is aimed and clipping correctly: set `camera.clip_start = 0.001` and disable DOF while debugging; re-enable DOF after the flame is visible.",
+    "If using Mantaflow noise: ensure noise bake exists and `use_noise` doesn\u2019t hide the base sim when noise cache is missing (can display empty domain).",
+    "After fixes, re-render a mid-sim frame (e.g., frame 60\u201390) and check that flame shape is ~3\u20134cm tall relative to candle diameter; adjust domain/emitter scale accordingly."
+  ],
+  "vision_assessment": "The provided render appears uniformly black (or near-black) with no discernible flame, smoke, candle body, holder, desk, or background library cues. As a result, the intended candle fire VFX (color gradients, internal structure, slow flicker, minimal smoke wisps) is not present in the image, and lighting/DOF/composition cannot be meaningfully judged. This is a fundamental visibility/exposure/simulation-output failure rather than a minor quality-tuning issue.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/library_candle_v1/library_candle_v1.png",
+  "iteration": 2,
+  "timestamp": "2026-02-13T03:10:36.009024"
+}

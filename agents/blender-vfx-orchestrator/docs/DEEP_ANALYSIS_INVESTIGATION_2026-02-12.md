@@ -132,31 +132,110 @@ Impact:
 Recommendation:
 - Replace regex-heavy mutation for non-trivial changes with regenerate-from-spec or AST-safe editing.
 
+### 11) Critical: Hallucination-prevention path is hard-disabled in runtime
+Evidence:
+- Spec-first path is disabled by code in constructor: `agents/blender-vfx-orchestrator/orchestrator.py:733` (`self._use_spec_first_pipeline: bool = False`).
+- With this flag off, all generation/modification routes fall back to the original Script Writer path (`agents/blender-vfx-orchestrator/orchestrator.py:2345-2368` decision branch).
+- Recent `kitchen_leak` runs align with this behavior pattern and do not use spec-first protection (`agents/blender-vfx-orchestrator/build/orchestrator_state/session_kitchen_leak_20260212_*.json`).
+Impact:
+- The system path designed to structurally constrain API hallucinations is unavailable in production runs.
+- Hallucination control regresses to prompt compliance + post-hoc patching.
+Recommendation:
+- Re-enable spec-first behind an explicit runtime flag (`ORCHESTRATOR_SPEC_FIRST=1`) instead of hardcoded false.
+- Add trace field `generation_mode: spec_first|legacy` and fail CI if mode unexpectedly regresses.
+
+### 12) Critical: Doc retrieval is polluted and accepted without strong grounding checks
+Evidence:
+- `kitchen_leak` API query includes mixed and legacy-prone tokens (`...time_scale...`) and returns unrelated chunks (`gpu.html`, quickstart) with `doc_path: null`: `agents/blender-vfx-orchestrator/traces/kitchen_leak_20260212_035933.jsonl:47`.
+- Research guardrail only enforces non-empty `doc_refs`, not valid API doc paths: `agents/blender-vfx-orchestrator/guardrails/research_guardrails.py:56-57`.
+- Doc tool may emit sentinel instead of real sources: `doc_refs = ["doc_search_empty"]` in `agents/blender-vfx-orchestrator/tools/semantic_docs_tools.py:650`.
+- Session evidence shows Docs Expert recommendations can include deprecated names like `resolution_divisions`: `agents/blender-vfx-orchestrator/build/orchestrator_state/session_fuel_ignition_20260203_234101_20260203_234102.json:46`.
+Impact:
+- "Doc-grounded" outputs can be grounded to irrelevant or non-authoritative chunks.
+- Hallucinated fields propagate into downstream prompts and parameter suggestions.
+Recommendation:
+- Require `doc_refs` entries to match strict API/manual path patterns (no sentinels, no filenames, no null path).
+- For attribute-level grounding, require at least one `bpy.types.FluidDomainSettings` or `bpy.types.FluidFlowSettings` doc path per generated fluid attribute.
+- Reject research outputs whose top-k results are change-log/index/tutorial-only when API intent is requested.
+
+### 13) High: Internal API truth is contradictory across prompts, validators, and docs
+Evidence:
+- Dynamic instructions still suggest `time_scale` directly (`agents/blender-vfx-orchestrator/tools/dynamic_instructions.py:660-661`) while other project files treat it as deprecated hallucination.
+- Hallucination scanner blacklist currently marks `time_scale` as removed in Blender 5.0 (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:66`).
+- Historical spec-first trace produced invalid enum `fset.flow_behavior = 'FLOW'`: `agents/blender-vfx-orchestrator/traces/e2e_test_v9_20260126_024559.jsonl:79`, and executor failure confirms valid enum set is `('INFLOW', 'OUTFLOW', 'GEOMETRY')`: `agents/blender-vfx-orchestrator/traces/e2e_test_v9_20260126_024559.jsonl:93`.
+- Blender 5 API docs show `FluidDomainSettings.time_scale` exists and `FluidFlowSettings.flow_behavior` valid enums are `INFLOW/OUTFLOW/GEOMETRY` (Blender API pages: `bpy.types.FluidDomainSettings.html`, `bpy.types.FluidFlowSettings.html`).
+Impact:
+- The system cannot consistently decide whether a token is valid, invalid, or deprecated.
+- This creates both false negatives (hallucinations pass) and false positives (valid settings blocked/rewritten).
+Recommendation:
+- Build a single generated "Blender 5 truth registry" from API docs and consume it from:
+  - prompt templates,
+  - guardrails,
+  - api validator,
+  - deterministic parameter maps.
+- Replace hardcoded deprecated-token blacklists with generated allow/deny sets from the registry.
+- Add a CI consistency check that fails when any instruction/guardrail references attributes not in the registry.
+
+### 14) High: Direct mutation path bypasses hallucination scanner entirely
+Evidence:
+- Orchestrator calls `_modify_script_impl(...)` directly at multiple points (`agents/blender-vfx-orchestrator/orchestrator.py:2535`, `:2571`, `:2610`, `:2816`).
+- `_modify_script_impl` writes modified scripts without calling `_scan_for_hallucinated_api(...)` (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:868-1175`).
+- The hallucination scanner is currently attached to `write_script`/`modify_script` tool guardrails, not raw `_impl` calls (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:112-183`).
+Impact:
+- Hallucinated attributes can be reintroduced during "fix" iterations even if initial generation was clean.
+Recommendation:
+- Route all modifications through `modify_script` function tool only.
+- Add explicit post-modification hallucination scan in `_modify_script_impl` as defense-in-depth.
+
+### 15) Medium: `hasattr(...)` masking allows silent API drift
+Evidence:
+- Generated scripts heavily use guarded assignments (`if hasattr(ds, '...')`) in lieu of strict attribute guarantees (see `kitchen_leak` write output: `agents/blender-vfx-orchestrator/traces/kitchen_leak_20260212_035933.jsonl:55`).
+- This pattern can silently no-op when attribute names are wrong, producing low-quality or empty simulations without immediate hard failures.
+Impact:
+- Hallucinations shift from explicit crashes to silent behavior regressions.
+- Token spend increases due iterative retries on low-quality outcomes.
+Recommendation:
+- Disallow `hasattr` guards for required simulation-critical attributes in generated scripts.
+- Require explicit validation artifact listing: "required attributes present and set" before execution.
+
 ## Root-Cause Themes
 - Contract drift: design docs and runtime behavior diverged.
 - Enforcement holes: safeguards exist, but critical paths bypass them.
 - Observability gaps: key artifacts/metrics are not consistently emitted.
+- Truth-source fragmentation: prompts, validators, and docs tool outputs disagree on Blender 5 API reality.
 
 ## Prioritized Remediation Plan
 
 ### P0 (Immediate)
-1. Enforce no direct `_impl` modifications from orchestrator.
-2. Implement explicit DIAGNOSE -> FIX phase for EXECUTE and gate failures.
-3. Make missing quality artifact a hard failure.
-4. Enforce strict `DocPath` validation.
+1. Re-enable spec-first behind runtime flag and add trace-visible `generation_mode`.
+2. Enforce no direct `_impl` modifications from orchestrator; use guarded `modify_script` only.
+3. Implement explicit DIAGNOSE -> FIX phase for EXECUTE and gate failures.
+4. Make missing quality artifact a hard failure.
+5. Enforce strict doc grounding:
+   - no null/empty/sentinel doc refs,
+   - API-intent results must include valid `bpy.types.*` or `bpy.ops.*` paths.
+6. Remove contradictory deprecated guidance from prompts and dynamic mappings.
 
 ### P1 (Short Term)
-1. Unify effect-type guardrail with `EffectType` enum.
-2. Emit run manifest artifacts and add tests for manifest existence.
-3. Update SDK truth docs to pinned runtime version.
+1. Generate and adopt a single Blender 5 API truth registry for prompts/guardrails/validators.
+2. Unify effect-type guardrail with `EffectType` enum.
+3. Emit run manifest artifacts and add tests for manifest existence.
+4. Update SDK truth docs to pinned runtime version.
+5. Add strict retrieval quality gates (minimum relevant API hits before script writing).
 
 ### P2 (Hardening)
 1. Reduce regex mutation scope and adopt structured patching/regeneration for code fixes.
 2. Add state-machine conformance tests asserting documented routing.
 3. Add telemetry conformance tests for quality/scorecard/manifest per iteration.
+4. Add hallucination-rate telemetry (`deprecated_token_hits`, `invalid_enum_hits`, `doc_ref_quality_score`) per iteration.
 
 ## Suggested Verification Tests
 - State-machine test: injected EXECUTE failure must produce DIAGNOSE and FIX artifacts before re-exec.
 - Enforcement test: any attempt to call `_modify_script_impl` from pipeline path fails CI.
 - Doc fidelity test: reject research output containing blank/null `doc_path`.
 - Artifact test: each iteration must produce `quality`, `scorecard`, `iteration`, and `manifest` artifacts.
+- Hallucination regression suite (must fail on):
+  - `resolution_divisions`, `use_adaptive_time_steps`, `timesteps_per_frame`, `timesteps_maximum`, `velocity_multi`,
+  - invalid enums such as `flow_behavior='FLOW'`.
+- Prompt lint test: fail if prompt/instruction files contain deprecated tokens not present in Blender 5 truth registry.
+- Retrieval quality test: API-intent doc searches must return >=2 results with valid API `doc_path` anchors before code generation.
