@@ -1425,7 +1425,7 @@ Select the optimal technique and provide starting parameters."""
         Returns:
             ScriptOutput with the generated script path and metadata
 
-        SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+        SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
         """
         print(f"[Spec-First] Starting API Spec → Code Writer pipeline", file=sys.stderr)
         run_config = self._build_run_config(
@@ -1954,7 +1954,7 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
         # 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
         # 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
         #
-        # SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+        # SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
 
         if self._use_spec_first_pipeline:
             print("[Orchestrator] Creating Phase 7 Spec-First Pipeline agents...", file=sys.stderr)
@@ -3177,61 +3177,80 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                             # Continue with original script if validation fails
 
                     # ====== PHASE 2: EXECUTION ======
-                    print(f"[Pipeline] PHASE 2: Executor", file=sys.stderr)
-                    exec_prompt = f"""Execute the Blender script and render the VFX asset.
+                    # S1-4 FIX: Deterministic execution — call _execute_blender_script_impl
+                    # directly instead of routing through the executor LLM agent. This
+                    # eliminates false-positive failures caused by LLM misinterpretation
+                    # of Blender stdout. Success, render_path, run_dir, and timing are
+                    # now parsed deterministically from the tool's structured JSON output.
+                    print(f"[Pipeline] PHASE 2: Deterministic Executor", file=sys.stderr)
+                    from tools.blender_executor_tools import _execute_blender_script_impl
+                    import glob as _glob
 
-Script Path: {script.script_path}
-Frames: {request.frame_start}-{request.frame_end}
+                    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    _exec_output_dir = os.path.join(_project_root, "build", "vdb_output", request.asset_name)
+                    os.makedirs(_exec_output_dir, exist_ok=True)
 
-Run the script and report results."""
-
-                    # Executor doesn't need doc query enforcement, just loop detection
-                    exec_hooks = EnforcementHooks(EnforcementConfig(
-                        max_same_tool_calls=3,
-                        max_turns=6,
-                        require_doc_query_before=[],  # Executor doesn't write code
-                        raise_on_doc_missing=False,
-                    ))
                     try:
-                        exec_result = await self._run_agent(
-                            self._executor_agent_standalone,
-                            exec_prompt,
-                            context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                            hooks=exec_hooks,
-                            max_turns=6,
-                            run_config=self._build_run_config(
-                                session=session,
-                                request=request,
-                                iteration=iteration,
-                                phase="execute",
-                            ),
+                        exec_json_str = await _execute_blender_script_impl(
+                            script_path=script.script_path,
+                            script_args={"bake": "1"},
+                            output_dir=_exec_output_dir,
+                            timeout_seconds=600,
                         )
-                        # Structured output: ExecutionOutput
-                        execution: ExecutionOutput = exec_result.final_output
-                    except LoopDetectedError as e:
-                        print(f"[Pipeline] WARN: Executor loop: {e}", file=sys.stderr)
+                        import json as _json
+                        exec_data = _json.loads(exec_json_str)
+
+                        # Build ExecutionOutput deterministically from tool result
+                        _render_path = None
+                        if exec_data.get("render_files"):
+                            _render_path = exec_data["render_files"][0]
+                        _vdb_path = None
+                        if exec_data.get("vdb_files"):
+                            _vdb_path = os.path.dirname(exec_data["vdb_files"][0])
+                        _error_msg = None
+                        if not exec_data.get("success", False):
+                            # Build error message from parsed errors or stderr
+                            _errors = exec_data.get("errors", [])
+                            if _errors:
+                                _error_msg = "; ".join(
+                                    e.get("message", str(e))[:200] for e in _errors[:3]
+                                )
+                            else:
+                                _error_msg = exec_data.get("error", "Unknown execution error")
+
+                        execution = ExecutionOutput(
+                            success=exec_data.get("success", False),
+                            render_path=_render_path,
+                            vdb_path=_vdb_path,
+                            run_dir=exec_data.get("run_dir"),
+                            error_message=_error_msg,
+                            execution_time_seconds=exec_data.get("duration_seconds", 0.0),
+                        )
+                        print(
+                            f"[Pipeline] Deterministic exec: exit_code={exec_data.get('exit_code')} "
+                            f"success={execution.success} render={execution.render_path} "
+                            f"vdbs={len(exec_data.get('vdb_files', []))} "
+                            f"time={execution.execution_time_seconds:.1f}s",
+                            file=sys.stderr,
+                        )
+                    except Exception as e:
+                        print(f"[Pipeline] Executor error: {e}", file=sys.stderr)
                         execution = ExecutionOutput(
                             success=False,
                             render_path=None,
                             vdb_path=None,
                             run_dir=None,
-                            error_message=f"Executor loop detected: {e}",
-                            execution_time_seconds=0.0
+                            error_message=f"Execution failed: {e}",
+                            execution_time_seconds=0.0,
                         )
-                    print(f"[Pipeline] Executor hooks stats: {exec_hooks.get_stats()}", file=sys.stderr)
 
-                    # Deterministic render discovery: ALWAYS run when render_path is missing.
-                    # The executor LLM often reports success=False because list_run_outputs
-                    # searches CLI logs (wrong dir). If a render exists on disk, override.
+                    # Fallback render discovery: scan disk if render_path still missing.
+                    # This catches cases where the script writes renders to a non-standard
+                    # location that _find_output_files doesn't cover.
                     if not execution.render_path:
-                        import glob as _glob
-                        _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                        _discover_dirs = []
-                        _vdb_base = os.path.join(_project_root, "build", "vdb_output", request.asset_name)
-                        _discover_dirs.append(_vdb_base)
-                        if os.path.isdir(_vdb_base):
-                            for _subdir in sorted(Path(_vdb_base).iterdir(), reverse=True):
+                        _discover_dirs = [_exec_output_dir]
+                        if os.path.isdir(_exec_output_dir):
+                            for _subdir in sorted(Path(_exec_output_dir).iterdir(), reverse=True):
                                 if _subdir.is_dir() and _subdir.name.startswith("run_"):
                                     _discover_dirs.append(str(_subdir))
                         if execution.run_dir:
@@ -3241,14 +3260,14 @@ Run the script and report results."""
                                 _found = sorted(_glob.glob(os.path.join(_dir, _ext)))
                                 if _found:
                                     execution.render_path = _found[-1]
-                                    print(f"[Pipeline] Render discovered: {execution.render_path}", file=sys.stderr)
+                                    print(f"[Pipeline] Render discovered via fallback: {execution.render_path}", file=sys.stderr)
                                     break
                             if execution.render_path:
                                 break
-
-                        # Override false-positive: executor said failure but render exists
+                        # If we found a render but exit_code was non-zero, the script
+                        # may have had warnings but still produced output. Trust the render.
                         if execution.render_path and not execution.success:
-                            print(f"[Pipeline] OVERRIDE: Executor reported failure but render exists on disk. Setting success=True.", file=sys.stderr)
+                            print(f"[Pipeline] OVERRIDE: exit_code!=0 but render exists. Setting success=True.", file=sys.stderr)
                             execution.success = True
                             execution.error_message = None
 
@@ -3402,42 +3421,36 @@ Fix the script completely. Keep the same technique but append '_errfix' to the o
                                         notes=[f"recovery_source={execute_fix_artifact}"],
                                     )
 
-                                    # Re-execute the fixed script
-                                    print(f"[Pipeline] PHASE 2.5b: Re-executing recovered script", file=sys.stderr)
-                                    re_exec_hooks = create_quality_analyst_hooks()  # Fresh hooks
-                                    reexec_prompt = f"""Execute this recovered Blender script:
-
-Script: {recovery_script.script_path}
-Effect: {request.effect_type.value}
-
-Execute it and report results."""
-
+                                    # S1-4 FIX: Deterministic re-execution (same as main path)
+                                    print(f"[Pipeline] PHASE 2.5b: Deterministic re-execution of recovered script", file=sys.stderr)
                                     try:
-                                        reexec_result = await self._run_agent(
-                                            self._executor_agent_standalone,
-                                            reexec_prompt,
-                                            context=context,
-                                            session=sdk_session,
-                                            hooks=re_exec_hooks,
-                                            max_turns=4,
-                                            run_config=self._build_run_config(
-                                                session=session,
-                                                request=request,
-                                                iteration=iteration,
-                                                phase="reexecute",
-                                            ),
+                                        _reexec_json = await _execute_blender_script_impl(
+                                            script_path=recovery_script.script_path,
+                                            script_args={"bake": "1"},
+                                            output_dir=_exec_output_dir,
+                                            timeout_seconds=600,
                                         )
-                                        reexec_output = reexec_result.final_output
-                                        # Deterministic render discovery (same as main path)
-                                        if reexec_output and not reexec_output.render_path:
-                                            import glob as _glob
-                                            _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                                            _vdb_base = os.path.join(_project_root, "build", "vdb_output", request.asset_name)
-                                            _search_dirs = [_vdb_base]
-                                            if os.path.isdir(_vdb_base):
-                                                for _sd in sorted(Path(_vdb_base).iterdir(), reverse=True):
-                                                    if _sd.is_dir() and _sd.name.startswith("run_"):
-                                                        _search_dirs.append(str(_sd))
+                                        _reexec_data = _json.loads(_reexec_json)
+                                        _re_render = _reexec_data["render_files"][0] if _reexec_data.get("render_files") else None
+                                        _re_vdb = os.path.dirname(_reexec_data["vdb_files"][0]) if _reexec_data.get("vdb_files") else None
+                                        _re_err = None
+                                        if not _reexec_data.get("success", False):
+                                            _re_errors = _reexec_data.get("errors", [])
+                                            _re_err = (
+                                                "; ".join(e.get("message", str(e))[:200] for e in _re_errors[:3])
+                                                if _re_errors else _reexec_data.get("error", "Unknown")
+                                            )
+                                        reexec_output = ExecutionOutput(
+                                            success=_reexec_data.get("success", False),
+                                            render_path=_re_render,
+                                            vdb_path=_re_vdb,
+                                            run_dir=_reexec_data.get("run_dir"),
+                                            error_message=_re_err,
+                                            execution_time_seconds=_reexec_data.get("duration_seconds", 0.0),
+                                        )
+                                        # Fallback render discovery
+                                        if not reexec_output.render_path:
+                                            _search_dirs = [_exec_output_dir]
                                             if reexec_output.run_dir:
                                                 _search_dirs.append(reexec_output.run_dir)
                                             for _dir in _search_dirs:
@@ -3449,19 +3462,16 @@ Execute it and report results."""
                                                         break
                                                 if reexec_output.render_path:
                                                     break
-                                            # Override false-positive
                                             if reexec_output.render_path and not reexec_output.success:
-                                                print(f"[Pipeline] OVERRIDE: Recovery executor reported failure but render exists. Setting success=True.", file=sys.stderr)
                                                 reexec_output.success = True
                                                 reexec_output.error_message = None
-                                        if reexec_output and reexec_output.success and reexec_output.render_path:
+                                        if reexec_output.success and reexec_output.render_path:
                                             print(f"[Pipeline] Recovery SUCCEEDED - render: {reexec_output.render_path}", file=sys.stderr)
-                                            # Replace the failed execution with recovered one
                                             execution = reexec_output
                                             script = recovery_script
                                             recovery_succeeded = True
                                         else:
-                                            re_err = reexec_output.error_message if reexec_output else "No output"
+                                            re_err = reexec_output.error_message or "No output"
                                             print(f"[Pipeline] Recovery re-execution also failed: {re_err}", file=sys.stderr)
                                     except Exception as e:
                                         print(f"[Pipeline] Recovery re-execution error: {e}", file=sys.stderr)
@@ -4099,11 +4109,19 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
                             print(f"[Pipeline] WARN: Technique switch research loop: {e}", file=sys.stderr)
                             # Keep existing research_text if new research loops
                         except OutputGuardrailTripwireTriggered as e:
-                            print(f"[Pipeline] WARN: Research Agent guardrail tripped (doc_refs empty): {e}", file=sys.stderr)
-                            # Non-fatal: keep existing research_text, pipeline continues
-                        print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
+                            # S1-1 FIX: Fail-closed — abort technique switch, revert stuck state reset.
+                            # The pipeline will continue with existing research_text and try
+                            # the next iteration with param modifications instead of a switch.
+                            print(
+                                f"[Pipeline] FAIL-CLOSED: Technique-switch research guardrail tripped: {e}. "
+                                f"Aborting technique switch; reverting to param modification path.",
+                                file=sys.stderr,
+                            )
+                            session_mgr.issue_tracker.consecutive_same_issue = consecutive  # revert reset
+                            should_switch = False  # prevent downstream switch logic from firing
+                        else:
+                            print(f"[Pipeline] New research: {research_text[:80]}...", file=sys.stderr)
                         print(f"[Pipeline] Switch research hooks stats: {switch_research_hooks.get_stats()}", file=sys.stderr)
-                        # Next iteration will get modified feedback to try different approach
 
                     # ====== END OF ITERATION: WRITE ITERATION ARTIFACT ======
                     # Artifact-First: Write iteration snapshot for cross-iteration reference

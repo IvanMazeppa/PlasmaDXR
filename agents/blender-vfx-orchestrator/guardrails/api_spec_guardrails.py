@@ -5,7 +5,7 @@ These guardrails enforce that:
 1. API Spec Agent: Every attribute has a verified doc_ref from Blender 5.0 API docs
 2. Code Writer: Only uses attributes that are in the verified APISpec
 
-SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
 
 IMPORTANT: Guardrails MUST return output_info on both pass and fail (SDK requirement).
 """

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-02-14T07:32:35.780718",
+  "effect_type": "water",
+  "observation": "Pressurized sideways fan spray is not visible/does not form; only a faint vertical streak/drip-like flow is seen, with minimal splash/pooling cues.",
+  "expected_behavior": "A burst fitting should produce a strong sideways fan/jet that impacts a cabinet wall, breaks into spray/splashes, sheets down the wall, pools on the floor, and starts dripping over the front lip by ~frame 50.",
+  "actual_behavior": "Render shows a largely blown-out cabinet interior with no readable fan spray or impact pattern; only faint vertical streaks and a few small bright specks near the bottom suggest minor droplets/splash. Pooling and dripping over the lip are not evident.",
+  "suspected_parameters": {
+    "velocity_normal": 10.0,
+    "resolution_max": 128,
+    "timesteps_max": 12,
+    "use_adaptive_timesteps": true,
+    "particle_radius": 1.15,
+    "flip_ratio": 0.92,
+    "use_mesh": true
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_script_iter2_specfix.py",
+  "iteration": 2,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "lighting.exposure_or_light_energy",
+    "fset.use_initial_velocity",
+    "fset.velocity_normal",
+    "dset.resolution_max",
+    "dset.timesteps_max",
+    "dset.particle_radius"
+  ],
+  "correlation_confidence": 0.62,
+  "recommended_fix": "First fix overexposure (reduce key/fill/rim light energy ~4-8x or lower camera exposure) so the fluid is readable. Then improve jet formation: use a thinner nozzle-like inflow geometry or align emitter normals toward the wall; keep use_initial_velocity=True and raise velocity_normal to ~14-18 for a pressurized spray; increase resolution_max to ~200 and timesteps_max to ~20 for thin sheets/splash breakup; reduce particle_radius to ~0.8-1.0 to avoid chunky droplets.",
+  "analysis_notes": "The render is clipped/overexposed, which can fully hide spray/sheeting/pooling even if the sim exists. Additionally, using small box inflows tends to produce volumetric inflow blobs rather than a coherent sideways jet; initial velocity based on surface normals may not aim consistently. Higher res/timesteps and smaller particle radius are typical for thin fan sprays and impact breakup.",
+  "analyzed_at": "2026-02-14T07:33:44.064897"
+}

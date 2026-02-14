@@ -135,17 +135,18 @@ Impact:
 Recommendation:
 - Replace regex-heavy mutation for non-trivial changes with regenerate-from-spec or AST-safe editing.
 
-### 11) Critical: Hallucination-prevention path is hard-disabled in runtime
-Evidence:
-- Spec-first path is disabled by code in constructor: `agents/blender-vfx-orchestrator/orchestrator.py:733` (`self._use_spec_first_pipeline: bool = False`).
-- With this flag off, all generation/modification routes fall back to the original Script Writer path (`agents/blender-vfx-orchestrator/orchestrator.py:2345-2368` decision branch).
-- Recent `kitchen_leak` runs align with this behavior pattern and do not use spec-first protection (`agents/blender-vfx-orchestrator/build/orchestrator_state/session_kitchen_leak_20260212_*.json`).
-Impact:
-- The system path designed to structurally constrain API hallucinations is unavailable in production runs.
-- Hallucination control regresses to prompt compliance + post-hoc patching.
-Recommendation:
-- Re-enable spec-first behind an explicit runtime flag (`ORCHESTRATOR_SPEC_FIRST=1`) instead of hardcoded false.
-- Add trace field `generation_mode: spec_first|legacy` and fail CI if mode unexpectedly regresses.
+### 11) ~~Critical~~ RESOLVED: Hallucination-prevention path is hard-disabled in runtime
+**STATUS (2026-02-14):** FIXED. Spec-first now defaults ON via `ORCHESTRATOR_SPEC_FIRST=1` env var (constructor reads `os.getenv("ORCHESTRATOR_SPEC_FIRST", "1")`). The 2026-02-14 kitchen_leak E2E test confirmed spec-first ran successfully (31 attrs, 6 ops verified).
+
+Evidence (at time of investigation):
+- Spec-first path was disabled by code in constructor: `agents/blender-vfx-orchestrator/orchestrator.py:733` (`self._use_spec_first_pipeline: bool = False`).
+- With this flag off, all generation/modification routes fell back to the original Script Writer path.
+- Recent `kitchen_leak` runs aligned with this behavior pattern and did not use spec-first protection.
+Impact (historical):
+- The system path designed to structurally constrain API hallucinations was unavailable in production runs.
+Recommendation (DONE):
+- ~~Re-enable spec-first behind an explicit runtime flag~~ Done: `ORCHESTRATOR_SPEC_FIRST=1` is now the default.
+- Trace field `generation_mode: spec_first|legacy` is logged at startup.
 
 ### 12) Critical: Doc retrieval is polluted and accepted without strong grounding checks
 Evidence:

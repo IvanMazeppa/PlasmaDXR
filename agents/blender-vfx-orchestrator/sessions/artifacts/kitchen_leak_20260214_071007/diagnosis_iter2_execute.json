@@ -1,0 +1,15 @@
+{
+  "iteration": 2,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "'NoneType' object has no attribute \"select_set\" raised in set_active(). Traceback shows the script attempted to call o.select_set(False) on a None object. Suggested fixes: 1) Guard against None before calling select_set, e.g. if o is not None: o.select_set(False) or filter out None entries from bpy.context.view_layer.objects; 2) When setting active/selection, use robust checks: ensure objects exist and context view_layer is valid (set view_layer.objects.active explicitly if required); 3) Remove deprecated use_nodes assignments (World.use_nodes / Material.use_nodes) \u2014 nodes are always enabled in Blender 5.x+, so delete those lines. See run logs for details: /home/maz3ppa/projects/PlasmaDXR/build/blender_cli_logs/20260214_071940_kitchen_leak_iter2_paramfix/stdout_stderr.txt. Full parsed warnings/errors available in the run logs.",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_iter2_paramfix.py.\nError: 'NoneType' object has no attribute \"select_set\" raised in set_active(). Traceback shows the script attempted to call o.select_set(False) on a None object. Suggested fixes: 1) Guard against None before calling select_set, e.g. if o is not None: o.select_set(False) or filter out None entries from bpy.context.view_layer.objects; 2) When setting active/selection, use robust checks: ensure objects exist and context view_layer is valid (set view_layer.objects.active explicitly if required); 3) Remove deprecated use_nodes assignments (World.use_nodes / Material.use_nodes) \u2014 nodes are always enabled in Blender 5.x+, so delete those lines. See run logs for details: /home/maz3ppa/projects/PlasmaDXR/build/blender_cli_logs/20260214_071940_kitchen_leak_iter2_paramfix/stdout_stderr.txt. Full parsed warnings/errors available in the run logs.\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_iter2_paramfix.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "timestamp": "2026-02-14T07:19:56.388471"
+}

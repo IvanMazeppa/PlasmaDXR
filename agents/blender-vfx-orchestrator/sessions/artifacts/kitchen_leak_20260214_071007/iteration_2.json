@@ -1,0 +1,64 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_script_iter2_specfix.py",
+  "technique_used": "mantaflow_liquid_flip_domain_with_secondary_particles_and_mesh_errfix (spec-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 22.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/highlight clipping washes out the cabinet interior and destroys readability of the water (no clear pressurized fan spray, impact sheeting, pooling, or dripping).",
+  "parameter_changes": {
+    "frames": [
+      1,
+      50
+    ],
+    "render": {
+      "engine": "CYCLES",
+      "resolution": [
+        1280,
+        720
+      ],
+      "samples": 192,
+      "output": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png"
+    },
+    "cache": {
+      "directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+      "type": "MODULAR",
+      "openvdb_compression": "ZIP"
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "resolution_max": 128,
+      "use_adaptive_timesteps": true,
+      "timesteps_max": 12,
+      "use_noise": true,
+      "noise_strength": 1.0,
+      "noise_scale": 2,
+      "vorticity": 0.25,
+      "use_flip_particles": true,
+      "flip_ratio": 0.92,
+      "particle_radius": 1.15,
+      "use_mesh": true,
+      "mesh_concave_upper": 1.5,
+      "mesh_smoothen_pos": 3,
+      "mesh_smoothen_neg": 3,
+      "use_spray_particles": true,
+      "use_foam_particles": true,
+      "use_bubble_particles": false
+    },
+    "flow": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_initial_velocity": true,
+      "velocity_normal": 10.0,
+      "temperature": 0.0,
+      "density": 1.0
+    },
+    "structural_fixes": [
+      "set_active()/safe_deselect_all() now guards against None objects in bpy.context.view_layer.objects before calling select_set",
+      "Removed Material.use_nodes / World.use_nodes assignments to avoid Blender 5.x deprecation warnings and future breakage"
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T07:33:56.720802"
+}

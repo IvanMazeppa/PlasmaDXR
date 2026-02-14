@@ -820,7 +820,7 @@ def create_api_spec_hooks() -> EnforcementHooks:
     - T2-3: Targeted searches for gaps (<=4 total)
     - T3-4: Return APISpec
 
-    SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+    SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
     """
     return APISpecEnforcementHooks(bundle_pre_called=True)
 
@@ -841,7 +841,7 @@ def create_code_writer_hooks() -> EnforcementHooks:
     The output guardrail (validate_code_against_spec) validates that
     the generated code only uses attributes from the APISpec.
 
-    SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+    SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
     """
     config = EnforcementConfig(
         max_same_tool_calls=2,  # Should only call write_script once

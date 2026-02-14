@@ -25,7 +25,7 @@ The pattern is clear: **deterministic post-processing > prompt engineering for A
 
 ### Q2: Should we deprecate APISpec Agent for legality checks and retain it only for strategy recommendations?
 
-**YES.**
+**Partially.**
 
 The APISpec Agent's legality checking is:
 1. Redundant with deterministic validation (which is more reliable)
@@ -35,7 +35,11 @@ The APISpec Agent's legality checking is:
 
 Keep it ONLY if we repurpose it as a "technique advisor" — suggesting which Mantaflow parameters to use for a given effect type. But this could equally be a deterministic lookup table (which we've started with `quality_parameter_map.py`).
 
-Recommendation: **disable entirely for now** (already `_use_spec_first_pipeline = False`), revisit after Layer A+B are stable.
+Recommendation:
+- Do **not** disable it immediately while stabilization is still in progress.
+- Current runtime defaults to spec-first enabled via `ORCHESTRATOR_SPEC_FIRST=1`.
+- The latest clean run in this document used APISpec successfully (31 attrs / 6 ops).
+- After Layer A+B (registry + firewall) are in place and benchmarked, remove APISpec from legality authority and keep deterministic validation as final arbiter.
 
 ### Q3: Can we commit to strict-mode fail-closed execution during stabilization?
 
@@ -84,7 +88,7 @@ Layer C is the most ambitious and risky. If the registry + firewall can auto-fix
 - Render produced (non-zero file size)
 - Quality score > 0 (not BLACK_SCREEN or WHITE_SCREEN)
 - No executor false-positive (success agreement between tool and pipeline)
-- Execution time < 15 minutes
+- Execution time within scenario budget (target p95 < 15 minutes; allow higher cap for heavy scenes)
 
 **Stability gate:**
 - 12/15 runs pass all hard gates (80% minimum)
@@ -98,10 +102,10 @@ Layer C is the most ambitious and risky. If the registry + firewall can auto-fix
 The `use_absolute` false deprecation is the worst offender. It's valid on `FluidFlowSettings` in Blender 5 but our blacklist rejects it. This is exactly the kind of error a compiled registry eliminates — one source of truth, generated from docs, no manual lists to contradict each other.
 
 ### On F2 (Research doc grounding)
-The research guardrail is format-strict but semantically useless. It rejects ALL research output because the vector store returns filenames (`bpy.types.FluidDomainSettings.html`) not the path format the regex expects (`blender_python_reference_5_0/bpy.types.FluidDomainSettings.html#anchor`). **Fix: normalize doc_ref format before validation, not after.**
+The research guardrail was too format-strict in earlier runs. S0 improved this by normalizing doc_refs and accepting `api_modules` for API grounding. However, one important strict condition remains: `doc_refs` must still be non-empty. So this is improved but not fully robust in empty-doc-ref scenarios.
 
 ### On F3 (Tripwire inconsistency)
-The `return_exceptions=True` in parallel preflight is the most dangerous pattern. A guardrail tripwire should ALWAYS abort the pipeline. Currently it can be swallowed as a None result and logged as a warning. This must be fail-closed.
+S0 fixed the worst case in parallel preflight by re-raising `OutputGuardrailTripwireTriggered`. But fail-closed behavior is still inconsistent across paths (e.g., technique-switch research still treats this as non-fatal warning). This needs one more pass for full consistency.
 
 ### On F6 (Executor false-positive)
 This is the most persistent bug. The executor LLM reads Blender stdout, misinterprets it, and reports failure when execution succeeded. The heuristic override (check disk for renders) works but is a band-aid. Long-term: the executor should return structured output (exit code + file list) not free-text interpretation.
@@ -113,7 +117,7 @@ This is the most persistent bug. The executor LLM reads Blender stdout, misinter
 Given Ben's budget ($20/month) and the project's current state:
 
 ### Week 1: S0 + Layer A (Registry)
-- S0 hotfixes (this session — already starting)
+- S0 hotfixes validated in latest run
 - Build `tools/build_blender5_registry.py` from downloaded Blender 5 HTML docs
 - Generate `registry/types.json`, `registry/enums.json`, `registry/deprecations.json`
 
@@ -129,7 +133,7 @@ Given Ben's budget ($20/month) and the project's current state:
 - If >1%: implement Layer C (structured generation)
 
 ### Layer D + E: Parallel with above
-- Fail-closed semantics: implement during S0
+- Complete remaining fail-closed semantics work during S1
 - Prompt simplification: implement during Layer A (remove hardcoded tables, reference registry)
 
 ---
@@ -174,9 +178,19 @@ All 5 S0 fixes plus 2 additional bugs found during testing. Verified with kitche
 
 ### What this proves
 
-S0 moved the bottleneck from **pipeline stability** to **physics quality**. The pipeline can now:
+S0 produced a strong signal that the bottleneck is moving from **pipeline stability** toward **physics quality**, but this remains provisional until benchmark suite validation. The pipeline can now:
 - Complete a full research → generate → validate → execute → evaluate cycle without crashing
 - Apply deterministic API fixes that catch what guardrails used to block
 - Record experiments and suggest parameter modifications for next iteration
 
-The remaining score gap (40 → 65 threshold) is about fluid simulation tuning, not architecture failures. Multi-iteration runs should close this gap once the Learning Agent's parameter suggestions take effect.
+The remaining score gap (40 → 65 threshold) appears to be mostly fluid simulation tuning, but this should be confirmed with the 15-run benchmark before declaring architecture stability achieved.
+
+---
+
+## Remaining Gaps After S0 (Must Fix Early in S1)
+
+1. Make guardrail tripwire handling fail-closed in all required research paths, not only phase-0 preflight.
+2. Decide policy for empty `doc_refs` when `api_modules` is valid API grounding (currently still hard-fail).
+3. Remove ambiguity in docs about spec-first mode and keep runtime/config documentation aligned with `ORCHESTRATOR_SPEC_FIRST`.
+4. Replace executor success heuristics with deterministic structured execution output to eliminate false-positive failure routing.
+5. Update stale SDK reference URLs (`v0.7.0` links) in runtime files to current main docs.

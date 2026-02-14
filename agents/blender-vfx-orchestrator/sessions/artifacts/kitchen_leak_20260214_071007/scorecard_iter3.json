@@ -1,0 +1,25 @@
+{
+  "session_id": "kitchen_leak_20260214_071007",
+  "iteration": 3,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [
+    "Critical: Severe overexposure/tone mapping causes widespread highlight clipping (large regions at pure white).",
+    "Medium: Possible geometry intersection/clipping at boundaries/contact areas (hard to confirm due to blown highlights)."
+  ],
+  "warnings": [
+    "Fix exposure first (before sim tuning): reduce key light/world strength and/or camera exposure by ~2\u20134 stops; use a filmic/photographic tone mapper to preserve highlights.",
+    "Rebuild water shading for readability: use physically-based refraction (IOR ~1.33), add subtle absorption (very light blue/green tint with depth), and introduce small roughness (e.g., 0.02\u20130.08) to avoid nuclear-white specular blowout.",
+    "Improve effect staging: ensure the emitter actually produces a sideways jet (emitter orientation/normals) and that the wall collider is positioned to catch the jet so you get a sheet-down behavior.",
+    "Increase simulation fidelity for thin-sheet breakup: raise domain resolution and max timesteps/substeps; reduce particle radius to avoid \u2018blobby\u2019 liquid.",
+    "Enhance whitewater/spray only after exposure is under control; otherwise particles will also clip to white and read as noise.",
+    "Add/strengthen contact shadows/AO and balanced fill lighting so cabinet interior and liquid silhouettes remain legible."
+  ],
+  "cache_size_mb": 761.542742729187,
+  "render_count": 1,
+  "vdb_count": 100,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 84.4339361780003,
+  "utility_score": 0.5796383865183331,
+  "timestamp": "2026-02-14T07:35:40.216924"
+}

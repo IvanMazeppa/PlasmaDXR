@@ -1,0 +1,26 @@
+{
+  "overall_score": 22.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/highlight clipping washes out the cabinet interior and destroys readability of the water (no clear pressurized fan spray, impact sheeting, pooling, or dripping).",
+  "issues": [
+    "Critical: Massive overexposure / clipped highlights (large areas are pure white), eliminating midtone detail and hiding water behavior.",
+    "Water does not read as transparent/refractive liquid; it appears as blown-out white mass/faint streaks with little Fresnel/specular definition.",
+    "Intended behavior is not visible: no convincing sideways fan spray from the burst fitting; impact splash/sheeting down wall is unclear; pooling on floor and dripping over the front lip are not evident.",
+    "Secondary particles/foam/spray are not reading as fine droplets; visible specks/blobs look chunky/undefined and may intersect geometry.",
+    "Overall scene/material separation is poor due to exposure: cabinet surfaces, pipe, and water all merge into clipped whites, reducing realism.",
+    "Lack of convincing wetness cues on cabinet surfaces (no readable wet sheen/darkening or coherent runoff paths)."
+  ],
+  "suggestions": [
+    "Fix exposure/tonemapping first (largest win): reduce light energy and/or render exposure by ~3\u20136 stops; ensure a highlight-compressing view transform (Filmic/ACES) so whites don\u2019t clip.",
+    "Increase water readability: ensure the liquid mesh is actually being rendered (domain/emitters hidden, but mesh visible) and that the water material is applied to the generated mesh object(s).",
+    "Adjust water shading: dielectric with IOR ~1.333, high transmission, very low roughness (~0.02\u20130.05), plus subtle volume absorption for thickness; avoid settings that make it look opaque white.",
+    "Improve the leak \u2018fan\u2019 signature: widen/angle the inflow fan (more spread in emitter placement/orientation) and/or increase initial jet speed; aim the emitters clearly toward the cabinet wall to create an obvious impact region.",
+    "Increase simulation fidelity for a pressurized jet: raise domain resolution_max and/or increase timesteps_max to capture thin sheets, breakup, and splashes; reduce particle_radius if the flow looks chunky.",
+    "Add/strengthen wetness cues on cabinet wall/floor (separate wet material or roughness reduction in runoff areas) so sheeting and pooling become legible even when the water is thin."
+  ],
+  "vision_assessment": "The render shows an under-sink cabinet-like interior with a T-shaped pipe/fixture near the top, but the interior is overwhelmingly blown out: most of the cabinet wall/floor area is near pure white with clipped highlights. Because of this, the water effect is largely unreadable\u2014there is no clear sideways pressurized fan spray, and only faint vertical streaking plus a few small bright specks near the lower area suggest any fluid at all. Pooling on the cabinet floor and dripping over the front lip are not convincingly visible, and the overall water material does not read as transparent/refractive liquid due to the clipping.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "iteration": 2,
+  "timestamp": "2026-02-14T07:32:51.078457"
+}

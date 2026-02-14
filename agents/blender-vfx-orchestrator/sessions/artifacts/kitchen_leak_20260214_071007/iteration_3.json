@@ -1,0 +1,30 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_iter3_paramfix.py",
+  "technique_used": "mantaflow_liquid_flip_domain_with_secondary_particles_and_mesh (param-modified) (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 30.0,
+  "passed": false,
+  "primary_issue": "Massive overexposure/highlight clipping: the frame is blown to near-white, destroying readability of the water and cabinet interior.",
+  "parameter_changes": {
+    "bg.inputs['Strength'].default_value": 0.2,
+    "bsdf.inputs['Roughness'].default_value": 0.05,
+    "bsdf.inputs['Specular IOR Level'].default_value": 0.25,
+    "bsdf.inputs['Base Color'].default_value": [
+      0.75,
+      0.85,
+      1.0,
+      1.0
+    ],
+    "volume_abs.inputs['Density'].default_value": 0.35,
+    "volume_abs.inputs['Color'].default_value": [
+      0.55,
+      0.78,
+      1.0,
+      1.0
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T07:36:42.963800"
+}

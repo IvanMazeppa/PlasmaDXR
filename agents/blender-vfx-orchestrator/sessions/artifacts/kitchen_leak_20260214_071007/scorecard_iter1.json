@@ -1,0 +1,24 @@
+{
+  "session_id": "kitchen_leak_20260214_071007",
+  "iteration": 1,
+  "overall_score": 22.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "If you\u2019re aiming for a simulated solution: create/enable a proper liquid emission (FLIP liquid) with a true velocity field that produces a sideways fan. Use multiple emitters/nozzles or a shaped emitter mesh oriented to the burst direction, with varied velocities for a realistic spray cone.",
+    "Add secondary particles (spray) for fine droplets, and ensure you generate visible droplets at high speed; use motion blur to help the spray read as pressurized water.",
+    "Ensure collisions/obstacles are set up so water clearly hits the cabinet wall and creates a splash/deflection, then forms a thin sheet that runs downward (either via meshed liquid + high-res, or a hybrid of sim + thin film cards).",
+    "Create a distinct pooled layer/puddle on the cabinet floor that grows over time; it should reflect and refract, with subtle ripples from impacts.",
+    "Add an overflow/drip behavior at the front lip: a thin stream that reaches the edge, beads, then drips off intermittently (this can be sim-driven or augmented with a controlled drip emitter).",
+    "Improve water material/readability: very low roughness, correct IOR (~1.333), strong Fresnel/specular highlights; add lighting that creates crisp glints on droplets. If true caustics are too expensive, fake caustic patterns with projected textures/light cookies.",
+    "Add wetness masks on the cabinet materials where water contacts: darken albedo slightly and reduce roughness for wet streaks and damp patches; add streak textures along gravity direction.",
+    "Increase realism in props/geometry: add more under-sink clutter and surface imperfections (dirt/grime, uneven wood, small gaps) to sell scale and enhance water interaction."
+  ],
+  "cache_size_mb": 1.9604129791259766,
+  "render_count": 1,
+  "vdb_count": 40,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 302.2950595539987,
+  "utility_score": 0.36,
+  "timestamp": "2026-02-14T07:17:58.780440"
+}

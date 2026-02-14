@@ -217,7 +217,7 @@ def material_wood(name="Mat_Wood"):
     bump.inputs["Strength"].default_value = 0.25
 
     # Principled values
-    bsdf.inputs["Roughness"].default_value = 0.65
+    bsdf.inputs["Roughness"].default_value = 0.05
     bsdf.inputs["Specular IOR Level"].default_value = 0.25
 
     links.new(tex.outputs["Fac"], ramp.inputs["Fac"])
@@ -253,7 +253,7 @@ def material_painted_metal(name="Mat_PaintedMetal"):
     bump.location = (-120, 60)
     bump.inputs["Strength"].default_value = 0.08
 
-    bsdf.inputs["Base Color"].default_value = (0.74, 0.76, 0.78, 1)
+    bsdf.inputs["Base Color"].default_value = [0.75, 0.85, 1.0, 1.0]
     bsdf.inputs["Metallic"].default_value = 1.0
     bsdf.inputs["Roughness"].default_value = 0.25
     bsdf.inputs["Specular IOR Level"].default_value = 0.5
@@ -420,8 +420,8 @@ def setup_scene():
     bg = nodes.get("Background")
     if bg:
         # From pattern: darker blue/gray background for water readability
-        bg.inputs["Color"].default_value = (0.02, 0.025, 0.035, 1.0)
-        bg.inputs["Strength"].default_value = 0.4
+        bg.inputs["Color"].default_value = [0.01, 0.012, 0.018, 1.0]
+        bg.inputs["Strength"].default_value = 0.2
 
 
 def create_camera():

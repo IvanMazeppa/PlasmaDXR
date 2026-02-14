@@ -28,7 +28,7 @@ Before making ANY changes, read: `agents/blender-vfx-orchestrator/VERSION_TRUTH.
 
 **Before using ANY bpy attribute:** Call `semantic_search_blender_docs()` to verify.
 
-### Agents SDK v0.6.9+
+### Agents SDK v0.8.3
 - Use `from agents import ...` (NOT `from openai.agents`)
 - Use `await Runner.run(agent, prompt)` (NOT `agent.run_sync()`)
 - Use `agent.as_tool()` (NOT `transfer_to_agent()` handoffs)
@@ -113,7 +113,7 @@ Failure routing:
 
 ## OpenAI Agents SDK Architecture
 
-**SDK Version:** v0.6.9+
+**SDK Version:** v0.8.3
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
 ### Agent Hierarchy

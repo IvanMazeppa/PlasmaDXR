@@ -1,0 +1,26 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "Massive overexposure/highlight clipping: the frame is blown to near-white, destroying readability of the water and cabinet interior.",
+  "issues": [
+    "Critical: Severe overexposure/tone mapping causes widespread highlight clipping (large regions at pure white).",
+    "Critical: Water material/shading reads as opaque white/specular instead of clear refractive water (no visible depth/absorption/refraction cues).",
+    "High: Intended effect behavior is not readable: no clear sideways pressurized fan spray, no obvious wall-impact sheeting, no pooling on the cabinet floor, no dripping over the front lip.",
+    "High: Liquid surface detail is too smooth/blob-like; thin sheets/rivulets/splash breakup are missing or obscured.",
+    "Medium: Contact/grounding is weak (missing contact shadows/AO where water meets surfaces), so the liquid doesn\u2019t feel integrated.",
+    "Medium: Possible geometry intersection/clipping at boundaries/contact areas (hard to confirm due to blown highlights)."
+  ],
+  "suggestions": [
+    "Fix exposure first (before sim tuning): reduce key light/world strength and/or camera exposure by ~2\u20134 stops; use a filmic/photographic tone mapper to preserve highlights.",
+    "Rebuild water shading for readability: use physically-based refraction (IOR ~1.33), add subtle absorption (very light blue/green tint with depth), and introduce small roughness (e.g., 0.02\u20130.08) to avoid nuclear-white specular blowout.",
+    "Improve effect staging: ensure the emitter actually produces a sideways jet (emitter orientation/normals) and that the wall collider is positioned to catch the jet so you get a sheet-down behavior.",
+    "Increase simulation fidelity for thin-sheet breakup: raise domain resolution and max timesteps/substeps; reduce particle radius to avoid \u2018blobby\u2019 liquid.",
+    "Enhance whitewater/spray only after exposure is under control; otherwise particles will also clip to white and read as noise.",
+    "Add/strengthen contact shadows/AO and balanced fill lighting so cabinet interior and liquid silhouettes remain legible."
+  ],
+  "vision_assessment": "The render is dominated by clipped whites: most of the cabinet interior/water region is blown out, with only dark frame elements and a faint central stream/splash hints visible. Because highlights are saturated, the liquid reads as a flat white mass rather than transparent water. The expected under-sink emergency leak (sideways fan spray hitting the cabinet wall, sheeting down, pooling, and dripping over the lip) is not convincingly depicted\u2014those key story beats are not clearly visible. Overall the shot currently fails primarily on exposure/tone mapping and material readability, which also prevents reliable judgment of the underlying fluid motion.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "iteration": 3,
+  "timestamp": "2026-02-14T07:35:40.216083"
+}

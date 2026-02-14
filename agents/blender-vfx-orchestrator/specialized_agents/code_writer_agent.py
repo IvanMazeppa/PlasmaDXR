@@ -9,7 +9,7 @@ Key insight: The agent cannot hallucinate attributes because:
 2. The output guardrail validates code against the spec
 3. Any unverified attribute usage is rejected
 
-SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
 """
 
 from __future__ import annotations

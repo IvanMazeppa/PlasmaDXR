@@ -420,8 +420,8 @@ def setup_scene():
     bg = nodes.get("Background")
     if bg:
         # From pattern: darker blue/gray background for water readability
-        bg.inputs["Color"].default_value = (0.02, 0.025, 0.035, 1.0)
-        bg.inputs["Strength"].default_value = 0.4
+        bg.inputs["Color"].default_value = [0.01, 0.012, 0.018, 1.0]
+        bg.inputs["Strength"].default_value = 0.25
 
 
 def create_camera():

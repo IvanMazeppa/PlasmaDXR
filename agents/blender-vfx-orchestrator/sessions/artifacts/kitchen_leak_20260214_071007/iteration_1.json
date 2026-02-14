@@ -1,0 +1,64 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_mantaflow_liquid_v1.py",
+  "technique_used": "mantaflow_liquid_flip_domain_with_secondary_particles_and_mesh",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 22.0,
+  "passed": false,
+  "primary_issue": "The image does not convincingly depict the intended water leak: there is no visible pressurized fan spray, no impact splashes/sheeting on the cabinet wall, no pooling on the floor, and no dripping over the front lip.",
+  "parameter_changes": {
+    "frames": [
+      1,
+      50
+    ],
+    "render_resolution": [
+      960,
+      540
+    ],
+    "cycles_samples": 64,
+    "domain": {
+      "domain_type": "LIQUID",
+      "resolution_max": 96,
+      "use_adaptive_timesteps": true,
+      "timesteps_max": 8,
+      "use_noise": false,
+      "noise_strength": 1.0,
+      "noise_scale": 2,
+      "vorticity": 0.25,
+      "cache_type": "MODULAR",
+      "cache_directory": "//output_kitchen_leak/cache",
+      "openvdb_cache_compress_type": "ZIP",
+      "use_flip_particles": true,
+      "flip_ratio": 0.9,
+      "particle_radius": 1.0,
+      "use_mesh": true,
+      "mesh_concave_upper": 1.0,
+      "mesh_smoothen_pos": 2,
+      "mesh_smoothen_neg": 2,
+      "use_spray_particles": true,
+      "use_foam_particles": true,
+      "use_bubble_particles": false
+    },
+    "flow": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW (emitters) / OUTFLOW (drain)",
+      "use_initial_velocity": true,
+      "velocity_normal": 7.0,
+      "temperature": 0.0,
+      "density": 1.0
+    },
+    "leak_animation": {
+      "leak_on_end_frame": 18,
+      "method": "scale inflow emitters to near-zero after leak end"
+    },
+    "lighting": {
+      "world_strength": 0.4,
+      "key_area_energy": 350,
+      "fill_point_energy": 80,
+      "rim_area_energy": 180
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T07:19:18.434243"
+}

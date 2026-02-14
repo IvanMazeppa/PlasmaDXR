@@ -10,7 +10,7 @@ isn't in the verified spec. And the spec cannot include an attribute
 without a doc reference. This creates a closed system where
 hallucination is structurally impossible.
 
-SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/agents.md
+SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/agents.md
 """
 
 from __future__ import annotations

@@ -10,7 +10,7 @@ This is enforced by:
 1. Output guardrail rejects specs with missing/invalid doc_refs
 2. RunHooks can track doc queries and reject if insufficient
 
-SDK Reference: https://github.com/openai/openai-agents-python/blob/v0.7.0/docs/guardrails.md
+SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
 """
 
 from __future__ import annotations

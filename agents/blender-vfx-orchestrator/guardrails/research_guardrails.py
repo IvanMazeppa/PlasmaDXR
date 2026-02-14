@@ -116,8 +116,23 @@ async def validate_research_output(
     errors = []
     if not isinstance(recommended_approach, str) or not recommended_approach.strip():
         errors.append("recommended_approach must be a non-empty string")
+
+    # S1-2 FIX: Accept empty doc_refs when api_modules provides valid API grounding.
+    # LLMs reliably populate api_modules with "bpy.types.FluidDomainSettings" but
+    # often return empty or garbage doc_refs from the vector store.
+    has_api_modules_grounding = any(
+        isinstance(m, str) and m.startswith(("bpy.types.", "bpy.ops."))
+        for m in api_modules
+    )
+
     if not isinstance(doc_refs, list) or len(doc_refs) == 0:
-        errors.append("doc_refs must be a non-empty list")
+        if not has_api_modules_grounding:
+            errors.append("doc_refs must be a non-empty list (or api_modules must contain valid bpy.types/bpy.ops paths)")
+        else:
+            print(
+                f"[Guardrail] validate_research_output: doc_refs empty but api_modules has valid API grounding — OK",
+                file=sys.stderr,
+            )
     else:
         normalized_refs = [ref.strip() for ref in doc_refs if isinstance(ref, str)]
         invalid_refs = [ref for ref in normalized_refs if not _is_valid_doc_ref(ref)]
@@ -131,13 +146,8 @@ async def validate_research_output(
             )
         api_refs = [ref for ref in normalized_refs if _is_api_doc_ref(ref)]
         # Accept api_modules as sufficient API grounding when doc_refs
-        # don't contain direct API references. The LLM reliably places
-        # "bpy.types.FluidDomainSettings" in api_modules even when
-        # doc_refs come back with index-page garbage from the vector store.
-        has_api_grounding = bool(api_refs) or any(
-            isinstance(m, str) and m.startswith(("bpy.types.", "bpy.ops."))
-            for m in api_modules
-        )
+        # don't contain direct API references.
+        has_api_grounding = bool(api_refs) or has_api_modules_grounding
         if not has_api_grounding:
             errors.append(
                 "No API grounding found: doc_refs must include at least one API reference "

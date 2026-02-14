@@ -1,0 +1,22 @@
+{
+  "session_id": "kitchen_leak_20260214_071007",
+  "iteration": 2,
+  "overall_score": 22.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix exposure/tonemapping first (largest win): reduce light energy and/or render exposure by ~3\u20136 stops; ensure a highlight-compressing view transform (Filmic/ACES) so whites don\u2019t clip.",
+    "Increase water readability: ensure the liquid mesh is actually being rendered (domain/emitters hidden, but mesh visible) and that the water material is applied to the generated mesh object(s).",
+    "Adjust water shading: dielectric with IOR ~1.333, high transmission, very low roughness (~0.02\u20130.05), plus subtle volume absorption for thickness; avoid settings that make it look opaque white.",
+    "Improve the leak \u2018fan\u2019 signature: widen/angle the inflow fan (more spread in emitter placement/orientation) and/or increase initial jet speed; aim the emitters clearly toward the cabinet wall to create an obvious impact region.",
+    "Increase simulation fidelity for a pressurized jet: raise domain resolution_max and/or increase timesteps_max to capture thin sheets, breakup, and splashes; reduce particle_radius if the flow looks chunky.",
+    "Add/strengthen wetness cues on cabinet wall/floor (separate wet material or roughness reduction in runoff areas) so sheeting and pooling become legible even when the water is thin."
+  ],
+  "cache_size_mb": 761.542742729187,
+  "render_count": 1,
+  "vdb_count": 100,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 767.4816128399998,
+  "utility_score": 0.36,
+  "timestamp": "2026-02-14T07:32:51.078833"
+}
