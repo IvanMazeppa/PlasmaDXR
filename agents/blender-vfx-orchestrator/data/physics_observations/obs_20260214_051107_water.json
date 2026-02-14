@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-02-14T05:11:07.592297",
+  "effect_type": "water",
+  "observation": "Expected a continuous sideways fan spray from the burst fitting with wall impact, rivulets, pooling, and initial drips by frame 40. Render shows no visible spray/impact/rivulets/puddle; at most a small isolated reflective blob and largely dry cabinet surfaces.",
+  "expected_behavior": "Pressurized inflow (~1.5\u20132.0 m/s) should emit many droplets/sheet, hit cabinet wall, create runoff streaks and a shallow puddle with ripples, reaching front lip and beginning to drip by frame 40.",
+  "actual_behavior": "No discernible liquid emission pattern (no fan spray), no wall wetting/rivulets, no pooled water coverage across cabinet floor; scene reads mostly dry.",
+  "suspected_parameters": {
+    "flow_emission_disabled_or_zero": true,
+    "use_plane_init": true,
+    "flow_behavior": "INFLOW",
+    "velocity_normal": 1.75,
+    "sampling_substeps_property_missing_in_api": true,
+    "domain_resolution_max": 96,
+    "cache_type": "ALL",
+    "bake_or_cache_not_updating": true,
+    "domain_bounds_or_emitter_outside_domain": true
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_v1.py",
+  "iteration": 1,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "FluidFlowSettings.sampling_substeps (missing API attr / no-op)",
+    "FluidFlowSettings.use_plane_init",
+    "FluidFlowSettings.flow_behavior",
+    "FluidFlowSettings.flow_type",
+    "FluidDomainSettings.cache_type",
+    "FluidDomainSettings.use_mesh",
+    "FluidDomainSettings.resolution_max",
+    "domain/emitter alignment (domain bounds & transforms)"
+  ],
+  "correlation_confidence": 0.7,
+  "recommended_fix": "1) Verify Flow emission is actually enabled in Blender 5.0 API (the UI 'Use Flow' toggle). If the corresponding API property exists (often `flow_settings.use_flow`), set it True. 2) Replace the non-existent `sampling_substeps` write with the correct Blender 5.0 property for liquid emission substeps (or move substepping control to domain adaptive timesteps: enable adaptive timesteps, raise timesteps_max to ~8-12). 3) Increase liquid visibility by ensuring domain meshing is enabled (`domain_settings.use_mesh=True`) and that bake_all produces a mesh cache; if not, use Modular cache and explicitly bake mesh. 4) Confirm emitter and initial puddle volumes are fully inside the domain and that object scales are applied (Ctrl-A) to avoid mis-scaled simulations.",
+  "analysis_notes": "The execution log explicitly shows: `FluidFlowSettings` has no attribute `sampling_substeps`, meaning the intended anti-aliasing for fast jets was never applied. Combined with potential Flow enable toggle mismatch and/or meshing cache issues, this explains why the spray/pool are not visible despite a bake occurring.",
+  "analyzed_at": "2026-02-14T05:12:51.910285"
+}

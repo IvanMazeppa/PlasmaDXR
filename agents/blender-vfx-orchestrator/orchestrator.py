@@ -144,7 +144,7 @@ class ResearchOutput(BaseModel):
     recommended_approach: str = Field(description="Best approach for the effect type (from documentation)")
     key_parameters: Dict[str, Any] = Field(default_factory=dict, description="Recommended parameter values (from patterns or docs)")
     api_modules: List[str] = Field(default_factory=list, description="Blender API modules to use (e.g., bpy.types.FluidDomainSettings)")
-    code_patterns: List[Dict[str, str]] = Field(default_factory=list, description="Proven patterns from library: [{pattern_id, issue, code_snippet}]")
+    code_patterns: List[Dict[str, Any]] = Field(default_factory=list, description="Proven patterns from library: [{pattern_id, issue, code_snippet}]")
     warnings: List[str] = Field(default_factory=list, description="Potential pitfalls to avoid (from knowledge base)")
     alternative_approaches: List[str] = Field(default_factory=list, description="Backup approaches if primary fails")
     doc_refs: List[str] = Field(default_factory=list, description="Blender 5.0 documentation references used (URLs or section names)")
@@ -982,7 +982,17 @@ Research documentation, patterns, and APIs to find the optimal starting approach
         results = await asyncio.gather(research_task, docs_task, return_exceptions=True)
         elapsed = _time.perf_counter() - preflight_start
 
-        # Extract results, handling exceptions gracefully
+        # S0-4 FIX: Re-raise guardrail tripwire exceptions instead of swallowing them.
+        # OutputGuardrailTripwireTriggered must propagate to the caller so it can
+        # abort the pipeline consistently (same behavior as sequential path).
+        from agents import OutputGuardrailTripwireTriggered as _OGTT
+        for i, result in enumerate(results):
+            if isinstance(result, _OGTT):
+                phase_name = "Research" if i == 0 else "DocsExpert"
+                print(f"[Parallel Preflight] {phase_name} guardrail tripwire — re-raising", file=sys.stderr)
+                raise result
+
+        # Extract results, handling non-tripwire exceptions gracefully
         research_result = results[0] if not isinstance(results[0], Exception) else None
         docs_result = results[1] if not isinstance(results[1], Exception) else None
 

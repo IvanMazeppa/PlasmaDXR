@@ -1,0 +1,29 @@
+{
+  "overall_score": 40.0,
+  "passed": false,
+  "primary_issue": "The water effect is not reading: there\u2019s no visible pressurized fan spray, no wall impact/rivulets, and no established pooled puddle or lip drips by frame 40.",
+  "issues": [
+    "Missing core action: no sideways fan spray from the burst fitting (the shot reads mostly dry).",
+    "No visible impact behavior: no splashes, breakup into droplets, or sheeting on the cabinet wall at the hit point.",
+    "No wetting/rivulets: cabinet walls/floor don\u2019t show runoff streaks or wet patches that would sell a sustained leak.",
+    "Pooling is absent/insufficient: no continuous shallow puddle covering the cabinet floor, and no ripple field from inflow runoff.",
+    "No front-lip spill: drips/over-edge runoff are not visible at frame 40, despite the brief requiring drip onset.",
+    "Water readability is poor: specular highlights and wet/dry contrast are too weak to read thin films, small droplets, or shallow water.",
+    "Scale/energy mismatch: any visible liquid appears as an isolated blob rather than many small droplets/sheet expected from a 1.5\u20132.0 m/s pressurized leak."
+  ],
+  "suggestions": [
+    "Fix emission first (most likely): verify the Flow object is inside the liquid domain bounds for all frames, has the Fluid modifier set to FLOW, `flow_type='LIQUID'`, `flow_behavior='INFLOW'`, and that inflow is actually enabled (some setups require an explicit \u201cuse_flow\u201d/enable toggle).",
+    "Resolve the substep setting mismatch: your run log indicates `FluidFlowSettings` has no `sampling_substeps` attribute\u2014find the correct Blender 5.0 API property and set that one, otherwise fast jets can disappear/alias or fail to emit as expected.",
+    "Increase spray breakup: enable secondary particles (spray/foam) and render them (or convert to instances/metaballs) so the mid-air fan reads as many droplets rather than one surface blob.",
+    "Make the puddle visible and stable: keep the initial puddle GEOMETRY flow, but ensure the liquid mesh is enabled and meshing parameters are tuned so a 1\u20132 cm deep sheet is actually visible (too large particle radius / too aggressive smoothing can erase thin puddles).",
+    "Force the \u2018lip drip\u2019 read: extend the domain slightly outside the cabinet front and reduce collision friction at the lip so liquid can creep, gather, and pinch off into 1\u20132 visible drips by frame 40.",
+    "Improve wet/dry contrast via shading: drive a wetmap (Dynamic Paint or particle contact mask) to darken wood albedo slightly and lower roughness where wet; keep water IOR ~1.333 with low roughness but add subtle roughness variation to avoid a single mirror-like blob.",
+    "Lighting pass for readability: add a small, brighter cool rim/strip aimed to catch droplet edges and puddle specular; without crisp highlights, thin water films won\u2019t read in a warm, indirect cabinet interior.",
+    "Reframe slightly tighter on the burst/impact zone (or ensure DOF focus is correct): if the spray exists but is small, current framing/contrast may be hiding it."
+  ],
+  "vision_assessment": "The render shows a modeled under-sink cabinet interior with wood panels, plumbing, and props, but the expected liquid action is not present in a convincing way. I do not see a continuous sideways fan spray from the burst fitting, nor the characteristic wall impact pattern (sheeting/splashes) or gravity-driven rivulets down the cabinet wall. The cabinet floor does not read as covered by a shallow puddle with ripples, and there are no clear drips forming over the front lip at frame 40. Overall, the shot reads predominantly as a dry cabinet scene with at most a small isolated reflective liquid patch/blob, which fails the stated \u201cdomestic emergency leak\u201d requirement.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "iteration": 1,
+  "timestamp": "2026-02-14T05:11:35.160925"
+}

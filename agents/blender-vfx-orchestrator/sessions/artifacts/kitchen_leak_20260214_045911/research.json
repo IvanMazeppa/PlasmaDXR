@@ -1,0 +1,56 @@
+{
+  "recommended_approach": "Drive the effect using Mantaflow data-blocks exposed in the Python API (notably `bpy.types.FluidDomainSettings` for the simulation container and `bpy.types.FluidFlowSettings` for emitters/flows), and then improve water readability at render time via lighting/material tweaks (as reflected by the available water pattern that adjusts World background and Principled BSDF parameters).",
+  "key_parameters": {
+    "render_world_background": {
+      "color": [
+        0.02,
+        0.025,
+        0.035,
+        1.0
+      ],
+      "strength": 0.4
+    },
+    "water_shader_principled_bsdf": {
+      "base_color": [
+        0.65,
+        0.75,
+        0.9,
+        1.0
+      ],
+      "roughness": 0.03
+    }
+  },
+  "api_modules": [
+    "bpy.types.ThemeBoneColorSet",
+    "bpy.types.ParticleSettings",
+    "bpy.types.LightProbeVolume",
+    "bpy.types.SolidifyModifier",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.ops.pose",
+    "bpy.ops.lattice",
+    "bpy.types.MarbleTexture",
+    "bpy.types.ImagePaint",
+    "bpy.types.BakeSettings",
+    "bpy.ops.mesh",
+    "bpy.types.ThemeView3D",
+    "bpy.types.Action",
+    "bpy.ops.armature",
+    "bpy.types.DistortedNoiseTexture",
+    "bpy.types.PropertyGroupItem",
+    "bpy.types.GreasePencilNoiseModifier",
+    "bpy.types.WoodTexture",
+    "bpy.types.CloudsTexture",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [
+    "No API doc_refs found (expected bpy.types.* or bpy.ops.* references)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md"
+  ],
+  "timestamp": "2026-02-14T05:00:21.131602"
+}

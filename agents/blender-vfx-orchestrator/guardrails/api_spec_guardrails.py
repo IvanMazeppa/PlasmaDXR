@@ -62,21 +62,14 @@ DEPRECATED_ATTRIBUTES = {
     # Cache/compression - BLOSC removed in Blender 5.0
     "openvdb_cache_compress_type_BLOSC": "REMOVED: BLOSC compression removed in 5.0, use 'ZIP' or 'NONE'",
 
-    # FluidFlowSettings - removed/renamed
-    "use_absolute": "CHECK CONTEXT: Moved to different location or removed",
-
-    # Shader inputs - renamed in Blender 4.0+
-    "Specular": "RENAMED: Use 'Specular IOR Level' for Principled BSDF",
-    "Clearcoat": "RENAMED: Use 'Coat Weight' for Principled BSDF",
-    "Clearcoat Roughness": "RENAMED: Use 'Coat Roughness' for Principled BSDF",
-    "Transmission": "RENAMED: Use 'Transmission Weight' for Principled BSDF",
-    "Subsurface": "RENAMED: Use 'Subsurface Weight' for Principled BSDF",
-    "Sheen": "RENAMED: Use 'Sheen Weight' for Principled BSDF",
-
     # Mesh - removed in Blender 4.1+
     "use_auto_smooth": "REMOVED: Auto smooth is now per-edge, use Smooth by Angle modifier",
     "auto_smooth_angle": "REMOVED: Use Smooth by Angle modifier",
 }
+# NOTE: Principled BSDF input renames (Transmission→Transmission Weight,
+# Specular→Specular IOR Level, etc.) are handled by blender_api_fixer.py
+# NOT here. The fixer auto-corrects them deterministically; putting them
+# in the guardrail would block the script before the fixer can run.
 
 # Known enum values that are INVALID in Blender 5.0
 DEPRECATED_ENUM_VALUES = {
@@ -195,6 +188,10 @@ KNOWN_GOOD_ATTRIBUTES = {
         "doc_ref": "blender_python_reference_5_0/bpy.types.FluidDomainSettings.html",
     },
     # FluidFlowSettings - inflow/outflow
+    "FluidFlowSettings.use_absolute": {
+        "value_type": "bool",
+        "doc_ref": "blender_python_reference_5_0/bpy.types.FluidFlowSettings.html",
+    },
     "FluidFlowSettings.flow_type": {
         "value_type": "enum",
         "enum_values": ["SMOKE", "FIRE", "BOTH", "LIQUID"],

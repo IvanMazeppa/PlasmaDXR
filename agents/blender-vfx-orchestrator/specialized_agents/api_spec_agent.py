@@ -135,7 +135,7 @@ You SHOULD include them when relevant to the effect. Use the class-level doc_ref
 - mesh_smoothen_neg: int
 - cache_directory: str
 - cache_type: enum [REPLAY, MODULAR, ALL]
-- openvdb_cache_compress_type: enum [ZIP, BLOSC, NONE]
+- openvdb_cache_compress_type: enum [ZIP, NONE]
 - use_spray_particles: bool (liquid)
 - use_foam_particles: bool (liquid)
 - use_bubble_particles: bool (liquid)

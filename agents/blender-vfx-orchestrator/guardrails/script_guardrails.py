@@ -30,19 +30,18 @@ from agents import (
 if TYPE_CHECKING:
     from agents import RunContextWrapper
 
-# Valid effect types from the EffectType enum
-VALID_EFFECT_TYPES = {
-    "explosion",
-    "fire",
-    "smoke",
-    "nebula",
-    "solar",
-    "custom",
-    "pyro",
-    "fluid",
-    "particles",
-    "volumetric",
-}
+# Valid effect types - dynamically synced from the canonical EffectType enum.
+# This prevents mismatches where the guardrail rejects valid effect types.
+try:
+    from models.shared_context import EffectType
+    VALID_EFFECT_TYPES = {e.value for e in EffectType}
+except ImportError:
+    # Fallback if EffectType not importable (e.g., standalone guardrail testing)
+    VALID_EFFECT_TYPES = {
+        "explosion", "fire", "smoke", "nebula", "pyro",
+        "water", "water_splash", "ocean", "waterfall", "rain",
+        "sun", "star", "supernova",
+    }
 
 # Keywords that indicate research was performed
 RESEARCH_INDICATORS = [

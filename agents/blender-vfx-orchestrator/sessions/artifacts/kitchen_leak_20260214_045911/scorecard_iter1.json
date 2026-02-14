@@ -1,0 +1,24 @@
+{
+  "session_id": "kitchen_leak_20260214_045911",
+  "iteration": 1,
+  "overall_score": 40.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix emission first (most likely): verify the Flow object is inside the liquid domain bounds for all frames, has the Fluid modifier set to FLOW, `flow_type='LIQUID'`, `flow_behavior='INFLOW'`, and that inflow is actually enabled (some setups require an explicit \u201cuse_flow\u201d/enable toggle).",
+    "Resolve the substep setting mismatch: your run log indicates `FluidFlowSettings` has no `sampling_substeps` attribute\u2014find the correct Blender 5.0 API property and set that one, otherwise fast jets can disappear/alias or fail to emit as expected.",
+    "Increase spray breakup: enable secondary particles (spray/foam) and render them (or convert to instances/metaballs) so the mid-air fan reads as many droplets rather than one surface blob.",
+    "Make the puddle visible and stable: keep the initial puddle GEOMETRY flow, but ensure the liquid mesh is enabled and meshing parameters are tuned so a 1\u20132 cm deep sheet is actually visible (too large particle radius / too aggressive smoothing can erase thin puddles).",
+    "Force the \u2018lip drip\u2019 read: extend the domain slightly outside the cabinet front and reduce collision friction at the lip so liquid can creep, gather, and pinch off into 1\u20132 visible drips by frame 40.",
+    "Improve wet/dry contrast via shading: drive a wetmap (Dynamic Paint or particle contact mask) to darken wood albedo slightly and lower roughness where wet; keep water IOR ~1.333 with low roughness but add subtle roughness variation to avoid a single mirror-like blob.",
+    "Lighting pass for readability: add a small, brighter cool rim/strip aimed to catch droplet edges and puddle specular; without crisp highlights, thin water films won\u2019t read in a warm, indirect cabinet interior.",
+    "Reframe slightly tighter on the burst/impact zone (or ensure DOF focus is correct): if the spray exists but is small, current framing/contrast may be hiding it."
+  ],
+  "cache_size_mb": 2.0431289672851562,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 519.328777447,
+  "utility_score": 0.45,
+  "timestamp": "2026-02-14T05:11:35.161234"
+}

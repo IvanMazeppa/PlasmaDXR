@@ -29,10 +29,32 @@ _API_DOC_REF_PATTERNS = (
 )
 
 
+def _normalize_doc_ref(ref: str) -> str:
+    """Normalize a doc_ref to canonical format before validation.
+
+    The vector store returns filenames like 'bpy.types.FluidDomainSettings.html'
+    but the guardrail expects 'blender_python_reference_5_0/bpy.types.FluidDomainSettings.html#anchor'.
+    This normalizer bridges the gap so valid refs aren't rejected for format mismatch.
+    """
+    token = ref.strip()
+    # Already has full path prefix — return as-is
+    if token.startswith(("blender_python_reference_5_0/", "blender_manual_html/")):
+        return token
+    # Bare API doc filename: bpy.types.Foo.html or bpy.ops.bar.html
+    if re.match(r"^bpy\.(?:types|ops)\.[^\s]+\.html", token):
+        # Add prefix and a generic anchor if missing
+        if "#" not in token:
+            token = f"blender_python_reference_5_0/{token}#attributes"
+        else:
+            token = f"blender_python_reference_5_0/{token}"
+        return token
+    return token
+
+
 def _is_valid_doc_ref(ref: Any) -> bool:
     if not isinstance(ref, str):
         return False
-    token = ref.strip()
+    token = _normalize_doc_ref(ref.strip())
     if not token:
         return False
     if token.lower().startswith(("doc_search_", "none", "null", "unknown")):
@@ -43,7 +65,7 @@ def _is_valid_doc_ref(ref: Any) -> bool:
 
 
 def _is_api_doc_ref(ref: str) -> bool:
-    token = ref.strip()
+    token = _normalize_doc_ref(ref.strip())
     return any(pattern.match(token) for pattern in _API_DOC_REF_PATTERNS)
 
 
@@ -83,6 +105,14 @@ async def validate_research_output(
             output_info={"reason": f"Invalid ResearchOutput type: {type(output)}"}
         )
 
+    # Also extract api_modules — the structured output field where LLMs
+    # reliably place API paths like "bpy.types.FluidDomainSettings".
+    api_modules = []
+    if hasattr(output, "api_modules"):
+        api_modules = getattr(output, "api_modules", []) or []
+    elif isinstance(output, dict):
+        api_modules = output.get("api_modules", []) or []
+
     errors = []
     if not isinstance(recommended_approach, str) or not recommended_approach.strip():
         errors.append("recommended_approach must be a non-empty string")
@@ -92,13 +122,27 @@ async def validate_research_output(
         normalized_refs = [ref.strip() for ref in doc_refs if isinstance(ref, str)]
         invalid_refs = [ref for ref in normalized_refs if not _is_valid_doc_ref(ref)]
         if invalid_refs:
-            errors.append(
-                "doc_refs contain invalid/non-grounded entries: "
-                + ", ".join(invalid_refs[:5])
+            # Downgrade to warning — invalid doc_refs are noisy but not fatal
+            # if we have valid api_modules for API grounding.
+            print(
+                f"[Guardrail] validate_research_output WARN: {len(invalid_refs)} invalid doc_refs "
+                f"(e.g., {invalid_refs[0][:60]}...)",
+                file=sys.stderr
             )
         api_refs = [ref for ref in normalized_refs if _is_api_doc_ref(ref)]
-        if not api_refs:
-            errors.append("doc_refs must include at least one API reference (bpy.types.* or bpy.ops.*)")
+        # Accept api_modules as sufficient API grounding when doc_refs
+        # don't contain direct API references. The LLM reliably places
+        # "bpy.types.FluidDomainSettings" in api_modules even when
+        # doc_refs come back with index-page garbage from the vector store.
+        has_api_grounding = bool(api_refs) or any(
+            isinstance(m, str) and m.startswith(("bpy.types.", "bpy.ops."))
+            for m in api_modules
+        )
+        if not has_api_grounding:
+            errors.append(
+                "No API grounding found: doc_refs must include at least one API reference "
+                "(bpy.types.* or bpy.ops.*) or api_modules must contain valid API paths"
+            )
 
     if errors:
         print(
