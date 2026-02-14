@@ -3,6 +3,7 @@
 **Date:** 2026-01-23
 **Status:** ✅ RESOLVED (2026-01-23)
 **Severity:** Medium (affects observability, not functionality)
+**Freshness Note:** Historical tracing incident report. For current runtime truth, see `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
 
 ## Resolution Summary
 

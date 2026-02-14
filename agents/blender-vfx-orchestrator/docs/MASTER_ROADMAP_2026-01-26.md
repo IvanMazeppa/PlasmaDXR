@@ -4,6 +4,10 @@
 **Purpose:** One authoritative plan for stabilizing the Blender VFX Orchestrator
 **Scope:** Supersedes scattered issue lists and gating docs in this folder
 
+**Status note (2026-02-13):**
+- This is a planning roadmap, not a runtime-truth spec.
+- For live behavior and grounding requirements, prioritize `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
+
 ---
 
 ## 0) Ground Truth (Non-Negotiables)
@@ -232,5 +236,5 @@ If any item is red, **Phase 4 must not start**.
 
 ## 7) Document Authority
 
-This file is the **only roadmap**. All other issue lists and gating docs are
-superseded and should not be used for planning.
+This file is the primary roadmap document, but runtime behavior is governed by
+`docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md` and current code.

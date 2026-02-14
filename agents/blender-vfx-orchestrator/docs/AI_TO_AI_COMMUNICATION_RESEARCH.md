@@ -1,8 +1,9 @@
 # AI-to-AI Communication Research for Multi-Agent Pipelines
 
 **Date:** 2026-01-28
-**Context:** VFX Orchestrator — 8-agent pipeline using OpenAI Agents SDK v0.7.0
+**Context:** VFX Orchestrator — 8-agent pipeline (SDK references are snapshot-era)
 **Status:** Research findings applied to agent configuration
+**Freshness Note:** Treat SDK-specific details as historical unless confirmed by current runtime-truth docs.
 
 ---
 

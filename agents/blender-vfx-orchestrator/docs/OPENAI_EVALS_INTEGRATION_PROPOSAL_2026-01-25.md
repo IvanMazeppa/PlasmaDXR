@@ -3,6 +3,7 @@
 **Date:** 2026-01-25
 **Status:** Research Complete - Implementation Ready
 **Related:** SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md
+**Freshness Note:** Historical proposal snapshot; verify OpenAI Evals/API details against current OpenAI docs before implementation.
 
 ---
 

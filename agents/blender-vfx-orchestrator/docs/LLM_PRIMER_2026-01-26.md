@@ -1,6 +1,6 @@
 # LLM Primer - Blender VFX Orchestrator
 
-**Status:** Onboarding only. Roadmap priorities live in `docs/MASTER_ROADMAP_2026-01-26.md`.
+**Status:** Onboarding only. Runtime truth lives in `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
 
 **Date:** 2026-01-26  
 **Audience:** New LLM/agent onboarding  
@@ -138,7 +138,7 @@ python test_e2e_orchestrator.py
 
 ## 9) Active Problems (Blockers)
 
-See `docs/MASTER_ROADMAP_2026-01-26.md` (single source of truth). Summary:
+See `docs/MASTER_ROADMAP_2026-01-26.md` (planning roadmap). Summary:
 
 1. **Spec-first doc search stabilization** (loop detection still triggers).
 2. **Enum validation verification** (needs successful spec-first run).
@@ -151,7 +151,7 @@ See `docs/MASTER_ROADMAP_2026-01-26.md` (single source of truth). Summary:
 
 ## 10) What To Do Next (Priority Order)
 
-**See `docs/MASTER_ROADMAP_2026-01-26.md` for the single working roadmap.**
+**See `docs/MASTER_ROADMAP_2026-01-26.md` for planning priorities and `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md` for runtime behavior.**
 
 | Priority | Task | Effort | Status |
 |----------|------|--------|--------|
@@ -192,6 +192,7 @@ See `docs/MASTER_ROADMAP_2026-01-26.md` (single source of truth). Summary:
 **Docs (source of truth)**
 - `docs/SDK_ENFORCEMENT_PROTOCOL.md`
 - `docs/VERSION_TRUTH.md`
+- `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
 - `docs/SCRIPT_WRITER_OVERHAUL_PROPOSAL_2026-01-25.md`
 - `docs/MASTER_ROADMAP_2026-01-26.md`
 

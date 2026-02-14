@@ -8,6 +8,8 @@ AI models (Claude, GPT, etc.) have training data cutoffs that make them
 suggest outdated APIs, model names, and patterns. This document is the
 **single source of truth** for this project.
 
+**Runtime note (2026-02-13):** For live runtime behavior and strict doc-grounding policy, also read `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
+
 ---
 
 ## OpenAI Models (2026-01)
@@ -16,7 +18,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 | Model | Use Case |
 |-------|----------|
 | `gpt-5.2` | High capability, complex reasoning |
-| `gpt-5-mini` | Fast, cheap, good for simple tasks ||
+| `gpt-5-mini` | Fast, cheap, good for simple tasks |
 | `o4-mini` | Fast reasoning |
 
 ### DEPRECATED - DO NOT USE
@@ -33,7 +35,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Agents SDK (v0.7.0)
+## OpenAI Agents SDK (v0.8.3)
 
 ### CURRENT PATTERNS
 ```python
@@ -92,7 +94,7 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
-**SDK Notes (v0.7.0):**
+**SDK Notes (v0.8.3):**
 - `agent.as_tool(max_turns=...)` is supported natively.
 - Guardrails are created via decorators (`@input_guardrail`, `@output_guardrail`).
 - Tool guardrails apply only to `@function_tool` tools; use RunHooks for cross-tool enforcement.
@@ -111,13 +113,14 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `dissolve_speed` | int | Dissolve speed value |
 | `use_adaptive_domain` | bool | NOT "adaptive_domain" |
 | `burning_rate` | float | Fire reaction speed (NOT reaction_speed!) 0.0-4.0, default 0.75 |
+| `time_scale` | float | Valid in Blender 5 API; use for simulation speed control |
 | `cache_type` | enum | 'MODULAR', 'ALL', etc. |
 | `cache_directory` | str | Absolute path required |
 
 ### FluidFlowSettings - CORRECT ATTRIBUTES
 | Attribute | Type | Notes |
 |-----------|------|-------|
-| `flow_type` | enum | 'SMOKE', 'FIRE', 'BOTH' |
+| `flow_type` | enum | 'SMOKE', 'FIRE', 'BOTH', 'LIQUID' |
 | `flow_behavior` | enum | 'INFLOW', 'OUTFLOW', 'GEOMETRY' |
 | `density` | float | Density value (NOT absolute_density!) |
 | `use_absolute` | bool | Flag for absolute mode |
@@ -140,7 +143,6 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 | `use_caching` | REMOVED | Doesn't exist in 5.0 |
 | `timesteps_per_frame` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
 | `timesteps_maximum` | `timesteps_max` | HALLUCINATED (2026-01-25, corrected 2026-02-06) |
-| `time_scale` | `timesteps_max` or `cfl_condition` | HALLUCINATED (2026-01-25) |
 | `reaction_speed` | `burning_rate` | HALLUCINATED (2026-02-06) |
 | `fire_reaction_speed` | `burning_rate` | HALLUCINATED (2026-02-06) |
 

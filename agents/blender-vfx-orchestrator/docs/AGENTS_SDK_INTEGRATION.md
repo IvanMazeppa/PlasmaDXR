@@ -1,7 +1,11 @@
 # OpenAI Agents SDK Integration Guide
 
 **Last Updated:** 2026-01-26
-**SDK Version:** 0.7.0
+**SDK Version (snapshot):** 0.7.0
+**Status:** Historical integration snapshot. For current SDK/runtime truth, use:
+- `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
+- `docs/SDK_ENFORCEMENT_PROTOCOL.md`
+- `docs/VERSION_TRUTH.md`
 
 ---
 

@@ -293,6 +293,27 @@ else:
     m.fluid_type = 'EFFECTOR'
 ```
 
+## CRITICAL: primitive_cube_add SCALE MATH — DO NOT HALVE DIMENSIONS
+`bpy.ops.mesh.primitive_cube_add(size=1.0)` creates a 1×1×1 unit cube (vertices at ±0.5).
+When you set `obj.scale = (W, D, H)`, the visual dimensions become (W, D, H).
+The scale IS the final dimension — NOT a half-extent.
+
+```python
+# CORRECT — cabinet floor that is 0.6m wide, 0.5m deep, 0.015m thick:
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.0075))
+floor = bpy.context.object
+floor.scale = (0.6, 0.5, 0.015)
+
+# WRONG — this creates a floor that is HALF the intended size (0.3m × 0.25m × 0.0075m):
+floor.scale = (0.6 * 0.5, 0.5 * 0.5, 0.015 * 0.5)  # DO NOT multiply by 0.5!
+```
+
+This error causes ALL objects to be half-sized, creating gaps between walls, floors, and
+ceilings ("exploded geometry"). Emitters end up outside domains because coordinates assume
+full-size objects but the domain is half-sized.
+
+**Rule:** `obj.scale = (width, depth, height)` — use the ACTUAL dimensions directly.
+
 ## SCENE DESIGN REQUIREMENTS (MANDATORY — THIS IS 40% OF YOUR JOB)
 Your script creates a COMPLETE, VISUALLY RICH SCENE. The environment, lighting, and
 atmosphere are what make the render look professional versus a tech demo.

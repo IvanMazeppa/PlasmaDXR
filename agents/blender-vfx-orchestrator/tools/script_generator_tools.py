@@ -63,7 +63,6 @@ HALLUCINATION_PATTERNS = [
     (r"\buse_adaptive_time_steps\b", "use_adaptive_time_steps is invalid (use use_adaptive_timesteps)"),
     (r"\bvelocity_multi\b", "velocity_multi is invalid (use velocity_factor)"),
     (r"\bnoise_res_factor\b", "noise_res_factor removed in Blender 5.0"),
-    (r"\btime_scale\b", "time_scale removed in Blender 5.0"),
     (r"\bdomain_resolution\b\s*=", "domain_resolution is read-only (use resolution_max)"),
     (r"\bflow\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
     (r"\bobject\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
@@ -1146,6 +1145,18 @@ def _modify_script_impl(
                 params_changed["OUTPUT_DIR"] = {"from": old_output_path, "to": new_output_path}
         else:
             modified_path = path.with_stem(path.stem + "_modified")
+
+        hallucination_issues = _scan_for_hallucinated_api(content)
+        if hallucination_issues:
+            return json.dumps({
+                "success": False,
+                "error": "Modified script contains hallucinated APIs",
+                "original_path": str(path),
+                "modified_path": "",
+                "changes_made": changes_made,
+                "parameters_changed": params_changed,
+                "warnings": hallucination_issues,
+            }, indent=2)
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         modified_path.write_text(content)

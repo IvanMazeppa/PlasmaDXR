@@ -867,6 +867,16 @@ class SharedContext(BaseModel):
         description="Summary of discovered artifacts from last gate check"
     )
 
+    # Phase 2.5/2.6: Execution diagnosis and fix tracking
+    last_execution_diagnosis: Optional[Any] = Field(
+        default=None,
+        description="DiagnosisArtifact from last execution failure (for fix planning)"
+    )
+    pending_gate_fix_instructions: Optional[Any] = Field(
+        default=None,
+        description="Fix steps for artifact gate failures (for next iteration)"
+    )
+
     @classmethod
     def from_request(cls, request: AssetRequest, session_id: str) -> "SharedContext":
         """Create a new SharedContext from an asset request."""

@@ -2,6 +2,10 @@
 
 This addendum proposes a concrete, implementable multi‑agent architecture for the Blender VFX orchestrator. It is designed to stabilize autonomous operation, reduce regressions, and make improvements measurable.
 
+**Implementation status note (2026-02-13):**
+- This doc describes target architecture and invariants.
+- For current implemented runtime behavior, use `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
+
 ## Goals
 - **Determinism for critical steps** (bake/render/export) while still allowing agent creativity.
 - **Observable, replayable runs** with reliable artifacts and checkpoints.
@@ -92,4 +96,3 @@ Examples:
 - The API fixer is now a critical “policy enforcement” layer.
 - The Executor should never bypass the fixer.
 - All bake/render settings should be centralized in the config layer and validated pre‑execution.
-

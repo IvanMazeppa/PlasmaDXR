@@ -5,6 +5,8 @@
 - Blender 5.0 API is the only supported runtime target.
 
 ## Ground Truth
+- Follow `agents/blender-vfx-orchestrator/docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md` for current runtime behavior and strict grounding contract.
+- Use `agents/blender-vfx-orchestrator/docs/DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md` to determine which docs are canonical vs historical snapshots.
 - Use OpenAI Agents SDK docs as the source of truth (context7 + OpenAI Developer Docs).
 - Follow `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md` for model names and Blender API correctness.
 - Do not rely on model memory for SDK or Blender API details.
@@ -16,6 +18,7 @@
 - Two-layer tool pattern: `_impl()` + `@function_tool` wrapper.
 - Script Writer must not write without a doc query in the same run (RunHooks enforced).
 - Learning Agent proposals require Blender 5 doc_refs; new API use requires a micro-experiment first.
+- `doc_refs` must be canonical Blender doc paths (no sentinels/null/temp filenames) with at least one API reference (`bpy.types.*` or `bpy.ops.*`) for API-intent outputs.
 - API validation is strict: unknown attribute == invalid.
 
 ## Pipeline (Code-Based)
@@ -32,13 +35,13 @@
    - QualityGateJudge (Coordinator).
 4. Shared SDK Session across all agents in the same VFX session.
 
-## Known Bugs / Failure Modes (2026-01-24 to 2026-01-26 docs)
-- Attribute hallucination: invalid Blender 5.0 properties used in scripts (e.g., `resolution_divisions`, `use_adaptive_time_steps`, `absolute_density`, `timesteps_per_frame`, `time_scale`).
+## Historical Failure Modes (Context, many now mitigated)
+- Attribute hallucination: invalid Blender 5 properties still occasionally appear (e.g., `resolution_divisions`, `use_adaptive_time_steps`, `absolute_density`, `timesteps_per_frame`, `timesteps_maximum`, `velocity_multi`).
 - Validation defaulting to valid for unknown attributes (must be strict invalid).
 - Script Writer sometimes skips doc tools; pipeline stops on DocQueryRequiredError.
 - Doc search returning manual-only pages (API refs missing) can still happen if routing breaks.
 - Learning Agent tries to `record_experiment_result` without `record_baseline`.
-- Modification Coordinator proposes code fixes, but `_modify_script_impl` only edits `class Config` params, so code-pattern fixes are ignored.
+- Modification path is centralized through `_apply_script_modifications`, but regex-based edits can still miss structural/non-local fixes.
 - Quality model mismatch under quick_test if VISION_MODEL override is not honored.
 - Schema mismatch risks (e.g., ScriptOutput `parameters_set` vs pipeline using `key_parameters`).
 

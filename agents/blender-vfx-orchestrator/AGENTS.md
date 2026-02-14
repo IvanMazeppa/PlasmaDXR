@@ -10,17 +10,19 @@
 - Prioritize deterministic execution, strict API correctness, and reproducible outputs.
 
 ## Read First (Mandatory)
-1. `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
-2. `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
-3. `agents/blender-vfx-orchestrator/docs/MULTI_AGENT_ARCHITECTURE_ADDENDUM_2026-01-29.md`
-4. `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
-5. `agents/blender-vfx-orchestrator/docs/MASTER_ROADMAP_2026-01-26.md`
+1. `agents/blender-vfx-orchestrator/docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
+2. `agents/blender-vfx-orchestrator/docs/DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md`
+3. `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
+4. `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
+5. `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
+6. `agents/blender-vfx-orchestrator/docs/MASTER_ROADMAP_2026-01-26.md`
 
 ## Ground Truth Rules
 - Blender runtime target is Blender 5.0 only.
 - Treat Blender API memory as untrusted; verify `bpy.*` usage against Blender docs/tools.
 - Unknown attributes/operators are invalid until verified.
 - Keep OpenAI Agents SDK patterns aligned with project docs and current SDK references.
+- Treat dated planning docs as historical unless explicitly referenced by runtime-truth docs.
 
 ## Required Orchestration Pattern
 - Use code-based pipeline orchestration (`create_asset_pipeline`).

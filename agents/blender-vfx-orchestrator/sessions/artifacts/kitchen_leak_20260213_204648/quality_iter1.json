@@ -1,0 +1,26 @@
+{
+  "overall_score": 28.0,
+  "passed": false,
+  "primary_issue": "The intended water effect is not readable: there is no convincing sideways pressurized spray, no impact splashes/rivulets, and no clear pooled puddle/drip at frame 40.",
+  "issues": [
+    "Critical: No visible pressurized spray cone/jet or airborne droplets; the burst-hose event is not communicated.",
+    "High: No clear impact splashes or rivulets on the cabinet wall where the jet should strike.",
+    "High: Floor puddle is not reading (missing wet sheen/meniscus), and the front-lip drip is not visible.",
+    "High: Water shading/optics do not sell clear water (weak transmission/Fresnel cues; highlights/refractions aren\u2019t doing the work).",
+    "Medium: Exposure/tonemapping appears clipped in bright areas, flattening wet-surface cues and reducing realism.",
+    "Medium: Fluid scale/dynamics do not match a moderate-pressure household hose burst (scene energy reads too low/absent)."
+  ],
+  "suggestions": [
+    "First, verify the liquid surface is actually being rendered: ensure the baked liquid mesh object exists and is visible in render (not hidden), and that the domain cage isn\u2019t the only thing assigned the water material.",
+    "Make the leak readable: increase secondary spray/whitewater (spray droplets) and ensure they are visible at frame 40; add motion blur if needed so the jet reads as continuous.",
+    "Improve puddle readability: ensure a thin puddle covers the cabinet floor with strong grazing-angle specular; add a visible meniscus at the front lip and 1\u20132 hanging droplets to sell the start of dripping.",
+    "Fix lighting/exposure: reduce blown highlights and strengthen the warm-vs-cool lighting separation so wet reflections clearly show warm pendant highlights plus cool LED accents.",
+    "Tighten water material: clear transmission with correct IOR behavior and very low roughness for sharp highlights; avoid milky/diffuse look unless simulating dirty water.",
+    "Add wall wetness/rivulets: use wet maps or shading variation to create darker wood streaks and glossier runoff paths where the jet hits and flows downward."
+  ],
+  "vision_assessment": "The frame reads as a mostly static under-sink cabinet setup: wood interior panels, plumbing elements (valves/hoses/P-trap proxies), and props (bucket/bottle/sponge/gloves). However, the key narrative element\u2014the active water leak\u2014is not visually present. There is no distinct sideways spray fan, no fine droplets, and no visible splash zone on the cabinet wall. The cabinet floor does not show a convincing continuous puddle with reflective sheen or a front-edge drip, so the scene fails to communicate \u201csteady leak has been running long enough to pool and begin dripping\u201d at frame 40. Overall, this does not meet the quality threshold for a water VFX shot because the simulated water is either not rendered/visible or not behaving/shading in a way that reads as liquid water.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260213_205924_kitchen_leak_script_iter1_specfix_errfix/renders/kitchen_leak_beauty_frame_40.png",
+  "iteration": 1,
+  "timestamp": "2026-02-13T21:02:13.820589"
+}

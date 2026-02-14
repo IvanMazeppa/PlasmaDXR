@@ -2,8 +2,9 @@
 
 **Date:** 2026-01-22
 **Author:** Ben + Claude
-**Status:** Active Implementation
+**Status:** Historical architecture plan
 **Last Updated:** 2026-01-26 (Phase 1, 2, 3, 4, 6, 7 complete; Phase 12 partial - enum validation needed)
+**Freshness Note:** This plan predates current runtime-truth docs; confirm behavior against `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
 
 ---
 

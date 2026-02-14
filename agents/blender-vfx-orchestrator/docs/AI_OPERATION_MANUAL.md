@@ -1,11 +1,22 @@
 # AI Operation Manual - Blender VFX Orchestrator
 
-**Version:** 3.4.1
-**Last Updated:** 2026-01-26
+**Version:** 3.4.2
+**Last Updated:** 2026-02-13
 **Target Audience:** AI Agents (Claude, GPT-5.2, or similar LLMs)
 **Purpose:** Autonomous VFX asset generation with minimal human intervention
 
 > **Architecture Note:** This system uses **code-based pipeline orchestration** with **3 Coordinator agents** for intelligent decisions, protected by **RunHooks + Guardrails** for defense-in-depth validation. All agents share **SDK Session context** for conversation persistence. The deprecated handoff-based `create_asset()` method should NOT be used.
+
+## Runtime Truth Addendum (2026-02-13)
+
+- SDK runtime pin is `openai-agents==0.8.3`.
+- Spec-first mode defaults on via `ORCHESTRATOR_SPEC_FIRST=1`.
+- Missing quality artifact is a hard failure.
+- Doc grounding is strict:
+  - `doc_refs` must be canonical Blender docs paths,
+  - no sentinels/null/filename placeholders,
+  - at least one API ref (`bpy.types.*` or `bpy.ops.*`) is required.
+- When this manual conflicts with `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`, follow runtime truth.
 
 ---
 
@@ -387,6 +398,8 @@ OUTPUT (LearningOutput):
 
 ### Doc-Gating Rules (Blender 5 Only)
 - Every proposal must include `doc_refs` from Blender 5 docs.
+- `doc_refs` must be canonical paths, not sentinels (`doc_search_empty`), nulls, or temporary chunk filenames.
+- At least one `doc_ref` must be an API path (`bpy.types.*` or `bpy.ops.*`) for API-intent outputs.
 - If `doc_refs` are missing, **force Docs Expert** before proposal is accepted.
 - New API usage requires **at least one** micro-experiment before full integration.
 
@@ -411,14 +424,14 @@ The following contradictions were identified and fixed in `tools/dynamic_instruc
 | "No backward compatibility" vs ".get() fallback" | Clarified: `.get()` is for KNOWN API changes (socket renames), not version detection. |
 | Prompt turn budgets vs `max_turns` | Aligned: Prompts specify 3-5 turns, `max_turns` set to 6-8 to allow buffer. |
 
-**Current Blender 5.0 API Guidance:**
+**Current Blender 5 API Guidance:**
 
 ```python
 # KNOWN socket renames - use .get() for these specific sockets:
 bsdf.inputs.get('Emission Color', bsdf.inputs.get('Emission')).default_value = (1,1,1,1)
 bsdf.inputs.get('Specular IOR Level', bsdf.inputs.get('Specular')).default_value = 0.5
 
-# Direct property access (Blender 5.0):
+# Direct property access (Blender 5):
 obj.visible_shadow = False  # Not cycles_visibility.shadow
 
 # Compositor setup:
@@ -453,7 +466,7 @@ if scene.node_tree is not None:  # Guard for None, not version
    d. PHASE 1: SCRIPT GENERATION
       - Script Writer generates/modifies script from Learning Agent proposals
    e. PHASE 1.5: API VALIDATION
-      - Validate Blender 5.0 API calls, apply corrections
+      - Validate Blender 5 API calls, apply corrections
    f. PHASE 2: EXECUTION
       - Execute script in Blender
       - Parse errors if failed, fix and retry (max 2)
@@ -1014,9 +1027,8 @@ Fields persisted:
 - Reduces token usage and prompt confusion
 
 **Turn-Limited Agent Wrappers (SDK Compliance):**
-- Replaced `agent.as_tool()` with `function_tool` wrappers that call `Runner.run()` with explicit `max_turns`
-- SDK limitation: `agent.as_tool()` does not accept `max_turns`
-- Solution per SDK docs/tools.md: wrap in custom function_tool
+- Introduced `function_tool` wrappers that call `Runner.run()` with explicit `max_turns` where extra policy control was needed.
+- Current SDK also supports `agent.as_tool(max_turns=...)`; wrappers are for custom control/instrumentation, not because of SDK absence.
 - Turn limits: Research=4, Script=6, Executor=3, Quality=4, Learning=3, API Validator=3
 - New functions: `create_agent_tool_wrappers()`, `create_research_tool_wrapper()`
 
@@ -1071,7 +1083,7 @@ Fields persisted:
 - Script Writer must perform a doc query before `write_script`/`modify_script`.
 - Enforced via RunHooks (`require_doc_query_before`).
 
-**SDK v0.7.0 Alignment:**
+**SDK v0.8.3 Alignment:**
 - `agent.as_tool(max_turns=...)` is supported natively; wrappers only needed for custom logic.
 
 **Budget Guardrail Consistency:**
@@ -1079,6 +1091,17 @@ Fields persisted:
 
 **Vision Model Default:**
 - Vision evaluation defaults to `gpt-5-mini` (override via `VISION_MODEL` env var).
+
+---
+
+### v3.4.2 (2026-02-13) - Runtime Truth + Grounding Contract
+
+**Documentation Grounding Clarified:**
+- Added explicit runtime-truth override and strict `doc_refs` contract in this manual.
+- Added canonical source pointer: `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
+
+**Runtime Defaults Clarified:**
+- Recorded spec-first default (`ORCHESTRATOR_SPEC_FIRST=1`) and hard failure on missing quality artifacts.
 
 ---
 

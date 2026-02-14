@@ -2,7 +2,8 @@
 
 **Date:** 2026-01-22
 **Author:** Ben (with Claude)
-**Status:** Active Development - Critical Issues Identified
+**Status:** Historical project snapshot (planning context only)
+**Current runtime truth:** `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
 
 ---
 

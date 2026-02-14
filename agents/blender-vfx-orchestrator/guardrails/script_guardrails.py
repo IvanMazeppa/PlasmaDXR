@@ -69,7 +69,6 @@ HALLUCINATION_PATTERNS = [
     (r"\buse_adaptive_time_steps\b", "use_adaptive_time_steps is invalid (use use_adaptive_timesteps)"),
     (r"\bvelocity_multi\b", "velocity_multi is invalid (use velocity_factor)"),
     (r"\bnoise_res_factor\b", "noise_res_factor removed in Blender 5.0"),
-    (r"\btime_scale\b", "time_scale removed in Blender 5.0"),
     (r"\bdomain_resolution\b\s*=", "domain_resolution is read-only (use resolution_max)"),
     (r"\bflow\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),
     (r"\bobject\.velocity_factor\b", "velocity_factor must be set on flow_settings, not bpy.types.Object"),

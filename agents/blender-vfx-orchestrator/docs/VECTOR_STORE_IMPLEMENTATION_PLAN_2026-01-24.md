@@ -3,7 +3,8 @@
 **Date:** 2026-01-24
 **Status:** READY FOR IMPLEMENTATION
 **Based On:** VECTOR_STORE_REVAMP_SPEC_2026-01-24.md
-**SDK Version:** OpenAI Agents SDK v0.6.9+
+**SDK Version (snapshot):** OpenAI Agents SDK v0.6.9+
+**Freshness Note:** Historical implementation plan; revalidate SDK/runtime assumptions with `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
 
 ---
 

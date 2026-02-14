@@ -1108,6 +1108,52 @@ def _fix_particle_radius_value(content: str) -> tuple[str, bool]:
     return new_content, modified
 
 
+def _fix_cube_scale_halving(content: str) -> tuple[str, bool]:
+    """
+    Fix the systematic '* 0.5' error on obj.scale after primitive_cube_add(size=1.0).
+
+    LLMs are deeply trained to treat scale as half-extents, systematically writing:
+        obj.scale = (W * 0.5, D * 0.5, H * 0.5)
+    when the correct code is:
+        obj.scale = (W, D, H)
+
+    With primitive_cube_add(size=1.0), vertices are at ±0.5, and obj.scale=(s,s,s)
+    gives visual dimensions (s, s, s), NOT half-extents. The * 0.5 halves everything,
+    creating gaps between objects ("exploded geometry") and emitters landing outside
+    undersized domains.
+
+    This fixer strips '* 0.5' from scale tuples where ALL three components are halved.
+    It preserves location math (where * 0.5 centering is often correct).
+    """
+    modified = False
+
+    # Match: .scale = (expr1 * 0.5, expr2 * 0.5, expr3 * 0.5)
+    # Only fix when ALL three components have * 0.5 (the systematic halving pattern)
+    # Each expr can be: a variable, a number, or a sub-expression like (A + B)
+    scale_pattern = re.compile(
+        r'(\.scale\s*=\s*\()'           # .scale = (
+        r'([^,]+?)\s*\*\s*0\.5'          # expr1 * 0.5
+        r'\s*,\s*'                        # ,
+        r'([^,]+?)\s*\*\s*0\.5'          # expr2 * 0.5
+        r'\s*,\s*'                        # ,
+        r'([^)]+?)\s*\*\s*0\.5'          # expr3 * 0.5
+        r'(\s*\))'                        # )
+    )
+
+    def _strip_halving(m):
+        nonlocal modified
+        prefix = m.group(1)     # .scale = (
+        expr1 = m.group(2).strip()
+        expr2 = m.group(3).strip()
+        expr3 = m.group(4).strip()
+        suffix = m.group(5)     # )
+        modified = True
+        return f"{prefix}{expr1}, {expr2}, {expr3}{suffix}"
+
+    new_content = scale_pattern.sub(_strip_halving, content)
+    return new_content, modified
+
+
 def _inject_camera_scale_fix(content: str) -> tuple[str, bool]:
     """
     Inject camera scale normalization before render calls.
@@ -1556,6 +1602,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, particle_radius_fixed = _fix_particle_radius_value(content)
     if particle_radius_fixed:
         fixes_applied.append("Fixed particle_radius: value < 0.1 is nonsensical (reset to 1.0)")
+
+    # P0 FIX: Strip * 0.5 from scale tuples (LLM halves all dimensions, causing exploded geometry)
+    content, scale_fixed = _fix_cube_scale_halving(content)
+    if scale_fixed:
+        fixes_applied.append("Removed * 0.5 from obj.scale tuples (fixes exploded geometry)")
 
     # P0 FIX: Camera scale normalization (look_at matrix corruption causes black renders)
     content, camera_fixed = _inject_camera_scale_fix(content)

@@ -1,6 +1,7 @@
 # Autonomy‑Critical Changes (2026-01-23)
 
 **Purpose:** This document lays out the **specific changes** required for the system to *actually* perform the tasks end‑to‑end (not just appear to). The emphasis is on deterministic enforcement, not hopeful prompting.
+**Freshness Note:** Historical implementation snapshot. Validate against `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md` before applying.
 
 ---
 

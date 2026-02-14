@@ -114,14 +114,17 @@ Impact:
 Recommendation:
 - Move pre-iteration research into a dedicated phase that always runs for `iteration > 1`.
 
-### 9) Medium: SDK version truth is inconsistent across docs vs runtime dependency
+### 9) Medium (Historical at investigation time): SDK version truth was inconsistent across docs vs runtime dependency
 Evidence:
 - Runtime dependency pins `openai-agents==0.8.3`: `agents/blender-vfx-orchestrator/requirements.txt:10`.
-- Truth docs still state SDK v0.7.0: `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md:36`, `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md:7`.
+- At investigation time, truth docs still stated SDK v0.7.0: `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md:36`, `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md:7`.
 Impact:
 - Engineering decisions may follow stale behavior assumptions.
 Recommendation:
 - Update all SDK truth docs to match installed version and revalidate claimed API patterns.
+
+Resolution update (2026-02-13):
+- `docs/VERSION_TRUTH.md` and `docs/SDK_ENFORCEMENT_PROTOCOL.md` were updated to SDK `v0.8.3`.
 
 ### 10) Medium: Regex-centric script mutation remains brittle for structural fixes
 Evidence:
@@ -160,8 +163,8 @@ Recommendation:
 
 ### 13) High: Internal API truth is contradictory across prompts, validators, and docs
 Evidence:
-- Dynamic instructions still suggest `time_scale` directly (`agents/blender-vfx-orchestrator/tools/dynamic_instructions.py:660-661`) while other project files treat it as deprecated hallucination.
-- Hallucination scanner blacklist currently marks `time_scale` as removed in Blender 5.0 (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:66`).
+- At investigation time, dynamic instructions suggested `time_scale` directly (`agents/blender-vfx-orchestrator/tools/dynamic_instructions.py:660-661`) while other project files treated it as deprecated hallucination.
+- At investigation time, hallucination scanner blacklists marked `time_scale` as removed in Blender 5.0 (resolved in P0 implementation).
 - Historical spec-first trace produced invalid enum `fset.flow_behavior = 'FLOW'`: `agents/blender-vfx-orchestrator/traces/e2e_test_v9_20260126_024559.jsonl:79`, and executor failure confirms valid enum set is `('INFLOW', 'OUTFLOW', 'GEOMETRY')`: `agents/blender-vfx-orchestrator/traces/e2e_test_v9_20260126_024559.jsonl:93`.
 - Blender 5 API docs show `FluidDomainSettings.time_scale` exists and `FluidFlowSettings.flow_behavior` valid enums are `INFLOW/OUTFLOW/GEOMETRY` (Blender API pages: `bpy.types.FluidDomainSettings.html`, `bpy.types.FluidFlowSettings.html`).
 Impact:
@@ -176,16 +179,17 @@ Recommendation:
 - Replace hardcoded deprecated-token blacklists with generated allow/deny sets from the registry.
 - Add a CI consistency check that fails when any instruction/guardrail references attributes not in the registry.
 
-### 14) High: Direct mutation path bypasses hallucination scanner entirely
+### 14) High (Historical at investigation time): Direct mutation path bypassed hallucination scanner
 Evidence:
-- Orchestrator calls `_modify_script_impl(...)` directly at multiple points (`agents/blender-vfx-orchestrator/orchestrator.py:2535`, `:2571`, `:2610`, `:2816`).
-- `_modify_script_impl` writes modified scripts without calling `_scan_for_hallucinated_api(...)` (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:868-1175`).
-- The hallucination scanner is currently attached to `write_script`/`modify_script` tool guardrails, not raw `_impl` calls (`agents/blender-vfx-orchestrator/tools/script_generator_tools.py:112-183`).
+- At investigation time, orchestrator called `_modify_script_impl(...)` directly at multiple points.
+- At investigation time, `_modify_script_impl` did not run explicit post-modification hallucination scanning.
 Impact:
-- Hallucinated attributes can be reintroduced during "fix" iterations even if initial generation was clean.
+- Hallucinated attributes could be reintroduced during "fix" iterations even if initial generation was clean.
+Resolution update (2026-02-13):
+- Direct calls were centralized into `_apply_script_modifications(...)` and `_modify_script_impl` now performs `_scan_for_hallucinated_api(...)` before writing output.
 Recommendation:
-- Route all modifications through `modify_script` function tool only.
-- Add explicit post-modification hallucination scan in `_modify_script_impl` as defense-in-depth.
+- Keep centralized modification path and hallucination scanning as required.
+- Add regression tests to fail if any pipeline path bypasses `_apply_script_modifications(...)`.
 
 ### 15) Medium: `hasattr(...)` masking allows silent API drift
 Evidence:
@@ -239,3 +243,23 @@ Recommendation:
   - invalid enums such as `flow_behavior='FLOW'`.
 - Prompt lint test: fail if prompt/instruction files contain deprecated tokens not present in Blender 5 truth registry.
 - Retrieval quality test: API-intent doc searches must return >=2 results with valid API `doc_path` anchors before code generation.
+
+## P0 Implementation Status (2026-02-13)
+- [x] `P0-1` Re-enable spec-first behind runtime flag and add trace-visible generation mode.
+  - Implemented: `ORCHESTRATOR_SPEC_FIRST` controls pipeline mode (default enabled); `generation_mode` now emitted in `RunConfig.trace_metadata`.
+  - Code: `agents/blender-vfx-orchestrator/orchestrator.py`.
+- [x] `P0-2` Enforce no direct `_impl` modifications from orchestrator.
+  - Implemented: removed scattered direct `_modify_script_impl(...)` pipeline calls and centralized modifications via guarded `_apply_script_modifications(...)`; `_modify_script_impl` now includes hallucination scanning before write.
+  - Code: `agents/blender-vfx-orchestrator/orchestrator.py`.
+- [x] `P0-3` Implement explicit DIAGNOSE -> FIX phase for EXECUTE and gate failures.
+  - Implemented: execute failures now emit diagnosis + fix artifacts before recovery/re-exec; artifact-gate failures now emit diagnosis + fix artifacts before next-iteration remediation.
+  - Code: `agents/blender-vfx-orchestrator/orchestrator.py`, `agents/blender-vfx-orchestrator/utils/artifact_manager.py`.
+- [x] `P0-4` Make missing quality artifact a hard failure.
+  - Implemented: quality artifact file existence/non-empty checks now raise hard runtime failure via `_require_artifact_file(...)`.
+  - Code: `agents/blender-vfx-orchestrator/orchestrator.py`.
+- [x] `P0-5` Enforce strict doc grounding (`doc_refs` validity and API-intent source quality).
+  - Implemented: `doc_refs` now reject sentinels/filenames/nulls; research output guardrail requires strict doc path format and at least one API doc ref (`bpy.types.*`/`bpy.ops.*`); ungrounded research now aborts run.
+  - Code: `agents/blender-vfx-orchestrator/guardrails/research_guardrails.py`, `agents/blender-vfx-orchestrator/tools/semantic_docs_tools.py`, `agents/blender-vfx-orchestrator/orchestrator.py`.
+- [x] `P0-6` Remove contradictory deprecated guidance from prompts and dynamic mappings.
+  - Implemented: removed incorrect deprecation handling for `time_scale` from script guardrails and API validator to align with Blender 5 API ground truth.
+  - Code: `agents/blender-vfx-orchestrator/guardrails/script_guardrails.py`, `agents/blender-vfx-orchestrator/tools/script_generator_tools.py`, `agents/blender-vfx-orchestrator/specialized_agents/api_validator.py`.

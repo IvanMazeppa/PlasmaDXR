@@ -1,6 +1,9 @@
 # Enforcing `max_turns` for Sub‑Agents (Agents‑as‑Tools)
 
-This note addresses the `agent.as_tool()` limitation and lays out SDK‑compliant ways to enforce turn limits for sub‑agents.
+This note captures turn-limit guidance from a historical SDK snapshot.
+For current SDK/runtime truth, validate with:
+- `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
+- `docs/SDK_ENFORCEMENT_PROTOCOL.md`
 
 References:
 - SDK tools docs (agents‑as‑tools + customization): https://github.com/openai/openai-agents-python/blob/main/docs/tools.md

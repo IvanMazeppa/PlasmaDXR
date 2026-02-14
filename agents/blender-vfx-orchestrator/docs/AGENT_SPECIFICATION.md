@@ -2,8 +2,9 @@
 
 **Version:** 3.0.0
 **Date:** 2026-01-23
+**Status:** Historical specification snapshot. For current runtime behavior, see `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
 **Model:** GPT-5.2 with Reasoning (all agents)
-**SDK:** OpenAI Agents SDK v0.6.9+
+**SDK at snapshot time:** OpenAI Agents SDK v0.6.9+
 
 ---
 

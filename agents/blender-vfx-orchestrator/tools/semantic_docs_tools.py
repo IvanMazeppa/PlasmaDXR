@@ -142,6 +142,45 @@ def _extract_doc_type(content: str) -> Optional[str]:
     return None
 
 
+_DOC_REF_PATTERNS = (
+    re.compile(r"^blender_manual_html/[^\s#]+#[^\s]+$"),
+    re.compile(r"^blender_python_reference_5_0/[^\s#]+#[^\s]+$"),
+    re.compile(r"^bpy\.(?:types|ops)\.[^\s#]+\.html(?:#[^\s]+)?$"),
+)
+_API_DOC_REF_PATTERNS = (
+    re.compile(r"^blender_python_reference_5_0/bpy\.(?:types|ops)\.[^\s#]+#[^\s]+$"),
+    re.compile(r"^bpy\.(?:types|ops)\.[^\s#]+\.html(?:#[^\s]+)?$"),
+)
+
+
+def _normalize_doc_ref(doc_ref: Optional[str]) -> str:
+    """Normalize and sanitize doc references for strict grounding."""
+    if not isinstance(doc_ref, str):
+        return ""
+    value = doc_ref.strip()
+    if not value:
+        return ""
+    if value.lower().startswith(("doc_search_", "none", "null", "unknown")):
+        return ""
+    if value.endswith(".md"):
+        return ""
+    return value
+
+
+def _is_valid_doc_ref(doc_ref: Optional[str]) -> bool:
+    value = _normalize_doc_ref(doc_ref)
+    if not value:
+        return False
+    return any(pattern.match(value) for pattern in _DOC_REF_PATTERNS)
+
+
+def _is_api_doc_ref(doc_ref: Optional[str]) -> bool:
+    value = _normalize_doc_ref(doc_ref)
+    if not value:
+        return False
+    return any(pattern.match(value) for pattern in _API_DOC_REF_PATTERNS)
+
+
 def _search_vector_store(
     query: str,
     max_results: int = 5,
@@ -412,8 +451,8 @@ def semantic_search_blender_docs(
 
     for result in results:
         content = result.get('content', '')
-        doc_path = result.get('doc_path')
-        if doc_path and doc_path not in doc_refs:
+        doc_path = _normalize_doc_ref(result.get('doc_path'))
+        if _is_valid_doc_ref(doc_path) and doc_path not in doc_refs:
             doc_refs.append(doc_path)
 
         # Extract code blocks
@@ -447,7 +486,7 @@ def semantic_search_blender_docs(
                 "content": r['content'],
                 "score": r['score'],
                 "source": r['filename'],
-                "doc_path": r.get('doc_path', ''),
+                "doc_path": _normalize_doc_ref(r.get('doc_path')) if _is_valid_doc_ref(r.get('doc_path')) else "",
                 "doc_type": r.get('doc_type', 'unknown'),
             }
             for r in results
@@ -475,7 +514,7 @@ def _blender_doc_search_bundle_impl(
             "error": "OpenAI package not available",
             "results_found": 0,
             "results": [],
-            "doc_refs": ["doc_search_unavailable"],
+            "doc_refs": [],
             "warnings": ["OpenAI package missing - cannot access vector store"],
             "diagnostics": {
                 "openai_available": False,
@@ -625,29 +664,27 @@ def _blender_doc_search_bundle_impl(
                     related_apis.add(api_ref)
                 idx = end_idx
         # Extract DocPath from result (already parsed in search)
-        doc_path = result.get("doc_path") or ""
-        if doc_path and doc_path not in extracted_doc_paths:
+        doc_path = _normalize_doc_ref(result.get("doc_path") or "")
+        if _is_valid_doc_ref(doc_path) and doc_path not in extracted_doc_paths:
             extracted_doc_paths.append(doc_path)
         # Fallback: try to extract from content header
         if not doc_path:
             for line in content.splitlines()[:15]:
                 if line.startswith("DocPath:"):
-                    doc_path = line.replace("DocPath:", "").strip()
-                    if doc_path and doc_path not in extracted_doc_paths:
+                    doc_path = _normalize_doc_ref(line.replace("DocPath:", "").strip())
+                    if _is_valid_doc_ref(doc_path) and doc_path not in extracted_doc_paths:
                         extracted_doc_paths.append(doc_path)
                     break
 
     doc_refs = []
     for doc_path in extracted_doc_paths:
-        if doc_path not in doc_refs:
+        if _is_valid_doc_ref(doc_path) and doc_path not in doc_refs:
             doc_refs.append(doc_path)
-    for r in results:
-        filename = r.get("filename", "") or ""
-        if filename and filename not in doc_refs:
-            doc_refs.append(filename)
-
+    api_doc_refs = [ref for ref in doc_refs if _is_api_doc_ref(ref)]
     if not doc_refs:
-        doc_refs = ["doc_search_empty"]
+        warnings.append("No valid doc_refs extracted from search results.")
+    if not api_doc_refs:
+        warnings.append("No API doc_refs found (expected bpy.types.* or bpy.ops.* references).")
 
     return json.dumps({
         "effect_type": effect_type,
@@ -658,7 +695,7 @@ def _blender_doc_search_bundle_impl(
                 "content": r.get("content", ""),
                 "score": r.get("score", 0),
                 "source": r.get("filename", "unknown"),
-                "doc_path": r.get("doc_path") or next(
+                "doc_path": _normalize_doc_ref(r.get("doc_path")) or next(
                     (p for p in extracted_doc_paths if p in (r.get("content", "") or "")),
                     ""
                 ),
@@ -707,7 +744,7 @@ def blender_doc_search_bundle(
         - results: list of doc chunks (content, score, source, query)
         - code_snippets: extracted Python snippets (if any)
         - related_apis: bpy.* references discovered
-        - doc_refs: list of source filenames
+        - doc_refs: strict grounded doc paths (no sentinels or filenames)
         - warnings: list of warnings (if any)
         - diagnostics: status info
     """

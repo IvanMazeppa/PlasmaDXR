@@ -133,6 +133,33 @@ class ManifestArtifact:
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
+@dataclass
+class DiagnosisArtifact:
+    """Explicit DIAGNOSE phase artifact for failure analysis."""
+    iteration: int
+    phase: str
+    issue_type: str
+    summary: str
+    details: str
+    recommended_fixes: List[str]
+    script_path: Optional[str] = None
+    render_path: Optional[str] = None
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class FixArtifact:
+    """Explicit FIX phase artifact describing remediation actions."""
+    iteration: int
+    phase: str
+    strategy: str
+    instructions: List[str]
+    script_input_path: Optional[str] = None
+    script_output_path: Optional[str] = None
+    notes: List[str] = field(default_factory=list)
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
 class ArtifactManager:
     """
     Manages artifact persistence for a VFX session.
@@ -322,6 +349,68 @@ class ArtifactManager:
         )
         return self.write_manifest(artifact)
 
+    def write_diagnosis(self, diagnosis: DiagnosisArtifact) -> str:
+        """Write diagnosis artifact."""
+        safe_phase = diagnosis.phase.replace(" ", "_")
+        return self._write_json(
+            f"diagnosis_iter{diagnosis.iteration}_{safe_phase}.json",
+            diagnosis,
+        )
+
+    def write_diagnosis_from_values(
+        self,
+        iteration: int,
+        phase: str,
+        issue_type: str,
+        summary: str,
+        details: str,
+        recommended_fixes: List[str],
+        script_path: Optional[str] = None,
+        render_path: Optional[str] = None,
+    ) -> str:
+        """Write diagnosis artifact from raw values."""
+        artifact = DiagnosisArtifact(
+            iteration=iteration,
+            phase=phase,
+            issue_type=issue_type,
+            summary=summary,
+            details=details,
+            recommended_fixes=recommended_fixes,
+            script_path=script_path,
+            render_path=render_path,
+        )
+        return self.write_diagnosis(artifact)
+
+    def write_fix(self, fix: FixArtifact) -> str:
+        """Write fix artifact."""
+        safe_phase = fix.phase.replace(" ", "_")
+        return self._write_json(
+            f"fix_iter{fix.iteration}_{safe_phase}.json",
+            fix,
+        )
+
+    def write_fix_from_values(
+        self,
+        iteration: int,
+        phase: str,
+        strategy: str,
+        instructions: List[str],
+        script_input_path: Optional[str] = None,
+        script_output_path: Optional[str] = None,
+        notes: Optional[List[str]] = None,
+    ) -> str:
+        """Write fix artifact from raw values."""
+        artifact = FixArtifact(
+            iteration=iteration,
+            phase=phase,
+            strategy=strategy,
+            instructions=instructions,
+            script_input_path=script_input_path,
+            script_output_path=script_output_path,
+            notes=notes or [],
+        )
+        return self.write_fix(artifact)
+
     # =========================================================================
     # READ METHODS
     # =========================================================================
@@ -420,6 +509,14 @@ class ArtifactManager:
         scorecard_files = sorted(self.artifact_dir.glob("scorecard_*.json"))
         if scorecard_files:
             lines.append(f"- Scorecards: {len(scorecard_files)} available")
+
+        diagnosis_files = sorted(self.artifact_dir.glob("diagnosis_iter*.json"))
+        if diagnosis_files:
+            lines.append(f"- Diagnoses: {len(diagnosis_files)} available")
+
+        fix_files = sorted(self.artifact_dir.glob("fix_iter*.json"))
+        if fix_files:
+            lines.append(f"- Fix Plans: {len(fix_files)} available")
 
         return "\n".join(lines)
 

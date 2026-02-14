@@ -726,11 +726,11 @@ class BlenderVFXOrchestrator:
         # Two-phase approach: API Spec Agent → Code Writer Agent
         self._api_spec_agent: Optional[Agent] = None
         self._code_writer_agent: Optional[Agent] = None
-        # DISABLED (2026-02-06): Spec-First pipeline creates deadlock between
-        # validate_code_against_spec (spec compliance) and complexity guardrail.
-        # See docs/DEEP_ANALYSIS_FINDINGS_2026-02-06.md for full analysis.
-        # The Script Writer Standalone path with doc search works correctly.
-        self._use_spec_first_pipeline: bool = False
+        # Spec-first pipeline is runtime-configurable for safe rollout.
+        # Default ON to prevent Blender API hallucinations.
+        self._use_spec_first_pipeline: bool = os.getenv(
+            "ORCHESTRATOR_SPEC_FIRST", "1"
+        ).lower() in ("1", "true", "yes", "on")
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
@@ -747,6 +747,11 @@ class BlenderVFXOrchestrator:
         )
         self._diagnostic_hooks: Optional[DiagnosticHooks] = None
         self._enable_parallel_preflight = os.getenv("VFX_PARALLEL_PREFLIGHT", "1").lower() in ("1", "true", "yes")
+        print(
+            f"[Orchestrator] generation_mode={'spec_first' if self._use_spec_first_pipeline else 'legacy'} "
+            f"(ORCHESTRATOR_SPEC_FIRST={os.getenv('ORCHESTRATOR_SPEC_FIRST', '1')})",
+            file=sys.stderr,
+        )
 
     def _get_model_settings(self, agent_name: str) -> tuple[str, ModelSettings]:
         """
@@ -792,6 +797,7 @@ class BlenderVFXOrchestrator:
             "asset_name": request.asset_name,
             "effect_type": request.effect_type.value,
             "session_id": session.session_id,
+            "generation_mode": "spec_first" if self._use_spec_first_pipeline else "legacy",
         }
         if iteration is not None:
             trace_meta["iteration"] = iteration
@@ -809,6 +815,68 @@ class BlenderVFXOrchestrator:
                 return RunConfig()
             except Exception:
                 return None
+
+    async def _apply_script_modifications(
+        self,
+        *,
+        script_path: str,
+        modifications: Dict[str, Any],
+        output_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply script changes through guarded modify_script tool path only."""
+        if not modifications:
+            return {
+                "success": False,
+                "error": "No modifications provided",
+                "original_path": script_path,
+                "modified_path": "",
+                "changes_made": [],
+                "parameters_changed": {},
+            }
+
+        try:
+            # Call _modify_script_impl directly (sync function), NOT the
+            # @function_tool-wrapped modify_script (which is a FunctionTool
+            # object and not directly awaitable).
+            result_raw = _modify_script_impl(
+                script_path=script_path,
+                modifications=modifications,
+                output_name=output_name,
+            )
+            if isinstance(result_raw, str):
+                parsed = json.loads(result_raw)
+            elif isinstance(result_raw, dict):
+                parsed = result_raw
+            else:
+                parsed = {
+                    "success": False,
+                    "error": f"Unexpected _modify_script_impl response type: {type(result_raw).__name__}",
+                }
+        except Exception as e:
+            parsed = {
+                "success": False,
+                "error": f"modify_script failed: {e}",
+            }
+
+        if "original_path" not in parsed:
+            parsed["original_path"] = script_path
+        if "modified_path" not in parsed:
+            parsed["modified_path"] = ""
+        if "changes_made" not in parsed:
+            parsed["changes_made"] = []
+        if "parameters_changed" not in parsed:
+            parsed["parameters_changed"] = {}
+        return parsed
+
+    def _require_artifact_file(self, artifact_path: str, label: str) -> None:
+        """Fail fast when required artifact is missing/empty."""
+        if not artifact_path:
+            raise RuntimeError(f"{label} artifact path is empty")
+        p = Path(artifact_path)
+        if not p.exists():
+            raise RuntimeError(f"{label} artifact missing: {artifact_path}")
+        if p.stat().st_size <= 0:
+            raise RuntimeError(f"{label} artifact is empty: {artifact_path}")
 
     async def _run_agent(
         self,
@@ -2038,9 +2106,10 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
                         print(f"[Pipeline] WARN: Research loop detected: {e}", file=sys.stderr)
                         research_text = "Research incomplete due to loop - proceeding with default approach"
                     except OutputGuardrailTripwireTriggered as e:
-                        # Research output failed validation (e.g., empty doc_refs) — non-fatal
-                        print(f"[Pipeline] WARN: Research guardrail tripped: {e}", file=sys.stderr)
-                        research_text = "Research output incomplete (guardrail) - proceeding with default approach"
+                        # Strict grounding mode: do not proceed when research is ungrounded.
+                        raise RuntimeError(
+                            f"Research grounding guardrail tripped; aborting run: {e}"
+                        ) from e
                     except Exception as e:
                         # SDK wraps LoopDetectedError in UserError - check for it
                         if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
@@ -2532,12 +2601,11 @@ Generate a complete, validated script using the selected technique. Return the s
                                     print(f"[Pipeline] Pattern parameters extracted: {pattern_params}", file=sys.stderr)
                                     output_name = f"{request.asset_name}_iter{iteration}_pattern"
 
-                                    modify_result_json = _modify_script_impl(
+                                    modify_result = await self._apply_script_modifications(
                                         script_path=previous_script.script_path,
                                         modifications=pattern_params,
-                                        output_name=output_name
+                                        output_name=output_name,
                                     )
-                                    modify_result = json.loads(modify_result_json)
 
                                     if modify_result.get("success") and modify_result.get("modified_path"):
                                         print(f"[Pipeline] Pattern application SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
@@ -2568,12 +2636,11 @@ Generate a complete, validated script using the selected technique. Return the s
                             output_name = f"{request.asset_name}_iter{iteration}_paramfix"
 
                             # Call modify_script directly with concrete parameters
-                            modify_result_json = _modify_script_impl(
+                            modify_result = await self._apply_script_modifications(
                                 script_path=previous_script.script_path,
                                 modifications=learning.parameter_modifications,
-                                output_name=output_name
+                                output_name=output_name,
                             )
-                            modify_result = json.loads(modify_result_json)
 
                             if modify_result.get("success") and modify_result.get("modified_path"):
                                 print(f"[Pipeline] Direct modification SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
@@ -2607,12 +2674,11 @@ Generate a complete, validated script using the selected technique. Return the s
                                     print(f"[Pipeline] Deterministic params: {det_params}", file=sys.stderr)
 
                                     output_name = f"{request.asset_name}_iter{iteration}_detfix"
-                                    modify_result_json = _modify_script_impl(
+                                    modify_result = await self._apply_script_modifications(
                                         script_path=previous_script.script_path,
                                         modifications=det_params,
                                         output_name=output_name,
                                     )
-                                    modify_result = json.loads(modify_result_json)
 
                                     if modify_result.get("success") and modify_result.get("modified_path"):
                                         matched_count = len(modify_result.get("changes_made", []))
@@ -2813,12 +2879,11 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                         reasoning=mod_decision.reasoning[:200] if mod_decision.reasoning else ""
                                     )
 
-                                    modify_result_json = _modify_script_impl(
+                                    modify_result = await self._apply_script_modifications(
                                         script_path=previous_script.script_path,
                                         modifications=mod_decision.parameter_changes,
-                                        output_name=output_name
+                                        output_name=output_name,
                                     )
-                                    modify_result = json.loads(modify_result_json)
 
                                     # Track changes made for communication breakdown detection
                                     changes_made = modify_result.get("changes_made", [])
@@ -3181,7 +3246,50 @@ Run the script and report results."""
                         error_msg = execution.error_message or "Unknown execution error"
                         print(f"[Pipeline] ERROR: Execution failed: {error_msg}", file=sys.stderr)
 
-                        # ====== PHASE 2.5: ERROR RECOVERY (AI-driven script fix) ======
+                        # ====== PHASE 2.5: DIAGNOSE (EXECUTE failure) ======
+                        print(f"[Pipeline] PHASE 2.5: DIAGNOSE (execute failure)", file=sys.stderr)
+                        execute_diagnosis = (
+                            f"Execution failed for script {script.script_path or 'unknown'}.\n"
+                            f"Error: {error_msg}\n"
+                            "Failure class: execute_failure\n"
+                            "Use spec-first code fix path with verified APIs only."
+                        )
+                        execute_diag_artifact = artifact_mgr.write_diagnosis_from_values(
+                            iteration=iteration,
+                            phase="execute",
+                            issue_type="execute_failure",
+                            summary=error_msg,
+                            details=execute_diagnosis,
+                            recommended_fixes=[
+                                "Ensure domain object is active and selected before bake operators.",
+                                "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+                                "Verify operator context and depsgraph updates before bpy.ops calls.",
+                            ],
+                            script_path=script.script_path if script else None,
+                            render_path=execution.render_path,
+                        )
+                        context.last_execution_diagnosis = execute_diagnosis
+                        print(f"[Pipeline] Diagnosis artifact: {execute_diag_artifact}", file=sys.stderr)
+
+                        # ====== PHASE 2.6: FIX PLAN (EXECUTE failure) ======
+                        print(f"[Pipeline] PHASE 2.6: FIX (execute failure)", file=sys.stderr)
+                        execute_fix_steps = [
+                            "Regenerate/fix script via spec-first modification flow.",
+                            "Preserve verified API usage; do not introduce new unverified attributes.",
+                            "Re-run executor once with recovered script.",
+                        ]
+                        execute_fix_artifact = artifact_mgr.write_fix_from_values(
+                            iteration=iteration,
+                            phase="execute",
+                            strategy="spec_first_recovery",
+                            instructions=execute_fix_steps,
+                            script_input_path=script.script_path if script else None,
+                            script_output_path=None,
+                            notes=[f"diagnosis_artifact={execute_diag_artifact}"],
+                        )
+                        print(f"[Pipeline] Fix artifact: {execute_fix_artifact}", file=sys.stderr)
+
+                        # ====== PHASE 2.7: ERROR RECOVERY (AI-driven script fix) ======
                         # Instead of blindly continuing to the next iteration (which would
                         # just tweak parameters), give the Script Writer a chance to fix
                         # the structural code issue using write_script (full code generation).
@@ -3274,6 +3382,15 @@ Fix the script completely. Keep the same technique but append '_errfix' to the o
 
                                 if recovery_script and recovery_script.script_path:
                                     print(f"[Pipeline] Recovery produced: {recovery_script.script_path}", file=sys.stderr)
+                                    artifact_mgr.write_fix_from_values(
+                                        iteration=iteration,
+                                        phase="execute",
+                                        strategy="spec_first_recovery_applied",
+                                        instructions=execute_fix_steps,
+                                        script_input_path=script.script_path if script else None,
+                                        script_output_path=recovery_script.script_path,
+                                        notes=[f"recovery_source={execute_fix_artifact}"],
+                                    )
 
                                     # Re-execute the fixed script
                                     print(f"[Pipeline] PHASE 2.5b: Re-executing recovered script", file=sys.stderr)
@@ -3412,6 +3529,40 @@ Execute it and report results."""
 
                         # Record as execution failure with gate diagnostics
                         gate_issues = [g.reason for g in gate_results if not g.passed]
+                        print(f"[Pipeline] PHASE 2.8: DIAGNOSE (artifact gate failure)", file=sys.stderr)
+                        gate_diag_artifact = artifact_mgr.write_diagnosis_from_values(
+                            iteration=iteration,
+                            phase="artifact_gate",
+                            issue_type="artifact_gate_failure",
+                            summary=gate_issues[0] if gate_issues else "Artifact gate failure",
+                            details=failure_diagnosis,
+                            recommended_fixes=[
+                                "Verify cache outputs exist and exceed minimum size.",
+                                "Ensure at least one render file is produced in expected run/output directory.",
+                                "Check cache path wiring (BLENDER_CACHE_DIR / script output directories).",
+                            ],
+                            script_path=script.script_path if script else None,
+                            render_path=execution.render_path,
+                        )
+                        print(f"[Pipeline] Diagnosis artifact: {gate_diag_artifact}", file=sys.stderr)
+
+                        print(f"[Pipeline] PHASE 2.9: FIX (artifact gate failure)", file=sys.stderr)
+                        gate_fix_steps = [
+                            "Apply structural script updates based on gate diagnostics.",
+                            "Regenerate/modify script before next execute attempt.",
+                            "Re-validate cache and render artifacts after re-run.",
+                        ]
+                        gate_fix_artifact = artifact_mgr.write_fix_from_values(
+                            iteration=iteration,
+                            phase="artifact_gate",
+                            strategy="next_iteration_structural_fix",
+                            instructions=gate_fix_steps,
+                            script_input_path=script.script_path if script else None,
+                            script_output_path=None,
+                            notes=[f"diagnosis_artifact={gate_diag_artifact}"],
+                        )
+                        print(f"[Pipeline] Fix artifact: {gate_fix_artifact}", file=sys.stderr)
+
                         quality = QualityOutput(
                             overall_score=0,
                             passed=False,
@@ -3443,6 +3594,7 @@ Execute it and report results."""
                         # Store gate diagnostics in context for potential use by diagnosis agent
                         context.last_gate_failure = failure_diagnosis
                         context.last_artifact_summary = artifact_summary
+                        context.pending_gate_fix_instructions = gate_fix_steps
 
                         # Continue to next iteration (modification may fix the issue)
                         continue
@@ -3523,6 +3675,7 @@ Provide detailed feedback for improvement."""
                         reference_similarity=quality.reference_similarity if hasattr(quality, 'reference_similarity') else None,
                         render_path=execution.render_path,
                     )
+                    self._require_artifact_file(quality_artifact_path, "quality")
                     print(f"[Pipeline] Quality artifact: {quality_artifact_path}", file=sys.stderr)
 
                     previous_score = quality.overall_score

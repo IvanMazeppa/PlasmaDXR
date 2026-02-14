@@ -4,7 +4,11 @@
 
 **Purpose:** Ensure OpenAI Agents SDK documentation is ALWAYS consulted before making changes.
 
-**Current SDK Version:** v0.7.0 (2026-01-27)
+**Current SDK Version:** v0.8.3 (pinned in `requirements.txt`, verified 2026-02-13)
+
+**Runtime Truth Override (2026-02-13):**
+- Runtime behavior and doc-grounding contract are defined in `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.
+- If this file conflicts with runtime truth, follow the runtime truth doc.
 
 ---
 
@@ -140,7 +144,7 @@ class MyHooks(RunHooks):
     async def on_handoff(self, context, from_agent, to_agent):
         print(f"Handoff: {from_agent.name} -> {to_agent.name}")
 
-result = await Runner.run(agent, prompt, run_hooks=MyHooks())
+result = await Runner.run(agent, prompt, hooks=MyHooks())
 ```
 
 ### 6. Structured Output
@@ -231,8 +235,9 @@ These gaps are **SDK-defined behaviors** that affect enforcement reliability:
    - `prompt_with_handoff_instructions()` should only be used when the agent has `handoffs=[...]`.
    - **Action:** Remove handoff prompt injection from standalone agents to reduce confusion and token waste.
 
-4. **Agent-as-tool turn limits**
-   - `agent.as_tool()` cannot set `max_turns`; the SDK recommends a custom tool that calls `Runner.run()` when turn budgets matter.
+4. **Agent-as-tool turn limits (current SDK)**
+   - `agent.as_tool(max_turns=...)` is supported.
+   - Use a custom `@function_tool` + `Runner.run()` wrapper only when you need additional policy logic or instrumentation.
    - **Source:** Agents SDK `docs/tools.md`
 
 ---
@@ -275,8 +280,8 @@ Before modifying orchestrator code, verify:
 
 ### MCP Tools
 ```
-mcp__plugin_context7_context7__resolve-library-id
-mcp__plugin_context7_context7__query-docs
+mcp__context7__resolve-library-id
+mcp__context7__query-docs
 mcp__openaiDeveloperDocs__search_openai_docs
 mcp__openaiDeveloperDocs__fetch_openai_doc
 mcp__openaiDeveloperDocs__list_openai_docs
@@ -340,7 +345,8 @@ research_output: ResearchOutput = result.final_output
 ```
 
 **Enforcement (Phase 3):**
-- `doc_refs` must be non-empty; enforced by `validate_research_output` output guardrail.
+- `doc_refs` must be canonical Blender doc paths (no sentinels, nulls, or temp filenames) and include at least one API reference (`bpy.types.*` or `bpy.ops.*` path form).
+- Enforced by `validate_research_output` output guardrail.
 
 ### Turn Budget Alignment
 

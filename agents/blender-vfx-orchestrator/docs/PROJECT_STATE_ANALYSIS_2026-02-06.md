@@ -1,6 +1,8 @@
 # Blender VFX Orchestrator - Project State & Problem Analysis
 
 **Date:** 2026-02-06
+**Status:** Historical analysis snapshot; some issues listed here are now mitigated.
+**Current runtime truth:** `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
 **Purpose:** Comprehensive assessment for deep analysis session
 **Author:** Claude Opus 4.6 analysis of codebase, traces, and test results
 
@@ -8,7 +10,7 @@
 
 ## 1. What This Project Is
 
-An autonomous multi-agent system built on the **OpenAI Agents SDK v0.7.0** that generates high-quality volumetric VFX assets (fire, smoke, explosions, liquid effects) by:
+An autonomous multi-agent system built on the OpenAI Agents SDK (snapshot at analysis time referenced v0.7.0) that generates high-quality volumetric VFX assets (fire, smoke, explosions, liquid effects) by:
 
 1. Taking a natural language description of a desired VFX effect
 2. Researching the best Blender API approach via vector store search
@@ -250,7 +252,7 @@ Based on the analysis in the previous session, the recommended approach:
 
 - **Blender:** 5.0 (Linux headless via WSL2)
 - **Python:** 3.12+
-- **OpenAI SDK:** Agents SDK v0.7.0
+- **OpenAI SDK:** Snapshot used v0.7.0; current runtime pin is `openai-agents==0.8.3` (see runtime truth doc).
 - **Models:** gpt-5.2, gpt-5-mini, o4-mini
 - **Budget:** $20/month
 - **Host:** WSL2 Ubuntu 24.04 on Windows

@@ -1,0 +1,73 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_script_iter1_specfix_errfix.py",
+  "technique_used": "mantaflow_liquid_under_sink_leak_errfix (spec-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260213_205924_kitchen_leak_script_iter1_specfix_errfix/renders/kitchen_leak_beauty_frame_40.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vfx_output/20260213_205924_kitchen_leak_script_iter1_specfix_errfix/cache",
+  "score": 28.0,
+  "passed": false,
+  "primary_issue": "The intended water effect is not readable: there is no convincing sideways pressurized spray, no impact splashes/rivulets, and no clear pooled puddle/drip at frame 40.",
+  "parameter_changes": {
+    "scene": {
+      "frame_start": 1,
+      "frame_end": 50,
+      "render_frames": "1-50 preview renders + beauty still at frame 40",
+      "cycles_device_target": "GPU (best-effort)",
+      "cycles_samples_preview": 32,
+      "cycles_samples_beauty": 128,
+      "resolution_preview": [
+        1280,
+        720
+      ],
+      "resolution_beauty": [
+        1920,
+        1080
+      ],
+      "output_dir": "(from CLI --output_dir if provided, else ~/blender_outputs/kitchen_leak)",
+      "cache_dir": "<OUTPUT_DIR>/cache",
+      "render_dir": "<OUTPUT_DIR>/renders"
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "resolution_max": 96,
+      "use_noise": false,
+      "noise_strength": 0.0,
+      "vorticity": 0.2,
+      "use_adaptive_timesteps": true,
+      "timesteps_max": 6,
+      "cache_directory": "<OUTPUT_DIR>/cache",
+      "cache_type": "ALL",
+      "openvdb_cache_compress_type": "ZIP",
+      "use_flip_particles": true,
+      "flip_ratio": 1.0,
+      "particle_radius": 1.0,
+      "use_mesh": true,
+      "use_spray_particles": true,
+      "use_foam_particles": false,
+      "use_bubble_particles": false
+    },
+    "flow_spray": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_initial_velocity": true,
+      "velocity_normal": 1.85,
+      "density": 1.0,
+      "temperature": 0.0
+    },
+    "flow_initial_puddle": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "GEOMETRY",
+      "use_initial_velocity": false,
+      "velocity_normal": 0.0,
+      "density": 1.0,
+      "temperature": 0.0
+    },
+    "structural_fixes": {
+      "bake_context_fix": "Ensures OBJECT mode, domain is selected + active before any bpy.ops.fluid.* bake ops",
+      "depsgraph_update": "Forces view_layer/depsgraph update after modifier setup and transform applies",
+      "output_collection_fix": "Parses CLI --output_dir so renders/caches end up where the runner expects"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-13T21:03:14.972661"
+}

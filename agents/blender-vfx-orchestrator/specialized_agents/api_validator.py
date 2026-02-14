@@ -177,15 +177,6 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "timesteps_max",
         "reason": "HALLUCINATED: timesteps_maximum does not exist. The correct attribute is timesteps_max (int 1-45)."
     },
-    # FluidDomainSettings.time_scale does NOT exist (common hallucination)
-    ".time_scale": {
-        "correction": ".time_scale = # DELETE - use cfl_condition or timesteps_max instead",
-        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_max or cfl_condition."
-    },
-    "time_scale": {
-        "correction": "# time_scale removed - use timesteps_max or cfl_condition",
-        "reason": "HALLUCINATED: FluidDomainSettings.time_scale does not exist. Control timing via timesteps_max or cfl_condition."
-    },
     # =============================================================================
     # HALLUCINATED ATTRIBUTES - FluidFlowSettings (Phase 4: 2026-01-26)
     # =============================================================================
