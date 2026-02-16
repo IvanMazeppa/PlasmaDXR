@@ -1,0 +1,23 @@
+{
+  "session_id": "library_candle_v3_20260215_003437",
+  "iteration": 2,
+  "overall_score": 18.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Raise visibility first (debug pass): increase scene exposure or flame/emission intensity until the wick, candle rim, and flame silhouette are clearly readable in a single frame.",
+    "Fix DOF: set the focus plane on the flame core/wick and reduce blur so the flame core is crisp while background books fall into bokeh (not the entire subject).",
+    "Improve flame shading/colors: drive color by temperature/blackbody (blue-white at hottest inner core, then yellow/orange) and ensure flame is emissive enough to light nearby wax/brass.",
+    "Reduce smoke density drastically for a clean-burning candle; aim for delicate wisps. Then add higher-frequency detail (noise/vorticity) so smoke forms thin curling filaments, not a blob.",
+    "Increase volumetric sampling / reduce denoising blur to preserve fine smoke detail and avoid blotchy volume artifacts.",
+    "Recompose so the flame and top of candle occupy the visual center of interest; ensure at least the wick and a small portion of the holder are in-frame to convey scale.",
+    "Add/strengthen local light interaction: ensure the flame contributes visible warm highlights on brass and subtle subsurface-like glow on wax (even if approximated), plus gentle shadowing/contact lighting."
+  ],
+  "cache_size_mb": 94.00718021392822,
+  "render_count": 1,
+  "vdb_count": 240,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 668.6139406509992,
+  "utility_score": 0.33999999999999997,
+  "timestamp": "2026-02-15T00:56:37.234211"
+}

@@ -1,0 +1,43 @@
+{
+  "recommended_approach": "Use Mantaflow via the Fluid modifier by configuring a GAS Domain (accessible through `bpy.types.FluidDomainSettings`) and one or more Flow objects (configured through `bpy.types.FluidFlowSettings`). For detail on a small-scale flame, rely on the domain\u2019s noise controls (e.g., `FluidDomainSettings.noise_strength`, `FluidDomainSettings.noise_time_anim`) and tune the flow\u2019s emission mode using `FluidFlowSettings.flow_type`, `FluidFlowSettings.flow_source`, and `FluidFlowSettings.flow_behavior`.",
+  "key_parameters": {
+    "domain": {
+      "type_api": "bpy.types.FluidDomainSettings",
+      "cell_size": "(property exists: FluidDomainSettings.cell_size) \u2014 small cell size implied for macro flame detail",
+      "noise_strength": "(property exists: FluidDomainSettings.noise_strength) \u2014 use for small-scale turbulent detail",
+      "noise_time_anim": "(property exists: FluidDomainSettings.noise_time_anim) \u2014 animate noise over time for slow, graceful variation",
+      "flip_ratio": "(property exists: FluidDomainSettings.flip_ratio) \u2014 listed attribute; generally keep stable unless intentionally mixing solver behavior",
+      "fluid_group": "(property exists: FluidDomainSettings.fluid_group) \u2014 use to manage which objects participate as fluid/flow objects"
+    },
+    "flow": {
+      "type_api": "bpy.types.FluidFlowSettings",
+      "flow_type": "(property exists: FluidFlowSettings.flow_type) \u2014 set flow to the appropriate emission type for a fire/smoke source",
+      "flow_source": "(property exists: FluidFlowSettings.flow_source) \u2014 choose the source basis (e.g., geometry/texture-driven) as needed for a wick-sized emitter",
+      "flow_behavior": "(property exists: FluidFlowSettings.flow_behavior) \u2014 controls how emission behaves over time (e.g., continuous vs. other behaviors)",
+      "noise_texture": "(property exists: FluidFlowSettings.noise_texture) \u2014 can be used to modulate emission"
+    },
+    "render_shading_hooks": {
+      "color_grid": "(property exists: FluidDomainSettings.color_grid) \u2014 available for grid-based coloration workflows",
+      "color_ramp": "(property exists: FluidDomainSettings.color_ramp) \u2014 available for ramp-based coloration workflows"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ShaderNodeTexNoise",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.data.materials"
+  ],
+  "warnings": [
+    "Doc bundle did not return direct API reference pages for Mantaflow/fluid properties (it surfaced genindex entries instead), so property availability is confirmed only at the attribute-name level (e.g., `noise_strength`, `flow_behavior`) rather than full per-property documentation/semantics.",
+    "Some doc refs returned by the bundle are unrelated to fluids (e.g., GPU frame-buffer readout); treat them as incidental to the search rather than authoritative Mantaflow guidance."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md (index entries including `FluidDomainSettings`, `FluidFlowSettings`, `flow_behavior`)",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md (index entries including `FluidDomainSettings.noise_strength`, `FluidDomainSettings.noise_time_anim`, `FluidFlowSettings.noise_texture`)",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-15T00:35:37.331313"
+}

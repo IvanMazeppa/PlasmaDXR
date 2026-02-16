@@ -1,0 +1,27 @@
+{
+  "session_id": "kitchen_leak_20260214_220757",
+  "iteration": 3,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [
+    "Massive highlight clipping/overexposure across water and cabinet surfaces; specular/refraction detail is lost.",
+    "Water shading does not read as clear refractive liquid (IOR/refraction cues largely absent due to clipping; appears as overbright blobs)."
+  ],
+  "warnings": [
+    "Fix exposure/tonemapping before changing sim: reduce overall exposure by ~2\u20133 stops and ensure a filmic/managed view transform so highlights roll off instead of clipping.",
+    "Render to EXR and inspect raw values; avoid destructive clipping. If needed, clamp only indirect/specular carefully to prevent fireflies without flattening reflections.",
+    "Increase liquid sim/mesh fidelity to remove blockiness: raise domain resolution_max (e.g., 96\u2192128+) and ensure meshing is enabled with sufficient smoothing; verify timesteps_max/substeps are high enough to avoid discretized jet stepping.",
+    "Increase/expand the liquid domain bounds so splashes/stream never touch or cut against the domain walls (prevents straight cutoffs).",
+    "Make water physically readable: set water IOR ~1.33, strong transmission with low roughness; add subtle absorption (slight blue tint) so thickness reads while staying clear.",
+    "Add a wet-look treatment on cabinet wood/floor at contact points (darken + increase specular / reduce roughness locally) so runoff and puddle contact sells the leak.",
+    "If the spray still reads too \u201cchunky,\u201d reduce emitter thickness and/or increase substeps; consider adding a secondary particle/mist pass for fine droplets and motion-blurred streaks.",
+    "Add mild motion blur and keep DOF moderate so droplets streak slightly while the burst fitting remains sharp (helps sell speed and scale)."
+  ],
+  "cache_size_mb": 72.35929203033447,
+  "render_count": 1,
+  "vdb_count": 42,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 413.70640840099986,
+  "utility_score": 0.4,
+  "timestamp": "2026-02-14T22:40:44.928645"
+}

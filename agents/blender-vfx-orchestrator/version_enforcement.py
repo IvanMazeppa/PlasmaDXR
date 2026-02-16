@@ -15,7 +15,7 @@ to the correct documentation.
 CURRENT VERSIONS (2026-01):
 - OpenAI Models: gpt-5.2, gpt-5-mini, o3, o4-mini (NOT gpt-4o, gpt-4-mini!)
 - Blender: 5.0 (NOT 2.8x, 3.x, 4.x!)
-- Agents SDK: v0.8.3 (NOT pre-v0.6!)
+- Agents SDK: v0.9.0 (NOT pre-v0.6!)
 """
 
 from __future__ import annotations

@@ -1,0 +1,71 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_v1.py",
+  "technique_used": "mantaflow_liquid_plane_inflow_cabinet (LIQUID domain + plane inflow spray + initial geometry puddle + cabinet effectors, Cycles GPU render @ frame 40)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 52.0,
+  "passed": false,
+  "primary_issue": "The water motion/topology does not match the intended pressurized sideways fan spray: it reads as a smooth, coherent vertical stream/sheet with low secondary breakup, and the pool/impact lacks believable splash and ripple detail.",
+  "parameter_changes": {
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 40,
+    "cycles": {
+      "engine": "CYCLES",
+      "device": "GPU (best-effort enable)",
+      "samples": 128,
+      "resolution": [
+        1920,
+        1080
+      ]
+    },
+    "mantaflow_domain_dset": {
+      "domain_type": "LIQUID",
+      "resolution_max": 96,
+      "use_adaptive_timesteps": true,
+      "timesteps_max": 12,
+      "use_noise": false,
+      "noise_strength": 1.0,
+      "noise_scale": 2,
+      "vorticity": 0.0,
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+      "cache_type": "ALL",
+      "openvdb_cache_compress_type": "ZIP",
+      "use_flip_particles": true,
+      "flip_ratio": 0.97,
+      "particle_radius": 1.0,
+      "use_mesh": true,
+      "mesh_concave_upper": 0.1,
+      "mesh_smoothen_pos": 2,
+      "mesh_smoothen_neg": 2,
+      "use_spray_particles": false,
+      "use_foam_particles": false,
+      "use_bubble_particles": false
+    },
+    "mantaflow_flow_fset_inflow": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "use_initial_velocity": true,
+      "velocity_normal": 1.75,
+      "sampling_substeps": 6,
+      "density": 1.0,
+      "temperature": 0.0
+    },
+    "mantaflow_flow_fset_puddle_geometry": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "GEOMETRY",
+      "use_plane_init": true,
+      "use_initial_velocity": false,
+      "velocity_normal": 0.0,
+      "sampling_substeps": 1,
+      "density": 1.0,
+      "temperature": 0.0
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T23:08:06.549077"
+}

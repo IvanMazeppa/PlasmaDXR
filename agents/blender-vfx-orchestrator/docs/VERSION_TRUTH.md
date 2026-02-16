@@ -35,7 +35,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Agents SDK (v0.8.3)
+## OpenAI Agents SDK (v0.9.0)
 
 ### CURRENT PATTERNS
 ```python
@@ -94,10 +94,12 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
-**SDK Notes (v0.8.3):**
-- `agent.as_tool(max_turns=...)` is supported natively.
+**SDK Notes (v0.9.0):**
+- `agent.as_tool(max_turns=...)` is supported natively. Returns `FunctionTool` (narrowed from `Tool` in v0.9.0).
 - Guardrails are created via decorators (`@input_guardrail`, `@output_guardrail`).
 - Tool guardrails apply only to `@function_tool` tools; use RunHooks for cross-tool enforcement.
+- `@function_tool` now supports `timeout_seconds`, `timeout_behavior`, and `timeout_error_function`.
+- Child agents inherit parent `RunConfig` when invoked via `as_tool()` (v0.8.4+).
 
 ---
 

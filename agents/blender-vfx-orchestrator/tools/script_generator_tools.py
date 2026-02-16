@@ -1074,6 +1074,50 @@ def _modify_script_impl(
                         params_changed[param] = {"from": old_val, "to": formatted, "pattern": "chained_attr"}
                         break
 
+            # LIGHT ENERGY PATTERN (S1.5 overexposure fix)
+            # When param is 'light_energy', modify ALL *.data.energy = values.
+            # Spec-first scripts don't use Config class; lights are assigned inline.
+            # The quality map outputs a target energy (e.g., 50.0) and we scale all
+            # lights proportionally so the brightest one hits the target value.
+            if param not in params_changed and attr_name in ("light_energy", "energy"):
+                energy_pattern = r"(\.data\.energy\s*=\s*)(\d+\.?\d*)"
+                energy_matches = list(re.finditer(energy_pattern, content))
+                if energy_matches:
+                    # Find max current energy to compute scale factor
+                    max_current = max(float(m.group(2)) for m in energy_matches)
+                    target = float(value)
+                    if max_current > 0 and max_current != target:
+                        scale_factor = target / max_current
+                        def _scale_energy(m):
+                            old_val = float(m.group(2))
+                            new_val = max(1.0, old_val * scale_factor)
+                            return f"{m.group(1)}{new_val:.1f}"
+                        new_content = re.sub(energy_pattern, _scale_energy, content)
+                        if new_content != content:
+                            content = new_content
+                            changes_made.append(
+                                f"LIGHT_ENERGY: scaled all lights by {scale_factor:.2f}x "
+                                f"(max {max_current} -> {target})"
+                            )
+                            params_changed[param] = {
+                                "from": f"max={max_current}",
+                                "to": f"max={target}, scale={scale_factor:.2f}",
+                                "pattern": "light_energy_scale",
+                            }
+
+            # WORLD STRENGTH PATTERN (S1.5 overexposure fix)
+            # When param is 'world_strength', modify world background strength.
+            if param not in params_changed and attr_name == "world_strength":
+                world_pattern = r"(\.inputs\s*\[\s*['\"]Strength['\"]\s*\]\s*\.default_value\s*=\s*)(\d+\.?\d*)"
+                world_matches = list(re.finditer(world_pattern, content))
+                if world_matches:
+                    formatted = _format_value_for_python(value, world_matches[0].group(2))
+                    for wm in world_matches:
+                        old_val = wm.group(2)
+                        content = content[:wm.start()] + f"{wm.group(1)}{formatted}" + content[wm.end():]
+                    changes_made.append(f"WORLD_STRENGTH: {old_val} -> {formatted}")
+                    params_changed[param] = {"from": old_val, "to": formatted, "pattern": "world_strength"}
+
             # SHADER NODE PATTERN (Learning Agent feedback loop fix)
             # Handle shader node input modifications: node.inputs['X'].default_value = Y
             # This enables the feedback loop to actually modify visual appearance

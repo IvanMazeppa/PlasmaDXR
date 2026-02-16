@@ -1,0 +1,61 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/library_candle_v3_script_iter2_specfix_errfix.py",
+  "technique_used": "mantaflow_fire_macro_candle_iter2_errfix (spec-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/library_candle_v3/renders/library_candle_v3.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/library_candle_v3/cache",
+  "score": 18.0,
+  "passed": false,
+  "primary_issue": "Severe underexposure + no readable flame subject (no visible blue core/yellow body/wick), compounded by extreme/unfocused DOF\u2014image is mostly indistinct dark blobs.",
+  "parameter_changes": {
+    "asset_name": "library_candle_v3",
+    "output_dir": "/tmp/library_candle_v3",
+    "cache_dir": "/tmp/library_candle_v3/cache_candle_fire",
+    "render_dir": "/tmp/library_candle_v3/renders",
+    "scene": {
+      "frame_start": 1,
+      "frame_end": 120,
+      "render_engine": "CYCLES",
+      "cycles_samples": 256,
+      "resolution": [
+        1080,
+        1080
+      ]
+    },
+    "domain": {
+      "dset.domain_type": "GAS",
+      "dset.resolution_max": 96,
+      "dset.use_noise": true,
+      "dset.noise_strength": 1.35,
+      "dset.noise_scale": 3,
+      "dset.vorticity": 0.62,
+      "dset.use_adaptive_timesteps": true,
+      "dset.timesteps_max": 12,
+      "dset.use_dissolve_smoke": true,
+      "dset.dissolve_speed": 22,
+      "dset.cache_directory": "/tmp/library_candle_v3/cache_candle_fire",
+      "dset.cache_type": "ALL",
+      "dset.openvdb_cache_compress_type": "ZIP"
+    },
+    "flow": {
+      "fset.flow_type": "BOTH",
+      "fset.flow_behavior": "INFLOW",
+      "fset.density": 0.075,
+      "fset.temperature": 3.2,
+      "fset.use_initial_velocity": true,
+      "fset.velocity_normal": 0.65
+    },
+    "render_frames": [
+      1,
+      60,
+      120
+    ],
+    "structural_fixes": [
+      "Removed all Action.fcurves access (root cause of crash).",
+      "Kept bake context: domain is selected+active before bake call.",
+      "No '.use_nodes' usage and no node-graph authoring in world/material/compositor."
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-15T00:57:54.393741"
+}

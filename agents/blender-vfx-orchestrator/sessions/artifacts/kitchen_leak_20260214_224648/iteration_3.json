@@ -1,0 +1,21 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_iter3_paramfix.py",
+  "technique_used": "mantaflow_liquid_plane_inflow_cabinet (LIQUID domain + plane inflow spray + initial geometry puddle + cabinet effectors, Cycles GPU render @ frame 40) (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 58.0,
+  "passed": false,
+  "primary_issue": "The leak does not read as a pressurized sideways fan spray: it appears as an overly coherent/laminar stream with minimal droplet breakup, mist, and impact splashes/ripples feeding the pool.",
+  "parameter_changes": {
+    "flow.scale": [
+      0.12,
+      0.02,
+      1.0
+    ],
+    "bsdf.inputs['Roughness'].default_value": 0.02,
+    "bg.inputs['Strength'].default_value": 0.5
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T23:12:25.126423"
+}

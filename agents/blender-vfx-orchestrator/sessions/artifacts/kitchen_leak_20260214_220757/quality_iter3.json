@@ -1,0 +1,29 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure / highlight clipping: large areas blow out to pure white, destroying readability of the water (spray + puddle) and cabinet materials.",
+  "issues": [
+    "Massive highlight clipping/overexposure across water and cabinet surfaces; specular/refraction detail is lost.",
+    "Spray and puddle are not clearly readable; fine droplets/mist are indistinguishable against blown-out background.",
+    "Water shading does not read as clear refractive liquid (IOR/refraction cues largely absent due to clipping; appears as overbright blobs).",
+    "Weak/unclear interaction with cabinet wall/floor (wetting, rivulets, contact darkening/spec changes are not convincingly visible).",
+    "Visible meshing/stepping artifacts and hard-edged blobs suggest low effective sim/mesh resolution and/or domain boundary cutoff.",
+    "Scale feels off: jet thickness and droplet sizes appear too large relative to cabinet plumbing (hard to judge precisely because exposure masks detail).",
+    "Color management/tonemapping appears incorrect (looks like raw/linear with clipped highs), reducing realism and contrast in indirect-lit cabinet space."
+  ],
+  "suggestions": [
+    "Fix exposure/tonemapping before changing sim: reduce overall exposure by ~2\u20133 stops and ensure a filmic/managed view transform so highlights roll off instead of clipping.",
+    "Render to EXR and inspect raw values; avoid destructive clipping. If needed, clamp only indirect/specular carefully to prevent fireflies without flattening reflections.",
+    "Increase liquid sim/mesh fidelity to remove blockiness: raise domain resolution_max (e.g., 96\u2192128+) and ensure meshing is enabled with sufficient smoothing; verify timesteps_max/substeps are high enough to avoid discretized jet stepping.",
+    "Increase/expand the liquid domain bounds so splashes/stream never touch or cut against the domain walls (prevents straight cutoffs).",
+    "Make water physically readable: set water IOR ~1.33, strong transmission with low roughness; add subtle absorption (slight blue tint) so thickness reads while staying clear.",
+    "Add a wet-look treatment on cabinet wood/floor at contact points (darken + increase specular / reduce roughness locally) so runoff and puddle contact sells the leak.",
+    "If the spray still reads too \u201cchunky,\u201d reduce emitter thickness and/or increase substeps; consider adding a secondary particle/mist pass for fine droplets and motion-blurred streaks.",
+    "Add mild motion blur and keep DOF moderate so droplets streak slightly while the burst fitting remains sharp (helps sell speed and scale)."
+  ],
+  "vision_assessment": "The shot composition communicates an under-sink leak setup, but the render is dominated by extreme overexposure: broad regions of the cabinet interior and the fluid render as pure white, eliminating the very cues that make water believable (specular highlights with roll-off, refraction distortion, caustic-like brightening, and thickness/absorption). The water is present, but the spray fan and puddle are hard to parse; detail in droplets and ripples is largely lost. Where the fluid is visible (notably near the bottom/right), the liquid reads somewhat blobby/blocky, suggesting insufficient resolution/meshing and possible domain/boundary influence. Overall, the effect does not yet convincingly read as a pressurized sideways hose burst with established puddling and runoff because exposure and stepping artifacts prevent material and motion readability.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "iteration": 3,
+  "timestamp": "2026-02-14T22:40:44.928306"
+}

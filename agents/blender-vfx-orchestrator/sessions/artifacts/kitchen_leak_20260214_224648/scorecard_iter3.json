@@ -1,0 +1,23 @@
+{
+  "session_id": "kitchen_leak_20260214_224648",
+  "iteration": 3,
+  "overall_score": 58.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix emitter orientation so the inflow plane normal points sideways toward the cabinet wall (fan direction), then re-bake.",
+    "Enable secondary particles to add droplets/mist: use_spray_particles=True (optionally also use_foam_particles=True, use_bubble_particles=True if appropriate for turbulence/impact).",
+    "Increase turbulence/detail: raise vorticity (e.g., 0.6\u20131.0). If supported in your setup, enable noise (use_noise=True) and tune noise_strength (~0.8\u20131.5) and noise_scale (~2\u20133) to avoid overly smooth sheets.",
+    "Reduce surface over-smoothing to preserve breakup/ripples (e.g., lower mesh_smoothen_pos/mesh_smoothen_neg).",
+    "If faceting persists, increase domain resolution_max (e.g., 96 \u2192 128) specifically to capture jet ligaments and small ripples; keep sampling_substeps high (6+) to avoid stepping artifacts.",
+    "Improve water shader readability: ensure physically plausible refraction (IOR ~1.33), Fresnel-driven reflection, and subtle absorption; add slight roughness variation and stronger contact darkening/wetness on wood where water runs/pools.",
+    "Add/strengthen impact-driven ripples (either via higher sim detail or a subtle surface normal/displacement pass on the pool) so the puddle shows outward-propagating waves from the runoff entry point."
+  ],
+  "cache_size_mb": 143.55931282043457,
+  "render_count": 1,
+  "vdb_count": 100,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 159.8437851710005,
+  "utility_score": 0.656796845690833,
+  "timestamp": "2026-02-14T23:11:18.201315"
+}

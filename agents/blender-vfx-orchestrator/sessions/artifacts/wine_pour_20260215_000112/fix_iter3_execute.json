@@ -1,0 +1,16 @@
+{
+  "iteration": 3,
+  "phase": "execute",
+  "strategy": "spec_first_recovery_applied",
+  "instructions": [
+    "Regenerate/fix script via spec-first modification flow.",
+    "Preserve verified API usage; do not introduce new unverified attributes.",
+    "Re-run executor once with recovered script."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_script_iter3_specfix.py",
+  "script_output_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_script_iter3_specfix_errfix.py",
+  "notes": [
+    "recovery_source=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/wine_pour_20260215_000112/fix_iter3_execute.json"
+  ],
+  "timestamp": "2026-02-15T00:29:40.272227"
+}

@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-02-14T23:06:43.816933",
+  "effect_type": "water",
+  "observation": "The leak does not form the intended sideways fan spray from the burst fitting; instead the water appears as a mostly coherent vertical stream/sheet with minimal atomization.",
+  "expected_behavior": "A pressurized hose burst should emit a sideways, fanned spray pattern that hits the cabinet side wall and produces strong splash/spray at the impact plus ripples in the pooled water.",
+  "actual_behavior": "Water falls mostly vertically with a smooth/laminar column; little to no fan spread, droplets, mist, or energetic impact detail. Pool reads as a flat reflective plane with weak ripples.",
+  "suspected_parameters": {
+    "inflow_rotation": "plane normal likely not pointing toward side wall",
+    "velocity_normal": 1.75,
+    "sampling_substeps": 6,
+    "domain_resolution_max": 96,
+    "secondary_particles": "spray/foam/bubble disabled",
+    "mesh_smoothing": "mesh too smooth/low detail"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "script_path": null,
+  "iteration": 2,
+  "status": "analyzed",
+  "correlation_found": true,
+  "causal_params": [
+    "inflow.rotation_euler",
+    "fset.velocity_normal",
+    "dset.use_spray_particles",
+    "dset.use_foam_particles",
+    "dset.use_bubble_particles",
+    "dset.vorticity",
+    "dset.mesh_smoothen_pos",
+    "dset.mesh_smoothen_neg"
+  ],
+  "correlation_confidence": 0.78,
+  "recommended_fix": "Rotate the inflow plane so its normal points toward the left cabinet wall (sideways), then keep velocity_normal ~1.75-2.0. Enable secondary liquid particles (use_spray_particles/use_foam_particles/use_bubble_particles) to add atomization and impact detail. Increase vorticity toward 1.0 and reduce mesh smoothing (mesh_smoothen_pos/neg from 2 -> 1 or 0) to preserve ripples/breakup at resolution_max=96. Rebake ALL cache after these changes.",
+  "analysis_notes": "Observed vertical/laminar jet strongly indicates emitter normal misalignment + lack of secondary particles. Pool flatness consistent with high mesh smoothing + low turbulence parameters at fixed res 96.",
+  "analyzed_at": "2026-02-14T23:07:56.302845"
+}

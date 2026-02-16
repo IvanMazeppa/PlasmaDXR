@@ -1,0 +1,55 @@
+{
+  "recommended_approach": "Use Blender\u2019s Mantaflow liquid simulation settings exposed in the Python API (as indexed under `bpy.types.FluidDomainSettings` and `bpy.types.FluidFlowSettings`) to drive a LIQUID domain + flow/emitter setup, and then focus on water readability via lighting/material tuning (pattern library suggests small world/background strength and low-roughness, slightly blue-tinted water shading for clearer water visibility).",
+  "key_parameters": {
+    "simulation_constraints_from_brief": {
+      "domain_type": "LIQUID",
+      "liquid_viscosity": "Water (default; no override)",
+      "use_plane_init": true,
+      "inflow_velocity_m_per_s": [
+        1.5,
+        2.0
+      ],
+      "resolution": 96,
+      "sampling_substeps": 6,
+      "frame_range": [
+        1,
+        50
+      ],
+      "render_frame": 40,
+      "cache_type": "ALL",
+      "renderer": "Cycles GPU",
+      "render_samples_max": 128
+    },
+    "pattern_water_readability_lighting_material": {
+      "world_background_color_rgba": [
+        0.02,
+        0.025,
+        0.035,
+        1.0
+      ],
+      "world_background_strength": 0.4,
+      "water_base_color_rgba": [
+        0.65,
+        0.75,
+        0.9,
+        1.0
+      ],
+      "water_roughness": 0.03
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "No API doc_refs found (expected bpy.types.* or bpy.ops.* references)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md (index entries referencing bpy.types.FluidDomainSettings attributes)",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md (index entries referencing bpy.types.FluidDomainSettings / bpy.types.FluidFlowSettings attributes)",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-14T22:09:04.930179"
+}

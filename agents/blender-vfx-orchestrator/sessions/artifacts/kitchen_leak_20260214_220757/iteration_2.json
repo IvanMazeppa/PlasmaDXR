@@ -1,0 +1,21 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_iter2_paramfix.py",
+  "technique_used": "mantaflow_liquid_under_sink_leak (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 30.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/highlight clipping wipes out detail, making the water spray/puddle and cabinet materials largely unreadable and therefore not convincing as an under-sink leak.",
+  "parameter_changes": {
+    "w_bg.inputs['Strength'].default_value": 0.12,
+    "w_bg.inputs['Color'].default_value": [
+      0.01,
+      0.012,
+      0.02,
+      1.0
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T22:33:18.771158"
+}

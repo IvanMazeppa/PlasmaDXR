@@ -1,0 +1,23 @@
+{
+  "session_id": "library_candle_v3_20260215_003437",
+  "iteration": 3,
+  "overall_score": 6.0,
+  "passed": false,
+  "critical_issues": [
+    "MINOR: Smoke wisps are not visible (likely masked by clipping / absent)."
+  ],
+  "warnings": [
+    "Reduce overall exposure significantly (target recovering midtones/highlights): e.g., lower Color Management exposure by ~2\u20134 stops compared to current.",
+    "Reduce or disable any direct light that is blowing the frame out (e.g., the point light energy appears too high for a macro candle scene); aim for candle-driven illumination but with preserved highlight detail.",
+    "If using a volume fire material, reduce emission/blackbody intensity if it\u2019s causing clipping, and/or increase density only after exposure is under control so flame structure becomes visible rather than a white blob.",
+    "Add a quick diagnostic render with a neutral gray world (very low intensity) and no extra lights to confirm whether the domain volume itself is rendering correctly and at sane brightness.",
+    "Once exposure is fixed: re-tune DOF so the flame/wick area is tack sharp; right now focus cannot be judged."
+  ],
+  "cache_size_mb": 368.6156482696533,
+  "render_count": 1,
+  "vdb_count": 480,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 417.2637134099987,
+  "utility_score": 0.28,
+  "timestamp": "2026-02-15T01:05:26.820127"
+}

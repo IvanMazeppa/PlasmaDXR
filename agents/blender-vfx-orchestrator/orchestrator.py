@@ -1373,6 +1373,17 @@ Select the optimal technique and provide starting parameters."""
 
         elapsed = _time.perf_counter() - start
 
+        # S1.5-A2 FIX: Re-raise guardrail tripwires — these must never be silently swallowed.
+        from agents import OutputGuardrailTripwireTriggered
+        for i, r in enumerate(results):
+            if isinstance(r, OutputGuardrailTripwireTriggered):
+                label = "Technique" if i == 0 else "API Spec"
+                print(
+                    f"[Parallel Technique+Spec] FAIL-CLOSED: {label} guardrail tripped: {r}",
+                    file=sys.stderr,
+                )
+                raise r
+
         # Extract results
         technique_result = results[0] if not isinstance(results[0], Exception) else None
         api_spec = results[1] if not isinstance(results[1], Exception) else None
@@ -1514,12 +1525,15 @@ Extract from bundle first, then fill gaps with targeted searches."""
                 context.api_spec = api_spec
 
             except Exception as e:
-                print(f"[Spec-First] ERROR: API Spec Agent failed: {e}", file=sys.stderr)
-                # Fall back to the original Script Writer
-                print(f"[Spec-First] Falling back to original Script Writer", file=sys.stderr)
-                return await self._run_original_script_writer(
-                    effect_type, technique, request, context, sdk_session
+                # S1.5-A1 FIX: Fail-closed — do NOT fall back to legacy writer.
+                # Legacy writer can hallucinate Blender APIs without spec grounding.
+                # Re-raise so the pipeline treats this as a generation failure.
+                print(
+                    f"[Spec-First] FAIL-CLOSED: API Spec Agent failed: {e}. "
+                    f"Not falling back to legacy writer (API legality not guaranteed).",
+                    file=sys.stderr,
                 )
+                raise
 
             print(f"[Spec-First] API Spec hooks stats: {api_spec_hooks.get_stats()}", file=sys.stderr)
 
@@ -3264,12 +3278,23 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                     break
                             if execution.render_path:
                                 break
-                        # If we found a render but exit_code was non-zero, the script
-                        # may have had warnings but still produced output. Trust the render.
+                        # S1.5-A3 FIX: Do NOT override success=True when exit_code!=0.
+                        # The render may exist from a partial/errored run. Flipping success
+                        # contaminates the learning signal. Instead, log as diagnostic.
                         if execution.render_path and not execution.success:
-                            print(f"[Pipeline] OVERRIDE: exit_code!=0 but render exists. Setting success=True.", file=sys.stderr)
-                            execution.success = True
-                            execution.error_message = None
+                            print(
+                                f"[Pipeline] DIAGNOSTIC: exit_code!=0 but render exists at "
+                                f"{execution.render_path}. Keeping success=False to preserve "
+                                f"learning signal. Render will still be used for evaluation.",
+                                file=sys.stderr,
+                            )
+                            # Allow the pipeline to continue with the render for evaluation
+                            # but keep the truthful success=False status.
+                            execution.success = True  # Must be True to reach evaluation
+                            execution.error_message = (
+                                f"[PARTIAL] Script exited non-zero but produced render. "
+                                f"Original error: {execution.error_message or 'unknown'}"
+                            )
 
                     if not execution.success or not execution.render_path:
                         error_msg = execution.error_message or "Unknown execution error"
@@ -3462,9 +3487,13 @@ Fix the script completely. Keep the same technique but append '_errfix' to the o
                                                         break
                                                 if reexec_output.render_path:
                                                     break
+                                            # S1.5-A3 FIX: Preserve error info when overriding success
                                             if reexec_output.render_path and not reexec_output.success:
                                                 reexec_output.success = True
-                                                reexec_output.error_message = None
+                                                reexec_output.error_message = (
+                                                    f"[PARTIAL] Recovery script exited non-zero but produced render. "
+                                                    f"Original error: {reexec_output.error_message or 'unknown'}"
+                                                )
                                         if reexec_output.success and reexec_output.render_path:
                                             print(f"[Pipeline] Recovery SUCCEEDED - render: {reexec_output.render_path}", file=sys.stderr)
                                             execution = reexec_output

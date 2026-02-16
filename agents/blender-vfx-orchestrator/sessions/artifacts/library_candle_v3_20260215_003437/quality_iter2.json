@@ -1,0 +1,29 @@
+{
+  "overall_score": 18.0,
+  "passed": false,
+  "primary_issue": "Severe underexposure + no readable flame subject (no visible blue core/yellow body/wick), compounded by extreme/unfocused DOF\u2014image is mostly indistinct dark blobs.",
+  "issues": [
+    "Scene is dramatically underexposed; primary subject (candle/flame) is effectively invisible.",
+    "No convincing candle-flame structure: missing sharp teardrop silhouette, blue-white inner cone near wick, and yellow\u2192orange outer flame gradient.",
+    "Wick/candle top not readable, so scale and contact point for flame are lost.",
+    "Smoke (if present) reads as thick amorphous volume rather than thin wisps/filaments; lacks high-frequency detail.",
+    "Lighting does not sell the flame as the sole light source: brass/wax/desk show no coherent warm highlights or localized bounce.",
+    "Depth of field is too strong and/or focused incorrectly\u2014no tack-sharp focal point on the flame core; macro intent fails.",
+    "Volumetric look is blotchy/low-frequency, suggesting insufficient volume sampling and/or over-aggressive denoising.",
+    "Composition/framing doesn\u2019t guide the eye to a clear subject; the visible shapes don\u2019t communicate \u2018candle on desk\u2019."
+  ],
+  "suggestions": [
+    "Raise visibility first (debug pass): increase scene exposure or flame/emission intensity until the wick, candle rim, and flame silhouette are clearly readable in a single frame.",
+    "Fix DOF: set the focus plane on the flame core/wick and reduce blur so the flame core is crisp while background books fall into bokeh (not the entire subject).",
+    "Improve flame shading/colors: drive color by temperature/blackbody (blue-white at hottest inner core, then yellow/orange) and ensure flame is emissive enough to light nearby wax/brass.",
+    "Reduce smoke density drastically for a clean-burning candle; aim for delicate wisps. Then add higher-frequency detail (noise/vorticity) so smoke forms thin curling filaments, not a blob.",
+    "Increase volumetric sampling / reduce denoising blur to preserve fine smoke detail and avoid blotchy volume artifacts.",
+    "Recompose so the flame and top of candle occupy the visual center of interest; ensure at least the wick and a small portion of the holder are in-frame to convey scale.",
+    "Add/strengthen local light interaction: ensure the flame contributes visible warm highlights on brass and subtle subsurface-like glow on wax (even if approximated), plus gentle shadowing/contact lighting."
+  ],
+  "vision_assessment": "The render reads as a very dark, heavily blurred scene with a couple of soft warm-brown smears; there is no clear, sharp candle flame, no visible wick, and no recognizable candle/holder detail. The intended macro candle-flame look (blue core, yellow/orange body, thin wispy smoke) is not present or not visible at the current exposure/DOF. As a result, the shot cannot be evaluated as a candle fire VFX and is far below production quality.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/library_candle_v3/renders/library_candle_v3.png",
+  "iteration": 2,
+  "timestamp": "2026-02-15T00:56:37.233845"
+}

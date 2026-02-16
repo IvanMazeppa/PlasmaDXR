@@ -1,0 +1,15 @@
+{
+  "iteration": 2,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "'Action' object has no attribute 'fcurves'; script failed, file: 'build/blender_cli_logs/20260215_004847_library_candle_v3_script_iter2_specfix/_wrapper.py', exiting.",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/library_candle_v3_script_iter2_specfix.py.\nError: 'Action' object has no attribute 'fcurves'; script failed, file: 'build/blender_cli_logs/20260215_004847_library_candle_v3_script_iter2_specfix/_wrapper.py', exiting.\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/library_candle_v3_script_iter2_specfix.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/library_candle_v3/renders/library_candle_v3.png",
+  "timestamp": "2026-02-15T00:48:48.633290"
+}

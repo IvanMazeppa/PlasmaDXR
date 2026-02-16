@@ -1,0 +1,44 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/kitchen_leak_mantaflow_liquid_v1.py",
+  "technique_used": "mantaflow_liquid_under_sink_leak",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/cache",
+  "score": 30.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/highlight clipping destroys readability of the water (spray/puddle) and cabinet materials, so the effect does not convincingly read as an under-sink leak.",
+  "parameter_changes": {
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 40,
+    "domain_type": "LIQUID",
+    "resolution_max": 96,
+    "cache_type": "ALL",
+    "cache_directory": "/tmp/blender_vfx/kitchen_leak/cache",
+    "openvdb_cache_compress_type": "ZIP",
+    "use_adaptive_timesteps": true,
+    "timesteps_max": 6,
+    "inflow_velocity_normal": 1.8,
+    "initial_puddle_depth_m": 0.02,
+    "water_material": {
+      "base_color": [
+        0.65,
+        0.75,
+        0.9,
+        1.0
+      ],
+      "roughness": 0.03,
+      "transmission_weight": 1.0,
+      "ior": 1.333
+    },
+    "lighting": {
+      "warm_area_energy": 800,
+      "cool_area_energy": 250,
+      "fill_area_energy": 120
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-14T22:24:55.215243"
+}

@@ -1,0 +1,28 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "Severe overexposure/highlight clipping wipes out detail, making the water spray/puddle and cabinet materials largely unreadable and therefore not convincing as an under-sink leak.",
+  "issues": [
+    "Massive highlight clipping/overexposure across the frame; shapes and material response are lost.",
+    "Water does not read as water: spray/droplets/sheet breakup are indistinguishable (often looks like solid white blobs).",
+    "Insufficient controlled lighting/reflections to show transmission/refraction/specular needed for water readability (warm/cool intent is present but overwhelmed).",
+    "Fluid sim detail appears too low for a pressurized fan spray (missing fine breakup, mist, secondary droplets/whitewater).",
+    "Liquid mesh/surface continuity issues (tearing/disconnected thin sheets; edge artifacts likely from meshing/smoothing).",
+    "Weak contact shadows and unclear impact/runoff path on wall/floor due to exposure and lack of localized contrast.",
+    "Scale cues are unclear (scene context/props/water depth hard to judge under clipping), hurting perceived velocity and realism."
+  ],
+  "suggestions": [
+    "Fix exposure first (do not iterate sim detail until this is solved): reduce key/area light intensities and/or camera exposure; ensure Filmic/tonemapping is not producing clipped whites. Use a neutral-gray material override to calibrate exposure until nothing is blown out.",
+    "Rebuild water shader for readability: use physically plausible refraction (IOR ~1.333) with low roughness; ensure transmission/refraction is enabled in Cycles so you get clear specular + refractive cues rather than flat white highlights.",
+    "Add controlled reflections: introduce an environment/HDRI or large soft area light positioned to create a readable rim on the spray and glints on the puddle, while keeping peak values below clipping.",
+    "Increase Mantaflow liquid detail for a pressurized leak: raise domain resolution (and/or smaller domain around the leak), and enable/tune secondary particles (spray/foam/bubbles) if available in your setup to get misty breakup rather than chunky sheets.",
+    "Improve meshing: adjust particle radius/smoothing settings to avoid torn thin sheets and to keep a continuous puddle surface; inspect for holes and overly aggressive smoothing.",
+    "Enhance interaction cues: ensure wall/floor collisions are accurate (no excessive margin), and add wetness/darkening on wood surfaces near impact/runoff so the leak path reads even before the puddle is obvious.",
+    "If/when rendering animation, enable subtle motion blur for fast droplets/spray to sell speed and reduce strobing-looking strands."
+  ],
+  "vision_assessment": "The frame is dominated by extremely bright, clipped whites. The under-sink context is only barely discernible (a pipe/fixture silhouette and some warm/cool tinting), but most cabinet wall/floor detail is washed out. The water effect itself is not clearly readable: the supposed fan spray and pooling puddle do not show distinct refractive/specular structure, breakup into droplets, or a clear impact/runoff pattern on the cabinet wall. Overall it does not convincingly communicate a domestic under-sink hose burst at frame 40 because exposure wipes out the visual cues required to perceive water thickness, surface continuity, and interaction with the environment.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/kitchen_leak/kitchen_leak.png",
+  "iteration": 2,
+  "timestamp": "2026-02-14T22:32:30.821260"
+}

@@ -85,7 +85,7 @@ async def main():
         frame_start=1,
         frame_end=120,
         quality_threshold=60.0,
-        max_iterations=5,
+        max_iterations=3,
         semantic_query="slow motion candle flame burning in a Victorian library, warm amber glow, blue core yellow body orange tips, intimate atmosphere, macro photography",
     )
 

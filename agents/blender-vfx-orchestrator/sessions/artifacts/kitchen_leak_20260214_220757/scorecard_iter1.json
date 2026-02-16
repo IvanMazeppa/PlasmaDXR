@@ -1,0 +1,24 @@
+{
+  "session_id": "kitchen_leak_20260214_220757",
+  "iteration": 1,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix exposure first: reduce key/area light energy substantially, lower world/background strength, and/or set Color Management to Filmic/AgX with a negative Exposure so nothing clips to pure white.",
+    "Add specular control: use highlight clamping (Cycles clamp indirect/direct as needed) and increase light size/softness to avoid hard, blown hotspots inside the cabinet.",
+    "Improve water shading/readability: physically plausible glass/water (IOR ~1.333, low roughness), ensure reflections are visible (grazing angles), and add subtle absorption/tint so thin water reads against wood.",
+    "Increase liquid detail: raise liquid resolution (e.g., 128+) and improve meshing/smoothing so the surface isn\u2019t blobby; consider enabling secondary particles (spray) for the pressurized jet breakup and wall-impact splash.",
+    "Make the jet shape explicit: ensure the emitter produces a thin sheet/fan and that velocity/direction clearly aims at the side wall; add fine droplets/mist around the main sheet for realism.",
+    "Enhance puddle dynamics: add small ripple detail (either via sim detail/secondary particles or shader-based normals) where runoff enters the puddle; ensure a visible edge line and slight thickness variation across the floor.",
+    "Strengthen wet/dry contrast on cabinet wood: darken and increase gloss where wet; add roughness variation so water contact areas read clearly even under soft lighting.",
+    "Re-render with better anti-aliasing of thin fluid features: more samples and/or denoise tuned for caustic-like highlights; consider motion blur on fast droplets if you render animation frames."
+  ],
+  "cache_size_mb": 72.35929203033447,
+  "render_count": 1,
+  "vdb_count": 42,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 702.7906878919994,
+  "utility_score": 0.4,
+  "timestamp": "2026-02-14T22:23:43.746810"
+}

@@ -152,6 +152,29 @@ QUALITY_ISSUE_MAP: List[dict] = [
         "params": {"ior": 1.33, "roughness": 0.02, "light_energy": 200.0},
         "explanation": "Improve liquid material (water IOR 1.33, low roughness for reflections, adequate lighting)",
     },
+    # S1.5-C: Liquid-specific exposure and readability
+    {
+        "keywords": ["white water", "water overexposed", "liquid overexposed", "water blown out",
+                      "indistinguishable", "white on white", "water not readable",
+                      "water not visible", "can't see water"],
+        "category": "liquid_exposure",
+        "params": {"light_energy": 50.0, "world_strength": 0.1, "render_samples": 256},
+        "explanation": "Reduce scene lighting for liquid close-ups — liquid scenes need much less light than volumes",
+    },
+    {
+        "keywords": ["fluid exits domain", "all fluid gone", "fluid escaped", "empty domain",
+                      "domain too small", "fluid out of bounds"],
+        "category": "liquid_velocity",
+        "params": {"velocity_normal": 1.5, "velocity_random": 0.2, "domain_size": 3.0},
+        "explanation": "Reduce velocity and increase domain size — fluid is leaving the simulation domain",
+    },
+    {
+        "keywords": ["no flow", "inflow not working", "emitter inactive", "source not emitting",
+                      "fluid source empty"],
+        "category": "liquid_inflow",
+        "params": {"use_plane_init": True, "velocity_normal": 1.5, "use_initial_velocity": True},
+        "explanation": "Enable initial velocity and plane init for liquid inflow to produce visible output",
+    },
 ]
 
 

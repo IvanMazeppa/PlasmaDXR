@@ -1,0 +1,78 @@
+{
+  "recommended_approach": "Use a Mantaflow liquid setup driven by Blender\u2019s fluid data model (notably `bpy.types.FluidDomainSettings` for the LIQUID domain and `bpy.types.FluidFlowSettings` for the emitter/flow object): create a liquid domain that encloses the under-sink cabinet volume, add a pressurized inflow at the burst fitting (with plane initialization enabled per your constraint), set cabinet walls/props as collision/obstacles, then bake the liquid cache for frames 1\u201350 and render around frame 40. (Doc search returned API-index mentions of `FluidDomainSettings`/`FluidFlowSettings`, but did not surface the detailed Mantaflow manual pages in this run.)",
+  "key_parameters": {
+    "simulation_constraints_from_scene_description": {
+      "domain_type": "LIQUID",
+      "use_plane_init": true,
+      "inflow_velocity_m_per_s": [
+        1.5,
+        2.0
+      ],
+      "resolution": 96,
+      "sampling_substeps": 6,
+      "frame_range": [
+        1,
+        50
+      ],
+      "cache_type": "ALL",
+      "render_frame": 40,
+      "renderer": "CYCLES",
+      "cycles_device": "GPU",
+      "cycles_samples_max": 128,
+      "viscosity_override": "none (water/default)"
+    },
+    "water_readability_shading_from_pattern_pat_ca888279f962": {
+      "world_background_color_rgba": [
+        0.02,
+        0.025,
+        0.035,
+        1.0
+      ],
+      "world_background_strength": 0.4,
+      "principled_bsdf_base_color_rgba": [
+        0.65,
+        0.75,
+        0.9,
+        1.0
+      ],
+      "principled_bsdf_roughness": 0.03
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.Struct.bl_rna_get_subclass_py",
+    "bpy.types.MeshCacheModifier",
+    "bpy.ops.armature",
+    "bpy.ops.lattice",
+    "bpy.ops.pose",
+    "bpy.types.Action",
+    "bpy.types.LightProbeVolume",
+    "bpy.types.Mesh",
+    "bpy.types.ParticleSettings",
+    "bpy.types.SolidifyModifier",
+    "bpy.types.ThemeNodeEditor",
+    "bpy.types.ThemeView3D",
+    "bpy.types.ThemeBoneColorSet",
+    "bpy.types.CloudsTexture",
+    "bpy.types.DistortedNoiseTexture",
+    "bpy.types.MarbleTexture",
+    "bpy.types.MusgraveTexture",
+    "bpy.types.VoronoiTexture",
+    "bpy.types.GreasePencilNoiseModifier"
+  ],
+  "warnings": [
+    "Doc bundle warning: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\"",
+    "The documentation search results returned mostly API index fragments and unrelated API pages; Mantaflow liquid workflow pages were not retrieved in this run, so domain/flow property names beyond the class-level references (`FluidDomainSettings`, `FluidFlowSettings`) are not doc-cited here."
+  ],
+  "alternative_approaches": [
+    "If liquid readability is the main issue (rather than sim behavior), apply the shading/lighting pattern adjustments (pat_ca888279f962) as a lightweight alternative/augmentation to changing simulation settings."
+  ],
+  "doc_refs": [
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md (API genindex snippet referencing `flip_ratio (bpy.types.FluidDomainSettings attribute)`)",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md (API genindex snippet referencing `noise_texture (bpy.types.FluidFlowSettings attribute)` and `noise_strength (bpy.types.FluidDomainSettings attribute)`)",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-14T22:47:56.925956"
+}

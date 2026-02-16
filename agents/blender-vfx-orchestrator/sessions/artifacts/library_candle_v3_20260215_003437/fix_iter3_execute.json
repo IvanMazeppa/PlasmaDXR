@@ -1,0 +1,16 @@
+{
+  "iteration": 3,
+  "phase": "execute",
+  "strategy": "spec_first_recovery_applied",
+  "instructions": [
+    "Regenerate/fix script via spec-first modification flow.",
+    "Preserve verified API usage; do not introduce new unverified attributes.",
+    "Re-run executor once with recovered script."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/library_candle_v3_iter3_pattern.py",
+  "script_output_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/library_candle_v3_script_iter3_specfix_errfix.py",
+  "notes": [
+    "recovery_source=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/library_candle_v3_20260215_003437/fix_iter3_execute.json"
+  ],
+  "timestamp": "2026-02-15T01:02:08.378385"
+}
