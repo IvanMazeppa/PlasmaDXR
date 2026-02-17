@@ -1,0 +1,96 @@
+{
+  "trace_file": "liquid_spray_20260211_215401.jsonl",
+  "trace_name": "VFX Pipeline: liquid_spray_pipe_v1",
+  "timestamp": "2026-02-11T21:54:03.416098",
+  "total_duration_s": 2134.3,
+  "total_duration_min": 35.57,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 4,
+  "total_tool_calls": 92,
+  "total_doc_searches": 18,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 4,
+      "duration_s": 1181.6,
+      "pct_of_total": 55.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 4,
+      "duration_s": 542.5,
+      "pct_of_total": 25.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Analyst": {
+      "calls": 1,
+      "duration_s": 197.1,
+      "pct_of_total": 9.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Learning Agent": {
+      "calls": 1,
+      "duration_s": 57.1,
+      "pct_of_total": 2.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 47.5,
+      "pct_of_total": 2.2,
+      "doc_searches": 18,
+      "top_tools": {
+        "response": 43,
+        "semantic_search_blender_docs": 9,
+        "require_research_context": 4,
+        "validate_effect_type": 4,
+        "execute_blender_script": 4
+      }
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 21.8,
+      "pct_of_total": 1.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 20.6,
+      "pct_of_total": 1.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate": {
+      "calls": 0,
+      "duration_s": 8.8,
+      "pct_of_total": 0.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate Judge": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.51,
+    "seconds_per_iteration": 533.6
+  }
+}

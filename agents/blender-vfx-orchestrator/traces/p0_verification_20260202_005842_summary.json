@@ -1,0 +1,68 @@
+{
+  "trace_file": "p0_verification_20260202_005842.jsonl",
+  "trace_name": "VFX Pipeline: p0_test_20260202_005842",
+  "timestamp": "2026-02-02T00:58:43.965660",
+  "total_duration_s": 613.9,
+  "total_duration_min": 10.23,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 48,
+  "total_doc_searches": 8,
+  "total_errors": 0,
+  "agents": {
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 108.4,
+      "pct_of_total": 17.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 2,
+      "duration_s": 72.8,
+      "pct_of_total": 11.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 57.4,
+      "pct_of_total": 9.4,
+      "doc_searches": 8,
+      "top_tools": {
+        "response": 25,
+        "semantic_search_blender_docs": 6,
+        "execute_blender_script": 5,
+        "write_script": 2,
+        "validate_script": 2
+      }
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 18.4,
+      "pct_of_total": 3.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 15.4,
+      "pct_of_total": 2.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.78,
+    "seconds_per_iteration": 307.0
+  }
+}

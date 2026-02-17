@@ -1,0 +1,103 @@
+{
+  "trace_file": "oil_pour_3iter_20260202_021508.jsonl",
+  "trace_name": "VFX Pipeline: oil_pour_20260202_021508",
+  "timestamp": "2026-02-02T02:15:09.732859",
+  "total_duration_s": 3620.1,
+  "total_duration_min": 60.34,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 4,
+  "total_tool_calls": 98,
+  "total_doc_searches": 10,
+  "total_errors": 0,
+  "agents": {
+    "Executor": {
+      "calls": 4,
+      "duration_s": 2414.7,
+      "pct_of_total": 66.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Analyst": {
+      "calls": 2,
+      "duration_s": 198.0,
+      "pct_of_total": 5.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 151.1,
+      "pct_of_total": 4.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Learning Agent": {
+      "calls": 2,
+      "duration_s": 98.9,
+      "pct_of_total": 2.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 1,
+      "duration_s": 94.6,
+      "pct_of_total": 2.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 55.7,
+      "pct_of_total": 1.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 32.5,
+      "pct_of_total": 0.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate": {
+      "calls": 0,
+      "duration_s": 19.6,
+      "pct_of_total": 0.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 16.7,
+      "pct_of_total": 0.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 10,
+      "top_tools": {
+        "response": 46,
+        "semantic_search_blender_docs": 7,
+        "analyze_with_vision": 6,
+        "execute_blender_script": 4,
+        "write_script": 3
+      }
+    },
+    "Quality Gate Judge": {
+      "calls": 2,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.17,
+    "seconds_per_iteration": 905.0
+  }
+}

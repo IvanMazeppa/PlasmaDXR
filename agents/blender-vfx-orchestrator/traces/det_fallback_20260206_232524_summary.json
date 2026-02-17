@@ -1,0 +1,75 @@
+{
+  "trace_file": "det_fallback_20260206_232524.jsonl",
+  "trace_name": "VFX Pipeline: det_fallback_fire_v1",
+  "timestamp": "2026-02-06T23:25:26.228056",
+  "total_duration_s": 1146.3,
+  "total_duration_min": 19.1,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 4,
+  "total_tool_calls": 83,
+  "total_doc_searches": 16,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 4,
+      "duration_s": 939.3,
+      "pct_of_total": 81.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 2,
+      "duration_s": 119.0,
+      "pct_of_total": 10.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 44.5,
+      "pct_of_total": 3.9,
+      "doc_searches": 16,
+      "top_tools": {
+        "response": 39,
+        "semantic_search_blender_docs": 9,
+        "write_script": 7,
+        "require_research_context": 4,
+        "validate_effect_type": 4
+      }
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 32.6,
+      "pct_of_total": 2.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 18.7,
+      "pct_of_total": 1.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 1,
+      "duration_s": 10.8,
+      "pct_of_total": 0.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.84,
+    "seconds_per_iteration": 286.6
+  }
+}

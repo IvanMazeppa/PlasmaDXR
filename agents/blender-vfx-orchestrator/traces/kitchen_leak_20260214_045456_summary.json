@@ -1,0 +1,47 @@
+{
+  "trace_file": "kitchen_leak_20260214_045456.jsonl",
+  "trace_name": "VFX Pipeline: kitchen_leak",
+  "timestamp": "2026-02-14T04:54:57.835930",
+  "total_duration_s": 58.6,
+  "total_duration_min": 0.98,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 11,
+  "total_doc_searches": 4,
+  "total_errors": 0,
+  "agents": {
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 58.6,
+      "pct_of_total": 100.0,
+      "doc_searches": 4,
+      "top_tools": {
+        "response": 6,
+        "semantic_search_blender_docs": 1,
+        "search_blender_api_by_intent": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 14.2,
+      "pct_of_total": 24.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 4.09,
+    "seconds_per_iteration": 58.6
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "trace_file": "fuel_ignition_20260203_234101.jsonl",
+  "trace_name": "VFX Pipeline: fuel_ignition_20260203_234101",
+  "timestamp": "2026-02-03T23:41:03.001701",
+  "total_duration_s": 1316.1,
+  "total_duration_min": 21.93,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 82,
+  "total_doc_searches": 9,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 221.7,
+      "pct_of_total": 16.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 137.9,
+      "pct_of_total": 10.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 2,
+      "duration_s": 69.3,
+      "pct_of_total": 5.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 57.5,
+      "pct_of_total": 4.4,
+      "doc_searches": 9,
+      "top_tools": {
+        "response": 41,
+        "write_script": 9,
+        "validate_script": 8,
+        "semantic_search_blender_docs": 6,
+        "validate_code_against_spec": 3
+      }
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 37.2,
+      "pct_of_total": 2.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 1,
+      "duration_s": 28.8,
+      "pct_of_total": 2.2,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 19.2,
+      "pct_of_total": 1.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.41,
+    "seconds_per_iteration": 1316.1
+  }
+}

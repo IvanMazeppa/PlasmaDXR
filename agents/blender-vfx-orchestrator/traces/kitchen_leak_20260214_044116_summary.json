@@ -1,0 +1,61 @@
+{
+  "trace_file": "kitchen_leak_20260214_044116.jsonl",
+  "trace_name": "VFX Pipeline: kitchen_leak",
+  "timestamp": "2026-02-14T04:41:18.357638",
+  "total_duration_s": 568.6,
+  "total_duration_min": 9.48,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 36,
+  "total_doc_searches": 9,
+  "total_errors": 0,
+  "agents": {
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 141.5,
+      "pct_of_total": 24.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 60.4,
+      "pct_of_total": 10.6,
+      "doc_searches": 9,
+      "top_tools": {
+        "response": 19,
+        "semantic_search_blender_docs": 6,
+        "blender_doc_search_bundle": 2,
+        "write_script": 2,
+        "validate_script": 2
+      }
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 22.9,
+      "pct_of_total": 4.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 10.6,
+      "pct_of_total": 1.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.95,
+    "seconds_per_iteration": 568.6
+  }
+}

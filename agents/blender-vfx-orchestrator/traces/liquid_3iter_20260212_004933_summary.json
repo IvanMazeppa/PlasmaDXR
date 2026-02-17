@@ -1,0 +1,103 @@
+{
+  "trace_file": "liquid_3iter_20260212_004933.jsonl",
+  "trace_name": "VFX Pipeline: liquid_3iter",
+  "timestamp": "2026-02-12T00:49:34.335285",
+  "total_duration_s": 1381.4,
+  "total_duration_min": 23.02,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 3,
+  "total_tool_calls": 88,
+  "total_doc_searches": 16,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 2,
+      "duration_s": 397.1,
+      "pct_of_total": 28.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 3,
+      "duration_s": 341.7,
+      "pct_of_total": 24.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Learning Agent": {
+      "calls": 2,
+      "duration_s": 172.2,
+      "pct_of_total": 12.5,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Analyst": {
+      "calls": 2,
+      "duration_s": 148.6,
+      "pct_of_total": 10.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 1,
+      "duration_s": 94.4,
+      "pct_of_total": 6.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 70.2,
+      "pct_of_total": 5.1,
+      "doc_searches": 16,
+      "top_tools": {
+        "response": 40,
+        "semantic_search_blender_docs": 8,
+        "search_code_patterns": 3,
+        "execute_blender_script": 3,
+        "require_research_context": 2
+      }
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 43.5,
+      "pct_of_total": 3.1,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 27.7,
+      "pct_of_total": 2.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate": {
+      "calls": 0,
+      "duration_s": 9.3,
+      "pct_of_total": 0.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Quality Gate Judge": {
+      "calls": 2,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.69,
+    "seconds_per_iteration": 460.5
+  }
+}

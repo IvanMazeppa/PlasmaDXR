@@ -1,0 +1,47 @@
+{
+  "trace_file": "oil_pour_resume_20260203_210707.jsonl",
+  "trace_name": "VFX Pipeline: oil_pour_20260202_021508",
+  "timestamp": "2026-02-03T21:07:08.713827",
+  "total_duration_s": 1334.7,
+  "total_duration_min": 22.25,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 28,
+  "total_doc_searches": 4,
+  "total_errors": 0,
+  "agents": {
+    "Executor": {
+      "calls": 2,
+      "duration_s": 1010.2,
+      "pct_of_total": 75.7,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "API Spec Agent": {
+      "calls": 1,
+      "duration_s": 83.8,
+      "pct_of_total": 6.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Modification Strategist": {
+      "calls": 2,
+      "duration_s": 31.3,
+      "pct_of_total": 2.3,
+      "doc_searches": 4,
+      "top_tools": {
+        "response": 15,
+        "semantic_search_blender_docs": 4,
+        "validate_modification_decision": 2,
+        "execute_blender_script": 2,
+        "list_run_outputs": 1
+      }
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.18,
+    "seconds_per_iteration": 667.4
+  }
+}

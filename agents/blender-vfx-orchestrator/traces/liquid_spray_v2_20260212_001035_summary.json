@@ -1,0 +1,68 @@
+{
+  "trace_file": "liquid_spray_v2_20260212_001035.jsonl",
+  "trace_name": "VFX Pipeline: liquid_spray_v2",
+  "timestamp": "2026-02-12T00:10:37.030709",
+  "total_duration_s": 356.1,
+  "total_duration_min": 5.94,
+  "effect_type": "",
+  "status": "unknown",
+  "quality_score": null,
+  "iteration_count": 1,
+  "total_tool_calls": 30,
+  "total_doc_searches": 8,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 1,
+      "duration_s": 212.8,
+      "pct_of_total": 59.8,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Executor": {
+      "calls": 1,
+      "duration_s": 67.3,
+      "pct_of_total": 18.9,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 57.2,
+      "pct_of_total": 16.1,
+      "doc_searches": 8,
+      "top_tools": {
+        "response": 15,
+        "semantic_search_blender_docs": 3,
+        "search_blender_api_by_intent": 2,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
+    },
+    "Documentation Expert": {
+      "calls": 0,
+      "duration_s": 22.8,
+      "pct_of_total": 6.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 18.8,
+      "pct_of_total": 5.3,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 0.0,
+      "pct_of_total": 0.0,
+      "doc_searches": 0,
+      "top_tools": {}
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 1.35,
+    "seconds_per_iteration": 356.1
+  }
+}
