@@ -22,3 +22,7 @@ pyyaml>=6.0.0
 # HTML parsing for documentation chunking
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
+
+# Trace visualization dashboard
+pandas>=2.0.0
+plotly>=5.18.0
