@@ -235,6 +235,11 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
     r"['\"]Sheen['\"](?!\s*Weight)": (
         "Use 'Sheen Weight' not 'Sheen' in Blender 5.0 Principled BSDF", "'Sheen Weight'"
     ),
+    # Blender 5.0: bpy_prop_collection.get() requires string key, not int
+    # .inputs.get(0, None) → .inputs[0] or .inputs.get('Name', None)
+    r'\.(inputs|outputs)\.get\(\s*(\d+)': (
+        "bpy_prop_collection.get() requires string key in 5.0 — use bracket access [N] for integer indices", None
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -529,6 +534,20 @@ def auto_fix_script(
                     else:
                         new_lines.append(line)
                 fixed = "\n".join(new_lines)
+                continue
+            # Special case: .inputs/.outputs.get(int, ...) → bracket access
+            if "bpy_prop_collection.get()" in (error.message or ""):
+                def _fix_collection_get(m):
+                    collection = m.group(1)  # inputs or outputs
+                    index = m.group(2)        # integer
+                    fixes_applied.append(
+                        f"Replaced .{collection}.get({index}, ...) with .{collection}[{index}]"
+                    )
+                    return f".{collection}[{index}]"
+                fixed = re.sub(
+                    r'\.(inputs|outputs)\.get\(\s*(\d+)\s*(?:,\s*[^)]+)?\)',
+                    _fix_collection_get, fixed
+                )
                 continue
             # Apply hardcoded fixes for known hallucinations
             for wrong, correct in HARDCODED_FIXES.items():
