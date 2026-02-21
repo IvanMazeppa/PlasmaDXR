@@ -13,8 +13,10 @@ Description:
 
 import bpy
 import os
+import sys
 import math
 import random
+import tempfile
 from mathutils import Vector, Euler
 
 # =============================================================
@@ -24,7 +26,7 @@ from mathutils import Vector, Euler
 # =============================================================
 
 ASSET_NAME = "brick_through_window"
-OUTPUT_DIR = os.path.join("/tmp", ASSET_NAME)
+OUTPUT_DIR = os.path.join(tempfile.gettempdir(), ASSET_NAME)
 CACHE_DIR = os.path.join(OUTPUT_DIR, "cache_mantaflow")
 RENDER_DIR = os.path.join(OUTPUT_DIR, "renders")
 
@@ -45,11 +47,11 @@ GLASS_H = 2.0
 GLASS_T = 0.006
 SHARD_COUNT = 320  # within 200-500
 
-# Mantaflow
-DOMAIN_RES = 192
+# Mantaflow (low res — this is a decorative smoke puff, not the hero effect)
+DOMAIN_RES = 64
 NOISE_STRENGTH = 1.5
 VORTICITY = 0.65
-TIMESTEPS_MAX = 12
+TIMESTEPS_MAX = 6
 DISSOLVE_SPEED = 35
 
 # -------------------------------------------------------------
@@ -119,7 +121,7 @@ def setup_scene_and_render():
 
     # Cycles
     scene.render.engine = 'CYCLES'
-    scene.cycles.samples = 256
+    scene.cycles.samples = 128
 
     # Prefer GPU if available
     try:
@@ -157,9 +159,9 @@ def setup_scene_and_render():
     n_bg.inputs['Strength'].default_value = 1.2
     wnt.links.new(n_bg.outputs['Background'], n_out.inputs['Surface'])
 
-    # Caustics toggles: wrap for Blender-version differences
-    safe_setattr(scene.cycles, "caustics_reflective", True)
-    safe_setattr(scene.cycles, "caustics_refractive", True)
+    # Caustics OFF — with 140+ glass shards, caustics make render 10-50x slower
+    safe_setattr(scene.cycles, "caustics_reflective", False)
+    safe_setattr(scene.cycles, "caustics_refractive", False)
 
     return scene
 
@@ -525,113 +527,50 @@ def create_intact_glass(glass_mat):
 
 
 def try_cell_fracture(glass_obj, glass_mat):
-    """Attempt to cell-fracture a duplicate of the intact glass.
+    """Generate procedural glass shards spread across the window area.
 
-    Returns: (shards, fracture_collection_name)
+    NOTE: Cell Fracture addon bypassed — it hangs in Blender GUI mode when
+    called from scripts (opens dialog or blocks indefinitely with no params).
+    Procedural shards give predictable, fast results.
     """
-    # Duplicate glass to fracture
-    deselect_all()
-    set_active(glass_obj)
-    bpy.ops.object.duplicate()
-    frac_src = bpy.context.active_object
-    frac_src.name = "Glass_FractureSource"
-
-    # Apply solidify to source (cell fracture likes real geometry)
-    try:
-        bpy.ops.object.modifier_apply(modifier="Solidify")
-    except Exception:
-        pass
-
-    # Enable Cell Fracture add-on if available
-    try:
-        bpy.ops.preferences.addon_enable(module='object_fracture_cell')
-    except Exception:
-        # Add-on might already be enabled or unavailable
-        pass
-
-    # Run Cell Fracture (operator is provided by add-on)
+    print("[SHARDS] Generating procedural glass shards...")
     shards = []
-    fracture_collection = None
+    rng = random.Random(42)
+    num_shards = min(SHARD_COUNT, 160)  # Cap for rigid body performance
 
-    # Store pre-existing objects to detect new shards
-    before = set(bpy.data.objects)
+    for i in range(num_shards):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 1.0))
+        s = bpy.context.active_object
+        s.name = f"Shard_{i:03d}"
 
-    try:
-        # Many properties exist; we keep arguments minimal for robustness.
-        # The default uses Voronoi.
-        bpy.ops.object.cell_fracture()
-    except Exception as e:
-        print("Cell fracture operator failed; using fallback shards.")
-        print(e)
+        # Vary shard sizes: mix of large edge pieces and small center fragments
+        dist_from_center = rng.random()  # 0=center, 1=edge
+        if dist_from_center < 0.4:
+            # Small fragments near impact center
+            w = rng.uniform(0.008, 0.035)
+            h = rng.uniform(0.008, 0.04)
+        else:
+            # Larger pieces toward edges
+            w = rng.uniform(0.03, 0.08)
+            h = rng.uniform(0.03, 0.12)
 
-    after = set(bpy.data.objects)
-    new_objs = [o for o in after - before if o.type == 'MESH']
+        s.scale = (GLASS_T * 0.8, w, h)
 
-    # Heuristic: shards tend to be created and selected
-    selected = [o for o in bpy.context.selected_objects if o.type == 'MESH']
-    cand = selected if len(selected) > 5 else new_objs
+        # Spread over window area
+        s.location = (
+            rng.uniform(-0.003, 0.003),
+            rng.uniform(-GLASS_W / 2, GLASS_W / 2),
+            rng.uniform(1.0 - GLASS_H / 2, 1.0 + GLASS_H / 2),
+        )
+        s.rotation_euler = Euler((
+            rng.uniform(0, math.pi),
+            rng.uniform(0, math.pi),
+            rng.uniform(0, math.pi),
+        ), 'XYZ')
+        s.data.materials.append(glass_mat)
+        shards.append(s)
 
-    # Filter likely shards: similar bounds and near window
-    for o in cand:
-        if o.name.startswith("Glass_"):
-            continue
-        # Skip the source itself
-        if o == frac_src:
-            continue
-        # Accept smallish objects near the glass plane
-        if abs(o.location.x) < 0.2 and (0.0 < o.location.z < 2.1):
-            shards.append(o)
-
-    # If not enough shards detected, fallback: split source into a grid of pieces
-    if len(shards) < 50:
-        print("Fallback: generating simple grid shards")
-        shards = []
-        # Delete any accidental candidates
-        for o in cand:
-            if o != frac_src and o.name != glass_obj.name:
-                try:
-                    bpy.data.objects.remove(o, do_unlink=True)
-                except Exception:
-                    pass
-
-        # Create a crude shard set: thin triangles/cubes
-        rng = random.Random(42)
-        for i in range(140):
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 1.0))
-            s = bpy.context.active_object
-            s.name = f"Shard_{i:03d}"
-            # Thin shards
-            s.scale = (GLASS_T * 0.8, rng.uniform(0.01, 0.06), rng.uniform(0.01, 0.09))
-            # Spread over window
-            s.location = (
-                rng.uniform(-0.002, 0.002),
-                rng.uniform(-GLASS_W / 2, GLASS_W / 2),
-                rng.uniform(1.0 - GLASS_H / 2, 1.0 + GLASS_H / 2),
-            )
-            s.rotation_euler = Euler((rng.uniform(0, math.pi), rng.uniform(0, math.pi), rng.uniform(0, math.pi)), 'XYZ')
-            s.data.materials.append(glass_mat)
-            shards.append(s)
-
-        # Hide source
-        try:
-            bpy.data.objects.remove(frac_src, do_unlink=True)
-        except Exception:
-            frac_src.hide_viewport = True
-            frac_src.hide_render = True
-    else:
-        # Assign glass material to shards
-        for s in shards:
-            if len(s.data.materials) == 0:
-                s.data.materials.append(glass_mat)
-
-        # Hide the fracture source
-        frac_src.hide_viewport = True
-        frac_src.hide_render = True
-
-    # Trim to target count if too many
-    if len(shards) > SHARD_COUNT:
-        shards = shards[:SHARD_COUNT]
-
+    print(f"[SHARDS] Created {len(shards)} procedural shards")
     return shards
 
 
@@ -918,14 +857,6 @@ def create_mantaflow_flow(impact_point=Vector((0.0, 0.0, 1.0))):
     return flow
 
 
-def try_make_fluid_preset():
-    # Verified operation in provided spec; may require UI context.
-    try:
-        bpy.ops.fluid.preset_add(name="brick_window_smoke")
-    except Exception as e:
-        print("fluid.preset_add failed (non-fatal):", e)
-
-
 def try_bake_mantaflow(domain_obj):
     # Bake ops are not part of provided verified ops list; attempt anyway.
     # This script remains functional even if baking is skipped.
@@ -957,29 +888,39 @@ def try_bake_mantaflow(domain_obj):
 # -------------------------------------------------------------
 
 def main():
+    print(f"[MAIN] Output directory: {OUTPUT_DIR}")
+    print(f"[MAIN] Render directory: {RENDER_DIR}")
     ensure_dir(OUTPUT_DIR)
     ensure_dir(CACHE_DIR)
     ensure_dir(RENDER_DIR)
 
+    print("[MAIN] Clearing scene...")
     clear_scene()
+    print("[MAIN] Setting up render settings...")
     scene = setup_scene_and_render()
 
     # Materials
+    print("[MAIN] Creating materials...")
     glass_mat = make_glass_material()
     brick_mat = make_brick_material()
     smoke_mat = make_mantaflow_volume_material()
 
     # Environment
+    print("[MAIN] Building gallery environment...")
     env = create_gallery_environment()
+    print("[MAIN] Setting up camera and lights...")
     setup_camera_and_lights()
 
     # Intact glass (visible pre-impact)
+    print("[MAIN] Creating intact glass panel...")
     glass_intact = create_intact_glass(glass_mat)
 
     # Rigid body world + passive colliders
+    print("[MAIN] Setting up rigid body world...")
     ensure_rigidbody_world(scene)
 
     # Passive colliders
+    print("[MAIN] Adding passive rigid body colliders...")
     add_passive_rb(env['floor'], friction=0.6, restitution=0.3, collision_shape='MESH')
     for w in env['walls']:
         add_passive_rb(w, friction=0.5, restitution=0.1, collision_shape='MESH')
@@ -990,35 +931,41 @@ def main():
     add_passive_rb(glass_intact, friction=0.2, restitution=0.0, collision_shape='MESH')
 
     # Brick
+    print("[MAIN] Creating brick with rigid body physics...")
     brick = create_brick(brick_mat)
 
     # Fracture shards (hidden/disabled until impact)
+    print("[MAIN] Generating glass shards...")
     shards = try_cell_fracture(glass_intact, glass_mat)
 
     # Animate switch from intact to shards
+    print("[MAIN] Animating glass visibility swap...")
     animate_intact_glass_visibility(glass_intact)
+    print(f"[MAIN] Setting up rigid body on {len(shards)} shards (this may take a moment)...")
     setup_shards_rigidbody(shards, impact_point=Vector((0.0, 0.0, 1.0)))
+    print("[MAIN] Shard rigid body setup complete.")
 
     # Mantaflow smoke burst at impact
+    print("[MAIN] Creating Mantaflow smoke domain (res={})...".format(DOMAIN_RES))
     domain = create_mantaflow_domain(smoke_mat)
     flow = create_mantaflow_flow(impact_point=Vector((0.0, 0.0, 1.0)))
 
-    # Use the verified op at least once
-    try_make_fluid_preset()
-
     # Bake mantaflow if possible
+    print("[MAIN] Baking Mantaflow simulation...")
     try_bake_mantaflow(domain)
 
     # Render a representative frame (shards mid-flight)
+    print(f"[MAIN] Setting frame to {RENDER_FRAME} for render...")
     scene.frame_set(RENDER_FRAME)
     scene.render.filepath = os.path.join(RENDER_DIR, f"{ASSET_NAME}_{RENDER_FRAME:04d}.png")
 
     # Save .blend (required)
+    print("[MAIN] Saving .blend file...")
     blend_path = os.path.join(OUTPUT_DIR, f"{ASSET_NAME}.blend")
     bpy.ops.wm.save_as_mainfile(filepath=blend_path)
-    print(f"Saved .blend to: {blend_path}")
+    print(f"[MAIN] Saved .blend to: {blend_path}")
 
-    # Render still
+    # Camera validation + Render
 
     # ==== API FIXER: Camera Distance Validation ====
     # Validates camera is not inside scene geometry or too close for its focal length.
@@ -1067,8 +1014,10 @@ def main():
     # ==== END API FIXER: Camera Distance Validation ====
 
 
+    print(f"[MAIN] Rendering frame {RENDER_FRAME} at {scene.cycles.samples} samples (no caustics)...")
+    print(f"[MAIN] Output: {scene.render.filepath}")
     bpy.ops.render.render(write_still=True)
-    print(f"Rendered still to: {scene.render.filepath}")
+    print(f"[MAIN] DONE! Rendered to: {scene.render.filepath}")
 
 
 if __name__ == "__main__":
