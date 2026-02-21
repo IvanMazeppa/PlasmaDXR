@@ -4,44 +4,82 @@
   "timestamp": "2026-02-14T04:54:57.835930",
   "total_duration_s": 58.6,
   "total_duration_min": 0.98,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "kitchen_leak",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 11,
-  "total_doc_searches": 4,
+  "total_tool_calls": 4,
+  "total_doc_searches": 3,
   "total_errors": 0,
   "agents": {
     "Research Agent": {
       "calls": 1,
       "duration_s": 58.6,
       "pct_of_total": 100.0,
-      "doc_searches": 4,
-      "top_tools": {
-        "response": 6,
-        "semantic_search_blender_docs": 1,
-        "search_blender_api_by_intent": 1,
-        "blender_doc_search_bundle": 1,
-        "list_patterns_by_effect": 1
-      }
-    },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 14.2,
-      "pct_of_total": 24.2,
       "doc_searches": 0,
       "top_tools": {}
     },
     "Documentation Expert (Standalone)": {
       "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
+      "duration_s": 14.2,
+      "pct_of_total": 24.2,
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "search_blender_api_by_intent": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 4.09,
+    "doc_searches_per_minute": 3.07,
     "seconds_per_iteration": 58.6
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)"
+  ],
+  "guardrail_checks": 1,
+  "guardrail_triggers": 1,
+  "guardrail_trigger_rate": 1.0,
+  "llm_calls": 6,
+  "llm_duration_total_s": 59.7,
+  "llm_duration_mean_s": 9.96,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 6,
+  "tool_details": {
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 8050.6,
+      "avg_duration_ms": 8050.6
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 1,
+      "total_duration_ms": 3222.7,
+      "avg_duration_ms": 3222.7
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 1,
+      "total_duration_ms": 1743.0,
+      "avg_duration_ms": 1743.0
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.8,
+      "avg_duration_ms": 0.8
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 1,
+      "trigger_rate": 1.0
+    }
   }
 }

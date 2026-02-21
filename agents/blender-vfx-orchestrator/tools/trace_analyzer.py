@@ -4,6 +4,9 @@ Trace Analyzer for Blender VFX Orchestrator
 
 Features:
 - Parse JSONL trace files and extract key metrics
+- Build span tree with proper parent-child relationships
+- Fix tool attribution (assigns tools to correct parent agent)
+- Extract guardrail, quality, Blender execution, and LLM metrics
 - Auto-generate compact summaries (debloat)
 - Watch folder for new traces
 - Compare traces for performance regression
@@ -34,8 +37,25 @@ import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import csv
+
+
+# --- Dataclasses ---
+
+@dataclass
+class SpanNode:
+    """A single span in the trace tree."""
+    span_id: str
+    span_type: str  # "agent", "function", "response", "guardrail"
+    name: str
+    depth: int
+    start_ts: datetime
+    end_ts: Optional[datetime] = None
+    duration_ms: float = 0.0
+    span_data: Dict[str, Any] = field(default_factory=dict)
+    parent_id: Optional[str] = None
+    children: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -50,9 +70,24 @@ class AgentMetrics:
 
     def add_tool_call(self, tool_name: str):
         self.tool_calls[tool_name] = self.tool_calls.get(tool_name, 0) + 1
-        # Track doc searches
         if any(doc in tool_name.lower() for doc in ['doc', 'search', 'semantic']):
             self.doc_searches += 1
+
+
+@dataclass
+class ToolCallMetrics:
+    """Metrics for a single tool across the trace."""
+    name: str
+    call_count: int = 0
+    total_duration_ms: float = 0.0
+
+
+@dataclass
+class GuardrailMetrics:
+    """Metrics for a single guardrail across the trace."""
+    name: str
+    check_count: int = 0
+    trigger_count: int = 0
 
 
 @dataclass
@@ -74,9 +109,26 @@ class TraceMetrics:
     # Timeline data for charting
     timeline: List[Dict[str, Any]] = field(default_factory=list)
 
+    # --- New fields (backward compatible) ---
+    agent_order: List[str] = field(default_factory=list)
+    guardrail_metrics: Dict[str, GuardrailMetrics] = field(default_factory=dict)
+    tool_metrics: Dict[str, ToolCallMetrics] = field(default_factory=dict)
+    llm_call_count: int = 0
+    llm_total_duration_ms: float = 0.0
+    quality_scores: List[float] = field(default_factory=list)
+    quality_passed: Optional[bool] = None
+    blender_runs: int = 0
+    blender_success_count: int = 0
+    blender_total_duration_s: float = 0.0
+    score_trajectory: List[float] = field(default_factory=list)
+    max_depth: int = 0
+
     def to_summary_dict(self) -> Dict[str, Any]:
         """Convert to compact summary dictionary."""
-        return {
+        guardrail_checks = sum(g.check_count for g in self.guardrail_metrics.values())
+        guardrail_triggers = sum(g.trigger_count for g in self.guardrail_metrics.values())
+
+        result = {
             "trace_file": Path(self.trace_file).name,
             "trace_name": self.trace_name,
             "timestamp": self.timestamp,
@@ -102,20 +154,146 @@ class TraceMetrics:
             "efficiency": {
                 "doc_searches_per_minute": round(self.total_doc_searches / (self.total_duration_s / 60), 2) if self.total_duration_s > 0 else 0,
                 "seconds_per_iteration": round(self.total_duration_s / self.iteration_count, 1) if self.iteration_count > 0 else self.total_duration_s,
-            }
+            },
+            # New fields
+            "agent_order": self.agent_order,
+            "guardrail_checks": guardrail_checks,
+            "guardrail_triggers": guardrail_triggers,
+            "guardrail_trigger_rate": round(guardrail_triggers / guardrail_checks, 3) if guardrail_checks > 0 else 0.0,
+            "llm_calls": self.llm_call_count,
+            "llm_duration_total_s": round(self.llm_total_duration_ms / 1000, 1),
+            "llm_duration_mean_s": round((self.llm_total_duration_ms / 1000) / self.llm_call_count, 2) if self.llm_call_count > 0 else 0.0,
+            "quality_score_final": self.quality_scores[-1] if self.quality_scores else None,
+            "quality_passed": self.quality_passed,
+            "blender_runs": self.blender_runs,
+            "blender_success_count": self.blender_success_count,
+            "blender_total_duration_s": round(self.blender_total_duration_s, 1),
+            "score_trajectory": self.score_trajectory,
+            "max_depth": self.max_depth,
+            # Detail dicts for visualizer JSON consumption
+            "tool_details": {
+                name: {
+                    "call_count": tm.call_count,
+                    "total_duration_ms": round(tm.total_duration_ms, 1),
+                    "avg_duration_ms": round(tm.total_duration_ms / tm.call_count, 1) if tm.call_count > 0 else 0,
+                }
+                for name, tm in sorted(self.tool_metrics.items(), key=lambda x: -x[1].total_duration_ms)
+            },
+            "guardrail_details": {
+                name: {
+                    "check_count": gm.check_count,
+                    "trigger_count": gm.trigger_count,
+                    "trigger_rate": round(gm.trigger_count / gm.check_count, 3) if gm.check_count > 0 else 0.0,
+                }
+                for name, gm in sorted(self.guardrail_metrics.items(), key=lambda x: -x[1].check_count)
+            },
         }
+        return result
 
+
+# --- Parsing Helpers ---
 
 def parse_timestamp(ts: str) -> datetime:
     """Parse ISO timestamp."""
     try:
         return datetime.fromisoformat(ts)
-    except:
+    except Exception:
         return datetime.now()
 
 
+def _parse_tool_output(output_str: str) -> Optional[Dict[str, Any]]:
+    """Safely parse a tool output JSON string. Returns None if not valid JSON."""
+    if not output_str:
+        return None
+    try:
+        parsed = json.loads(output_str)
+        if isinstance(parsed, dict):
+            return parsed
+        return None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def build_span_tree(events: List[Dict[str, Any]]) -> Dict[str, SpanNode]:
+    """Build a span tree from trace events using depth-based parent inference.
+
+    Uses depth field to infer parent-child: when a span starts at depth N,
+    its parent is the most recent open span at depth N-1.
+    """
+    nodes: Dict[str, SpanNode] = {}
+    # depth_stack[depth] = span_id of the most recent open span at that depth
+    depth_stack: Dict[int, str] = {}
+
+    for e in events:
+        event_type = e.get("event_type", "")
+        span_id = e.get("span_id", "")
+        if not span_id:
+            continue
+
+        if event_type == "span_start":
+            name = e.get("name", "")
+            span_type = e.get("span_type", "")
+            depth = e.get("depth", 0)
+            ts_str = e.get("timestamp", "")
+            ts = parse_timestamp(ts_str)
+
+            node = SpanNode(
+                span_id=span_id,
+                span_type=span_type,
+                name=name,
+                depth=depth,
+                start_ts=ts,
+            )
+
+            # Find parent: look for open span at depth-1
+            parent_depth = depth - 1
+            if parent_depth >= 0 and parent_depth in depth_stack:
+                parent_id = depth_stack[parent_depth]
+                node.parent_id = parent_id
+                if parent_id in nodes:
+                    nodes[parent_id].children.append(span_id)
+
+            # Guardrails often start+end instantly at same depth as other spans.
+            # Only update depth_stack for non-guardrail spans to avoid displacing.
+            if span_type != "guardrail":
+                depth_stack[depth] = span_id
+
+            nodes[span_id] = node
+
+        elif event_type == "span_end" and span_id in nodes:
+            node = nodes[span_id]
+            ts_str = e.get("timestamp", "")
+            node.end_ts = parse_timestamp(ts_str)
+            node.duration_ms = e.get("duration_ms", 0.0)
+            node.span_data = e.get("span_data", {})
+
+    return nodes
+
+
+def _find_parent_agent(nodes: Dict[str, SpanNode], span_id: str) -> Optional[str]:
+    """Walk the parent chain from a span to find its owning agent name."""
+    visited = set()
+    current = span_id
+    while current and current not in visited:
+        visited.add(current)
+        node = nodes.get(current)
+        if not node:
+            break
+        if node.span_type == "agent":
+            return node.name
+        current = node.parent_id
+    return None
+
+
+# --- Main Analysis ---
+
 def analyze_trace(trace_path: str) -> TraceMetrics:
-    """Analyze a single trace file and extract metrics."""
+    """Analyze a single trace file and extract metrics.
+
+    Two-pass approach:
+    1. Build span tree with parent-child relationships
+    2. Iterate nodes by type to extract all metrics
+    """
     metrics = TraceMetrics(trace_file=trace_path)
 
     events = []
@@ -129,99 +307,215 @@ def analyze_trace(trace_path: str) -> TraceMetrics:
     if not events:
         return metrics
 
-    # Extract basic info from first/last events
+    # --- Extract trace-level info from trace_start/trace_end events ---
     first_ts = None
     last_ts = None
+    seen_agent_names = set()
 
     for e in events:
-        ts = e.get("timestamp")
-        if ts:
-            parsed = parse_timestamp(ts)
+        ts_str = e.get("timestamp")
+        if ts_str:
+            parsed = parse_timestamp(ts_str)
             if first_ts is None or parsed < first_ts:
                 first_ts = parsed
             if last_ts is None or parsed > last_ts:
                 last_ts = parsed
 
-        # Get trace name
-        if e.get("event_type") == "trace_start":
-            metrics.trace_name = e.get("name", "")
-            metrics.timestamp = e.get("timestamp", "")
+        event_type = e.get("event_type", "")
+
+        # Prefer "VFX Pipeline:" trace_start for group_id/effect_type
+        if event_type == "trace_start":
+            name = e.get("name", "")
+            if name.startswith("VFX Pipeline:"):
+                metrics.trace_name = name
+                metrics.timestamp = e.get("timestamp", "")
+                group_id = e.get("group_id", "")
+                if group_id:
+                    # Extract effect type from group_id (strip timestamp suffix)
+                    parts = group_id.split("_")
+                    # Try to find the effect name (non-numeric prefix)
+                    effect_parts = []
+                    for p in parts:
+                        if p.isdigit() and len(p) >= 8:
+                            break
+                        effect_parts.append(p)
+                    if effect_parts:
+                        metrics.effect_type = "_".join(effect_parts)
+            elif not metrics.trace_name:
+                metrics.trace_name = name
+                metrics.timestamp = e.get("timestamp", "")
+                group_id = e.get("group_id", "")
+                if group_id and not metrics.effect_type:
+                    parts = group_id.split("_")
+                    effect_parts = []
+                    for p in parts:
+                        if p.isdigit() and len(p) >= 8:
+                            break
+                        effect_parts.append(p)
+                    if effect_parts:
+                        metrics.effect_type = "_".join(effect_parts)
+
+        if event_type == "trace_end":
+            status = e.get("status", "")
+            if status:
+                metrics.status = status
 
     # Calculate total duration
     if first_ts and last_ts:
         metrics.total_duration_s = (last_ts - first_ts).total_seconds()
 
-    # Track spans for agent timing
-    spans: Dict[str, Dict[str, Any]] = {}
-    agent_names = [
-        "Research Agent", "Technique Selector", "API Spec Agent", "Code Writer Agent",
-        "Script Writer", "Executor", "Quality Analyst", "Learning Agent",
-        "Modification Strategist", "Quality Gate", "Documentation Expert"
-    ]
+    # --- Pass 1: Build span tree ---
+    nodes = build_span_tree(events)
 
-    for e in events:
-        event_type = e.get("event_type", "")
-        span_id = e.get("span_id", "")
-        name = e.get("name", "")
-        ts = e.get("timestamp", "")
+    # --- Pass 2: Iterate nodes by type and extract metrics ---
+    for span_id, node in nodes.items():
+        # Track max depth
+        if node.depth > metrics.max_depth:
+            metrics.max_depth = node.depth
 
-        if event_type == "span_start":
-            spans[span_id] = {"name": name, "start": ts}
+        if node.span_type == "agent":
+            agent_name = node.name
+            if agent_name not in metrics.agent_metrics:
+                metrics.agent_metrics[agent_name] = AgentMetrics(name=agent_name)
+            am = metrics.agent_metrics[agent_name]
+            am.call_count += 1
 
-            # Track if it's an agent
-            if any(agent in name for agent in agent_names):
-                if name not in metrics.agent_metrics:
-                    metrics.agent_metrics[name] = AgentMetrics(name=name)
-                metrics.agent_metrics[name].call_count += 1
+            # Duration (only from span_end data)
+            if node.duration_ms > 0:
+                am.total_duration_s += node.duration_ms / 1000.0
 
-        elif event_type == "span_end" and span_id in spans:
-            span_data = spans[span_id]
-            span_data["end"] = ts
+            # Track agent order (first appearance)
+            if agent_name not in seen_agent_names:
+                seen_agent_names.add(agent_name)
+                metrics.agent_order.append(agent_name)
 
-            # Calculate duration
-            if "start" in span_data and "end" in span_data:
-                start = parse_timestamp(span_data["start"])
-                end = parse_timestamp(span_data["end"])
-                duration = (end - start).total_seconds()
+            # Add to timeline
+            if first_ts and node.duration_ms > 0:
+                metrics.timeline.append({
+                    "agent": agent_name,
+                    "start_offset_s": (node.start_ts - first_ts).total_seconds(),
+                    "duration_s": node.duration_ms / 1000.0,
+                })
 
-                span_name = span_data["name"]
+        elif node.span_type == "function":
+            tool_name = node.name
+            duration_ms = node.duration_ms
 
-                # Add to agent metrics
-                for agent_name in agent_names:
-                    if agent_name in span_name:
-                        if agent_name not in metrics.agent_metrics:
-                            metrics.agent_metrics[agent_name] = AgentMetrics(name=agent_name)
-                        metrics.agent_metrics[agent_name].total_duration_s += duration
+            metrics.total_tool_calls += 1
 
-                        # Add to timeline
-                        metrics.timeline.append({
-                            "agent": agent_name,
-                            "start_offset_s": (start - first_ts).total_seconds() if first_ts else 0,
-                            "duration_s": duration,
-                        })
-                        break
+            # Tool metrics (global)
+            if tool_name not in metrics.tool_metrics:
+                metrics.tool_metrics[tool_name] = ToolCallMetrics(name=tool_name)
+            tm = metrics.tool_metrics[tool_name]
+            tm.call_count += 1
+            tm.total_duration_ms += duration_ms
 
-                # Check for tool calls (lowercase snake_case names)
-                if span_name and span_name[0].islower() and ("_" in span_name or span_name in ["response"]):
-                    metrics.total_tool_calls += 1
+            # Attribute tool to correct parent agent
+            parent_agent = _find_parent_agent(nodes, span_id)
+            if parent_agent:
+                if parent_agent not in metrics.agent_metrics:
+                    metrics.agent_metrics[parent_agent] = AgentMetrics(name=parent_agent)
+                metrics.agent_metrics[parent_agent].add_tool_call(tool_name)
 
-                    # Find parent agent
-                    for agent_name, agent_metrics in metrics.agent_metrics.items():
-                        # Simple heuristic: tool is part of most recent agent
-                        agent_metrics.add_tool_call(span_name)
-                        break
+            # Parse tool output for specific tools
+            output_str = node.span_data.get("output", "")
+            output_data = _parse_tool_output(output_str)
 
-    # Count doc searches
-    for agent_metrics in metrics.agent_metrics.values():
-        metrics.total_doc_searches += agent_metrics.doc_searches
+            if output_data:
+                if tool_name == "evaluate_render":
+                    score = output_data.get("overall_score")
+                    if score is not None:
+                        try:
+                            score = float(score)
+                            metrics.quality_scores.append(score)
+                            metrics.quality_score = score
+                        except (ValueError, TypeError):
+                            pass
+                    passed = output_data.get("passed")
+                    if passed is not None:
+                        metrics.quality_passed = bool(passed)
 
-    # Estimate iterations (count Script Writer calls or Executor calls)
-    script_calls = metrics.agent_metrics.get("Script Writer", AgentMetrics(name="")).call_count
-    executor_calls = metrics.agent_metrics.get("Executor", AgentMetrics(name="")).call_count
-    metrics.iteration_count = max(script_calls, executor_calls, 1)
+                elif tool_name == "analyze_with_vision":
+                    score = output_data.get("score")
+                    if score is not None:
+                        try:
+                            score = float(score)
+                            metrics.quality_scores.append(score)
+                            metrics.quality_score = score
+                        except (ValueError, TypeError):
+                            pass
+                    # Also check overall_score (some versions use this)
+                    if score is None:
+                        score = output_data.get("overall_score")
+                        if score is not None:
+                            try:
+                                score = float(score)
+                                metrics.quality_scores.append(score)
+                                metrics.quality_score = score
+                            except (ValueError, TypeError):
+                                pass
+
+                elif tool_name == "execute_blender_script":
+                    metrics.blender_runs += 1
+                    success = output_data.get("success", False)
+                    if success:
+                        metrics.blender_success_count += 1
+                    dur_s = output_data.get("duration_seconds", 0)
+                    if dur_s:
+                        try:
+                            metrics.blender_total_duration_s += float(dur_s)
+                        except (ValueError, TypeError):
+                            pass
+                    # Count errors from execution failures
+                    if not success:
+                        metrics.total_errors += 1
+                        if parent_agent and parent_agent in metrics.agent_metrics:
+                            metrics.agent_metrics[parent_agent].errors += 1
+
+                elif tool_name == "record_experiment_result":
+                    score_changes = output_data.get("score_changes", {})
+                    score_after = score_changes.get("score_after")
+                    if score_after is None:
+                        score_after = score_changes.get("quality_score")
+                    if score_after is not None:
+                        try:
+                            metrics.score_trajectory.append(float(score_after))
+                        except (ValueError, TypeError):
+                            pass
+
+        elif node.span_type == "response":
+            metrics.llm_call_count += 1
+            metrics.llm_total_duration_ms += node.duration_ms
+
+        elif node.span_type == "guardrail":
+            gr_name = node.name
+            if gr_name not in metrics.guardrail_metrics:
+                metrics.guardrail_metrics[gr_name] = GuardrailMetrics(name=gr_name)
+            gm = metrics.guardrail_metrics[gr_name]
+            gm.check_count += 1
+            triggered = node.span_data.get("triggered", False)
+            if triggered:
+                gm.trigger_count += 1
+
+    # Count doc searches from agent metrics
+    for am in metrics.agent_metrics.values():
+        metrics.total_doc_searches += am.doc_searches
+
+    # Estimate iterations (count Script Writer / Code Writer calls or Executor calls)
+    writer_calls = 0
+    executor_calls = 0
+    for name, am in metrics.agent_metrics.items():
+        name_lower = name.lower()
+        if "writer" in name_lower or "script" in name_lower:
+            writer_calls += am.call_count
+        if "executor" in name_lower:
+            executor_calls += am.call_count
+    metrics.iteration_count = max(writer_calls, executor_calls, 1)
 
     return metrics
 
+
+# --- Output ---
 
 def print_summary(metrics: TraceMetrics, verbose: bool = False):
     """Print a formatted summary of trace metrics."""
@@ -233,11 +527,12 @@ def print_summary(metrics: TraceMetrics, verbose: bool = False):
     print(f"Name: {summary['trace_name']}")
     print(f"Time: {summary['timestamp']}")
     print(f"Duration: {summary['total_duration_s']:.1f}s ({summary['total_duration_min']:.2f} min)")
+    print(f"Effect: {summary['effect_type'] or 'unknown'}")
+    print(f"Status: {summary['status']}")
     print(f"Iterations: {summary['iteration_count']}")
-    print(f"Tool Calls: {summary['total_tool_calls']}")
-    print(f"Doc Searches: {summary['total_doc_searches']}")
+    print(f"Max Depth: {summary['max_depth']}")
 
-    print(f"\n--- Agent Breakdown ---")
+    print(f"\n--- Agent Breakdown (order: {' -> '.join(summary['agent_order'][:6])}) ---")
     for agent_name, agent_data in summary['agents'].items():
         print(f"  {agent_name}:")
         print(f"    Duration: {agent_data['duration_s']:.1f}s ({agent_data['pct_of_total']:.1f}%)")
@@ -245,9 +540,46 @@ def print_summary(metrics: TraceMetrics, verbose: bool = False):
         if verbose and agent_data['top_tools']:
             print(f"    Top Tools: {agent_data['top_tools']}")
 
+    print(f"\n--- Tool Calls ---")
+    print(f"  Total: {summary['total_tool_calls']}")
+    print(f"  Doc Searches: {summary['total_doc_searches']}")
+    if verbose and summary.get('tool_details'):
+        top_tools = list(summary['tool_details'].items())[:10]
+        for name, td in top_tools:
+            print(f"    {name}: {td['call_count']}x, {td['total_duration_ms']:.0f}ms total, {td['avg_duration_ms']:.0f}ms avg")
+
+    print(f"\n--- LLM Calls ---")
+    print(f"  Count: {summary['llm_calls']}")
+    print(f"  Total Duration: {summary['llm_duration_total_s']:.1f}s")
+    print(f"  Mean Duration: {summary['llm_duration_mean_s']:.2f}s")
+
+    print(f"\n--- Guardrails ---")
+    print(f"  Checks: {summary['guardrail_checks']}")
+    print(f"  Triggers: {summary['guardrail_triggers']}")
+    print(f"  Trigger Rate: {summary['guardrail_trigger_rate']:.1%}")
+    if verbose and summary.get('guardrail_details'):
+        for name, gd in summary['guardrail_details'].items():
+            trig = "*TRIGGERED*" if gd['trigger_count'] > 0 else ""
+            print(f"    {name}: {gd['check_count']}x checked, {gd['trigger_count']}x triggered {trig}")
+
+    print(f"\n--- Quality ---")
+    final = summary.get('quality_score_final')
+    print(f"  Final Score: {final if final is not None else 'N/A'}")
+    print(f"  Passed: {summary['quality_passed'] if summary['quality_passed'] is not None else 'N/A'}")
+    if metrics.score_trajectory:
+        traj_str = " -> ".join(str(int(s)) for s in metrics.score_trajectory)
+        print(f"  Score Trajectory: {traj_str}")
+
+    print(f"\n--- Blender Execution ---")
+    print(f"  Runs: {summary['blender_runs']}")
+    print(f"  Successes: {summary['blender_success_count']}")
+    print(f"  Total Bake Time: {summary['blender_total_duration_s']:.1f}s")
+
     print(f"\n--- Efficiency Metrics ---")
     print(f"  Doc Searches/min: {summary['efficiency']['doc_searches_per_minute']:.2f}")
     print(f"  Seconds/iteration: {summary['efficiency']['seconds_per_iteration']:.1f}")
+    if summary['total_errors'] > 0:
+        print(f"  Errors: {summary['total_errors']}")
 
 
 def save_summary(metrics: TraceMetrics, output_path: str):
@@ -281,6 +613,22 @@ def compare_traces(metrics1: TraceMetrics, metrics2: TraceMetrics):
     print(f"  OLD: {metrics1.total_doc_searches}")
     print(f"  NEW: {fmt_delta(metrics1.total_doc_searches, metrics2.total_doc_searches)}")
 
+    print(f"\nLLM Calls:")
+    print(f"  OLD: {metrics1.llm_call_count}")
+    print(f"  NEW: {fmt_delta(metrics1.llm_call_count, metrics2.llm_call_count)}")
+
+    print(f"\nGuardrail Triggers:")
+    g1 = sum(g.trigger_count for g in metrics1.guardrail_metrics.values())
+    g2 = sum(g.trigger_count for g in metrics2.guardrail_metrics.values())
+    print(f"  OLD: {g1}")
+    print(f"  NEW: {fmt_delta(g1, g2)}")
+
+    q1 = metrics1.quality_scores[-1] if metrics1.quality_scores else 0
+    q2 = metrics2.quality_scores[-1] if metrics2.quality_scores else 0
+    print(f"\nQuality Score (final):")
+    print(f"  OLD: {q1}")
+    print(f"  NEW: {fmt_delta(q1, q2)}")
+
     print(f"\nAgent Comparison:")
     all_agents = set(metrics1.agent_metrics.keys()) | set(metrics2.agent_metrics.keys())
     for agent in sorted(all_agents):
@@ -309,6 +657,28 @@ def export_csv(all_metrics: List[TraceMetrics], output_path: str):
             "doc_searches": summary["total_doc_searches"],
             "doc_searches_per_min": summary["efficiency"]["doc_searches_per_minute"],
             "seconds_per_iteration": summary["efficiency"]["seconds_per_iteration"],
+            # New columns
+            "agent_order": ",".join(summary["agent_order"]),
+            "guardrail_checks": summary["guardrail_checks"],
+            "guardrail_triggers": summary["guardrail_triggers"],
+            "guardrail_trigger_rate": summary["guardrail_trigger_rate"],
+            "tool_calls_total": summary["total_tool_calls"],
+            "tool_call_duration_total_s": round(sum(
+                td["total_duration_ms"] for td in summary.get("tool_details", {}).values()
+            ) / 1000, 1),
+            "llm_calls": summary["llm_calls"],
+            "llm_duration_total_s": summary["llm_duration_total_s"],
+            "llm_duration_mean_s": summary["llm_duration_mean_s"],
+            "quality_score_final": summary["quality_score_final"],
+            "quality_passed": summary["quality_passed"],
+            "blender_runs": summary["blender_runs"],
+            "blender_success_count": summary["blender_success_count"],
+            "blender_total_duration_s": summary["blender_total_duration_s"],
+            "score_trajectory": ",".join(str(int(s)) for s in summary["score_trajectory"]) if summary["score_trajectory"] else "",
+            "max_depth": summary["max_depth"],
+            "effect_type": summary["effect_type"],
+            "status": summary["status"],
+            "total_errors": summary["total_errors"],
         }
         # Add agent durations
         for agent_name, agent_data in summary["agents"].items():
@@ -319,7 +689,6 @@ def export_csv(all_metrics: List[TraceMetrics], output_path: str):
 
     # Write CSV
     if rows:
-        fieldnames = list(rows[0].keys())
         # Ensure consistent columns across all rows
         all_fields = set()
         for row in rows:
@@ -436,15 +805,19 @@ def main():
             export_csv(all_metrics, args.export_csv)
 
         # Print summary table
-        print(f"\n{'=' * 90}")
+        print(f"\n{'=' * 120}")
         print(f"SUMMARY: {len(all_metrics)} traces analyzed")
-        print(f"{'=' * 90}")
-        print(f"{'Trace':<40} {'Duration':>10} {'Iters':>6} {'DocSearch':>10} {'Efficiency':>12}")
-        print(f"{'-' * 90}")
+        print(f"{'=' * 120}")
+        print(f"{'Trace':<40} {'Duration':>10} {'Iters':>6} {'Quality':>8} {'LLM#':>6} {'Guard':>6} {'BlndrT':>8} {'Status':>10}")
+        print(f"{'-' * 120}")
         for m in sorted(all_metrics, key=lambda x: x.timestamp):
             name = Path(m.trace_file).name[:38]
-            eff = m.total_doc_searches / (m.total_duration_s / 60) if m.total_duration_s > 0 else 0
-            print(f"{name:<40} {m.total_duration_s:>8.1f}s {m.iteration_count:>6} {m.total_doc_searches:>10} {eff:>10.2f}/min")
+            q_score = f"{m.quality_scores[-1]:.0f}" if m.quality_scores else "-"
+            gr_trig = sum(g.trigger_count for g in m.guardrail_metrics.values())
+            gr_check = sum(g.check_count for g in m.guardrail_metrics.values())
+            gr_str = f"{gr_trig}/{gr_check}"
+            blender_t = f"{m.blender_total_duration_s:.0f}s" if m.blender_total_duration_s > 0 else "-"
+            print(f"{name:<40} {m.total_duration_s:>8.1f}s {m.iteration_count:>6} {q_score:>8} {m.llm_call_count:>6} {gr_str:>6} {blender_t:>8} {m.status:>10}")
 
     else:
         # Single file mode

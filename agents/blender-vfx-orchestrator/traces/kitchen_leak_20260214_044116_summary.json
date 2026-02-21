@@ -4,40 +4,52 @@
   "timestamp": "2026-02-14T04:41:18.357638",
   "total_duration_s": 568.6,
   "total_duration_min": 9.48,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "kitchen_leak",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 36,
+  "total_tool_calls": 14,
   "total_doc_searches": 9,
   "total_errors": 0,
   "agents": {
+    "Code Writer": {
+      "calls": 1,
+      "duration_s": 326.9,
+      "pct_of_total": 57.5,
+      "doc_searches": 0,
+      "top_tools": {
+        "write_script": 2,
+        "validate_script": 2
+      }
+    },
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 141.5,
       "pct_of_total": 24.9,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 6,
+      "top_tools": {
+        "semantic_search_blender_docs": 4,
+        "search_blender_api_by_intent": 1,
+        "blender_doc_search_bundle": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 60.4,
       "pct_of_total": 10.6,
-      "doc_searches": 9,
-      "top_tools": {
-        "response": 19,
-        "semantic_search_blender_docs": 6,
-        "blender_doc_search_bundle": 2,
-        "write_script": 2,
-        "validate_script": 2
-      }
-    },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 22.9,
-      "pct_of_total": 4.0,
       "doc_searches": 0,
       "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 22.9,
+      "pct_of_total": 4.0,
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 2,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
     },
     "Technique Selector": {
       "calls": 1,
@@ -45,17 +57,79 @@
       "pct_of_total": 1.9,
       "doc_searches": 0,
       "top_tools": {}
-    },
-    "Documentation Expert (Standalone)": {
-      "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
     }
   },
   "efficiency": {
     "doc_searches_per_minute": 0.95,
     "seconds_per_iteration": 568.6
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "API Spec Agent",
+    "Code Writer"
+  ],
+  "guardrail_checks": 3,
+  "guardrail_triggers": 1,
+  "guardrail_trigger_rate": 0.333,
+  "llm_calls": 19,
+  "llm_duration_total_s": 530.4,
+  "llm_duration_mean_s": 27.92,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 11,
+  "tool_details": {
+    "blender_doc_search_bundle": {
+      "call_count": 2,
+      "total_duration_ms": 15799.0,
+      "avg_duration_ms": 7899.5
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 6,
+      "total_duration_ms": 14451.2,
+      "avg_duration_ms": 2408.5
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 1,
+      "total_duration_ms": 1593.2,
+      "avg_duration_ms": 1593.2
+    },
+    "validate_script": {
+      "call_count": 2,
+      "total_duration_ms": 25.3,
+      "avg_duration_ms": 12.7
+    },
+    "write_script": {
+      "call_count": 2,
+      "total_duration_ms": 23.4,
+      "avg_duration_ms": 11.7
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.8,
+      "avg_duration_ms": 0.8
+    }
+  },
+  "guardrail_details": {
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_api_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_code_against_spec": {
+      "check_count": 1,
+      "trigger_count": 1,
+      "trigger_rate": 1.0
+    }
   }
 }

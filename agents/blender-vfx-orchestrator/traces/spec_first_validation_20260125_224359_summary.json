@@ -4,32 +4,31 @@
   "timestamp": "2026-01-25T22:44:00.999661",
   "total_duration_s": 165.5,
   "total_duration_min": 2.76,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "spec_first_fire_v2",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 58,
-  "total_doc_searches": 47,
+  "total_tool_calls": 47,
+  "total_doc_searches": 45,
   "total_errors": 0,
   "agents": {
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 93.8,
       "pct_of_total": 56.7,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 44,
+      "top_tools": {
+        "semantic_search_blender_docs": 44
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 30.9,
       "pct_of_total": 18.7,
-      "doc_searches": 47,
+      "doc_searches": 1,
       "top_tools": {
-        "semantic_search_blender_docs": 44,
-        "response": 7,
         "blender_doc_search_bundle": 1,
-        "list_patterns_by_effect": 1,
-        "validate_research_output": 1
+        "list_patterns_by_effect": 1
       }
     },
     "Script Writer": {
@@ -37,7 +36,9 @@
       "duration_s": 29.5,
       "pct_of_total": 17.8,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "write_script": 1
+      }
     },
     "Technique Selector": {
       "calls": 1,
@@ -48,7 +49,70 @@
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 17.04,
+    "doc_searches_per_minute": 16.32,
     "seconds_per_iteration": 165.5
+  },
+  "agent_order": [
+    "Research Agent",
+    "Technique Selector",
+    "API Spec Agent",
+    "Script Writer"
+  ],
+  "guardrail_checks": 4,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 7,
+  "llm_duration_total_s": 105.1,
+  "llm_duration_mean_s": 15.01,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 45,
+  "tool_details": {
+    "semantic_search_blender_docs": {
+      "call_count": 44,
+      "total_duration_ms": 1019344.1,
+      "avg_duration_ms": 23166.9
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 13943.7,
+      "avg_duration_ms": 13943.7
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.6,
+      "avg_duration_ms": 0.6
+    },
+    "write_script": {
+      "call_count": 1,
+      "total_duration_ms": 0.3,
+      "avg_duration_ms": 0.3
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "require_research_context": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_effect_type": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

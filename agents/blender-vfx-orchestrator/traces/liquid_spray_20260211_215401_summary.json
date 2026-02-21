@@ -4,54 +4,66 @@
   "timestamp": "2026-02-11T21:54:03.416098",
   "total_duration_s": 2134.3,
   "total_duration_min": 35.57,
-  "effect_type": "",
-  "status": "unknown",
-  "quality_score": null,
+  "effect_type": "liquid_spray_pipe_v1",
+  "status": "completed",
+  "quality_score": 38.0,
   "iteration_count": 4,
-  "total_tool_calls": 92,
-  "total_doc_searches": 18,
+  "total_tool_calls": 34,
+  "total_doc_searches": 13,
   "total_errors": 0,
   "agents": {
     "Script Writer": {
       "calls": 4,
       "duration_s": 1181.6,
       "pct_of_total": 55.4,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 10,
+      "top_tools": {
+        "semantic_search_blender_docs": 8,
+        "write_script": 3,
+        "search_blender_api_by_intent": 2,
+        "validate_script": 2
+      }
     },
     "Executor": {
       "calls": 4,
       "duration_s": 542.5,
       "pct_of_total": 25.4,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 4,
+        "list_run_outputs": 3
+      }
     },
     "Quality Analyst": {
       "calls": 1,
       "duration_s": 197.1,
       "pct_of_total": 9.2,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "evaluate_render": 1,
+        "diagnose_issues": 1,
+        "observe_physics_anomaly": 1
+      }
     },
     "Learning Agent": {
       "calls": 1,
       "duration_s": 57.1,
       "pct_of_total": 2.7,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 1,
+      "top_tools": {
+        "analyze_script_modifiable_patterns": 1,
+        "query_knowledge_base": 1,
+        "search_code_patterns": 1,
+        "get_pending_observations": 1,
+        "record_experiment_result": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 47.5,
       "pct_of_total": 2.2,
-      "doc_searches": 18,
-      "top_tools": {
-        "response": 43,
-        "semantic_search_blender_docs": 9,
-        "require_research_context": 4,
-        "validate_effect_type": 4,
-        "execute_blender_script": 4
-      }
+      "doc_searches": 0,
+      "top_tools": {}
     },
     "Technique Selector": {
       "calls": 1,
@@ -60,37 +72,179 @@
       "doc_searches": 0,
       "top_tools": {}
     },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 20.6,
-      "pct_of_total": 1.0,
-      "doc_searches": 0,
-      "top_tools": {}
-    },
-    "Quality Gate": {
-      "calls": 0,
-      "duration_s": 8.8,
-      "pct_of_total": 0.4,
-      "doc_searches": 0,
-      "top_tools": {}
-    },
     "Documentation Expert (Standalone)": {
       "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
+      "duration_s": 20.6,
+      "pct_of_total": 1.0,
+      "doc_searches": 2,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
     },
     "Quality Gate Judge": {
       "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
+      "duration_s": 8.8,
+      "pct_of_total": 0.4,
       "doc_searches": 0,
       "top_tools": {}
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 0.51,
+    "doc_searches_per_minute": 0.37,
     "seconds_per_iteration": 533.6
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "Script Writer",
+    "Executor",
+    "Quality Analyst",
+    "Quality Gate Judge",
+    "Learning Agent"
+  ],
+  "guardrail_checks": 15,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 43,
+  "llm_duration_total_s": 1408.5,
+  "llm_duration_mean_s": 32.76,
+  "quality_score_final": 38.0,
+  "quality_passed": false,
+  "blender_runs": 4,
+  "blender_success_count": 4,
+  "blender_total_duration_s": 487.0,
+  "score_trajectory": [],
+  "max_depth": 14,
+  "tool_details": {
+    "execute_blender_script": {
+      "call_count": 4,
+      "total_duration_ms": 487048.1,
+      "avg_duration_ms": 121762.0
+    },
+    "diagnose_issues": {
+      "call_count": 1,
+      "total_duration_ms": 151674.6,
+      "avg_duration_ms": 151674.6
+    },
+    "evaluate_render": {
+      "call_count": 1,
+      "total_duration_ms": 151674.5,
+      "avg_duration_ms": 151674.5
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 9,
+      "total_duration_ms": 14660.1,
+      "avg_duration_ms": 1628.9
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 10267.4,
+      "avg_duration_ms": 10267.4
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 2,
+      "total_duration_ms": 4411.2,
+      "avg_duration_ms": 2205.6
+    },
+    "validate_script": {
+      "call_count": 2,
+      "total_duration_ms": 20.6,
+      "avg_duration_ms": 10.3
+    },
+    "write_script": {
+      "call_count": 3,
+      "total_duration_ms": 18.1,
+      "avg_duration_ms": 6.0
+    },
+    "analyze_script_modifiable_patterns": {
+      "call_count": 1,
+      "total_duration_ms": 4.4,
+      "avg_duration_ms": 4.4
+    },
+    "search_code_patterns": {
+      "call_count": 1,
+      "total_duration_ms": 2.4,
+      "avg_duration_ms": 2.4
+    },
+    "query_knowledge_base": {
+      "call_count": 1,
+      "total_duration_ms": 2.3,
+      "avg_duration_ms": 2.3
+    },
+    "list_run_outputs": {
+      "call_count": 3,
+      "total_duration_ms": 2.2,
+      "avg_duration_ms": 0.7
+    },
+    "get_pending_observations": {
+      "call_count": 1,
+      "total_duration_ms": 2.2,
+      "avg_duration_ms": 2.2
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.9,
+      "avg_duration_ms": 0.9
+    },
+    "correlate_observation": {
+      "call_count": 1,
+      "total_duration_ms": 0.7,
+      "avg_duration_ms": 0.7
+    },
+    "observe_physics_anomaly": {
+      "call_count": 1,
+      "total_duration_ms": 0.5,
+      "avg_duration_ms": 0.5
+    },
+    "record_experiment_result": {
+      "call_count": 1,
+      "total_duration_ms": 0.4,
+      "avg_duration_ms": 0.4
+    }
+  },
+  "guardrail_details": {
+    "require_research_context": {
+      "check_count": 4,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_effect_type": {
+      "check_count": 4,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_script_output": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "check_budget_before_quality": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_quality_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_quality_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

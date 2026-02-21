@@ -4,37 +4,55 @@
   "timestamp": "2026-02-13T18:58:47.804860",
   "total_duration_s": 555.9,
   "total_duration_min": 9.27,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "kitchen_leak",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 30,
-  "total_doc_searches": 7,
+  "total_tool_calls": 10,
+  "total_doc_searches": 6,
   "total_errors": 0,
   "agents": {
+    "Code Writer": {
+      "calls": 1,
+      "duration_s": 220.5,
+      "pct_of_total": 39.7,
+      "doc_searches": 0,
+      "top_tools": {
+        "write_script": 1,
+        "validate_script": 1
+      }
+    },
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 150.5,
       "pct_of_total": 27.1,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 4,
+      "top_tools": {
+        "semantic_search_blender_docs": 4
+      }
     },
     "Executor": {
       "calls": 1,
       "duration_s": 78.7,
       "pct_of_total": 14.2,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 59.3,
       "pct_of_total": 10.7,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 2,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
     },
-    "Documentation Expert": {
-      "calls": 0,
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
       "duration_s": 19.8,
       "pct_of_total": 3.6,
       "doc_searches": 0,
@@ -46,23 +64,85 @@
       "pct_of_total": 2.2,
       "doc_searches": 0,
       "top_tools": {}
-    },
-    "Documentation Expert (Standalone)": {
-      "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 7,
-      "top_tools": {
-        "response": 16,
-        "semantic_search_blender_docs": 5,
-        "blender_doc_search_bundle": 1,
-        "list_patterns_by_effect": 1,
-        "validate_research_output": 1
-      }
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 0.76,
+    "doc_searches_per_minute": 0.65,
     "seconds_per_iteration": 555.9
+  },
+  "agent_order": [
+    "Documentation Expert (Standalone)",
+    "Research Agent",
+    "Technique Selector",
+    "API Spec Agent",
+    "Code Writer",
+    "Executor"
+  ],
+  "guardrail_checks": 4,
+  "guardrail_triggers": 1,
+  "guardrail_trigger_rate": 0.25,
+  "llm_calls": 16,
+  "llm_duration_total_s": 445.8,
+  "llm_duration_mean_s": 27.86,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 1,
+  "blender_success_count": 1,
+  "blender_total_duration_s": 71.8,
+  "score_trajectory": [],
+  "max_depth": 12,
+  "tool_details": {
+    "execute_blender_script": {
+      "call_count": 1,
+      "total_duration_ms": 71760.1,
+      "avg_duration_ms": 71760.1
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 5,
+      "total_duration_ms": 13249.6,
+      "avg_duration_ms": 2649.9
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 10301.4,
+      "avg_duration_ms": 10301.4
+    },
+    "validate_script": {
+      "call_count": 1,
+      "total_duration_ms": 15.9,
+      "avg_duration_ms": 15.9
+    },
+    "write_script": {
+      "call_count": 1,
+      "total_duration_ms": 13.5,
+      "avg_duration_ms": 13.5
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 1.6,
+      "avg_duration_ms": 1.6
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 1,
+      "trigger_rate": 1.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_api_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_code_against_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

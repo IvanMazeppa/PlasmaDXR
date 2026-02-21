@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # Blender VFX Orchestrator Guidelines
 
 ## Scope

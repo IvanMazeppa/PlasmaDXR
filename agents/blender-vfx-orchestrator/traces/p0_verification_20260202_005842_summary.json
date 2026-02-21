@@ -4,47 +4,60 @@
   "timestamp": "2026-02-02T00:58:43.965660",
   "total_duration_s": 613.9,
   "total_duration_min": 10.23,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "p0_test",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 2,
-  "total_tool_calls": 48,
-  "total_doc_searches": 8,
-  "total_errors": 0,
+  "total_tool_calls": 18,
+  "total_doc_searches": 7,
+  "total_errors": 5,
   "agents": {
+    "Code Writer": {
+      "calls": 2,
+      "duration_s": 357.8,
+      "pct_of_total": 58.3,
+      "doc_searches": 0,
+      "top_tools": {
+        "write_script": 2,
+        "validate_script": 2
+      }
+    },
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 108.4,
       "pct_of_total": 17.7,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 5,
+      "top_tools": {
+        "semantic_search_blender_docs": 5
+      }
     },
     "Executor": {
       "calls": 2,
       "duration_s": 72.8,
       "pct_of_total": 11.9,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 5,
+        "parse_blender_errors": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 57.4,
       "pct_of_total": 9.4,
-      "doc_searches": 8,
-      "top_tools": {
-        "response": 25,
-        "semantic_search_blender_docs": 6,
-        "execute_blender_script": 5,
-        "write_script": 2,
-        "validate_script": 2
-      }
-    },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 18.4,
-      "pct_of_total": 3.0,
       "doc_searches": 0,
       "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 18.4,
+      "pct_of_total": 3.0,
+      "doc_searches": 2,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1
+      }
     },
     "Technique Selector": {
       "calls": 1,
@@ -52,17 +65,90 @@
       "pct_of_total": 2.5,
       "doc_searches": 0,
       "top_tools": {}
-    },
-    "Documentation Expert (Standalone)": {
-      "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 0.78,
+    "doc_searches_per_minute": 0.68,
     "seconds_per_iteration": 307.0
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "API Spec Agent",
+    "Code Writer",
+    "Executor"
+  ],
+  "guardrail_checks": 5,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 25,
+  "llm_duration_total_s": 603.1,
+  "llm_duration_mean_s": 24.12,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 5,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 6.8,
+  "score_trajectory": [],
+  "max_depth": 8,
+  "tool_details": {
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 10449.5,
+      "avg_duration_ms": 10449.5
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 6,
+      "total_duration_ms": 9683.2,
+      "avg_duration_ms": 1613.9
+    },
+    "execute_blender_script": {
+      "call_count": 5,
+      "total_duration_ms": 6849.2,
+      "avg_duration_ms": 1369.8
+    },
+    "write_script": {
+      "call_count": 2,
+      "total_duration_ms": 33.5,
+      "avg_duration_ms": 16.7
+    },
+    "validate_script": {
+      "call_count": 2,
+      "total_duration_ms": 29.8,
+      "avg_duration_ms": 14.9
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.6,
+      "avg_duration_ms": 0.6
+    },
+    "parse_blender_errors": {
+      "call_count": 1,
+      "total_duration_ms": 0.5,
+      "avg_duration_ms": 0.5
+    }
+  },
+  "guardrail_details": {
+    "validate_code_against_spec": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_api_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

@@ -5,6 +5,20 @@ Trace Visualizer Dashboard for Blender VFX Orchestrator
 Generates an interactive HTML dashboard from trace metrics CSV files
 produced by trace_analyzer.py.
 
+Charts:
+  1. Agent Time Breakdown (stacked horizontal bar)
+  2. Duration Trends (line+scatter over time)
+  3. Doc Search Efficiency (bubble scatter)
+  4. Iteration Cost (vertical bar)
+  5. Agent Duration Distribution (box plots)
+  6. Effect Type Comparison (grouped bar + dual Y)
+  7. Agent Execution Order (heatmap)
+  8. Guardrail Trigger Rates (horizontal overlay bar)
+  9. Tool Call Frequency & Duration (grouped bar + dual Y)
+  10. Quality Score Progression (multi-line)
+  11. Blender Execution Stats (scatter)
+  12. Pipeline Complexity (scatter)
+
 Usage:
     python trace_visualizer.py                          # defaults: reads tools/metrics.csv
     python trace_visualizer.py -i path/to/metrics.csv   # custom input
@@ -14,11 +28,13 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 # --- Dependency check ---
 try:
@@ -133,9 +149,14 @@ def load_and_prepare(csv_path: str) -> pd.DataFrame:
     if "duration_s" in df.columns:
         df = df[df["duration_s"] > 0]
 
-    # Infer effect_type from trace_file
+    # Infer effect_type from trace_file if not already present or all unknown
     if "trace_file" in df.columns:
-        df["effect_type"] = df["trace_file"].apply(infer_effect_type)
+        if "effect_type" not in df.columns or df["effect_type"].isna().all():
+            df["effect_type"] = df["trace_file"].apply(infer_effect_type)
+        else:
+            # Fill blanks from filename
+            mask = df["effect_type"].isna() | (df["effect_type"] == "") | (df["effect_type"] == "unknown")
+            df.loc[mask, "effect_type"] = df.loc[mask, "trace_file"].apply(infer_effect_type)
 
     # Parse timestamps
     if "timestamp" in df.columns:
@@ -154,7 +175,26 @@ def get_agent_columns(df: pd.DataFrame, suffix: str = "_duration_s") -> list:
     return [c for c in df.columns if c.endswith(suffix) and c != "duration_s"]
 
 
-# --- Chart Builders ---
+def load_summary_tool_details(summary_dir: Path) -> dict:
+    """Load tool_details from all _summary.json files in a directory.
+
+    Returns {trace_file_stem: {tool_name: {call_count, total_duration_ms, avg_duration_ms}}}
+    """
+    details = {}
+    for f in sorted(summary_dir.glob("*_summary.json")):
+        try:
+            with open(f) as fh:
+                data = json.load(fh)
+            trace_file = data.get("trace_file", f.stem.replace("_summary", ""))
+            td = data.get("tool_details", {})
+            if td:
+                details[trace_file] = td
+        except (json.JSONDecodeError, OSError):
+            continue
+    return details
+
+
+# --- Chart Builders (Original 6) ---
 
 def build_agent_breakdown_chart(df: pd.DataFrame) -> go.Figure:
     """Chart 1: Agent Time Breakdown — stacked horizontal bar."""
@@ -445,6 +485,380 @@ def build_effect_comparison_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+# --- Chart Builders (New 6) ---
+
+def build_agent_order_heatmap(df: pd.DataFrame) -> go.Figure:
+    """Chart 7: Agent Execution Order — heatmap of which agent runs 1st/2nd/3rd."""
+    if "agent_order" not in df.columns:
+        return _empty_figure("No agent_order column (re-run trace_analyzer)")
+
+    # Parse agent_order strings into position lists
+    all_agents = set()
+    rows_parsed = []
+    for _, row in df.iterrows():
+        order_str = row.get("agent_order", "")
+        if pd.isna(order_str) or not order_str:
+            continue
+        agents = [a.strip() for a in str(order_str).split(",") if a.strip()]
+        rows_parsed.append(agents)
+        all_agents.update(agents)
+
+    if not rows_parsed or not all_agents:
+        return _empty_figure("No agent order data available")
+
+    # Build position frequency matrix: agent_name -> [count_at_pos_0, count_at_pos_1, ...]
+    max_positions = min(max(len(r) for r in rows_parsed), 8)
+    agents_sorted = sorted(all_agents)
+    matrix = []
+    for agent in agents_sorted:
+        pos_counts = []
+        for pos in range(max_positions):
+            count = sum(1 for r in rows_parsed if len(r) > pos and r[pos] == agent)
+            pos_counts.append(count)
+        matrix.append(pos_counts)
+
+    pos_labels = [f"#{i+1}" for i in range(max_positions)]
+
+    fig = go.Figure(go.Heatmap(
+        z=matrix,
+        x=pos_labels,
+        y=agents_sorted,
+        colorscale="Blues",
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Position: %{x}<br>"
+            "Count: %{z}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    fig.update_layout(
+        title="Agent Execution Order (how often each agent runs at position N)",
+        xaxis_title="Execution Position",
+        yaxis_title="",
+        height=max(400, len(agents_sorted) * 25),
+        margin=dict(l=250),
+    )
+    return fig
+
+
+def build_guardrail_chart(df: pd.DataFrame) -> go.Figure:
+    """Chart 8: Guardrail Trigger Rates — horizontal overlay bar."""
+    if "guardrail_checks" not in df.columns or "guardrail_triggers" not in df.columns:
+        return _empty_figure("No guardrail columns (re-run trace_analyzer)")
+
+    gdf = df.dropna(subset=["guardrail_checks"])
+    gdf = gdf[gdf["guardrail_checks"] > 0]
+    if gdf.empty:
+        return _empty_figure("No guardrail data in any trace")
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        y=gdf["short_label"],
+        x=gdf["guardrail_checks"],
+        name="Checks",
+        orientation="h",
+        marker_color="#636EFA",
+        opacity=0.6,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Guardrail Checks: %{x}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    fig.add_trace(go.Bar(
+        y=gdf["short_label"],
+        x=gdf["guardrail_triggers"],
+        name="Triggers",
+        orientation="h",
+        marker_color="#EF553B",
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Guardrail Triggers: %{x}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    fig.update_layout(
+        barmode="overlay",
+        title="Guardrail Checks vs Triggers per Run",
+        xaxis_title="Count",
+        yaxis_title="",
+        height=max(400, len(gdf) * 28),
+        yaxis=dict(autorange="reversed"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=220),
+    )
+    return fig
+
+
+def build_tool_frequency_chart(df: pd.DataFrame, summary_dir: Optional[Path] = None) -> go.Figure:
+    """Chart 9: Tool Call Frequency & Duration — grouped bar + dual Y.
+
+    Reads per-tool detail from _summary.json files for granular data.
+    """
+    if summary_dir is None or not summary_dir.exists():
+        return _empty_figure("No summary directory for tool details")
+
+    all_tool_details = load_summary_tool_details(summary_dir)
+    if not all_tool_details:
+        return _empty_figure("No tool_details found in summary files")
+
+    # Aggregate across all traces
+    tool_agg: dict = {}  # tool_name -> {total_calls, total_duration_ms}
+    for _trace, tools in all_tool_details.items():
+        for tool_name, td in tools.items():
+            if tool_name not in tool_agg:
+                tool_agg[tool_name] = {"total_calls": 0, "total_duration_ms": 0.0}
+            tool_agg[tool_name]["total_calls"] += td.get("call_count", 0)
+            tool_agg[tool_name]["total_duration_ms"] += td.get("total_duration_ms", 0.0)
+
+    # Sort by total duration, top 15
+    sorted_tools = sorted(tool_agg.items(), key=lambda x: -x[1]["total_duration_ms"])[:15]
+    if not sorted_tools:
+        return _empty_figure("No tool data to display")
+
+    names = [t[0] for t in sorted_tools]
+    calls = [t[1]["total_calls"] for t in sorted_tools]
+    durations_s = [t[1]["total_duration_ms"] / 1000 for t in sorted_tools]
+    avg_dur_s = [d / c if c > 0 else 0 for d, c in zip(durations_s, calls)]
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=durations_s,
+            name="Total Duration (s)",
+            marker_color="#636EFA",
+            opacity=0.8,
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Total: %{y:.1f}s<br>"
+                "<extra></extra>"
+            ),
+        ),
+        secondary_y=False,
+    )
+
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=calls,
+            name="Call Count",
+            marker_color="#00CC96",
+            opacity=0.6,
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Calls: %{y}<br>"
+                "<extra></extra>"
+            ),
+        ),
+        secondary_y=True,
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=names,
+            y=avg_dur_s,
+            name="Avg Duration (s)",
+            mode="lines+markers",
+            marker=dict(size=8, color="#FF6692"),
+            line=dict(color="#FF6692", width=2, dash="dot"),
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Avg: %{y:.2f}s<br>"
+                "<extra></extra>"
+            ),
+        ),
+        secondary_y=False,
+    )
+
+    fig.update_layout(
+        barmode="group",
+        title="Top 15 Tools by Total Duration (across all traces)",
+        height=500,
+        xaxis=dict(tickangle=-45),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(b=180),
+    )
+    fig.update_yaxes(title_text="Duration (seconds)", secondary_y=False)
+    fig.update_yaxes(title_text="Call Count", secondary_y=True)
+
+    return fig
+
+
+def build_quality_progression_chart(df: pd.DataFrame) -> go.Figure:
+    """Chart 10: Quality Score Progression — multi-line with pass threshold."""
+    if "score_trajectory" not in df.columns:
+        return _empty_figure("No score_trajectory column (re-run trace_analyzer)")
+
+    fig = go.Figure()
+    has_data = False
+
+    for _, row in df.iterrows():
+        traj_str = row.get("score_trajectory", "")
+        if pd.isna(traj_str) or not traj_str:
+            continue
+        try:
+            scores = [float(s) for s in str(traj_str).split(",") if s.strip()]
+        except (ValueError, TypeError):
+            continue
+        if not scores:
+            continue
+
+        has_data = True
+        label = row.get("short_label", "unknown")
+        effect = row.get("effect_type", "unknown")
+        color = EFFECT_COLORS.get(effect, "#888")
+        iters = list(range(1, len(scores) + 1))
+
+        fig.add_trace(go.Scatter(
+            x=iters,
+            y=scores,
+            mode="lines+markers",
+            name=label,
+            marker=dict(size=8, color=color),
+            line=dict(color=color, width=2),
+            hovertemplate=(
+                f"<b>{label}</b><br>"
+                "Iteration: %{x}<br>"
+                "Score: %{y:.0f}<br>"
+                "<extra></extra>"
+            ),
+        ))
+
+    if not has_data:
+        return _empty_figure("No score trajectory data available")
+
+    # Add pass threshold line at 60
+    max_iters = 1
+    for _, row in df.iterrows():
+        traj_str = row.get("score_trajectory", "")
+        if pd.isna(traj_str) or not traj_str:
+            continue
+        try:
+            n = len([s for s in str(traj_str).split(",") if s.strip()])
+            max_iters = max(max_iters, n)
+        except (ValueError, TypeError):
+            pass
+
+    fig.add_hline(
+        y=60, line_dash="dash", line_color="#a6e3a1",
+        annotation_text="Pass Threshold (60)",
+        annotation_position="top right",
+        annotation_font_color="#a6e3a1",
+    )
+
+    fig.update_layout(
+        title="Quality Score Progression (per run, score_trajectory from record_experiment_result)",
+        xaxis_title="Iteration",
+        yaxis_title="Quality Score",
+        height=450,
+        hovermode="closest",
+        yaxis=dict(range=[0, 105]),
+    )
+    return fig
+
+
+def build_blender_stats_chart(df: pd.DataFrame) -> go.Figure:
+    """Chart 11: Blender Execution Stats — scatter: bake time vs quality."""
+    has_blender = "blender_total_duration_s" in df.columns
+    has_quality = "quality_score_final" in df.columns
+
+    if not has_blender or not has_quality:
+        return _empty_figure("Missing blender_total_duration_s or quality_score_final columns")
+
+    fdf = df.dropna(subset=["blender_total_duration_s", "quality_score_final"])
+    fdf = fdf[fdf["blender_total_duration_s"] > 0]
+    if fdf.empty:
+        return _empty_figure("No Blender execution data with quality scores")
+
+    fig = go.Figure()
+
+    for effect in fdf["effect_type"].unique():
+        mask = fdf["effect_type"] == effect
+        subset = fdf[mask]
+        color = EFFECT_COLORS.get(effect, "#888")
+
+        fig.add_trace(go.Scatter(
+            x=subset["blender_total_duration_s"],
+            y=subset["quality_score_final"],
+            mode="markers",
+            name=effect,
+            marker=dict(size=12, color=color, opacity=0.8, line=dict(width=1, color="white")),
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Bake Time: %{x:.0f}s<br>"
+                "Quality: %{y:.0f}<br>"
+                "<extra></extra>"
+            ),
+            text=subset["short_label"],
+        ))
+
+    # Add pass threshold line
+    fig.add_hline(
+        y=60, line_dash="dash", line_color="#a6e3a1",
+        annotation_text="Pass (60)",
+        annotation_position="top right",
+        annotation_font_color="#a6e3a1",
+    )
+
+    fig.update_layout(
+        title="Blender Bake Time vs Quality Score",
+        xaxis_title="Total Blender Duration (seconds)",
+        yaxis_title="Final Quality Score",
+        height=450,
+        hovermode="closest",
+        yaxis=dict(range=[0, 105]),
+    )
+    return fig
+
+
+def build_pipeline_complexity_chart(df: pd.DataFrame) -> go.Figure:
+    """Chart 12: Pipeline Complexity — scatter: max_depth vs duration, color=effect_type."""
+    if "max_depth" not in df.columns:
+        return _empty_figure("No max_depth column (re-run trace_analyzer)")
+
+    fdf = df.dropna(subset=["max_depth"])
+    fdf = fdf[fdf["max_depth"] > 0]
+    if fdf.empty:
+        return _empty_figure("No pipeline depth data")
+
+    fig = go.Figure()
+
+    for effect in fdf["effect_type"].unique():
+        mask = fdf["effect_type"] == effect
+        subset = fdf[mask]
+        color = EFFECT_COLORS.get(effect, "#888")
+
+        fig.add_trace(go.Scatter(
+            x=subset["max_depth"],
+            y=subset["duration_s"],
+            mode="markers",
+            name=effect,
+            marker=dict(size=10, color=color, opacity=0.8, line=dict(width=1, color="white")),
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Max Depth: %{x}<br>"
+                "Duration: %{y:.0f}s<br>"
+                "<extra></extra>"
+            ),
+            text=subset["short_label"],
+        ))
+
+    fig.update_layout(
+        title="Pipeline Complexity (max span depth vs run duration)",
+        xaxis_title="Max Span Depth",
+        yaxis_title="Duration (seconds)",
+        height=450,
+        hovermode="closest",
+    )
+    return fig
+
+
 def _empty_figure(message: str) -> go.Figure:
     """Return a placeholder figure with a message."""
     fig = go.Figure()
@@ -477,6 +891,31 @@ def build_summary_stats(df: pd.DataFrame) -> str:
     total_dur = df["duration_s"].sum() if "duration_s" in df.columns else 0
     effect_types = df["effect_type"].nunique() if "effect_type" in df.columns else 0
 
+    # New stats
+    avg_quality = ""
+    if "quality_score_final" in df.columns:
+        valid_q = df["quality_score_final"].dropna()
+        if len(valid_q) > 0:
+            avg_quality = f"{valid_q.mean():.0f}"
+    if not avg_quality:
+        avg_quality = "N/A"
+
+    pass_rate = ""
+    if "quality_passed" in df.columns:
+        valid_p = df["quality_passed"].dropna()
+        if len(valid_p) > 0:
+            pass_rate = f"{valid_p.astype(bool).mean():.0%}"
+    if not pass_rate:
+        pass_rate = "N/A"
+
+    blender_total = ""
+    if "blender_total_duration_s" in df.columns:
+        bt = df["blender_total_duration_s"].sum()
+        if bt > 0:
+            blender_total = f"{bt/3600:.1f}h"
+    if not blender_total:
+        blender_total = "N/A"
+
     return f"""
     <div style="background:#1e1e2e;border:1px solid #444;border-radius:8px;padding:20px;margin:20px 0;
                 display:flex;flex-wrap:wrap;gap:30px;justify-content:center;">
@@ -501,6 +940,18 @@ def build_summary_stats(df: pd.DataFrame) -> str:
             <div style="color:#a6adc8;font-size:13px;">Total Time</div>
         </div>
         <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:bold;color:#fab387;">{avg_quality}</div>
+            <div style="color:#a6adc8;font-size:13px;">Avg Quality</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:bold;color:#a6e3a1;">{pass_rate}</div>
+            <div style="color:#a6adc8;font-size:13px;">Pass Rate</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:bold;color:#89dceb;">{blender_total}</div>
+            <div style="color:#a6adc8;font-size:13px;">Blender Time</div>
+        </div>
+        <div style="text-align:center;">
             <div style="font-size:14px;font-weight:bold;color:#94e2d5;">{date_range}</div>
             <div style="color:#a6adc8;font-size:13px;">Date Range</div>
         </div>
@@ -513,6 +964,9 @@ def build_data_table(df: pd.DataFrame) -> str:
     display_cols = [c for c in [
         "trace_file", "effect_type", "timestamp", "duration_s", "iterations",
         "doc_searches", "seconds_per_iteration", "doc_searches_per_min",
+        # New columns
+        "quality_score_final", "quality_passed", "blender_runs", "max_depth",
+        "guardrail_trigger_rate", "llm_calls", "status",
     ] if c in df.columns]
 
     if not display_cols:
@@ -527,7 +981,17 @@ def build_data_table(df: pd.DataFrame) -> str:
             if pd.isna(val):
                 cells.append("<td>-</td>")
             elif isinstance(val, float):
-                cells.append(f"<td>{val:.1f}</td>")
+                if c == "guardrail_trigger_rate":
+                    cells.append(f"<td>{val:.1%}</td>")
+                elif c == "quality_score_final":
+                    color = "#a6e3a1" if val >= 60 else "#f38ba8"
+                    cells.append(f'<td style="color:{color};font-weight:bold;">{val:.0f}</td>')
+                else:
+                    cells.append(f"<td>{val:.1f}</td>")
+            elif isinstance(val, bool):
+                icon = "PASS" if val else "FAIL"
+                color = "#a6e3a1" if val else "#f38ba8"
+                cells.append(f'<td style="color:{color};">{icon}</td>')
             else:
                 cells.append(f"<td>{val}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
@@ -643,7 +1107,7 @@ def assemble_dashboard(
     {table_html}
 
     <footer style="text-align:center;color:#585b70;font-size:12px;padding:20px 0;">
-        Generated by trace_visualizer.py | Data: {{len(df)}} runs
+        Generated by trace_visualizer.py | Data: {len(df)} runs | Charts: {len(charts)}
     </footer>
 </body>
 </html>"""
@@ -722,17 +1186,32 @@ def main():
         print("ERROR: No valid data rows after filtering.")
         sys.exit(1)
 
+    # Summary directory for tool_details (same parent as CSV, or traces/ dir)
+    summary_dir = csv_path.parent
+    # If CSV is in tools/, look for summaries in traces/
+    traces_dir = csv_path.parent.parent / "traces"
+    if traces_dir.exists():
+        summary_dir = traces_dir
+
     # Build charts (each returns gracefully if columns are missing)
     charts = [
+        # Original 6
         ("agent-breakdown", "Agent Breakdown", build_agent_breakdown_chart(df)),
         ("duration-trends", "Duration Trends", build_duration_trends_chart(df)),
         ("doc-efficiency", "Doc Efficiency", build_doc_search_efficiency_chart(df)),
         ("iteration-cost", "Iteration Cost", build_iteration_cost_chart(df)),
         ("agent-distribution", "Agent Distribution", build_agent_distribution_chart(df)),
         ("effect-comparison", "Effect Comparison", build_effect_comparison_chart(df)),
+        # New 6
+        ("agent-order", "Agent Order", build_agent_order_heatmap(df)),
+        ("guardrails", "Guardrails", build_guardrail_chart(df)),
+        ("tool-frequency", "Tool Frequency", build_tool_frequency_chart(df, summary_dir)),
+        ("quality-progression", "Quality Scores", build_quality_progression_chart(df)),
+        ("blender-stats", "Blender Stats", build_blender_stats_chart(df)),
+        ("pipeline-complexity", "Complexity", build_pipeline_complexity_chart(df)),
     ]
 
-    print("Building dashboard...")
+    print(f"Building dashboard ({len(charts)} charts)...")
     html = assemble_dashboard(df, charts, include_table=not args.no_table)
 
     # Resolve output path

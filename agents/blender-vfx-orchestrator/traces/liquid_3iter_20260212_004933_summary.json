@@ -4,41 +4,57 @@
   "timestamp": "2026-02-12T00:49:34.335285",
   "total_duration_s": 1381.4,
   "total_duration_min": 23.02,
-  "effect_type": "",
-  "status": "unknown",
-  "quality_score": null,
+  "effect_type": "liquid_3iter",
+  "status": "completed",
+  "quality_score": 30.0,
   "iteration_count": 3,
-  "total_tool_calls": 88,
-  "total_doc_searches": 16,
+  "total_tool_calls": 33,
+  "total_doc_searches": 13,
   "total_errors": 0,
   "agents": {
     "Script Writer": {
       "calls": 2,
       "duration_s": 397.1,
       "pct_of_total": 28.7,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 7,
+      "top_tools": {
+        "semantic_search_blender_docs": 7,
+        "write_script": 2,
+        "validate_script": 2
+      }
     },
     "Executor": {
       "calls": 3,
       "duration_s": 341.7,
       "pct_of_total": 24.7,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 3
+      }
     },
     "Learning Agent": {
       "calls": 2,
       "duration_s": 172.2,
       "pct_of_total": 12.5,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 2,
+      "top_tools": {
+        "analyze_script_modifiable_patterns": 2,
+        "query_knowledge_base": 2,
+        "search_code_patterns": 2,
+        "get_pending_observations": 2,
+        "record_experiment_result": 2
+      }
     },
     "Quality Analyst": {
       "calls": 2,
       "duration_s": 148.6,
       "pct_of_total": 10.8,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "analyze_with_vision": 1,
+        "find_reference_images": 1,
+        "evaluate_render": 1
+      }
     },
     "Modification Strategist": {
       "calls": 1,
@@ -51,14 +67,8 @@
       "calls": 1,
       "duration_s": 70.2,
       "pct_of_total": 5.1,
-      "doc_searches": 16,
-      "top_tools": {
-        "response": 40,
-        "semantic_search_blender_docs": 8,
-        "search_code_patterns": 3,
-        "execute_blender_script": 3,
-        "require_research_context": 2
-      }
+      "doc_searches": 0,
+      "top_tools": {}
     },
     "Technique Selector": {
       "calls": 1,
@@ -67,37 +77,185 @@
       "doc_searches": 0,
       "top_tools": {}
     },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 27.7,
-      "pct_of_total": 2.0,
-      "doc_searches": 0,
-      "top_tools": {}
-    },
-    "Quality Gate": {
-      "calls": 0,
-      "duration_s": 9.3,
-      "pct_of_total": 0.7,
-      "doc_searches": 0,
-      "top_tools": {}
-    },
     "Documentation Expert (Standalone)": {
       "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
+      "duration_s": 27.7,
+      "pct_of_total": 2.0,
+      "doc_searches": 4,
+      "top_tools": {
+        "search_blender_api_by_intent": 1,
+        "blender_doc_search_bundle": 1,
+        "semantic_search_blender_docs": 1,
+        "list_patterns_by_effect": 1,
+        "search_code_patterns": 1
+      }
     },
     "Quality Gate Judge": {
       "calls": 2,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
+      "duration_s": 9.3,
+      "pct_of_total": 0.7,
       "doc_searches": 0,
       "top_tools": {}
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 0.69,
+    "doc_searches_per_minute": 0.56,
     "seconds_per_iteration": 460.5
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "Script Writer",
+    "Executor",
+    "Modification Strategist",
+    "Quality Analyst",
+    "Learning Agent",
+    "Quality Gate Judge"
+  ],
+  "guardrail_checks": 15,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 40,
+  "llm_duration_total_s": 875.4,
+  "llm_duration_mean_s": 21.88,
+  "quality_score_final": 30.0,
+  "quality_passed": false,
+  "blender_runs": 3,
+  "blender_success_count": 3,
+  "blender_total_duration_s": 318.4,
+  "score_trajectory": [
+    25.0,
+    30.0
+  ],
+  "max_depth": 19,
+  "tool_details": {
+    "execute_blender_script": {
+      "call_count": 3,
+      "total_duration_ms": 318451.9,
+      "avg_duration_ms": 106150.6
+    },
+    "evaluate_render": {
+      "call_count": 1,
+      "total_duration_ms": 60387.4,
+      "avg_duration_ms": 60387.4
+    },
+    "find_reference_images": {
+      "call_count": 1,
+      "total_duration_ms": 24182.3,
+      "avg_duration_ms": 24182.3
+    },
+    "analyze_with_vision": {
+      "call_count": 1,
+      "total_duration_ms": 24182.2,
+      "avg_duration_ms": 24182.2
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 8,
+      "total_duration_ms": 17797.9,
+      "avg_duration_ms": 2224.7
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 9732.0,
+      "avg_duration_ms": 9732.0
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 1,
+      "total_duration_ms": 2287.9,
+      "avg_duration_ms": 2287.9
+    },
+    "record_experiment_result": {
+      "call_count": 2,
+      "total_duration_ms": 172.7,
+      "avg_duration_ms": 86.4
+    },
+    "validate_script": {
+      "call_count": 2,
+      "total_duration_ms": 21.6,
+      "avg_duration_ms": 10.8
+    },
+    "write_script": {
+      "call_count": 2,
+      "total_duration_ms": 16.2,
+      "avg_duration_ms": 8.1
+    },
+    "analyze_script_modifiable_patterns": {
+      "call_count": 2,
+      "total_duration_ms": 8.7,
+      "avg_duration_ms": 4.4
+    },
+    "search_code_patterns": {
+      "call_count": 3,
+      "total_duration_ms": 8.0,
+      "avg_duration_ms": 2.7
+    },
+    "query_knowledge_base": {
+      "call_count": 2,
+      "total_duration_ms": 7.1,
+      "avg_duration_ms": 3.5
+    },
+    "get_pending_observations": {
+      "call_count": 2,
+      "total_duration_ms": 6.9,
+      "avg_duration_ms": 3.4
+    },
+    "extract_successful_pattern": {
+      "call_count": 1,
+      "total_duration_ms": 2.5,
+      "avg_duration_ms": 2.5
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.8,
+      "avg_duration_ms": 0.8
+    }
+  },
+  "guardrail_details": {
+    "require_research_context": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_effect_type": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_script_output": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "check_budget_before_quality": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_quality_output": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_quality_decision": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_modification_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

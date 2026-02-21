@@ -4,47 +4,53 @@
   "timestamp": "2026-02-12T00:10:37.030709",
   "total_duration_s": 356.1,
   "total_duration_min": 5.94,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "liquid_spray_v2",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 30,
-  "total_doc_searches": 8,
+  "total_tool_calls": 10,
+  "total_doc_searches": 6,
   "total_errors": 0,
   "agents": {
     "Script Writer": {
       "calls": 1,
       "duration_s": 212.8,
       "pct_of_total": 59.8,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 2,
+        "search_blender_api_by_intent": 1,
+        "write_script": 1,
+        "validate_script": 1
+      }
     },
     "Executor": {
       "calls": 1,
       "duration_s": 67.3,
       "pct_of_total": 18.9,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 57.2,
       "pct_of_total": 16.1,
-      "doc_searches": 8,
-      "top_tools": {
-        "response": 15,
-        "semantic_search_blender_docs": 3,
-        "search_blender_api_by_intent": 2,
-        "blender_doc_search_bundle": 1,
-        "list_patterns_by_effect": 1
-      }
-    },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 22.8,
-      "pct_of_total": 6.4,
       "doc_searches": 0,
       "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 22.8,
+      "pct_of_total": 6.4,
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "search_blender_api_by_intent": 1,
+        "list_patterns_by_effect": 1
+      }
     },
     "Technique Selector": {
       "calls": 1,
@@ -52,17 +58,94 @@
       "pct_of_total": 5.3,
       "doc_searches": 0,
       "top_tools": {}
-    },
-    "Documentation Expert (Standalone)": {
-      "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 1.35,
+    "doc_searches_per_minute": 1.01,
     "seconds_per_iteration": 356.1
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "Script Writer",
+    "Executor"
+  ],
+  "guardrail_checks": 5,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 15,
+  "llm_duration_total_s": 303.5,
+  "llm_duration_mean_s": 20.24,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 1,
+  "blender_success_count": 1,
+  "blender_total_duration_s": 56.7,
+  "score_trajectory": [],
+  "max_depth": 8,
+  "tool_details": {
+    "execute_blender_script": {
+      "call_count": 1,
+      "total_duration_ms": 56669.0,
+      "avg_duration_ms": 56669.0
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 3,
+      "total_duration_ms": 6808.7,
+      "avg_duration_ms": 2269.6
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 6698.3,
+      "avg_duration_ms": 6698.3
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 2,
+      "total_duration_ms": 4971.3,
+      "avg_duration_ms": 2485.6
+    },
+    "validate_script": {
+      "call_count": 1,
+      "total_duration_ms": 19.5,
+      "avg_duration_ms": 19.5
+    },
+    "write_script": {
+      "call_count": 1,
+      "total_duration_ms": 11.9,
+      "avg_duration_ms": 11.9
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 0.9,
+      "avg_duration_ms": 0.9
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "require_research_context": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_effect_type": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_script_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

@@ -5,7 +5,7 @@
   "total_duration_s": 0.0,
   "total_duration_min": 0.0,
   "effect_type": "",
-  "status": "unknown",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
   "total_tool_calls": 0,
@@ -15,5 +15,21 @@
   "efficiency": {
     "doc_searches_per_minute": 0.0,
     "seconds_per_iteration": 0.0
-  }
+  },
+  "agent_order": [],
+  "guardrail_checks": 0,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 0,
+  "llm_duration_total_s": 0.0,
+  "llm_duration_mean_s": 0.0,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 0,
+  "tool_details": {},
+  "guardrail_details": {}
 }

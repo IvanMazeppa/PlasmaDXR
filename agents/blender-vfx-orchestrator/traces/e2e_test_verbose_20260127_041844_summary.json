@@ -4,32 +4,44 @@
   "timestamp": "2026-01-27T04:18:44.634380",
   "total_duration_s": 364.0,
   "total_duration_min": 6.07,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "test_smoke_e2e",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 2,
-  "total_tool_calls": 40,
-  "total_doc_searches": 9,
-  "total_errors": 0,
+  "total_tool_calls": 15,
+  "total_doc_searches": 8,
+  "total_errors": 2,
   "agents": {
+    "Code Writer": {
+      "calls": 1,
+      "duration_s": 150.5,
+      "pct_of_total": 41.3,
+      "doc_searches": 0,
+      "top_tools": {
+        "write_script": 1,
+        "validate_script": 1
+      }
+    },
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 107.7,
       "pct_of_total": 29.6,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 6,
+      "top_tools": {
+        "semantic_search_blender_docs": 4,
+        "search_blender_api_by_intent": 1,
+        "blender_doc_search_bundle": 1
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 55.9,
       "pct_of_total": 15.3,
-      "doc_searches": 9,
+      "doc_searches": 2,
       "top_tools": {
-        "response": 21,
-        "semantic_search_blender_docs": 4,
-        "blender_doc_search_bundle": 2,
-        "execute_blender_script": 2,
-        "parse_blender_errors": 2
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "search_code_patterns": 1
       }
     },
     "Executor": {
@@ -37,7 +49,10 @@
       "duration_s": 27.5,
       "pct_of_total": 7.5,
       "doc_searches": 0,
-      "top_tools": {}
+      "top_tools": {
+        "execute_blender_script": 2,
+        "parse_blender_errors": 2
+      }
     },
     "Technique Selector": {
       "calls": 1,
@@ -48,7 +63,96 @@
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 1.48,
+    "doc_searches_per_minute": 1.32,
     "seconds_per_iteration": 182.0
+  },
+  "agent_order": [
+    "Research Agent",
+    "Technique Selector",
+    "API Spec Agent",
+    "Code Writer",
+    "Executor"
+  ],
+  "guardrail_checks": 4,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 21,
+  "llm_duration_total_s": 325.9,
+  "llm_duration_mean_s": 15.52,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 2,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 1.6,
+  "score_trajectory": [],
+  "max_depth": 2,
+  "tool_details": {
+    "blender_doc_search_bundle": {
+      "call_count": 2,
+      "total_duration_ms": 29542.3,
+      "avg_duration_ms": 14771.2
+    },
+    "semantic_search_blender_docs": {
+      "call_count": 4,
+      "total_duration_ms": 5350.3,
+      "avg_duration_ms": 1337.6
+    },
+    "execute_blender_script": {
+      "call_count": 2,
+      "total_duration_ms": 1597.6,
+      "avg_duration_ms": 798.8
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 1,
+      "total_duration_ms": 1423.8,
+      "avg_duration_ms": 1423.8
+    },
+    "validate_script": {
+      "call_count": 1,
+      "total_duration_ms": 8.5,
+      "avg_duration_ms": 8.5
+    },
+    "write_script": {
+      "call_count": 1,
+      "total_duration_ms": 3.4,
+      "avg_duration_ms": 3.4
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 1.2,
+      "avg_duration_ms": 1.2
+    },
+    "parse_blender_errors": {
+      "call_count": 2,
+      "total_duration_ms": 0.8,
+      "avg_duration_ms": 0.4
+    },
+    "search_code_patterns": {
+      "call_count": 1,
+      "total_duration_ms": 0.4,
+      "avg_duration_ms": 0.4
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_api_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_code_against_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
   }
 }

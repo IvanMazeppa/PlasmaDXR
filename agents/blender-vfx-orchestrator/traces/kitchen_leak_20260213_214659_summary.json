@@ -4,33 +4,39 @@
   "timestamp": "2026-02-13T21:47:01.116198",
   "total_duration_s": 557.6,
   "total_duration_min": 9.29,
-  "effect_type": "",
-  "status": "unknown",
+  "effect_type": "kitchen_leak",
+  "status": "completed",
   "quality_score": null,
   "iteration_count": 1,
-  "total_tool_calls": 28,
-  "total_doc_searches": 8,
+  "total_tool_calls": 10,
+  "total_doc_searches": 7,
   "total_errors": 0,
   "agents": {
+    "Code Writer": {
+      "calls": 1,
+      "duration_s": 290.0,
+      "pct_of_total": 52.0,
+      "doc_searches": 0,
+      "top_tools": {
+        "write_script": 1,
+        "validate_script": 1
+      }
+    },
     "API Spec Agent": {
       "calls": 1,
       "duration_s": 178.4,
       "pct_of_total": 32.0,
-      "doc_searches": 0,
-      "top_tools": {}
+      "doc_searches": 4,
+      "top_tools": {
+        "semantic_search_blender_docs": 4
+      }
     },
     "Research Agent": {
       "calls": 1,
       "duration_s": 45.6,
       "pct_of_total": 8.2,
-      "doc_searches": 8,
-      "top_tools": {
-        "response": 14,
-        "semantic_search_blender_docs": 5,
-        "list_patterns_by_effect": 1,
-        "blender_doc_search_bundle": 1,
-        "search_code_patterns": 1
-      }
+      "doc_searches": 0,
+      "top_tools": {}
     },
     "Technique Selector": {
       "calls": 1,
@@ -39,23 +45,95 @@
       "doc_searches": 0,
       "top_tools": {}
     },
-    "Documentation Expert": {
-      "calls": 0,
-      "duration_s": 17.4,
-      "pct_of_total": 3.1,
-      "doc_searches": 0,
-      "top_tools": {}
-    },
     "Documentation Expert (Standalone)": {
       "calls": 1,
-      "duration_s": 0.0,
-      "pct_of_total": 0.0,
-      "doc_searches": 0,
-      "top_tools": {}
+      "duration_s": 17.4,
+      "pct_of_total": 3.1,
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "search_code_patterns": 1
+      }
     }
   },
   "efficiency": {
-    "doc_searches_per_minute": 0.86,
+    "doc_searches_per_minute": 0.75,
     "seconds_per_iteration": 557.6
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "API Spec Agent",
+    "Code Writer"
+  ],
+  "guardrail_checks": 4,
+  "guardrail_triggers": 2,
+  "guardrail_trigger_rate": 0.5,
+  "llm_calls": 14,
+  "llm_duration_total_s": 533.7,
+  "llm_duration_mean_s": 38.12,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 11,
+  "tool_details": {
+    "semantic_search_blender_docs": {
+      "call_count": 5,
+      "total_duration_ms": 8450.3,
+      "avg_duration_ms": 1690.1
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 7167.6,
+      "avg_duration_ms": 7167.6
+    },
+    "validate_script": {
+      "call_count": 1,
+      "total_duration_ms": 17.5,
+      "avg_duration_ms": 17.5
+    },
+    "write_script": {
+      "call_count": 1,
+      "total_duration_ms": 15.8,
+      "avg_duration_ms": 15.8
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 2.5,
+      "avg_duration_ms": 2.5
+    },
+    "search_code_patterns": {
+      "call_count": 1,
+      "total_duration_ms": 0.9,
+      "avg_duration_ms": 0.9
+    }
+  },
+  "guardrail_details": {
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 1,
+      "trigger_rate": 1.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_api_spec": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_code_against_spec": {
+      "check_count": 1,
+      "trigger_count": 1,
+      "trigger_rate": 1.0
+    }
   }
 }
