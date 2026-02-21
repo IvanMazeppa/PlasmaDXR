@@ -1,0 +1,27 @@
+{
+  "recommended_approach": "Drive the Mantaflow fire setup through the FLUID modifier settings objects exposed in the Python API (notably `bpy.types.FluidDomainSettings` for the gas domain and `bpy.types.FluidFlowSettings` for the inflow/flow object). Per the Blender 5.0 Python reference on class registration, access Blender types via `bpy.types` (by `bl_idname` where applicable) and keep assignments constrained to verified RNA attributes to avoid API breakage. For robustness on Blender 5.0, avoid accessing animation internals like `Action.fcurves` (pattern indicates this can crash) and prefer keyframing object transforms for flicker/variation.",
+  "key_parameters": {
+    "wick_rotation_euler": "(math.radians(18.0), 0.0, math.radians(4.0))  # from pattern snippet (emitter/wick tilt)",
+    "domain_noise_strength_attr": "bpy.types.FluidDomainSettings.noise_strength",
+    "domain_noise_time_anim_attr": "bpy.types.FluidDomainSettings.noise_time_anim",
+    "domain_flip_ratio_attr": "bpy.types.FluidDomainSettings.flip_ratio",
+    "flow_noise_texture_attr": "bpy.types.FluidFlowSettings.noise_texture"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.data.materials",
+    "bpy.data.objects"
+  ],
+  "warnings": [
+    "Doc bundle warning: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\" (doc search did not return dedicated Mantaflow/fire manual pages).",
+    "Pattern warning: do NOT access `Action.fcurves` (reported crash on Blender 5.0 build).",
+    "Pattern constraint: avoid node-graph authoring toggles like `.use_nodes` in automation scripts (pattern explicitly avoids this)."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-21T20:59:07.747694"
+}

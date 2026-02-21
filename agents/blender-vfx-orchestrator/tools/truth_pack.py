@@ -227,6 +227,14 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
     r"['\"]BLOSC['\"]": (
         "BLOSC compression removed in 5.0. Use 'ZIP' or 'NONE'.", "'ZIP'"
     ),
+    # Blender 5.0: use_nodes is always True, setting it is a no-op that emits deprecation warnings
+    r'\b(\w+)\.use_nodes\s*=': (
+        "use_nodes is always True in Blender 5.0 — remove this line", None
+    ),
+    # Blender 5.0: Sheen Weight replaces Sheen in Principled BSDF
+    r"['\"]Sheen['\"](?!\s*Weight)": (
+        "Use 'Sheen Weight' not 'Sheen' in Blender 5.0 Principled BSDF", "'Sheen Weight'"
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -511,6 +519,17 @@ def auto_fix_script(
 
     for error in errors:
         if error.object_type == "KNOWN_HALLUCINATION":
+            # Special case: strip use_nodes lines entirely (no-op in 5.0)
+            if "use_nodes" in (error.attribute or ""):
+                lines = fixed.split("\n")
+                new_lines = []
+                for line in lines:
+                    if re.search(r'\.use_nodes\s*=', line):
+                        fixes_applied.append(f"Removed use_nodes assignment (no-op in 5.0)")
+                    else:
+                        new_lines.append(line)
+                fixed = "\n".join(new_lines)
+                continue
             # Apply hardcoded fixes for known hallucinations
             for wrong, correct in HARDCODED_FIXES.items():
                 if wrong in fixed:
