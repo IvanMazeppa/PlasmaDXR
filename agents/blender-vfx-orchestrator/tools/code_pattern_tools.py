@@ -126,7 +126,7 @@ def search_code_patterns(
     wrapper: RunContextWrapper[SharedContext],
     issue: str,
     effect_type: str = "",
-    min_confidence: float = 30.0,
+    min_confidence: float = 50.0,
     max_results: int = 5
 ) -> str:
     """
@@ -147,7 +147,7 @@ def search_code_patterns(
         issue: Description of the issue to fix
                Example: "smoke lacks density", "explosion too dim"
         effect_type: Optional filter by effect type (auto-populated from context)
-        min_confidence: Minimum confidence threshold (0-100, default 30)
+        min_confidence: Minimum confidence threshold (0-100, default 50)
         max_results: Maximum patterns to return (default 5)
 
     Returns:
@@ -480,7 +480,7 @@ def record_pattern_impl(
 def search_patterns_impl(
     issue: str,
     effect_type: str = "",
-    min_confidence: float = 30.0
+    min_confidence: float = 50.0
 ) -> List[CodePattern]:
     """Direct callable version for searching patterns from non-agent code."""
     memory = get_pattern_memory()

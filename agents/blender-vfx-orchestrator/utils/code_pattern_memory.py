@@ -52,6 +52,7 @@ class CodePattern:
     source_experiments: List[str] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    last_used_at: str = ""
 
     @property
     def success_rate(self) -> float:
@@ -79,7 +80,20 @@ class CodePattern:
         # Bonus for high improvement (up to +20 for 20+ point improvement)
         improvement_bonus = min(20, self.average_improvement)
 
-        return min(100, base + usage_bonus + improvement_bonus)
+        score = min(100, base + usage_bonus + improvement_bonus)
+
+        # Apply 20% decay if unused for 30+ days
+        if self.last_used_at:
+            try:
+                last_used = datetime.fromisoformat(self.last_used_at)
+                days_idle = (datetime.now() - last_used).days
+                if days_idle > 30:
+                    decay = 0.2 * min(days_idle / 30, 3)  # Max 60% decay at 90+ days
+                    score *= (1.0 - decay)
+            except (ValueError, TypeError):
+                pass  # Invalid date, skip decay
+
+        return score
 
     def to_embedding_text(self) -> str:
         """Generate text representation for vector embedding."""
@@ -402,7 +416,7 @@ class CodePatternMemory:
         self,
         issue: str,
         effect_type: Optional[str] = None,
-        min_confidence: float = 30.0,
+        min_confidence: float = 50.0,
         max_results: int = 5
     ) -> List[CodePattern]:
         """
@@ -456,7 +470,7 @@ class CodePatternMemory:
     def retrieve_patterns_by_api(
         self,
         api_name: str,
-        min_confidence: float = 30.0
+        min_confidence: float = 50.0
     ) -> List[CodePattern]:
         """
         Retrieve patterns that use a specific Blender API.

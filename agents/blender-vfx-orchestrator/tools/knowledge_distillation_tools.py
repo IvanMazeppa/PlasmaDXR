@@ -583,7 +583,7 @@ def analyze_script_for_patterns(
         # Get all patterns
         patterns = memory.list_patterns(
             effect_type=effect_type if effect_type else None,
-            min_confidence=30.0
+            min_confidence=50.0
         )
 
         # Find applicable patterns
@@ -800,7 +800,7 @@ def find_applicable_patterns(
 
     patterns = memory.list_patterns(
         effect_type=effect_type if effect_type else None,
-        min_confidence=30.0
+        min_confidence=50.0
     )
 
     applicable = []

@@ -255,6 +255,21 @@ from models.shared_context import (
 # API Spec models for Spec-First Pipeline
 from models.api_spec import APISpec, VerifiedScriptOutput
 
+# Phase 1 Reliability: Truth Pack (deterministic API validation)
+from tools.truth_pack import (
+    build_truth_pack,
+    validate_script_against_truth_pack,
+    auto_fix_script,
+    format_truth_pack_for_prompt,
+    truth_pack_to_api_spec,
+    TECHNIQUE_ALIASES,
+)
+from tools.truth_pack_validator import (
+    validate_and_fix_script,
+    set_truth_pack as set_global_truth_pack,
+)
+from tools.qa_diagnosis_bridge import create_code_grounded_feedback
+
 # Proactive research tools for Strategy 3: Early warning detection
 # NOTE: pre_iteration_research (direct callable) is imported at line 48 for pipeline use
 # Import the @function_tool version for agent tool lists
@@ -358,9 +373,10 @@ def get_or_create_sdk_session(session_id: str) -> OpenAIResponsesCompactionSessi
     automatically summarizes old history via the Responses API `responses.compact`
     method.
 
-    Auto-compaction is disabled; compaction is triggered manually at the end of
-    each pipeline iteration via `await session.run_compaction({"force": True})`.
-    This preserves full context within an iteration while compressing between them.
+    Auto-compaction triggers when conversation history exceeds ~25K tokens
+    (~100K chars). Manual compaction also runs at end of each iteration as a
+    safety net. Truth pack lives in SharedContext (Python-managed) and current
+    script path / quality issues live in SessionState, so both survive compaction.
 
     Args:
         session_id: Unique identifier for the VFX session
@@ -375,9 +391,13 @@ def get_or_create_sdk_session(session_id: str) -> OpenAIResponsesCompactionSessi
     return OpenAIResponsesCompactionSession(
         session_id=session_id,
         underlying_session=underlying,
-        # Disable auto-compaction — we trigger manually between iterations
-        # to preserve full context within each iteration
-        should_trigger_compaction=lambda _: False,
+        # Auto-compact when conversation history exceeds ~25K tokens (~100K chars)
+        # Truth pack is in SharedContext (Python-managed), not conversation history,
+        # so it survives compaction. Current script path and quality issues are in
+        # SessionState, which also survives compaction.
+        should_trigger_compaction=lambda history: sum(
+            len(str(item)) for item in (history or [])
+        ) > 100_000,
     )
 
 
@@ -1603,6 +1623,25 @@ Return the VerifiedScriptOutput with script_path and apis_used."""
             )
 
         print(f"[Spec-First] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
+
+        # Phase 1 Reliability: Validate and auto-fix using truth pack
+        if context.truth_pack and script.script_path:
+            try:
+                fixed_path, fixes = validate_and_fix_script(
+                    script.script_path, context.truth_pack
+                )
+                if fixes:
+                    print(f"[Spec-First] Truth pack auto-fixed {len(fixes)} issues:",
+                          file=sys.stderr)
+                    for fix in fixes[:5]:
+                        print(f"  - {fix}", file=sys.stderr)
+                    script.validation_errors.extend(
+                        [f"[auto-fixed] {f}" for f in fixes]
+                    )
+            except Exception as e:
+                print(f"[Spec-First] WARNING: Truth pack validation failed: {e}",
+                      file=sys.stderr)
+
         return script
 
     async def _run_spec_first_modification(
@@ -2256,6 +2295,32 @@ Select the optimal technique and provide starting parameters."""
                     # selected_technique stays None — not needed for iteration 2+
                     # The guard `if selected_technique:` (Phase 1) handles this
 
+                # ====== PHASE 0.6: BUILD TRUTH PACK ======
+                # Deterministic Blender introspection — replaces LLM API Spec Agent ($0)
+                technique_for_tp = (
+                    session.current_technique
+                    or (selected_technique.selected_technique if selected_technique else None)
+                    or "mantaflow_gas"
+                )
+                try:
+                    print(f"[Pipeline] PHASE 0.6: Building truth pack for '{technique_for_tp}'...", file=sys.stderr)
+                    truth_pack = await build_truth_pack(technique_for_tp)
+                    context.truth_pack = truth_pack
+                    set_global_truth_pack(truth_pack)
+
+                    # Build APISpec from truth pack for backward compatibility
+                    # (Code Writer guardrail validate_code_against_spec still uses it)
+                    context.api_spec = truth_pack_to_api_spec(
+                        truth_pack, request.effect_type.value, technique_for_tp
+                    )
+                    print(f"[Pipeline] Truth pack built: {len(truth_pack)} types, "
+                          f"APISpec populated with {len(context.api_spec.domain_attributes)} "
+                          f"domain attrs", file=sys.stderr)
+                except Exception as e:
+                    print(f"[Pipeline] WARNING: Truth pack build failed: {e}. "
+                          f"Falling back to API Spec Agent path.", file=sys.stderr)
+                    # Don't block pipeline — fall through to existing spec-first path
+
                 # ====== ITERATION LOOP SETUP ======
                 if is_resuming and session.iterations:
                     # Resume path: reconstruct loop variables from last IterationResult
@@ -2759,6 +2824,8 @@ Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'
 ## Available Alternatives
 {', '.join(session.alternative_approaches[:3]) if session.alternative_approaches else 'None'}
 
+{code_grounded_feedback if code_grounded_feedback else ''}
+
 Decide: modify_params, modify_code, OR switch_technique.
 - modify_params: Provide CONCRETE parameter values for tuning issues. Use the deterministic suggestions above as starting points.
 - modify_code: Describe structural changes needed (missing objects, wrong setup, broken logic).
@@ -2792,6 +2859,27 @@ Decide: modify_params, modify_code, OR switch_technique.
                                     untried = [a for a in session.alternative_approaches if a not in session_mgr.techniques_tried]
                                     if untried:
                                         new_technique = untried[0]
+
+                                    # Verify new technique != previous technique
+                                    if new_technique == session.current_technique:
+                                        stuck_untried = session.stuck_state.get_untried_techniques(
+                                            list(TECHNIQUE_ALIASES.keys()) + list(session.alternative_approaches)
+                                        )
+                                        if stuck_untried:
+                                            new_technique = stuck_untried[0]
+                                            print(f"[Pipeline] Forced different technique: {new_technique}", file=sys.stderr)
+
+                                    # Rebuild truth pack for new technique
+                                    try:
+                                        truth_pack = await build_truth_pack(new_technique)
+                                        context.truth_pack = truth_pack
+                                        set_global_truth_pack(truth_pack)
+                                        context.api_spec = truth_pack_to_api_spec(
+                                            truth_pack, request.effect_type.value, new_technique
+                                        )
+                                        print(f"[Pipeline] Truth pack rebuilt for '{new_technique}'", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Pipeline] WARNING: Truth pack rebuild failed: {e}", file=sys.stderr)
 
                                     try:
                                         script = await self._run_spec_first_pipeline(
@@ -3732,6 +3820,18 @@ Provide detailed feedback for improvement."""
                     if quality.primary_issue:
                         print(f"[Pipeline] Issue: {quality.primary_issue[:60]}...", file=sys.stderr)
 
+                    # ====== PHASE 3.5: CODE-GROUNDED QA FEEDBACK ======
+                    # Pairs QA visual critique with actual script parameters
+                    code_grounded_feedback = ""
+                    if not quality.passed and script.script_path:
+                        try:
+                            code_grounded_feedback = create_code_grounded_feedback(
+                                quality, script.script_path, context.truth_pack
+                            )
+                            print(f"[Pipeline] Code-grounded feedback: {len(code_grounded_feedback)} chars", file=sys.stderr)
+                        except Exception as e:
+                            print(f"[Pipeline] WARN: Code-grounded feedback failed: {e}", file=sys.stderr)
+
                     # Update session (quality best)
                     session.best_score = max(session.best_score, quality.overall_score)
                     if quality.overall_score == session.best_score:
@@ -4085,6 +4185,21 @@ Decide: Is quality gate PASSED? What is the next action?"""
                         or (learning and learning.next_action == 'switch_technique')
                         or session_mgr.should_switch_technique()
                     )
+
+                    # Level 4: Stop and request human guidance
+                    if (
+                        session.stuck_state.escape_level == EscapeLevel.REQUEST_GUIDANCE
+                        or (gate_decision and gate_decision.escape_level >= 4)
+                    ):
+                        print(
+                            f"[Pipeline] ESCAPE LEVEL 4: Requesting human guidance. "
+                            f"Tried {len(session.stuck_state.techniques_tried)} techniques, "
+                            f"best score: {session.best_score:.1f}",
+                            file=sys.stderr,
+                        )
+                        session.status = SessionStatus.PAUSED
+                        break
+
                     if should_switch:
                         consecutive = session_mgr.issue_tracker.consecutive_same_issue
                         print(f"[Pipeline] STUCK DETECTED: same issue {consecutive}x - re-running Research Agent", file=sys.stderr)

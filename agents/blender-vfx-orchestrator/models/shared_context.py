@@ -849,6 +849,14 @@ class SharedContext(BaseModel):
         description="Pattern name that will be applied in this iteration"
     )
 
+    # Phase 1 Reliability: Truth Pack (deterministic API validation)
+    # Built from Blender introspection, injected into ScriptWriter prompt,
+    # used for validation. Survives compaction (Python-managed, not in history).
+    truth_pack: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Truth pack from Blender bl_rna introspection (valid attributes/types/ranges)"
+    )
+
     # Phase 7: Spec-First Pipeline (API Hallucination Prevention)
     # The verified API specification from the API Spec Agent
     # Used by the Code Writer guardrail to validate generated code

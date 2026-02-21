@@ -59,7 +59,7 @@ def _get_knowledge_base():
 def query_validated_learnings(
     effect_type: str,
     category: str = "physics",
-    min_success_rate: float = 0.7
+    min_success_rate: float = 0.8
 ) -> List[Dict[str, Any]]:
     """
     Query knowledge base for validated learnings.
@@ -728,6 +728,17 @@ def dynamic_script_writer_instructions(
     """
     base = SCRIPT_WRITER_BASE_INSTRUCTIONS
 
+    # Inject truth pack if available (Phase 1 Reliability)
+    try:
+        if hasattr(ctx, 'context') and ctx.context:
+            truth_pack = getattr(ctx.context, 'truth_pack', None)
+            if truth_pack:
+                from tools.truth_pack import format_truth_pack_for_prompt
+                base += "\n\n" + format_truth_pack_for_prompt(truth_pack)
+                logger.info("Injected truth pack into ScriptWriter instructions")
+    except Exception as e:
+        logger.warning("Failed to inject truth pack: %s", str(e))
+
     # Try to get effect type from context
     # QW-2: Log fallbacks so KB failures are visible
     effect_type = None
@@ -748,8 +759,8 @@ def dynamic_script_writer_instructions(
 
     if effect_type:
         # Effect-specific learnings
-        learnings.extend(query_validated_learnings(effect_type, "physics", 0.7))
-        learnings.extend(query_validated_learnings(effect_type, "visual", 0.7))
+        learnings.extend(query_validated_learnings(effect_type, "physics", 0.8))
+        learnings.extend(query_validated_learnings(effect_type, "visual", 0.8))
 
     # General learnings (apply to all effects)
     general_learnings = query_validated_learnings("general", "physics", 0.8)
@@ -823,6 +834,26 @@ def dynamic_quality_analyst_instructions(
                 else:
                     # This is expected good behavior
                     base += f"\n- EXPECTED: {rule}"
+
+    # Phase 1: Inject script parameter context for code-grounded feedback
+    # QA can reference actual line numbers and values instead of vague "too dark"
+    try:
+        if hasattr(ctx, 'context') and ctx.context:
+            script_path = getattr(ctx.context.session, 'current_script_path', None) if hasattr(ctx.context, 'session') else None
+            if script_path:
+                from tools.script_analysis_tools import analyze_script_structure
+                analysis = analyze_script_structure(script_path)
+                if analysis.total_modifiable > 0:
+                    base += "\n\n## CURRENT SCRIPT PARAMETERS (reference by line number in feedback)"
+                    base += f"\nScript: {script_path} ({analysis.total_modifiable} modifiable params)"
+                    params = {}
+                    params.update(analysis.config_values)
+                    params.update(analysis.settings_assignments)
+                    params.update(analysis.shader_node_inputs)
+                    for name, pat in sorted(params.items(), key=lambda x: x[1].line_number)[:15]:
+                        base += f"\n- Line {pat.line_number}: {name} = {pat.current_value}"
+    except Exception:
+        pass  # Non-critical — QA works without script context
 
     return base
 
