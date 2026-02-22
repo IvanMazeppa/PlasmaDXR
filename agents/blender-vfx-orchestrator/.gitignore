@@ -1,0 +1,12 @@
+# Large downloaded assets (Blender manual HTML = 1.2GB)
+assets/blender_manual_html/
+
+# Generated backups from KB wipe script
+data/backups/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/

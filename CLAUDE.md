@@ -28,7 +28,7 @@ Before making ANY changes, read: `agents/blender-vfx-orchestrator/VERSION_TRUTH.
 
 **Before using ANY bpy attribute:** Call `semantic_search_blender_docs()` to verify.
 
-### Agents SDK v0.9.0
+### Agents SDK v0.9.3
 - Use `from agents import ...` (NOT `from openai.agents`)
 - Use `await Runner.run(agent, prompt)` (NOT `agent.run_sync()`)
 - Use `agent.as_tool()` (NOT `transfer_to_agent()` handoffs)

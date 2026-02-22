@@ -1,0 +1,73 @@
+{
+  "model": "gpt-5-mini",
+  "pages_processed": 5,
+  "pages_successful": 5,
+  "total_cost": 0.00783,
+  "results": [
+    {
+      "success": true,
+      "doc_path": "physics/fluid/type/domain/settings.html",
+      "title": "Settings",
+      "original_words": 4041,
+      "rewritten_words": 898,
+      "compression_ratio": 0.2222222222222222,
+      "model": "gpt-5-mini",
+      "input_tokens": 2873,
+      "output_tokens": 3728,
+      "cost_estimate": 0.002668,
+      "elapsed_seconds": 47.6
+    },
+    {
+      "success": true,
+      "doc_path": "physics/fluid/type/flow.html",
+      "title": "Flow",
+      "original_words": 2387,
+      "rewritten_words": 919,
+      "compression_ratio": 0.385002094679514,
+      "model": "gpt-5-mini",
+      "input_tokens": 2884,
+      "output_tokens": 2412,
+      "cost_estimate": 0.00188,
+      "elapsed_seconds": 33.5
+    },
+    {
+      "success": true,
+      "doc_path": "physics/fluid/type/domain/gas/index.html",
+      "title": "Gas Settings",
+      "original_words": 37,
+      "rewritten_words": 281,
+      "compression_ratio": 7.594594594594595,
+      "model": "gpt-5-mini",
+      "input_tokens": 410,
+      "output_tokens": 937,
+      "cost_estimate": 0.000624,
+      "elapsed_seconds": 13.8
+    },
+    {
+      "success": true,
+      "doc_path": "physics/fluid/type/domain/gas/noise.html",
+      "title": "Noise",
+      "original_words": 756,
+      "rewritten_words": 451,
+      "compression_ratio": 0.5965608465608465,
+      "model": "gpt-5-mini",
+      "input_tokens": 1374,
+      "output_tokens": 1227,
+      "cost_estimate": 0.000942,
+      "elapsed_seconds": 16.8
+    },
+    {
+      "success": true,
+      "doc_path": "physics/fluid/type/domain/cache.html",
+      "title": "Cache",
+      "original_words": 1751,
+      "rewritten_words": 723,
+      "compression_ratio": 0.4129069103369503,
+      "model": "gpt-5-mini",
+      "input_tokens": 2557,
+      "output_tokens": 2220,
+      "cost_estimate": 0.001716,
+      "elapsed_seconds": 27.6
+    }
+  ]
+}
