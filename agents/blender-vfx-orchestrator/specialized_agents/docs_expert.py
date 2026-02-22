@@ -36,6 +36,9 @@ from tools.semantic_docs_tools import (
     search_blender_api_by_intent,
 )
 
+# Phase 2A-1: Conditional tool visibility
+from utils.tool_visibility import budget_allows_docs
+
 
 # =============================================================================
 # PARAMETER VALIDATION TOOLS (kept - still useful)
@@ -213,6 +216,13 @@ def create_docs_expert(custom_instructions: str = "") -> Agent:
     if custom_instructions:
         instructions = instructions + "\n\n" + custom_instructions
 
+    # Phase 2A-1: Apply is_enabled callbacks to expensive doc search tools.
+    # When docs budget is exhausted, these tools are hidden from the LLM entirely.
+    # Cheap tools (validate_parameter_range, get_parameter_defaults) remain always visible.
+    semantic_search_blender_docs.is_enabled = budget_allows_docs
+    search_blender_api_by_intent.is_enabled = budget_allows_docs
+    find_alternative_approaches.is_enabled = budget_allows_docs
+
     return Agent(
         name="Documentation Expert",
         instructions=instructions,
@@ -221,11 +231,11 @@ def create_docs_expert(custom_instructions: str = "") -> Agent:
             reasoning=Reasoning(effort="medium"),
         ),
         tools=[
-            # Vector store semantic search tools (NEW - replaces deprecated local tools)
+            # Vector store semantic search tools -- budget-gated
             semantic_search_blender_docs,
             search_blender_api_by_intent,
             find_alternative_approaches,
-            # Parameter validation (kept - still useful)
+            # Parameter validation (kept - always visible, no API cost)
             validate_parameter_range,
             get_parameter_defaults,
         ],

@@ -63,6 +63,9 @@ from tools.dynamic_instructions import (
     QUALITY_ANALYST_BASE_INSTRUCTIONS,
 )
 
+# Phase 2A-1: Conditional tool visibility
+from utils.tool_visibility import budget_allows_vision
+
 
 # DEPRECATED: Hardcoded instructions replaced by dynamic_instructions.py
 # Keeping for reference only - the actual instructions come from QUALITY_ANALYST_BASE_INSTRUCTIONS
@@ -112,6 +115,17 @@ class QualityAnalystAgent:
             if custom_instructions:
                 instructions = instructions + "\n\n" + custom_instructions
 
+        # Phase 2A-1: Apply is_enabled callbacks to expensive vision tools.
+        # When budget is exhausted, these tools are hidden from the LLM entirely.
+        # Cheap tools (find_reference_images, observe_physics_anomaly, get_physics_patterns,
+        # get_reference_stats, list_renders) remain always visible.
+        analyze_with_vision.is_enabled = budget_allows_vision
+        evaluate_render.is_enabled = budget_allows_vision
+        compare_renders.is_enabled = budget_allows_vision
+        compare_to_reference.is_enabled = budget_allows_vision
+        diagnose_issues.is_enabled = budget_allows_vision
+        analyze_temporal_quality.is_enabled = budget_allows_vision
+
         self._agent = Agent(
             name="Quality Analyst",
             instructions=instructions,  # Can be function OR string
@@ -122,20 +136,20 @@ class QualityAnalystAgent:
                 },
             ),
             tools=[
-                # PRIMARY: Vision-based analysis (use first)
+                # PRIMARY: Vision-based analysis (use first) -- budget-gated
                 analyze_with_vision,
                 # REFERENCE: Compare against real footage/examples
-                find_reference_images,
-                compare_to_reference,
+                find_reference_images,            # Cheap: filesystem only
+                compare_to_reference,             # Budget-gated: uses vision API
                 # PHYSICS OBSERVATION: Feed anomalies into learning system
-                observe_physics_anomaly,
-                get_physics_patterns,
-                # BACKUP: ML-based metrics (optional)
+                observe_physics_anomaly,          # Cheap: in-memory
+                get_physics_patterns,             # Cheap: in-memory
+                # BACKUP: ML-based metrics (optional) -- budget-gated where applicable
                 evaluate_render,
                 compare_renders,
                 diagnose_issues,
-                get_reference_stats,
-                list_renders,
+                get_reference_stats,              # Cheap: filesystem only
+                list_renders,                     # Cheap: filesystem only
                 analyze_temporal_quality,
             ],
         )

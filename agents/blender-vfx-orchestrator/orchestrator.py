@@ -1937,6 +1937,7 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
         # Quality Analyst with structured output (LLM-as-judge pattern)
         # Physics observation happens through tools (observe_physics_anomaly, get_physics_patterns)
         # Phase 3: Input/output guardrails for validation
+        # Phase 2A-1: Vision tools have is_enabled=budget_allows_vision (set in create_quality_analyst)
         # DYNAMIC INSTRUCTIONS: Uses wrapper that calls dynamic_quality_analyst_instructions + extras
         base_quality_standalone = create_quality_analyst(use_dynamic_instructions=False)
         quality_model, quality_settings = self._get_model_settings("quality_analyst")
@@ -1970,6 +1971,7 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
 
         # Docs Expert Standalone - for parallel preflight (no handoffs)
         # This is used by _run_parallel_preflight to search docs in parallel with research
+        # Phase 2A-1: Doc search tools have is_enabled=budget_allows_docs (set in create_docs_expert)
         docs_model, docs_settings = self._get_model_settings("docs_expert")
         base_docs_standalone = create_docs_expert()
         self._docs_expert_standalone = Agent[SharedContext](
