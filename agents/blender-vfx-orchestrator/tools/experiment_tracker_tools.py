@@ -1017,6 +1017,99 @@ async def report_modification_outcome(
     )
 
 
+def _seed_technique_entry_impl(
+    effect_type: str,
+    technique_name: str,
+    description: str,
+    source: str = "manual_seed",
+    parameters: str = "{}"
+) -> str:
+    """
+    Seed a technique entry into the knowledge base.
+
+    Creates a KB entry with emerging trust level for bootstrap seeding.
+
+    Args:
+        effect_type: Effect type this technique applies to (fire, smoke, etc.)
+        technique_name: Short name of the technique
+        description: What this technique does and when to use it
+        source: Source identifier (default "manual_seed")
+        parameters: Optional JSON string of relevant parameters
+
+    Returns:
+        JSON confirmation with entry details
+    """
+    try:
+        tracker = _get_tracker_instance()
+
+        dated_source = f"{source}_{datetime.now().strftime('%Y-%m-%d')}"
+
+        tracker.add_manual_learning(
+            parameter=f"technique:{effect_type}:{technique_name}",
+            rule=description,
+            warning="",
+            context=json.dumps({
+                "effect_type": effect_type,
+                "technique_name": technique_name,
+                "trust_level": "emerging",
+                "source": dated_source,
+                "retention": 1.0,
+                "parameters": json.loads(parameters) if isinstance(parameters, str) else parameters,
+            })
+        )
+
+        return json.dumps({
+            "success": True,
+            "effect_type": effect_type,
+            "technique_name": technique_name,
+            "source": dated_source,
+            "trust_level": "emerging",
+            "message": f"Seeded technique '{technique_name}' for {effect_type}"
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "effect_type": effect_type,
+            "technique_name": technique_name
+        })
+
+
+@function_tool
+async def seed_technique_entry(
+    effect_type: str,
+    technique_name: str,
+    description: str,
+    source: str = "manual_seed",
+    parameters: str = "{}"
+) -> str:
+    """
+    Seed a technique entry into the knowledge base for bootstrap discovery.
+
+    Use this to populate the KB with known techniques so the system can
+    discover and try them during production runs. Entries start with
+    trust_level="emerging" and must earn trust through successful use.
+
+    Args:
+        effect_type: Effect type (fire, smoke, liquid, rigid_body, particles, cloth)
+        technique_name: Short technique name (e.g., "mantaflow_gas_burning")
+        description: What the technique does and when to use it
+        source: Source identifier (default "manual_seed")
+        parameters: Optional JSON string of relevant Blender parameters
+
+    Returns:
+        JSON confirmation with seeded entry details
+    """
+    return _seed_technique_entry_impl(
+        effect_type=effect_type,
+        technique_name=technique_name,
+        description=description,
+        source=source,
+        parameters=parameters
+    )
+
+
 @function_tool
 async def get_effective_strategy(issue: str) -> str:
     """

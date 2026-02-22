@@ -56,6 +56,10 @@ API_STORE_ID = os.getenv(
     "vs_697571f0275c8191910fea0f2c8bdd3a"  # New clean individual-file store (2026-01-25)
 )
 
+# Rewritten manual store: LLM-optimized rewrites of Blender manual pages
+# Higher info density than raw manual — prioritized when available
+REWRITTEN_MANUAL_STORE_ID = os.getenv("BLENDER_REWRITTEN_MANUAL_STORE_ID", "")
+
 # Deprecated: Single store ID (kept for backwards compatibility)
 VECTOR_STORE_ID = os.getenv(
     "BLENDER_DOCS_VECTOR_STORE_ID",
@@ -206,24 +210,30 @@ def _search_vector_store(
         return []
 
     # Determine which store(s) to search
+    # Rewritten manual store is higher quality — listed first when included
+    _manual_stores = (
+        [REWRITTEN_MANUAL_STORE_ID, MANUAL_STORE_ID]
+        if REWRITTEN_MANUAL_STORE_ID
+        else [MANUAL_STORE_ID]
+    )
     if store_id:
         store_ids = [store_id]
     elif intent == 'api':
         store_ids = [API_STORE_ID]
     elif intent == 'manual':
-        store_ids = [MANUAL_STORE_ID]
+        store_ids = _manual_stores
     elif intent == 'both':
-        store_ids = [API_STORE_ID, MANUAL_STORE_ID]
+        store_ids = _manual_stores + [API_STORE_ID]
     else:
         # Auto-detect intent
         detected_intent, confidence = _classify_query_intent(query)
         if detected_intent == 'api':
             store_ids = [API_STORE_ID]
         elif detected_intent == 'manual':
-            store_ids = [MANUAL_STORE_ID]
+            store_ids = _manual_stores
         else:
-            # Search both stores and merge results
-            store_ids = [API_STORE_ID, MANUAL_STORE_ID]
+            # Search all stores and merge results
+            store_ids = _manual_stores + [API_STORE_ID]
 
     all_results = []
 
@@ -725,6 +735,7 @@ def _blender_doc_search_bundle_impl(
         "diagnostics": {
             "openai_available": True,
             "manual_store_id": MANUAL_STORE_ID,
+            "rewritten_manual_store_id": REWRITTEN_MANUAL_STORE_ID or None,
             "api_store_id": API_STORE_ID,
             "queries_attempted": len(queries_used),
         },
