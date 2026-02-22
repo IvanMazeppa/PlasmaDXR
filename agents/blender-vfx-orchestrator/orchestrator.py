@@ -276,6 +276,9 @@ from guardrails.tool_guardrails import (
     set_truth_pack as set_guardrail_truth_pack,
 )
 
+# Phase 2A-4: PipelineMonitor (deterministic monitoring layer)
+from tools.pipeline_monitor import PipelineMonitor, AlertLevel, AlertType
+
 # Proactive research tools for Strategy 3: Early warning detection
 # NOTE: pre_iteration_research (direct callable) is imported at line 48 for pipeline use
 # Import the @function_tool version for agent tool lists
@@ -763,6 +766,7 @@ class BlenderVFXOrchestrator:
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
+        self._pipeline_monitor: PipelineMonitor = PipelineMonitor()  # Phase 2A-4
         self._initialized = False
 
         # Config system for preset-based settings
@@ -2665,6 +2669,7 @@ Generate a complete, validated script using the selected technique. Return the s
                                 )
                                 direct_modification_success = True
                                 session_mgr.reset_for_technique_switch(new_technique)
+                                self._pipeline_monitor.reset()  # Phase 2A-4
                                 print(f"[Pipeline] Spec-first regen succeeded: {script.script_path}", file=sys.stderr)
                             except Exception as e:
                                 print(
@@ -2805,6 +2810,11 @@ Generate a complete, validated script using the selected technique. Return the s
                         # If no direct modifications (or they failed), consult Modification Coordinator
                         if not direct_modification_success:
                             # ====== PHASE 1.1: MODIFICATION STRATEGY (Coordinator Decision) ======
+                            # Phase 2A-4: Record QA suggestion for cascade detection
+                            if quality and quality.primary_issue:
+                                self._pipeline_monitor.record_qa_suggestion(
+                                    quality.primary_issue, quality.overall_score
+                                )
                             # Phase 2 Enhancement: Use Modification Coordinator to decide strategy
                             print(f"[Pipeline] PHASE 1.1: Modification Strategy (Coordinator)", file=sys.stderr)
 
@@ -2911,6 +2921,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         )
                                         direct_modification_success = True
                                         session_mgr.reset_for_technique_switch(new_technique)
+                                        self._pipeline_monitor.reset()  # Phase 2A-4
                                     except Exception as e:
                                         print(f"[Pipeline] Spec-first switch failed: {e}, falling back to Script Writer", file=sys.stderr)
                                         # Fall through to existing Script Writer path
@@ -3297,6 +3308,14 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                         except Exception as e:
                             print(f"[Pipeline] API Validation error (non-fatal): {e}", file=sys.stderr)
                             # Continue with original script if validation fails
+
+                    # ====== PHASE 1.9: PIPELINE MONITOR (After Generation) ======
+                    if script and hasattr(script, 'script_path') and script.script_path:
+                        gen_alerts = self._pipeline_monitor.check_after_generation(
+                            script.script_path, iteration
+                        )
+                        for alert in gen_alerts:
+                            print(f"[Monitor] {alert.level.value}: {alert.message}", file=sys.stderr)
 
                     # ====== PHASE 2: EXECUTION ======
                     # S1-4 FIX: Deterministic execution — call _execute_blender_script_impl
@@ -3962,6 +3981,22 @@ Provide detailed feedback for improvement."""
                     )
                     session.iterations.append(iter_result)
 
+                    # ====== PHASE 3.9: PIPELINE MONITOR (After Evaluation) ======
+                    eval_alerts = self._pipeline_monitor.check_after_evaluation(
+                        score=quality.overall_score,
+                        primary_issue=quality.primary_issue,
+                        params=session_mgr.baseline.params if session_mgr.baseline else {},
+                        iteration=iteration,
+                        budget_spent=self._budget_tracker.get_spent() - budget_spent_start,
+                        vision_assessment=quality.vision_assessment,
+                    )
+                    for alert in eval_alerts:
+                        print(f"[Monitor] {alert.level.value}: {alert.message}", file=sys.stderr)
+                        if alert.alert_type == AlertType.CRITICAL_RENDER_ISSUE:
+                            # Inject critical issue into quality feedback for downstream handling
+                            if not quality.primary_issue or "BLACK_SCREEN" not in (quality.primary_issue or ""):
+                                quality.primary_issue = alert.details.get("keywords", ["CRITICAL_RENDER"])[0]
+
                     # ====== PHASE 4+5: LEARNING + QUALITY GATE (Parallel or Sequential) ======
                     print(f"[Pipeline] PHASE 4+5: Learning + Quality Gate", file=sys.stderr)
 
@@ -4227,6 +4262,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                         # Phase 1.4: Reset stuck state when switching techniques
                         # This prevents old failure streaks from affecting the new approach
                         session_mgr.reset_for_technique_switch(f"switch_from_iter{iteration}")
+                        self._pipeline_monitor.reset()  # Phase 2A-4
 
                         # Re-run Research Agent to find NEW approaches
                         switch_prompt = f"""Find a DIFFERENT approach for {request.effect_type.value}.
