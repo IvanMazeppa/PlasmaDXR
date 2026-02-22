@@ -27,13 +27,19 @@ Usage:
 __version__ = "0.1.0"
 __author__ = "PlasmaDX Team"
 
-from .orchestrator import BlenderVFXOrchestrator
-from .models.shared_context import SharedContext, IterationResult, AssetRequest, SessionState
+try:
+    from .orchestrator import BlenderVFXOrchestrator
+    from .models.shared_context import SharedContext, IterationResult, AssetRequest, SessionState
 
-__all__ = [
-    "BlenderVFXOrchestrator",
-    "SharedContext",
-    "IterationResult",
-    "AssetRequest",
-    "SessionState",
-]
+    __all__ = [
+        "BlenderVFXOrchestrator",
+        "SharedContext",
+        "IterationResult",
+        "AssetRequest",
+        "SessionState",
+    ]
+except ImportError:
+    # Relative imports fail when running pytest or direct script execution
+    # from within the package directory (no parent package context).
+    # The orchestrator is still fully usable via direct imports.
+    pass

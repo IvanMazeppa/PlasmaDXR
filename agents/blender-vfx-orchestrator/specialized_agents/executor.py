@@ -118,6 +118,11 @@ class ExecutorAgent:
                 list_run_outputs,
                 get_latest_run,
             ],
+            # Phase 2A-2: Stop after first tool call (execute_blender_script).
+            # The raw tool output contains everything the orchestrator needs
+            # (exit_code, stdout, stderr, render_files, vdb_files, duration_seconds).
+            # Eliminates ~$0.01-0.02 per call from unnecessary LLM post-processing.
+            tool_use_behavior="stop_on_first_tool",
         )
 
     @property

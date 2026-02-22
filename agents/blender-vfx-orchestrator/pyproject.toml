@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# Run tests from the tests/ directory only.
+# This prevents pytest from trying to import __init__.py as a package,
+# which fails due to relative imports (from .orchestrator import ...).
+testpaths = ["tests"]

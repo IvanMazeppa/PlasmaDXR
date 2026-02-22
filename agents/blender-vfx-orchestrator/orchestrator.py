@@ -708,6 +708,9 @@ Return a QualityDecision with:
         output_type=AgentOutputSchema(QualityDecision, strict_json_schema=False),
         # Phase 3: Validate decision consistency (e.g., passed=True must have next_action='complete')
         output_guardrails=[validate_quality_decision],
+        # Phase 2A-2 NOTE: StopAtTools not used here because the agent needs to
+        # synthesize evaluate_escape_velocity results into QualityDecision structured
+        # output. stop_on_first_tool would bypass the structured output processing.
     )
 
 
