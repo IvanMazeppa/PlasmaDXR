@@ -270,6 +270,12 @@ from tools.truth_pack_validator import (
 )
 from tools.qa_diagnosis_bridge import create_code_grounded_feedback
 
+# Phase 2A-3: Tool-level guardrails for truth pack enforcement
+from guardrails.tool_guardrails import (
+    attach_tool_guardrails,
+    set_truth_pack as set_guardrail_truth_pack,
+)
+
 # Proactive research tools for Strategy 3: Early warning detection
 # NOTE: pre_iteration_research (direct callable) is imported at line 48 for pipeline use
 # Import the @function_tool version for agent tool lists
@@ -2033,6 +2039,13 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
 
             print("[Orchestrator] Spec-First Pipeline agents ready", file=sys.stderr)
 
+        # Phase 2A-3: Attach tool-level guardrails to FunctionTool instances
+        try:
+            attached = attach_tool_guardrails()
+            print(f"[Orchestrator] Tool guardrails attached: {attached}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Orchestrator] WARNING: Tool guardrail attachment failed: {e}", file=sys.stderr)
+
         self._initialized = True
         agent_count = "5 standalone + 3 coordinators"
         if self._use_spec_first_pipeline:
@@ -2312,6 +2325,7 @@ Select the optimal technique and provide starting parameters."""
                     truth_pack = await build_truth_pack(technique_for_tp)
                     context.truth_pack = truth_pack
                     set_global_truth_pack(truth_pack)
+                    set_guardrail_truth_pack(truth_pack)  # Phase 2A-3: tool guardrails
 
                     # Build APISpec from truth pack for backward compatibility
                     # (Code Writer guardrail validate_code_against_spec still uses it)
@@ -2879,6 +2893,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         truth_pack = await build_truth_pack(new_technique)
                                         context.truth_pack = truth_pack
                                         set_global_truth_pack(truth_pack)
+                                        set_guardrail_truth_pack(truth_pack)  # Phase 2A-3
                                         context.api_spec = truth_pack_to_api_spec(
                                             truth_pack, request.effect_type.value, new_technique
                                         )
