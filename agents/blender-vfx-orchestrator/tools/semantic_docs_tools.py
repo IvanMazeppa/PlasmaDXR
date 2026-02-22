@@ -501,8 +501,8 @@ def _blender_doc_search_bundle_impl(
     effect_type: str,
     description: str = "",
     intent: str = "",
-    domain: str = "Mantaflow",
-    max_results: int = 6
+    domain: str = "",
+    max_results: int = 8
 ) -> str:
     """
     Internal implementation of bundle search - can be called directly.
@@ -526,16 +526,26 @@ def _blender_doc_search_bundle_impl(
     manual_queries = []
     api_queries = []
 
+    # --- MANUAL QUERIES: conceptual, technique discovery, workflows ---
+    # These search the manual store for HOW and WHY, not just WHAT exists.
     if description:
         manual_queries.append(description)
     if effect_type:
-        manual_queries.append(f"{effect_type} {domain} simulation Blender 5.0")
-        manual_queries.append(f"{effect_type} smoke fire pyro mantaflow settings")
-        manual_queries.append(f"{effect_type} volumetric shader principled volume")
+        # Technique discovery: what approaches exist for this effect?
+        manual_queries.append(f"how to create {effect_type} effect in Blender")
+        manual_queries.append(f"{effect_type} simulation tutorial workflow setup")
+        manual_queries.append(f"alternative methods techniques for {effect_type}")
+        # Domain-specific conceptual queries
+        if domain:
+            manual_queries.append(f"{domain} {effect_type} physics settings guide")
+        # Material/shader conceptual queries
+        manual_queries.append(f"{effect_type} volumetric material shader setup")
     if intent:
-        manual_queries.append(f"{intent} bpy python")
+        manual_queries.append(f"{intent} workflow guide")
+    # General technique exploration
+    manual_queries.append(f"physics simulation types Blender")
 
-    # Always include direct API queries so attributes are grounded in API docs
+    # --- API QUERIES: attribute names, function signatures, parameters ---
     api_queries.extend([
         "bpy.types.FluidDomainSettings",
         "bpy.types.FluidFlowSettings",
@@ -553,9 +563,6 @@ def _blender_doc_search_bundle_impl(
             "bpy.ops.fluid.bake_noise",
         ])
 
-    manual_queries.append(f"{domain} cache settings bpy.types.FluidDomainSettings")
-    manual_queries.append("Blender 5.0 Mantaflow domain settings")
-
     # De-duplicate while preserving order
     def _dedupe_queries(items: list[str]) -> list[str]:
         items = [q.strip() for q in items if q and q.strip()]
@@ -572,13 +579,18 @@ def _blender_doc_search_bundle_impl(
     api_queries = _dedupe_queries(api_queries)
     manual_queries = _dedupe_queries(manual_queries)
 
+    # Separate quotas: manual results are NOT crowded out by API results.
+    # Each category gets its own budget, then results are interleaved.
+    manual_quota = max(max_results // 2, 3)  # At least 3 manual results
+    api_quota = max(max_results // 2, 3)     # At least 3 API results
+
     api_results = []
     general_results = []
     seen_results = set()
     queries_used = []
 
     for q in api_queries:
-        batch = _search_vector_store(q, max_results=max_results, intent="api")
+        batch = _search_vector_store(q, max_results=api_quota, intent="api")
         queries_used.append(q)
         for r in batch:
             key = (
@@ -591,9 +603,11 @@ def _blender_doc_search_bundle_impl(
             seen_results.add(key)
             r["query"] = q
             api_results.append(r)
+        if len(api_results) >= api_quota:
+            break
 
     for q in manual_queries:
-        batch = _search_vector_store(q, max_results=max_results)
+        batch = _search_vector_store(q, max_results=manual_quota, intent="manual")
         queries_used.append(q)
         for r in batch:
             key = (
@@ -606,10 +620,11 @@ def _blender_doc_search_bundle_impl(
             seen_results.add(key)
             r["query"] = q
             general_results.append(r)
-        if len(api_results) + len(general_results) >= max_results:
+        if len(general_results) >= manual_quota:
             break
 
-    results = (api_results + general_results)[:max_results]
+    # Interleave: manual first (conceptual context), then API (attribute grounding)
+    results = (general_results[:manual_quota] + api_results[:api_quota])[:max_results]
 
     # Final fallback if nothing found
     warnings = []
@@ -721,8 +736,8 @@ def blender_doc_search_bundle(
     effect_type: str,
     description: str = "",
     intent: str = "",
-    domain: str = "Mantaflow",
-    max_results: int = 6
+    domain: str = "",
+    max_results: int = 8
 ) -> str:
     """
     Multi-query Blender 5.0 doc search with internal fallbacks.
@@ -730,11 +745,15 @@ def blender_doc_search_bundle(
     This reduces tool-call count by batching multiple queries into ONE tool call.
     Use when you need robust doc grounding without hitting turn limits.
 
+    Searches BOTH the manual (conceptual how-to, techniques, workflows) AND
+    the API reference (attribute names, function signatures). Results are
+    interleaved with manual context first, then API grounding.
+
     Args:
         effect_type: Effect type (fire, explosion, smoke, etc.)
         description: Natural language request/goal
         intent: Specific intent to search (optional)
-        domain: Domain focus (default: Mantaflow)
+        domain: Physics domain hint (e.g. Mantaflow, rigid_body, particles). Leave empty for broad search.
         max_results: Max results to return (1-10)
 
     Returns:
