@@ -3,7 +3,7 @@
 **Date:** 2026-02-22
 **Author:** Cross-cutting Writer (Claude Opus 4.6)
 **Purpose:** New sections to be integrated into the revised `PHASE2_ROADMAP.md`. These address gaps identified in the roadmap critique.
-**Status:** Draft for integration
+**Status:** SUPERSEDED by `PHASE2_ROADMAP.md` v2.1 (2026-02-23). This document uses pre-v2.0 Phase 2C numbering (Agent.clone as 2C-4, etc.) which no longer matches the canonical roadmap. Refer to `PHASE2_ROADMAP.md` for current item IDs and scope.
 
 ---
 

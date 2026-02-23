@@ -3,14 +3,17 @@ Tests for Phase 2A-2: Deterministic Agent Control (tool_use_behavior).
 
 Verifies that agents with stop_on_first_tool are configured correctly,
 and that agents requiring multi-tool sequences do NOT have it set.
+
+Phase 2A-7: Executor agent removed — execution is deterministic via
+_execute_blender_script_impl(). Tests for executor stop_on_first_tool removed.
 """
 
+import ast
 import importlib.util
 import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 # Path setup (same as conftest.py)
 _orchestrator_root = str(Path(__file__).parent.parent)
@@ -18,22 +21,43 @@ if _orchestrator_root not in sys.path:
     sys.path.insert(0, _orchestrator_root)
 
 
-class TestExecutorStopOnFirstTool(unittest.TestCase):
-    """Executor should use stop_on_first_tool to skip LLM post-processing."""
+class TestExecutorDeprecated(unittest.TestCase):
+    """Phase 2A-7: Executor agent is deprecated — orchestrator must NOT import it."""
 
-    def test_executor_has_stop_on_first_tool(self):
-        from specialized_agents.executor import create_executor
-        agent = create_executor()
-        self.assertEqual(agent.tool_use_behavior, "stop_on_first_tool")
+    def test_orchestrator_does_not_import_executor_agent(self):
+        """Verify orchestrator.py has no import of the executor AGENT module.
 
-    def test_executor_still_has_all_tools(self):
-        from specialized_agents.executor import create_executor
-        agent = create_executor()
-        tool_names = [t.name for t in agent.tools if hasattr(t, "name")]
-        self.assertIn("execute_blender_script", tool_names)
-        self.assertIn("parse_blender_errors", tool_names)
-        self.assertIn("list_run_outputs", tool_names)
-        self.assertIn("get_latest_run", tool_names)
+        Note: importing from tools.blender_executor_tools is CORRECT — that's
+        the direct execution path. We only forbid specialized_agents.executor.
+        """
+        orchestrator_path = os.path.join(_orchestrator_root, "orchestrator.py")
+        with open(orchestrator_path, "r") as f:
+            source = f.read()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                # Only flag the agent module, not executor tools
+                if node.module and node.module.endswith(".executor"):
+                    self.fail(
+                        f"orchestrator.py still imports executor agent: "
+                        f"'from {node.module} import ...' at line {node.lineno}"
+                    )
+                if node.names:
+                    for alias in node.names:
+                        if alias.name == "create_executor":
+                            self.fail(
+                                f"orchestrator.py still imports create_executor "
+                                f"at line {node.lineno}"
+                            )
+
+    def test_executor_file_has_deprecation_notice(self):
+        """Verify executor.py has DEPRECATED notice."""
+        executor_path = os.path.join(
+            _orchestrator_root, "specialized_agents", "executor.py"
+        )
+        with open(executor_path, "r") as f:
+            first_lines = f.read(500)
+        self.assertIn("DEPRECATED", first_lines)
 
 
 class TestApiValidatorNoStopOnFirstTool(unittest.TestCase):

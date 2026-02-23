@@ -332,7 +332,6 @@ from tools.dynamic_instructions import (
 
 from specialized_agents import (
     create_script_writer,
-    create_executor,
     create_quality_analyst,
     create_learning_agent,
 )
@@ -740,7 +739,8 @@ class BlenderVFXOrchestrator:
         # Standalone agents for code-based orchestration (no handoffs)
         self._research_agent: Optional[Agent] = None
         self._script_agent_standalone: Optional[Agent] = None
-        self._executor_agent_standalone: Optional[Agent] = None
+        # Phase 2A-7: Executor agent removed — execution is deterministic via
+        # _execute_blender_script_impl() (see PHASE 2: EXECUTION in pipeline).
         self._quality_agent_standalone: Optional[Agent] = None
         self._learning_agent_standalone: Optional[Agent] = None
         self._docs_expert_standalone: Optional[Agent] = None  # For parallel preflight
@@ -1367,28 +1367,9 @@ STOP after T3. Do NOT retry tools. Return structured output only.""",
             output_guardrails=[validate_script_output],
         )
 
-        # Executor with structured output
-        base_executor = create_executor()
-        executor_model, executor_settings = self._get_model_settings("executor")
-        self._executor_agent_standalone = Agent[SharedContext](
-            name="Executor",
-            instructions=base_executor.instructions + """
-
-## Output Requirements
-After executing the script, return a structured ExecutionOutput with:
-- success: Whether Blender executed without errors
-- render_path: Path to the rendered output image/sequence
-- vdb_path: Path to VDB volume data (if generated)
-- run_dir: The executor's output directory (from execute_blender_script result's run_dir field - contains cache/)
-- error_message: Error details if execution failed
-- execution_time_seconds: How long execution took
-
-IMPORTANT: Always include run_dir from the execute_blender_script result - this is where the simulation cache lives.""",
-            model=executor_model,
-            model_settings=executor_settings,
-            output_type=AgentOutputSchema(ExecutionOutput, strict_json_schema=False),
-            tools=base_executor.tools,
-        )
+        # Phase 2A-7: Executor agent REMOVED — execution is deterministic.
+        # Pipeline calls _execute_blender_script_impl() directly (see PHASE 2: EXECUTION).
+        # Historical reference: specialized_agents/executor.py
 
         # Quality Analyst with structured output (LLM-as-judge pattern)
         # Physics observation happens through tools (observe_physics_anomaly, get_physics_patterns)

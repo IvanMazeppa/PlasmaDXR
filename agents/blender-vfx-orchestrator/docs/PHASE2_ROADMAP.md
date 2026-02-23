@@ -3,7 +3,7 @@
 **Version:** 2.1
 **Date:** 2026-02-23
 **Authors:** Integration Architect (Claude Opus 4.6), synthesizing research from SDK Specialist, Codebase Analyst, Autonomy Researcher, Monitoring Architect, and Critique Reviewer
-**Status:** Phase 2A in progress — 2A-0 through 2A-5 COMPLETE
+**Status:** Phase 2A in progress — 2A-0 through 2A-7 COMPLETE
 **Revision note:** v2.0 addresses all findings from the Phase 2 Roadmap Critique: adds documentation pipeline (2A-0), testing strategy, rollback strategy, orchestrator decomposition gate, KB seeding, Ralph isolation, 1.5x line estimates, Agent.clone() removal, Phase 2D marked directional.
 **v2.1 update (2026-02-23):** Progress tracking added. 2A-0 through 2A-5 complete (154 tests, 6 branches merged). Actual line counts noted where they differ from estimates.
 
@@ -17,7 +17,7 @@ Phase 2+ takes the system from "produces evaluable renders" to "reliably produce
 
 | Phase | Focus | Estimated Effort | Status |
 |-------|-------|-----------------|--------|
-| **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **6/9 items DONE — 154 tests pass** |
+| **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **8/9 items DONE — 156 tests pass** |
 | **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | Weeks 2-4 |
 | **2C: Advanced Capabilities** | Multi-physics, experimentation, technique diversity | ~1,595 lines (core) | Weeks 6-9 |
 | **2D: Full Autonomy (Directional)** | Autonomy tracking, cross-session learning | ~405 lines (concrete) + TBD | Week 10+ |
@@ -695,9 +695,9 @@ PARAMETER_BOUNDS = {
 | 2A-4: PipelineMonitor | ~480 | ~370 | 5 / 26 | **DONE** |
 | 2A-5: Parameter bounds | ~225 | ~175 + 45 wiring | 5 / 40 | **DONE** |
 | 2A-6: Deprecate Spec-First | ~128 | ~730 net removed + 24 test lines | 3 / 24 | **DONE** |
-| 2A-7: Remove Executor agent | ~38 | — | 2 / — | TODO |
+| 2A-7: Remove Executor agent | ~38 | ~35 removed + 2 test | 2 / 2 | **DONE** |
 | 2A-8: Tool timeouts | ~32 | — | 3 / — | TODO |
-| **Total** | **~1,431** | | **39 / 178** (includes extras) | **7/9 done** |
+| **Total** | **~1,431** | | **41 / 180** (includes extras) | **8/9 done** |
 
 **Note:** Line estimates include a 1.5x multiplier based on Phase 1 experience.
 

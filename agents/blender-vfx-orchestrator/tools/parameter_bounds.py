@@ -4,7 +4,7 @@ Per-effect-type parameter bounds that prevent overcorrection.
 All parameter modifications are clamped to safe ranges and
 limited to a maximum step size per iteration.
 
-Kill switch: set ENABLE_PARAMETER_BOUNDS=0 in environment.
+Kill switch: set ENABLE_PARAMETER_BOUNDS=false in environment.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Set
 
 
 # Kill switch
-ENABLE_PARAMETER_BOUNDS = os.environ.get("ENABLE_PARAMETER_BOUNDS", "1") != "0"
+ENABLE_PARAMETER_BOUNDS = os.environ.get("ENABLE_PARAMETER_BOUNDS", "true").lower() not in ("false", "0", "no")
 
 
 @dataclass

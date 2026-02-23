@@ -1,4 +1,14 @@
 """
+DEPRECATED (Phase 2A-7): Executor Agent replaced by deterministic execution.
+
+The pipeline now calls _execute_blender_script_impl() directly in orchestrator.py
+(see "PHASE 2: EXECUTION" section). This eliminates ~$0.01-0.02 per call from
+unnecessary LLM post-processing of structured JSON that was already deterministic.
+
+Rollback: Re-import create_executor in orchestrator.py initialize() and restore
+the _executor_agent_standalone creation block. See git history for the removed code.
+
+--- ORIGINAL DOCSTRING ---
 Executor Agent using OpenAI Agents SDK.
 
 Specialized agent for executing Blender scripts and handling errors.

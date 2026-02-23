@@ -116,7 +116,7 @@ async def generate_full_orchestrator_graph(output_dir: Path) -> list[str]:
     standalone_agents = [
         ("research_agent", orchestrator._research_agent, "Research Agent"),
         ("script_writer", orchestrator._script_agent_standalone, "Script Writer"),
-        ("executor", orchestrator._executor_agent_standalone, "Executor"),
+        # ("executor", ..., "Executor"),  # DEPRECATED 2A-7: deterministic execution
         ("quality_analyst", orchestrator._quality_agent_standalone, "Quality Analyst"),
         ("learning_agent", orchestrator._learning_agent_standalone, "Learning Agent"),
     ]

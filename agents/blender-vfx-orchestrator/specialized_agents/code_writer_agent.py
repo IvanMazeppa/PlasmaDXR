@@ -5,8 +5,9 @@ The Script Writer agent now handles all script generation/modification.
 Truth pack + tool guardrails provide API validation at $0, replacing the
 Code Writer's role of writing code against a pre-verified APISpec.
 
-Rollback: Set ENABLE_SPEC_FIRST_PIPELINE=1 in orchestrator.py and re-enable
-the imports and agent creation in initialize().
+Rollback: Manually re-enable the spec-first imports and agent creation in
+orchestrator.py initialize(). There is no feature flag — rollback requires
+reverting the 2A-6 commit or manually restoring the removed code paths.
 
 --- ORIGINAL DOCSTRING ---
 Code Writer Agent for Verified Blender Script Generation.
