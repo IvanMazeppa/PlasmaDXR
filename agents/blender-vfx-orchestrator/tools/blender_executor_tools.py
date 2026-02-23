@@ -769,10 +769,63 @@ async def _get_latest_run_impl() -> str:
 
 
 # =============================================================================
+# TOOL ERROR HANDLERS (Phase 2A-8)
+# =============================================================================
+
+def blender_execution_error_handler(ctx: Any, exc: Exception) -> str:
+    """Convert execution exceptions into actionable error messages for the agent.
+
+    Instead of a generic traceback, the agent sees a structured diagnosis with
+    suggested next steps. This prevents the agent from hallucinating fixes.
+    """
+    exc_type = type(exc).__name__
+    msg = str(exc)
+
+    # Categorize by exception type with actionable guidance
+    if isinstance(exc, FileNotFoundError):
+        return (
+            f"FILE_NOT_FOUND: {msg}. "
+            "Check script_path exists. Use absolute paths or paths relative to project root."
+        )
+    if isinstance(exc, PermissionError):
+        return (
+            f"PERMISSION_DENIED: {msg}. "
+            "Check file permissions on script and Blender executable."
+        )
+    if isinstance(exc, json.JSONDecodeError):
+        return (
+            f"INVALID_JSON: script_args_json is malformed: {msg}. "
+            "Ensure script_args_json is valid JSON, e.g. '{\"bake\": \"1\"}'."
+        )
+    if isinstance(exc, (MemoryError, OSError)) and "memory" in msg.lower():
+        return (
+            f"OUT_OF_MEMORY: {msg}. "
+            "Reduce resolution_max (try 64-96), reduce frame_end, "
+            "or lower timesteps_max to decrease memory usage."
+        )
+    if isinstance(exc, asyncio.TimeoutError):
+        return (
+            f"TIMEOUT: Blender execution exceeded time limit. "
+            "Reduce resolution_max, frame_end, or timesteps_max. "
+            "For liquid sims, reduce flip_ratio or disable secondary particles."
+        )
+    # Generic fallback — still more useful than a raw traceback
+    return f"EXECUTION_ERROR ({exc_type}): {msg}"
+
+
+def blender_tool_error_handler(ctx: Any, exc: Exception) -> str:
+    """Generic error handler for non-execution Blender tools."""
+    return f"TOOL_ERROR ({type(exc).__name__}): {str(exc)[:500]}"
+
+
+# =============================================================================
 # FUNCTION TOOL WRAPPERS (exposed to agents)
 # =============================================================================
 
-@function_tool
+@function_tool(
+    failure_error_function=blender_execution_error_handler,
+    timeout=660.0,  # SDK safety net — slightly above internal 600s default
+)
 async def execute_blender_script(
     script_path: str,
     script_args_json: str = "{}",
@@ -832,7 +885,7 @@ async def execute_blender_script(
     )
 
 
-@function_tool
+@function_tool(failure_error_function=blender_tool_error_handler)
 async def parse_blender_errors(
     stderr: str,
     stdout: str = ""
@@ -871,7 +924,7 @@ async def parse_blender_errors(
     return json.dumps([asdict(e) for e in errors], indent=2)
 
 
-@function_tool
+@function_tool(failure_error_function=blender_tool_error_handler)
 async def list_run_outputs(
     run_dir: Optional[str] = None
 ) -> str:
@@ -905,7 +958,7 @@ async def list_run_outputs(
     return await _list_run_outputs_impl(run_dir)
 
 
-@function_tool
+@function_tool(failure_error_function=blender_tool_error_handler)
 async def get_latest_run() -> str:
     """
     Get information about the most recent Blender execution.
