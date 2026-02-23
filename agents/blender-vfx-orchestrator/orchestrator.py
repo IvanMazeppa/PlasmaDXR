@@ -65,6 +65,8 @@ from tools.code_pattern_tools import search_patterns_impl as search_patterns_dir
 # Knowledge base query for doc-grounded learnings (direct callable for Phase 2)
 from tools.experiment_tracker_tools import _query_knowledge_base_impl as query_knowledge_direct
 from tools.experiment_tracker_tools import _suggest_experiments_impl as suggest_experiments_direct
+# Phase 2B-3: Deterministic render quality checks (Tier 1, $0)
+from tools.deterministic_quality_checks import run_deterministic_checks
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -3085,8 +3087,31 @@ but append '_errfix' to the output name."""
                         session.status = SessionStatus.BUDGET_EXHAUSTED if previous_score < request.quality_threshold else SessionStatus.PASSED
                         break
 
-                    print(f"[Pipeline] PHASE 3: Quality Analyst (LLM-as-Judge)", file=sys.stderr)
-                    eval_prompt = f"""Evaluate the render quality strictly.
+                    # ====== PHASE 3 TIER 1: Deterministic Render Checks ($0) ======
+                    quality = None  # Sentinel: if set by Tier 1, skip LLM eval
+                    if self._config.use_multi_grader_eval():
+                        det_result = run_deterministic_checks(
+                            render_path=execution.render_path,
+                            script_path=script.script_path if script else None,
+                            effect_type=request.effect_type.value,
+                        )
+                        print(f"[Pipeline] Tier 1: {det_result}", file=sys.stderr)
+                        if not det_result.passed:
+                            # Critical failure — short-circuit with score=0
+                            quality = QualityOutput(
+                                overall_score=0,
+                                passed=False,
+                                primary_issue=det_result.critical_issues[0] if det_result.critical_issues else "Deterministic check failed",
+                                issues=det_result.critical_issues,
+                                suggestions=["Fix critical render issue before re-evaluating"],
+                                vision_assessment=f"Skipped (Tier 1 deterministic failure: {', '.join(det_result.critical_issues)})",
+                            )
+                            print(f"[Pipeline] Tier 1 CRITICAL FAIL — skipping LLM vision eval (saved ~$0.05)", file=sys.stderr)
+
+                    # ====== PHASE 3 TIER 3: LLM Vision Evaluation ($0.01-0.05) ======
+                    if quality is None:
+                        print(f"[Pipeline] PHASE 3: Quality Analyst (LLM-as-Judge)", file=sys.stderr)
+                        eval_prompt = f"""Evaluate the render quality strictly.
 
 Render Path: {execution.render_path}
 Effect Type: {request.effect_type.value}
@@ -3096,35 +3121,35 @@ Quality Threshold: {request.quality_threshold}
 Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
 
-                    try:
-                        eval_result = await self._run_agent(
-                            self._quality_agent_standalone,
-                            eval_prompt,
-                            context=context,
-                            session=iter_session,  # Phase 2B-1: Stateless iterations
-                            hooks=quality_hooks,
-                            max_turns=6,
-                            run_config=self._build_run_config(
-                                session=session,
-                                request=request,
-                                iteration=iteration,
-                                phase="quality",
-                            ),
-                        )
-                        # Structured output: QualityOutput
-                        quality = eval_result.final_output
-                    except LoopDetectedError as e:
-                        print(f"[Pipeline] WARN: Quality Analyst loop: {e}", file=sys.stderr)
-                        quality = QualityOutput(
-                            overall_score=0,
-                            passed=False,
-                            primary_issue=f"Quality evaluation loop detected: {e}",
-                            issues=[str(e)],
-                            suggestions=["Simplify evaluation criteria"],
-                            vision_assessment="Unable to complete evaluation due to loop",
-                            reference_similarity=None
-                        )
-                    print(f"[Pipeline] Quality hooks stats: {quality_hooks.get_stats()}", file=sys.stderr)
+                        try:
+                            eval_result = await self._run_agent(
+                                self._quality_agent_standalone,
+                                eval_prompt,
+                                context=context,
+                                session=iter_session,  # Phase 2B-1: Stateless iterations
+                                hooks=quality_hooks,
+                                max_turns=6,
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=iteration,
+                                    phase="quality",
+                                ),
+                            )
+                            # Structured output: QualityOutput
+                            quality = eval_result.final_output
+                        except LoopDetectedError as e:
+                            print(f"[Pipeline] WARN: Quality Analyst loop: {e}", file=sys.stderr)
+                            quality = QualityOutput(
+                                overall_score=0,
+                                passed=False,
+                                primary_issue=f"Quality evaluation loop detected: {e}",
+                                issues=[str(e)],
+                                suggestions=["Simplify evaluation criteria"],
+                                vision_assessment="Unable to complete evaluation due to loop",
+                                reference_similarity=None
+                            )
+                        print(f"[Pipeline] Quality hooks stats: {quality_hooks.get_stats()}", file=sys.stderr)
 
                     # Artifact-First: Write quality evaluation to file
                     quality_artifact_path = artifact_mgr.write_quality_from_output(

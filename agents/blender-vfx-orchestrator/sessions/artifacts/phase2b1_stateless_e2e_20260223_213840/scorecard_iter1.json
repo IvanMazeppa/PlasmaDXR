@@ -1,0 +1,27 @@
+{
+  "session_id": "phase2b1_stateless_e2e_20260223_213840",
+  "iteration": 1,
+  "overall_score": 32.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "(Most important) Switch to a true volumetric fire setup (pyro/VDB) with at least density + temperature fields, rendered with a volume shader that supports emission + absorption + scattering. The current result reads like a surface/billboard, not a volume.",
+    "Add temperature-driven emission color (blackbody or a ramp): ensure a hotter core (small white-hot region), and a gradient outwards to yellow/orange/red. Avoid a neutral-white blob as the dominant color.",
+    "Introduce multi-scale turbulence so you get flame tongues/filaments instead of a smooth column: animate noise and add higher-frequency breakup for edges (this is typically vorticity/curl + detail noise in the sim, plus a high-frequency mask in shading).",
+    "Add a smoke channel above the flame: darker, semi-transparent, billowing smoke with clear cavities/cauliflower structure. Use higher absorption (near-black) so smoke reads as soot, not gray fog.",
+    "Reduce reliance on cheap bloom: keep emission in HDR (ideally EXR) and use filmic tonemapping so the core isn\u2019t clipped while still producing believable glare.",
+    "Improve scene lighting balance: add subtle low-level ambient/fill so the room isn\u2019t crushed, while letting the fire remain the primary warm light. Ensure warm bounce light is visible on nearby surfaces.",
+    "If any of the listed material parameters are applied to the fire object, remove \u201cmetal\u201d look: Line 204 set bsdf.inputs['Metallic'] from 1.0 \u2192 0.0, and drive appearance via Emission/Volume rather than Principled BSDF. (If this BSDF is for environment props, ignore.)",
+    "Tame procedural surface harshness that can read as artifacts in low light: Line 128 bump Strength 0.35 \u2192 ~0.10\u20130.20; Line 231 noise Distortion 2.0 \u2192 ~0.5\u20131.0; Line 262 noise Detail 8.0 \u2192 ~4\u20136; Line 261 noise Scale 40.0 \u2192 ~15\u201330 (to avoid overly \u201cprocedural\u201d micro-noise).",
+    "Improve background/ambient readability: Line 67 bg Strength 0.08 \u2192 ~0.15\u20130.30 to lift shadows slightly (keep the scene dark, but not crushed).",
+    "Remove/dim the stray ceiling highlights/discs/strips (likely extra lights or reflections). They pull attention away from the fire and emphasize banding; also consider higher samples / smoother indirect lighting if render settings allow.",
+    "Add heat shimmer above the flame (screen-space distortion or refractive volume) and a small ember/ash particle pass for realism."
+  ],
+  "cache_size_mb": 9.24531364440918,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 419.4346590720015,
+  "utility_score": 0.41000000000000003,
+  "timestamp": "2026-02-23T21:46:10.646872"
+}

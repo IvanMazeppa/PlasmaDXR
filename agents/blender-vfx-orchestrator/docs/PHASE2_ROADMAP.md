@@ -18,7 +18,7 @@ Phase 2+ takes the system from "produces evaluable renders" to "reliably produce
 | Phase | Focus | Estimated Effort | Status |
 |-------|-------|-----------------|--------|
 | **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **9/9 COMPLETE — 192 tests pass** |
-| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | Weeks 2-4 |
+| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | **2/8 COMPLETE (2B-1, 2B-3)** — 243 tests pass |
 | **2C: Advanced Capabilities** | Multi-physics, experimentation, technique diversity | ~1,595 lines (core) | Weeks 6-9 |
 | **2D: Full Autonomy (Directional)** | Autonomy tracking, cross-session learning | ~405 lines (concrete) + TBD | Week 10+ |
 
@@ -788,64 +788,27 @@ Seeded entries start at "emerging" trust level. They are NOT injected into the S
 
 **Schedule note:** 2B-1 (Ralph-Style Stateless Iterations) gets its own dedicated sprint in Week 2 with isolated E2E testing. All other 2B items are Week 3+. Ralph is the highest-risk change in Phase 2 and must not be bundled with other work.
 
-### 2B-1: Ralph-Style Stateless Iterations
+### 2B-1: Ralph-Style Stateless Iterations — DONE
 
-**What:** Each iteration gets a fresh `Runner.run()` invocation with clean context. Memory persists through a structured state file written between iterations. No accumulated conversation history.
+**Status:** COMPLETE | **Branch:** `0.34.9/phase2b1-stateless-iteration` | **Tests:** 23 new (215 total) | **Actual lines:** ~240
 
-**Why it matters:** This is the **single highest-impact pattern** identified across all four research reports. By iteration 3-4, context is polluted with verbose evaluation output, failed script fragments, and stale research. The Ralph pattern eliminates this entirely.
+**What shipped:** Feature-flagged stateless iterations. In stateless mode (`stateless_iterations: true`, default), iteration-loop `Runner.run()` calls get `session=None` instead of `session=sdk_session`. Pre-loop phases (0, 0.5) keep `sdk_session` for research continuity. Compaction is skipped in stateless mode.
 
-**Research support:**
-- Autonomy Research §2.1 (Ralph): "CRITICAL impact. Eliminates context degradation, reduces token cost per iteration by 60-80%"
-- Autonomy Research §6.1, Monitoring Architecture §2.1
+**What changed from the original spec:** See `docs/PHASE2B1_IMPLEMENTATION_NOTES.md` for full delta analysis. Key finding: the architecture was already 80% stateless — SharedContext rebuilds each iteration, SessionState persists to disk, results pass via Python variables, prompts embed context via f-strings. The roadmap's 5-day incremental rollout and ~600 LOC estimate assumed conversation history carried unique context. It didn't.
 
-**Implementation strategy — INCREMENTAL:**
-
-1. **Week 2, Day 1-2:** Write `IterationState` dataclass + serialization
-2. **Week 2, Day 2-3:** Convert ONLY iteration 2 to stateless (iteration 1 stays as-is for A/B comparison)
-3. **Week 2, Day 3-4:** Run E2E — compare iteration 2's behavior old vs new
-4. **Week 2, Day 4-5:** If quality holds or improves, convert all remaining iterations
-5. **Week 3:** Only THEN proceed to other 2B items
+**Implementation approach:** All-at-once behind feature flag (not gradual iteration-by-iteration). The `IterationSnapshot` utility provides optional prompt enrichment but was NOT required — existing prompts already embed all needed context.
 
 | File | Change | Lines |
 |------|--------|-------|
-| New: `utils/iteration_state.py` | `IterationState` dataclass + `write_state()` / `read_state()` | ~180 |
-| `orchestrator.py` (iteration loop) | Restructure: each iteration is a new `Runner.run()` call | ~300 |
-| `orchestrator.py` (prompt construction) | Build iteration prompt from state file only | ~120 |
+| `config/presets.yaml` | `stateless_iterations` flag on all 7 presets | ~7 |
+| `config/agent_config.py` | `PresetConfig.stateless_iterations` field + accessor | ~10 |
+| New: `utils/iteration_state.py` | `IterationSnapshot` frozen dataclass (safety net for prompt enrichment) | ~85 |
+| `orchestrator.py` | `iter_session` variable, 12 session replacements, compaction guard | ~25 changed |
+| New: `tests/test_stateless_iterations.py` | 5 test classes, 23 tests | ~120 |
 
-**State file structure:**
-```json
-{
-  "session_id": "session_20260222_fire_001",
-  "iteration": 3,
-  "effect_type": "fire",
-  "technique": "mantaflow_gas",
-  "current_script_path": "output/fire_001/iter3/script.py",
-  "current_score": 45,
-  "score_history": [0, 28, 45],
-  "critical_issues": ["LIGHTING_TOO_DIM"],
-  "escape_level": 1,
-  "learnings": ["Light energy 500 too low — need 2000+"],
-  "qa_diagnosis": {
-    "symptoms": ["render too dark"],
-    "root_causes": ["area_light energy=500 at line 342"],
-    "suggested_fixes": ["increase light energy to 2000-3000"]
-  },
-  "monitor_alerts": ["No oscillation detected"],
-  "parameter_bounds": {"energy": [20.0, 200.0]},
-  "truth_pack_types": ["FluidDomainSettings", "FluidFlowSettings"]
-}
-```
+**Rollback:** Set `stateless_iterations: false` in the active preset. All existing behavior preserved.
 
-**Tests:**
-1. State roundtrip: write state → read state → assert all fields preserved exactly
-2. Fresh context: iteration 2 starts with only state file content → assert context size < 5K tokens
-3. A/B comparison: run same prompt twice — accumulated vs Ralph → assert Ralph score >= old score
-4. Failure routing: trigger execution error in iteration 2 → assert error recovery works across Runner.run() boundary
-5. SharedContext rebuild: assert truth_pack, session state, stuck_state survive across boundaries
-
-**Rollback:** Set `ENABLE_RALPH_ITERATIONS = False` in `config/agent_config.py`.
-
-**Estimated effort:** ~600 lines | **Dependencies:** 2A-4 (PipelineMonitor for monitor_alerts), 2A-5 (parameter bounds) | **Risk:** Medium
+**Estimated effort (roadmap):** ~600 lines | **Actual effort:** ~240 lines | **Risk realized:** Low (not Medium)
 
 ---
 
@@ -1097,9 +1060,9 @@ def compute_retention(entry, now):
 
 | Item | Lines | Impact | Tests | Sprint |
 |------|-------|--------|-------|--------|
-| **2B-1: Ralph stateless iterations** | **~600** | **Critical — eliminates context degradation** | **5** | **Week 2 (ISOLATED)** |
+| **2B-1: Ralph stateless iterations** | **~240 actual** | **Critical — eliminates context degradation** | **23** | **DONE — branch `0.34.9/phase2b1-stateless-iteration`** |
 | 2B-2: Context trimming | ~143 | High — per-agent precision | 4 | Week 3 |
-| 2B-3: Multi-grader evaluation | ~405 | High — saves $0.05/failed render | 5 | Week 3 |
+| **2B-3: Multi-grader evaluation** | **~390 actual** | **High — saves $0.05/failed render** | **28** | **DONE — deterministic Tier 1 checks before LLM vision** |
 | 2B-4: AdvancedSQLiteSession | ~210 | Medium — branching + token tracking | 4 | Week 3 (parallel w/ 2B-1 testing) |
 | 2B-5: HITL framework | ~263 | Medium — user-requested | 5 | Week 4 |
 | 2B-6: Memory decay | ~121 | Medium — prevents KB re-poisoning | 4 | Week 3 |

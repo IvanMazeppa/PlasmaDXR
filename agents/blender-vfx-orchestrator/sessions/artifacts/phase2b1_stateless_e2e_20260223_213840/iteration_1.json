@@ -1,0 +1,63 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/phase2b1_stateless_e2e_fire_v1.py",
+  "technique_used": "mantaflow_gas_principled_volume_blackbody",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2b1_stateless_e2e/phase2b1_stateless_e2e.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2b1_stateless_e2e/cache",
+  "score": 32.0,
+  "passed": false,
+  "primary_issue": "The element does not read as convincing fire: it looks like a soft emissive blob/billboard with bloom, lacking volumetric flame structure, temperature-driven color, and smoke/scattering cues.",
+  "parameter_changes": {
+    "asset_name": "phase2b1_stateless_e2e",
+    "frame_range": [
+      1,
+      25
+    ],
+    "domain": {
+      "domain_type": "GAS",
+      "resolution_max": 64,
+      "cache_type": "ALL",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2b1_stateless_e2e/cache",
+      "cache_frame_start": 1,
+      "cache_frame_end": 25,
+      "cache_data_format": "OPENVDB",
+      "use_noise": true,
+      "noise_scale": 2,
+      "noise_strength": 1.6,
+      "noise_time_anim": 0.35,
+      "vorticity": 0.4,
+      "flame_vorticity": 0.85,
+      "flame_smoke": 1.1,
+      "burning_rate": 1.0,
+      "use_dissolve_smoke": true,
+      "dissolve_speed": 14,
+      "use_adaptive_timesteps": true,
+      "timesteps_min": 1,
+      "timesteps_max": 4
+    },
+    "flow": {
+      "flow_type": "BOTH",
+      "flow_behavior": "INFLOW",
+      "density": 1.0,
+      "fuel_amount": 1.0,
+      "temperature": 2.0,
+      "subframes": 1,
+      "use_initial_velocity": true,
+      "velocity_normal": 2.0,
+      "velocity_random": 0.35,
+      "velocity_factor": 1.0
+    },
+    "render": {
+      "engine": "BLENDER_EEVEE",
+      "resolution": [
+        1280,
+        720
+      ],
+      "render_frame": 20,
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2b1_stateless_e2e/phase2b1_stateless_e2e.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2b1_stateless_e2e/phase2b1_stateless_e2e.blend"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-23T21:47:25.168077"
+}

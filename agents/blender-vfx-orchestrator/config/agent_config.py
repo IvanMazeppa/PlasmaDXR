@@ -96,6 +96,7 @@ class PresetConfig:
     max_iterations: int = 3
     verbose: bool = False
     stateless_iterations: bool = True  # Phase 2B-1: Don't share SDK session across iterations
+    multi_grader_eval: bool = True  # Phase 2B-3: Deterministic checks before LLM vision
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -112,6 +113,7 @@ class PresetConfig:
             max_iterations=data.get("max_iterations", 3),
             verbose=data.get("verbose", False),
             stateless_iterations=data.get("stateless_iterations", True),
+            multi_grader_eval=data.get("multi_grader_eval", True),
         )
 
 
@@ -240,6 +242,10 @@ class AgentConfigManager:
     def use_stateless_iterations(self) -> bool:
         """Phase 2B-1: Check if stateless iterations are enabled."""
         return self.preset.stateless_iterations
+
+    def use_multi_grader_eval(self) -> bool:
+        """Phase 2B-3: Check if deterministic quality checks are enabled."""
+        return self.preset.multi_grader_eval
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""

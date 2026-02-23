@@ -1,0 +1,26 @@
+{
+  "session_id": "phase2b1_stateless_e2e_20260223_213840",
+  "iteration": 2,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "(General/fire shading) Drive emission color from a temperature/gradient ramp (white-hot core \u2192 yellow \u2192 orange \u2192 deep red at edges) instead of a near-uniform emissive look; keep highlights bright but avoid hard clipping via exposure/tonemapping adjustments.",
+    "(General/detail) Increase high-frequency structure in the flame: layer multiple noises at different scales and preserve edge detail\u2014avoid heavy blur/bloom that turns detail into a blob; use smaller-radius bloom with a higher threshold so only the hottest parts glow.",
+    "(General/volume) Add/strengthen volumetric scattering + extinction and enable volume self-shadowing to create depth; without this, the flame reads flat/opaque.",
+    "(General/smoke) Add a separate smoke density field/pass that rises above the flame and transitions from hot/transparent to cooler/denser grey; ensure it has visible turbulent billows.",
+    "(Lighting) Ensure the fire contributes to scene lighting (GI/emissive contribution or an added area/point light matched to the flame) so nearby surfaces pick up warm spill and soft shadows; remove/disable any unrelated lights creating ceiling highlights that don\u2019t match the fire.",
+    "(Line 232) Reduce extreme noise warping if it\u2019s causing \u201cmush\u201d: try noise.inputs['Distortion'] from 4.0 \u2192 1.0\u20132.0 to keep coherent flame tongues rather than smeared blobs.",
+    "(Line 262-263) Rebalance noise scale/detail to get larger readable flame shapes plus secondary detail: try noise.inputs['Scale'] from 40.0 \u2192 10\u201320 and noise.inputs['Detail'] from 8.0 \u2192 4\u20136 (then add a second finer noise layer if available).",
+    "(Line 228) Fix stretched/tiled environment patterning: mapping.inputs['Scale'] from (1.0, 6.0, 1.0) \u2192 (1.0, 1.0, 1.0) or (1.0, 2.0, 1.0) to reduce visible striping on walls.",
+    "(Line 128) If surface bump is contributing to noisy/specular distractions, reduce bump.inputs['Strength'] from 0.55 \u2192 0.15\u20130.3.",
+    "(Line 205) If room materials are unintentionally mirror-like, reduce bsdf.inputs['Metallic'] from 1.0 \u2192 0.0\u20130.1 for walls/benches so lighting reads more plausibly (unless it\u2019s intentionally metal)."
+  ],
+  "cache_size_mb": 9.284011840820312,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 151.5116152239989,
+  "utility_score": 0.5237403206466676,
+  "timestamp": "2026-02-23T21:49:47.391268"
+}
