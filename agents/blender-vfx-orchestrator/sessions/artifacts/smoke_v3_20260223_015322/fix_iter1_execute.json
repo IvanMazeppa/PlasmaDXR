@@ -1,0 +1,16 @@
+{
+  "iteration": 1,
+  "phase": "execute",
+  "strategy": "spec_first_recovery_applied",
+  "instructions": [
+    "Regenerate/fix script via spec-first modification flow.",
+    "Preserve verified API usage; do not introduce new unverified attributes.",
+    "Re-run executor once with recovered script."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/smoke_v3_fire_mantaflow.py",
+  "script_output_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/smoke_v3_script_iter1_specfix.py",
+  "notes": [
+    "recovery_source=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/smoke_v3_20260223_015322/fix_iter1_execute.json"
+  ],
+  "timestamp": "2026-02-23T02:03:56.657666"
+}

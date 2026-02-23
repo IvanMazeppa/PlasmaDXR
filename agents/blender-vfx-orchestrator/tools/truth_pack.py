@@ -240,6 +240,28 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
     r'\.(inputs|outputs)\.get\(\s*(\d+)': (
         "bpy_prop_collection.get() requires string key in 5.0 — use bracket access [N] for integer indices", None
     ),
+    # Blender 5.0: forcefield_add does NOT exist — use effector_add
+    r'\bforcefield_add\b': (
+        "Use 'effector_add' not 'forcefield_add' in Blender 5.0", "effector_add"
+    ),
+    # Blender 5.0: openvdb_data_depth enum is context-dependent — 'NONE' only valid
+    # in bl_rna but at runtime with OPENVDB format, valid values are '32'/'16'.
+    # Safe to remove entirely (Blender uses default '32').
+    r"openvdb_data_depth\s*=\s*['\"]NONE['\"]": (
+        "openvdb_data_depth='NONE' fails at runtime (context-dependent enum). Remove line.", None
+    ),
+    # Blender 5.0: cache_particle_format is context-dependent. For GAS domains,
+    # only 'UNI' is valid (no particles). For LIQUID, 'OPENVDB' works.
+    # Safe to remove — Blender uses correct default per domain type.
+    r"cache_particle_format\s*=\s*['\"]OPENVDB['\"]": (
+        "cache_particle_format='OPENVDB' fails for GAS domains (only 'UNI'). Remove line.", None
+    ),
+    # Blender 5.0: cache_mesh_format is context-dependent. For GAS domains,
+    # valid values are 'BOBJECT'/'OBJECT' (not 'UNI' or 'OPENVDB').
+    # Safe to remove — Blender uses correct default per domain type.
+    r"cache_mesh_format\s*=\s*['\"](?:UNI|OPENVDB)['\"]": (
+        "cache_mesh_format='UNI'/'OPENVDB' fails for GAS domains (only 'BOBJECT'/'OBJECT'). Remove line.", None
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -253,6 +275,7 @@ HARDCODED_FIXES: Dict[str, str] = {
     "ShaderNodeMixRGB": "ShaderNodeMix",
     "ShaderNodeSeparateRGB": "ShaderNodeSeparateColor",
     "BLENDER_EEVEE_NEXT": "BLENDER_EEVEE",
+    "forcefield_add": "effector_add",
 }
 
 
@@ -445,21 +468,23 @@ def validate_script_against_truth_pack(
             continue
 
         # Check settings access patterns (domain_settings.X, flow_settings.X, etc.)
-        for settings_attr, type_name in SETTINGS_MAP.items():
-            if type_name not in valid_attrs:
-                continue
-            pattern = rf'\.{re.escape(settings_attr)}\.(\w+)'
-            for match in re.finditer(pattern, line):
-                attr = match.group(1)
-                if attr not in valid_attrs[type_name] and not attr.startswith("_"):
-                    suggestion = _suggest_correction(attr, list(valid_attrs[type_name]))
-                    errors.append(ValidationError(
-                        line=i,
-                        attribute=attr,
-                        object_type=type_name,
-                        message=f"'{attr}' is not a valid property of {type_name}",
-                        suggestion=suggestion,
-                    ))
+        # Skip operator calls (bpy.ops.X.Y) — they use the same dotted syntax
+        if "bpy.ops." not in stripped:
+            for settings_attr, type_name in SETTINGS_MAP.items():
+                if type_name not in valid_attrs:
+                    continue
+                pattern = rf'\.{re.escape(settings_attr)}\.(\w+)'
+                for match in re.finditer(pattern, line):
+                    attr = match.group(1)
+                    if attr not in valid_attrs[type_name] and not attr.startswith("_"):
+                        suggestion = _suggest_correction(attr, list(valid_attrs[type_name]))
+                        errors.append(ValidationError(
+                            line=i,
+                            attribute=attr,
+                            object_type=type_name,
+                            message=f"'{attr}' is not a valid property of {type_name}",
+                            suggestion=suggestion,
+                        ))
 
         # Check variable name patterns (dset.X, dsettings.X, fset.X, etc.)
         for var_name, type_name in VARIABLE_PATTERNS.items():
@@ -535,6 +560,34 @@ def auto_fix_script(
                         new_lines.append(line)
                 fixed = "\n".join(new_lines)
                 continue
+            # Special case: strip lines with context-dependent enums that fail at runtime.
+            # error.attribute is the regex pattern, error.message is the description.
+            _ctx_enum_strips = {
+                "openvdb_data_depth": (
+                    r"openvdb_data_depth\s*=\s*['\"]NONE['\"]",
+                    "Removed openvdb_data_depth='NONE' (context-dependent enum)"),
+                "cache_particle_format": (
+                    r"cache_particle_format\s*=\s*['\"]OPENVDB['\"]",
+                    "Removed cache_particle_format='OPENVDB' (invalid for GAS domains)"),
+                "cache_mesh_format": (
+                    r"cache_mesh_format\s*=\s*['\"](?:UNI|OPENVDB)['\"]",
+                    "Removed cache_mesh_format (invalid format for GAS domains)"),
+            }
+            _matched_ctx = False
+            for _keyword, (_pat, _msg) in _ctx_enum_strips.items():
+                if _keyword in (error.message or "") or _keyword in (error.attribute or ""):
+                    lines = fixed.split("\n")
+                    new_lines = []
+                    for line in lines:
+                        if re.search(_pat, line):
+                            fixes_applied.append(_msg)
+                        else:
+                            new_lines.append(line)
+                    fixed = "\n".join(new_lines)
+                    _matched_ctx = True
+                    break
+            if _matched_ctx:
+                continue
             # Special case: .inputs/.outputs.get(int, ...) → bracket access
             if "bpy_prop_collection.get()" in (error.message or ""):
                 def _fix_collection_get(m):
@@ -565,6 +618,25 @@ def auto_fix_script(
                     f"Line {error.line}: Replaced '{error.attribute}' with "
                     f"'{error.suggestion}' on {error.object_type}"
                 )
+        else:
+            # No suggestion available — comment out the offending line
+            lines = fixed.split("\n")
+            # Find the line (0-indexed)
+            line_idx = error.line - 1
+            if 0 <= line_idx < len(lines):
+                original = lines[line_idx]
+                # Only comment out if it's an assignment to the invalid attribute
+                if f".{error.attribute}" in original and "=" in original:
+                    indent = len(original) - len(original.lstrip())
+                    lines[line_idx] = (
+                        f"{' ' * indent}# REMOVED: {error.attribute} not valid on "
+                        f"{error.object_type} — {original.strip()}"
+                    )
+                    fixed = "\n".join(lines)
+                    fixes_applied.append(
+                        f"Line {error.line}: Commented out invalid "
+                        f"'{error.attribute}' on {error.object_type}"
+                    )
 
     return fixed, fixes_applied
 

@@ -1,0 +1,51 @@
+{
+  "recommended_approach": "Use a Mantaflow Gas (smoke/fire) setup with at least one Fluid **Domain** and one **Flow** emitter, then render the result by assigning a **Principled Volume** material to the Domain and driving fire emission using **Blackbody** (temperature-based) shading. In shading, rely on the simulation\u2019s volume grids/attributes (typically `density` and `temperature`) or the **Volume Info** node outputs (Density/Flame/Temperature) to control the Principled Volume\u2019s Density and Blackbody/Temperature inputs. Bake the cache after saving the .blend file.",
+  "key_parameters": {
+    "simulation_workflow": {
+      "required_objects": [
+        "Domain (simulation bounds; must exist before baking)",
+        "Flow (emits smoke/fire inside the domain)"
+      ],
+      "order_notes": [
+        "Create Domain first, then Flow(s), then assign Domain material, then save the .blend, then bake cache."
+      ],
+      "bake_notes": [
+        "Save the blend-file before baking.",
+        "Test-cache small ranges before full bake; changes to Domain/Flow typically require re-bake."
+      ]
+    },
+    "shading_principled_volume_inputs": {
+      "density_attribute_typical": "density",
+      "temperature_attribute_typical": "temperature",
+      "blackbody_intensity_note": "Set Blackbody Intensity to 1 for physically accurate intensity.",
+      "temperature_units": "Temperature input is in kelvin; higher values emit more."
+    },
+    "shading_volume_info_node": {
+      "density_output": "Scalar density of smoke inside the Fluid Domain.",
+      "flame_output": "Scalar density of fire inside the Fluid Domain (all three outputs are the same).",
+      "temperature_output": "0\u20131 normalized temperature where 0\u20131 maps to 0\u20131000 kelvin (useful for physically-based fire with Blackbody/Principled Volume)."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.ParticleSettings",
+    "bpy.data.materials"
+  ],
+  "warnings": [
+    "Save the blend-file before baking (required for cache workflow).",
+    "Domain must exist before baking; workflow order matters (Domain \u2192 Flow \u2192 material \u2192 bake).",
+    "Volume Info Temperature output is normalized (0\u20131 maps to 0\u20131000 kelvin); Principled Volume\u2019s Temperature expects kelvin, so account for this when wiring nodes.",
+    "Tooling note from doc search: \u201cNo API doc_refs found (expected bpy.types.* or bpy.ops.* references).\u201d"
+  ],
+  "alternative_approaches": [
+    "Instead of relying on Principled Volume defaults, build a custom volume shader using Volume Absorption/Scatter/Emission components (manual combination) and read simulation attributes (density/temperature) explicitly.",
+    "Use the Volume Info node outputs (Density/Flame/Temperature) as the driver signals for custom node networks (e.g., Flame as an emission mask, Temperature into Blackbody)."
+  ],
+  "doc_refs": [
+    "blender_manual_html/render/shader_nodes/shader/volume_principled.html#inputs-",
+    "blender_manual_html/render/materials/components/volume.html#shading-",
+    "blender_manual_html/render/shader_nodes/input/volume_info.html#outputs-",
+    "introduction.md (Fluid simulation workflow excerpt returned by doc bundle search)"
+  ],
+  "timestamp": "2026-02-23T01:15:02.769237"
+}

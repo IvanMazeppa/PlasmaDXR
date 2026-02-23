@@ -1,0 +1,52 @@
+{
+  "recommended_approach": "Use a Mantaflow gas setup (at minimum: one Fluid **Domain** and one **Flow** emitter), bake the cache, then render the domain volume using **Principled Volume** with **blackbody emission** driven by the simulation\u2019s temperature/heat grid. In shading, rely on standard volume attributes/grids (e.g., `density`, `temperature`, and optionally `color`) and/or the **Volume Info** node outputs (`Flame`, `Temperature`) to control density and fire emission.",
+  "key_parameters": {
+    "mantaflow_workflow": {
+      "required_objects": [
+        "Domain (simulation bounds; must exist before baking)",
+        "Flow (emitter)"
+      ],
+      "bake_notes": [
+        "Save the .blend before baking",
+        "Bake cache to generate voxel data used for playback/rendering (e.g., density/heat/velocity)"
+      ]
+    },
+    "principled_volume_inputs_for_fire": {
+      "density_attribute_typical": "density",
+      "color_attribute_typical": "color (for smoke coloring)",
+      "temperature_attribute_typical": "temperature",
+      "blackbody_intensity_recommendation": "Set Blackbody Intensity to 1 for physically accurate intensity",
+      "temperature_meaning": "Temperature is in kelvin for blackbody emission (higher values emit more)",
+      "useful_controls": [
+        "Emission Strength (overall emitted light)",
+        "Emission Color (tint)",
+        "Blackbody Tint (tinting blackbody result)",
+        "Anisotropy (scattering direction, if you include smoke/scatter)"
+      ]
+    },
+    "volume_info_node_outputs": {
+      "flame": "Scalar for fire density (Flame output; all three channels the same).",
+      "temperature": "Scalar for temperature; values in 0\u20131 map to 0\u20131000 kelvin; intended for physically-based fire with Blackbody/Principled Volume."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "Mantaflow workflow requirement: you need at least one **Domain** and one **Flow** object for a gas simulation.",
+    "Domain must exist before baking; otherwise you can\u2019t produce cache data for rendering.",
+    "Save the blend-file before baking (noted in the documented workflow guidance).",
+    "Doc search returned limited direct API reference pages for Mantaflow settings (bundle warning: no dedicated API doc_refs were surfaced for `bpy.types.FluidDomainSettings`/`bpy.types.FluidFlowSettings`, only index hits)."
+  ],
+  "alternative_approaches": [
+    "Instead of relying solely on Principled Volume defaults, build a custom volume shader by combining **Volume Absorption**, **Volume Scatter**, and **Emission** nodes, and use an **Attribute** node to read volume attributes such as `density`, `color`, and `temperature` for finer control."
+  ],
+  "doc_refs": [
+    "blender_manual_html/render/shader_nodes/shader/volume_principled.html#inputs-",
+    "blender_manual_html/render/materials/components/volume.html#shading-",
+    "blender_manual_html/render/shader_nodes/input/volume_info.html#outputs-",
+    "introduction.md (Mantaflow smoke/gas workflow notes from the bundled documentation excerpt)"
+  ],
+  "timestamp": "2026-02-23T01:54:10.298215"
+}

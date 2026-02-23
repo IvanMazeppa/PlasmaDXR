@@ -302,6 +302,15 @@ KNOWN_API_CHANGES: Dict[str, Dict[str, str]] = {
         "correction": "# .feature_set removed in Blender 5.0",
         "reason": "CyclesRenderSettings.feature_set removed in Blender 5.0."
     },
+    # bpy.ops.object.forcefield_add REMOVED (Blender 5.0) — use effector_add
+    "forcefield_add": {
+        "correction": "effector_add",
+        "reason": "bpy.ops.object.forcefield_add does not exist in Blender 5.0. Use bpy.ops.object.effector_add() instead."
+    },
+    "bpy.ops.object.forcefield_add": {
+        "correction": "bpy.ops.object.effector_add",
+        "reason": "forcefield_add removed in Blender 5.0. Use effector_add."
+    },
     # CRITICAL: Fluid modifier setup sequence (Blender 5.0)
     # domain_settings is None until fluid_type='DOMAIN' is set
     "mod.domain_settings.domain_type": {
