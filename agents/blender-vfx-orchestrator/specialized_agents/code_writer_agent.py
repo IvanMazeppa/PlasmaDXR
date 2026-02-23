@@ -1,4 +1,14 @@
 """
+DEPRECATED (Phase 2A-6): Code Writer Agent replaced by Script Writer + Truth Pack.
+
+The Script Writer agent now handles all script generation/modification.
+Truth pack + tool guardrails provide API validation at $0, replacing the
+Code Writer's role of writing code against a pre-verified APISpec.
+
+Rollback: Set ENABLE_SPEC_FIRST_PIPELINE=1 in orchestrator.py and re-enable
+the imports and agent creation in initialize().
+
+--- ORIGINAL DOCSTRING ---
 Code Writer Agent for Verified Blender Script Generation.
 
 This agent receives a VERIFIED APISpec from the API Spec Agent and

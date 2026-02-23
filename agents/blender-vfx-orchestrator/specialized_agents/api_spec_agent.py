@@ -1,4 +1,15 @@
 """
+DEPRECATED (Phase 2A-6): API Spec Agent replaced by Truth Pack + Tool Guardrails.
+
+The truth_pack.py module provides deterministic Blender API validation via
+bl_rna introspection at $0 cost, making the LLM-based API Spec Agent unnecessary.
+The truth_pack_to_api_spec() function converts truth pack data to APISpec models
+for backward compatibility with guardrails that still use the APISpec format.
+
+Rollback: Set ENABLE_SPEC_FIRST_PIPELINE=1 in orchestrator.py and re-enable
+the imports and agent creation in initialize().
+
+--- ORIGINAL DOCSTRING ---
 API Spec Agent for Verified Blender API Specifications.
 
 This agent creates verified API specifications by querying Blender 5.0

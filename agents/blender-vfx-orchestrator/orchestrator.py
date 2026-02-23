@@ -84,8 +84,6 @@ from hooks.enforcement_hooks import (
     create_error_recovery_hooks,
     create_quality_analyst_hooks,
     create_learning_agent_hooks,
-    create_api_spec_hooks,
-    create_code_writer_hooks,
 )
 
 # Phase 3: Input/Output Guardrails for agent validation
@@ -104,11 +102,7 @@ from guardrails import (
     validate_modification_decision,
     validate_quality_decision,
 )
-# Phase 7: Spec-First Pipeline guardrails (API Hallucination Prevention)
-from guardrails.api_spec_guardrails import (
-    validate_api_spec,
-    validate_code_against_spec,
-)
+# Phase 7 (DEPRECATED 2A-6): Spec-First guardrails removed — truth pack handles validation at $0
 # Artifact Gates: Deterministic validation of execution outputs (bake/render gates)
 from guardrails.artifact_gates import (
     validate_execution_artifacts,
@@ -345,12 +339,9 @@ from specialized_agents import (
 # DocsExpert now uses in-process function_tools instead of MCP client connections.
 # This fixes the anyio TaskGroup conflict that previously blocked MCP tool handlers.
 from specialized_agents.docs_expert import create_docs_expert
-# Spec-First Pipeline agents (Phase 7: API Hallucination Prevention)
-# These agents replace direct Script Writer usage with a two-phase approach:
-# 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
-# 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
-from specialized_agents.api_spec_agent import create_api_spec_agent
-from specialized_agents.code_writer_agent import create_code_writer_agent, format_api_spec_for_prompt
+# Phase 7 (DEPRECATED 2A-6): Spec-First Pipeline agents removed.
+# Truth pack + tool guardrails handle API validation at $0.
+# See specialized_agents/api_spec_agent.py for historical reference.
 # API Validator for Blender 5.0 API validation (Phase 6 of Architecture Optimization)
 # Validates API calls in generated scripts BEFORE execution to catch errors at source
 from specialized_agents.api_validator import (
@@ -760,15 +751,7 @@ class BlenderVFXOrchestrator:
         self._modification_coordinator: Optional[Agent] = None
         self._quality_gate_coordinator: Optional[Agent] = None
 
-        # Phase 7: Spec-First Pipeline agents (API Hallucination Prevention)
-        # Two-phase approach: API Spec Agent → Code Writer Agent
-        self._api_spec_agent: Optional[Agent] = None
-        self._code_writer_agent: Optional[Agent] = None
-        # Spec-first pipeline is runtime-configurable for safe rollout.
-        # Default ON to prevent Blender API hallucinations.
-        self._use_spec_first_pipeline: bool = os.getenv(
-            "ORCHESTRATOR_SPEC_FIRST", "1"
-        ).lower() in ("1", "true", "yes", "on")
+        # Phase 7 (DEPRECATED 2A-6): Spec-First agents removed. Truth pack handles validation at $0.
 
         self._budget_tracker: BudgetTracker = get_budget_tracker()
         self._persistence: SessionPersistence = get_persistence()
@@ -786,11 +769,6 @@ class BlenderVFXOrchestrator:
         )
         self._diagnostic_hooks: Optional[DiagnosticHooks] = None
         self._enable_parallel_preflight = os.getenv("VFX_PARALLEL_PREFLIGHT", "1").lower() in ("1", "true", "yes")
-        print(
-            f"[Orchestrator] generation_mode={'spec_first' if self._use_spec_first_pipeline else 'legacy'} "
-            f"(ORCHESTRATOR_SPEC_FIRST={os.getenv('ORCHESTRATOR_SPEC_FIRST', '1')})",
-            file=sys.stderr,
-        )
 
     def _get_model_settings(self, agent_name: str) -> tuple[str, ModelSettings]:
         """
@@ -836,7 +814,7 @@ class BlenderVFXOrchestrator:
             "asset_name": request.asset_name,
             "effect_type": request.effect_type.value,
             "session_id": session.session_id,
-            "generation_mode": "spec_first" if self._use_spec_first_pipeline else "legacy",
+            "generation_mode": "script_writer",  # Phase 2A-6: spec-first deprecated
         }
         if iteration is not None:
             trace_meta["iteration"] = iteration
@@ -1255,570 +1233,10 @@ Note: Learning Agent is also analyzing in parallel - make your decision based on
 
         return learning, gate_decision
 
-    async def _run_api_spec_only(
-        self,
-        effect_type: str,
-        technique_hint: str,
-        request: "AssetRequest",
-        context: SharedContext,
-        sdk_session: Optional[SessionABC] = None,
-    ) -> Optional["APISpec"]:
-        """
-        Run only the API Spec phase (bundle + agent) without Code Writer.
-
-        This is designed to run in parallel with Technique Selection.
-        The technique_hint is a best-guess from research; the final technique
-        from Technique Selector will be used for Code Writer.
-
-        Returns:
-            APISpec if successful, None on failure
-        """
-        import time as _time
-        start = _time.perf_counter()
-
-        run_config = self._build_run_config(
-            session=context.session,
-            request=request,
-            iteration=context.session.current_iteration or 0,
-            phase="api_spec_parallel",
-        )
-
-        # Bundle call (fast, programmatic)
-        try:
-            bundle_results = bundle_search_impl(
-                effect_type=effect_type,
-                description=request.description,
-                intent=f"create {effect_type} effect with {technique_hint}",
-                domain="Mantaflow",
-                max_results=6
-            )
-        except Exception as e:
-            print(f"[API Spec Parallel] Bundle failed: {e}", file=sys.stderr)
-            bundle_results = "{}"
-
-        # API Spec Agent
-        api_spec_hooks = create_api_spec_hooks()
-        spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
-
-## Effect Type: {effect_type}
-## Technique Hint: {technique_hint}
-## Description: {request.description}
-
-## PRE-LOADED BUNDLE RESULTS (from blender_doc_search_bundle)
-```json
-{bundle_results}
-```
-
-## YOUR TASK
-1. Extract attributes and doc_refs from the bundle results above
-2. ONLY use semantic_search_blender_docs for specific attributes NOT found in bundle (max 4 calls)
-3. Construct doc_ref as: blender_python_reference_5_0/bpy.types.{{CLASS}}.html#{{ATTRIBUTE}}
-4. Output the complete APISpec with all verified attributes
-
-Key parameters needed for {effect_type}:
-- Domain: resolution_max, domain_type, use_noise, noise_strength, vorticity
-- Flow: flow_type, flow_behavior, temperature, density, velocity_normal
-- Scene: frame_start, frame_end"""
-
-        try:
-            spec_result = await self._run_agent(
-                self._api_spec_agent,
-                spec_prompt,
-                context=context,
-                session=sdk_session,
-                hooks=api_spec_hooks,
-                max_turns=8,
-                run_config=run_config,
-            )
-            api_spec = spec_result.final_output
-            elapsed = _time.perf_counter() - start
-            print(f"[API Spec Parallel] Completed in {elapsed:.1f}s: "
-                  f"{len(api_spec.domain_attributes)} domain, {len(api_spec.flow_attributes)} flow attrs",
-                  file=sys.stderr)
-            return api_spec
-        except Exception as e:
-            elapsed = _time.perf_counter() - start
-            print(f"[API Spec Parallel] FAILED in {elapsed:.1f}s: {e}", file=sys.stderr)
-            return None
-
-    async def _run_parallel_technique_and_spec(
-        self,
-        request: "AssetRequest",
-        context: SharedContext,
-        research_output: Optional["ResearchOutput"],
-        research_artifact_path: Optional[str],
-        session: "SessionState",
-        sdk_session: Optional[SessionABC],
-    ) -> tuple[Optional["TechniqueDecision"], Optional["APISpec"]]:
-        """
-        Run Technique Selection and API Spec Agent in parallel.
-
-        This reduces latency by ~25s (the Technique Selection time) since
-        API Spec can start immediately using research output as a technique hint.
-
-        Returns:
-            Tuple of (TechniqueDecision, APISpec) - either may be None on failure
-        """
-        import time as _time
-        start = _time.perf_counter()
-
-        # Check if parallel mode should be used
-        parallel_enabled = os.getenv("VFX_PARALLEL_TECHNIQUE_SPEC", "1").lower() in ("1", "true", "yes")
-        if not parallel_enabled or not self._use_spec_first_pipeline or not self._api_spec_agent:
-            print(f"[Parallel Technique+Spec] DISABLED, running sequential", file=sys.stderr)
-            return None, None  # Signal to caller to use sequential path
-
-        print(f"[Parallel Technique+Spec] PARALLEL mode for {request.effect_type.value}", file=sys.stderr)
-
-        # Technique hint from research (used by API Spec while waiting for real technique)
-        technique_hint = "mantaflow_smoke"  # Safe default
-        if research_output and research_output.recommended_approach:
-            # Extract technique name from research
-            approach = research_output.recommended_approach.lower()
-            if "smoke" in approach or "pyro" in approach:
-                technique_hint = "mantaflow_smoke"
-            elif "liquid" in approach or "water" in approach:
-                technique_hint = "mantaflow_liquid"
-            elif "fire" in approach or "flame" in approach:
-                technique_hint = "mantaflow_fire"
-
-        # Build technique prompt
-        research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
-        technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
-
-## Research Summary
-{research_ref}
-Recommended: {research_output.recommended_approach if research_output else 'Default approach'}
-Key params: {list(research_output.key_parameters.keys()) if research_output and research_output.key_parameters else 'None'}
-
-## Effect Parameters
-- Effect Type: {request.effect_type.value}
-- Description: {request.description}
-- Reference: {request.reference_path or "None"}
-- Quality Threshold: {request.quality_threshold}
-
-## Available Alternatives
-{chr(10).join(f'- {a}' for a in session.alternative_approaches[:5]) if session.alternative_approaches else 'None identified'}
-
-Select the optimal technique and provide starting parameters."""
-
-        # Create parallel tasks
-        technique_task = self._run_agent(
-            self._technique_coordinator,
-            technique_prompt,
-            context=context,
-            session=sdk_session,
-            max_turns=6,
-            run_config=self._build_run_config(
-                session=session,
-                request=request,
-                iteration=0,
-                phase="technique_select_parallel",
-            ),
-        )
-
-        api_spec_task = self._run_api_spec_only(
-            effect_type=request.effect_type.value,
-            technique_hint=technique_hint,
-            request=request,
-            context=context,
-            sdk_session=sdk_session,
-        )
-
-        # Fan-out/fan-in
-        print(f"[Parallel Technique+Spec] Launching Technique + API Spec in parallel...", file=sys.stderr)
-        results = await asyncio.gather(technique_task, api_spec_task, return_exceptions=True)
-
-        elapsed = _time.perf_counter() - start
-
-        # S1.5-A2 FIX: Re-raise guardrail tripwires — these must never be silently swallowed.
-        from agents import OutputGuardrailTripwireTriggered
-        for i, r in enumerate(results):
-            if isinstance(r, OutputGuardrailTripwireTriggered):
-                label = "Technique" if i == 0 else "API Spec"
-                print(
-                    f"[Parallel Technique+Spec] FAIL-CLOSED: {label} guardrail tripped: {r}",
-                    file=sys.stderr,
-                )
-                raise r
-
-        # Extract results
-        technique_result = results[0] if not isinstance(results[0], Exception) else None
-        api_spec = results[1] if not isinstance(results[1], Exception) else None
-
-        technique_decision = None
-        if technique_result and hasattr(technique_result, 'final_output'):
-            technique_decision = technique_result.final_output
-
-        # Log results
-        technique_ok = technique_decision is not None
-        spec_ok = api_spec is not None
-
-        if isinstance(results[0], Exception):
-            print(f"[Parallel Technique+Spec] Technique FAILED: {results[0]}", file=sys.stderr)
-        if isinstance(results[1], Exception):
-            print(f"[Parallel Technique+Spec] API Spec FAILED: {results[1]}", file=sys.stderr)
-
-        print(f"[Parallel Technique+Spec] Completed in {elapsed:.1f}s", file=sys.stderr)
-        print(f"[Parallel Technique+Spec]   Technique: {'OK - ' + technique_decision.selected_technique if technique_ok else 'FAILED'}", file=sys.stderr)
-        print(f"[Parallel Technique+Spec]   API Spec: {'OK' if spec_ok else 'FAILED'}", file=sys.stderr)
-
-        return technique_decision, api_spec
-
-    async def _run_spec_first_pipeline(
-        self,
-        effect_type: str,
-        technique: str,
-        request: "AssetRequest",
-        context: SharedContext,
-        sdk_session: Optional[SessionABC] = None,
-    ) -> ScriptOutput:
-        """
-        Run the Spec-First Pipeline for API hallucination prevention.
-
-        This two-phase approach makes hallucinated attributes structurally impossible:
-        1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
-        2. Code Writer Agent: Writes code using ONLY verified APIs from spec
-
-        The guardrails enforce that:
-        - Every attribute in the spec has a valid doc_ref
-        - Generated code only uses attributes from the spec
-
-        Args:
-            effect_type: VFX effect type (pyro, explosion, etc.)
-            technique: Selected technique (mantaflow_smoke, etc.)
-            request: Asset generation request
-            context: Shared context for agents
-            sdk_session: SDK session for conversation persistence
-
-        Returns:
-            ScriptOutput with the generated script path and metadata
-
-        SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
-        """
-        print(f"[Spec-First] Starting API Spec → Code Writer pipeline", file=sys.stderr)
-        run_config = self._build_run_config(
-            session=context.session,
-            request=request,
-            iteration=context.session.current_iteration or None,
-            phase="spec_first",
-        )
-
-        # Check if API Spec was pre-computed during parallel Phase 0.5
-        if hasattr(context, 'api_spec') and context.api_spec is not None:
-            print(f"[Spec-First] Using PRE-COMPUTED API Spec (from parallel Phase 0.5)", file=sys.stderr)
-            api_spec = context.api_spec
-            print(f"[Spec-First] Pre-computed spec: {len(api_spec.domain_attributes)} domain, "
-                  f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
-            # Skip directly to Code Writer (Phase 1.B)
-        else:
-            # ====== PHASE 1.0: DETERMINISTIC BUNDLE CALL ======
-            # Call bundle programmatically BEFORE running the agent
-            # This removes reliance on model compliance for bundle-first discipline
-            print(f"[Spec-First] Phase 1.0: Deterministic bundle call", file=sys.stderr)
-
-            try:
-                # Use bundle_search_impl (direct callable) instead of blender_doc_search_bundle (FunctionTool)
-                bundle_results = bundle_search_impl(
-                    effect_type=effect_type,
-                    description=request.description,
-                    intent=f"create {effect_type} effect with {technique}",
-                    domain="Mantaflow",
-                    max_results=6
-                )
-                print(f"[Spec-First] Bundle results loaded ({len(bundle_results)} chars)", file=sys.stderr)
-            except Exception as e:
-                print(f"[Spec-First] WARNING: Bundle call failed: {e}", file=sys.stderr)
-                bundle_results = "{}"  # Empty JSON fallback
-
-            # Create hooks for API Spec agent
-            api_spec_hooks = create_api_spec_hooks()
-
-            # ====== PHASE 1.A: API SPEC AGENT ======
-            # Creates verified API specification from Blender 5.0 docs
-            # Bundle results are pre-loaded - agent only needs targeted searches for gaps
-            print(f"[Spec-First] Phase 1.A: API Spec Agent (with pre-loaded bundle)", file=sys.stderr)
-
-            spec_prompt = f"""Create a VERIFIED API specification for {effect_type} effect.
-
-## Effect Type: {effect_type}
-## Technique: {technique}
-## Description: {request.description}
-
-## PRE-LOADED BUNDLE RESULTS (from blender_doc_search_bundle)
-The bundle search has already been executed. Use these results as your PRIMARY source:
-
-```json
-{bundle_results}
-```
-
-## YOUR TASK
-1. Extract attributes and doc_refs from the bundle results above
-2. ONLY use semantic_search_blender_docs for specific attributes NOT found in bundle (max 4 calls)
-3. Construct doc_ref as: blender_python_reference_5_0/bpy.types.{{CLASS}}.html#{{ATTRIBUTE}}
-4. Output the complete APISpec with all verified attributes
-
-Key parameters needed for {effect_type}:
-- Domain: resolution_max, domain_type, use_noise, noise_strength, vorticity
-- Flow: flow_type, flow_behavior, temperature, density, velocity_normal
-- Scene: frame_start, frame_end
-
-Extract from bundle first, then fill gaps with targeted searches."""
-
-            try:
-                spec_result = await self._run_agent(
-                    self._api_spec_agent,
-                    spec_prompt,
-                    context=context,
-                    session=sdk_session,
-                    hooks=api_spec_hooks,
-                    max_turns=8,
-                    run_config=run_config,
-                )
-                api_spec: APISpec = spec_result.final_output
-                print(f"[Spec-First] API Spec created: {len(api_spec.domain_attributes)} domain attrs, "
-                      f"{len(api_spec.flow_attributes)} flow attrs, {len(api_spec.ops)} ops", file=sys.stderr)
-
-                # Store the API spec in context for the Code Writer guardrail
-                context.api_spec = api_spec
-
-            except Exception as e:
-                # S1.5-A1 FIX: Fail-closed — do NOT fall back to legacy writer.
-                # Legacy writer can hallucinate Blender APIs without spec grounding.
-                # Re-raise so the pipeline treats this as a generation failure.
-                print(
-                    f"[Spec-First] FAIL-CLOSED: API Spec Agent failed: {e}. "
-                    f"Not falling back to legacy writer (API legality not guaranteed).",
-                    file=sys.stderr,
-                )
-                raise
-
-            print(f"[Spec-First] API Spec hooks stats: {api_spec_hooks.get_stats()}", file=sys.stderr)
-
-        # Create hooks for Code Writer (always needed)
-        code_writer_hooks = create_code_writer_hooks()
-
-        # ====== PHASE 1.B: CODE WRITER AGENT ======
-        # Writes code using ONLY verified APIs from the spec
-        print(f"[Spec-First] Phase 1.B: Code Writer Agent", file=sys.stderr)
-
-        # Format the API spec for the Code Writer prompt
-        spec_text = format_api_spec_for_prompt(api_spec)
-
-        code_prompt = f"""Write a Blender Python script for {effect_type} effect using ONLY the verified APIs below.
-
-{spec_text}
-
-## Asset Parameters
-- Asset Name: {request.asset_name}
-- Effect Type: {effect_type}
-- Technique: {technique}
-- Description: {request.description}
-- Resolution: {request.resolution}
-- Frames: {request.frame_start}-{request.frame_end}
-
-## CRITICAL RULES
-1. ONLY use attributes listed in the APISpec above
-2. Use variable names: dset for domain_settings, fset for flow_settings
-3. Copy attribute names EXACTLY (case sensitive)
-4. If an attribute you need is not in the spec, work without it
-
-Call write_script to generate the script, then validate_script to check it.
-Return the VerifiedScriptOutput with script_path and apis_used."""
-
-        try:
-            code_result = await self._run_agent(
-                self._code_writer_agent,
-                code_prompt,
-                context=context,
-                session=sdk_session,
-                hooks=code_writer_hooks,
-                max_turns=8,
-                run_config=run_config,
-            )
-            verified_output: VerifiedScriptOutput = code_result.final_output
-
-            # Convert VerifiedScriptOutput to ScriptOutput for pipeline compatibility
-            script = ScriptOutput(
-                script_path=verified_output.script_path,
-                technique_used=verified_output.technique_used,
-                parameters_set=verified_output.parameters_set,
-                validation_passed=verified_output.validation_passed,
-                validation_errors=verified_output.validation_errors,
-            )
-            print(f"[Spec-First] Script generated: {script.script_path}", file=sys.stderr)
-            print(f"[Spec-First] APIs used: {verified_output.apis_used}", file=sys.stderr)
-
-        except Exception as e:
-            print(f"[Spec-First] ERROR: Code Writer Agent failed: {e}", file=sys.stderr)
-            # Create error output
-            script = ScriptOutput(
-                script_path="",
-                technique_used=technique,
-                parameters_set={},
-                validation_passed=False,
-                validation_errors=[f"Spec-First pipeline failed: {e}"],
-            )
-
-        print(f"[Spec-First] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
-
-        # Phase 1 Reliability: Validate and auto-fix using truth pack
-        if context.truth_pack and script.script_path:
-            try:
-                fixed_path, fixes = validate_and_fix_script(
-                    script.script_path, context.truth_pack
-                )
-                if fixes:
-                    print(f"[Spec-First] Truth pack auto-fixed {len(fixes)} issues:",
-                          file=sys.stderr)
-                    for fix in fixes[:5]:
-                        print(f"  - {fix}", file=sys.stderr)
-                    script.validation_errors.extend(
-                        [f"[auto-fixed] {f}" for f in fixes]
-                    )
-            except Exception as e:
-                print(f"[Spec-First] WARNING: Truth pack validation failed: {e}",
-                      file=sys.stderr)
-
-        return script
-
-    async def _run_spec_first_modification(
-        self,
-        previous_script: "ScriptOutput",
-        modification_instructions: str,
-        quality_feedback: Optional["QualityOutput"],
-        request: "AssetRequest",
-        context: SharedContext,
-        iteration: int,
-        sdk_session: Optional[SessionABC] = None,
-    ) -> ScriptOutput:
-        """
-        Run Spec-First modification for iteration 2+.
-
-        This ensures all script modifications use only verified APIs from the
-        existing APISpec, preventing hallucination of deprecated attributes.
-
-        Args:
-            previous_script: The script to modify
-            modification_instructions: What changes to make (from Coordinator)
-            quality_feedback: Quality issues to address
-            request: Asset generation request
-            context: Shared context (must contain api_spec from iteration 0)
-            iteration: Current iteration number
-            sdk_session: SDK session for conversation persistence
-
-        Returns:
-            ScriptOutput with the modified script
-        """
-        print(f"[Spec-First Modify] Starting modification for iteration {iteration}", file=sys.stderr)
-
-        # Get the APISpec from context (set during iteration 0)
-        api_spec = getattr(context, 'api_spec', None)
-        if not api_spec:
-            print(f"[Spec-First Modify] WARNING: No APISpec in context, falling back to fresh spec", file=sys.stderr)
-            # Fall back to running full Spec-First pipeline
-            return await self._run_spec_first_pipeline(
-                effect_type=request.effect_type.value,
-                technique=previous_script.technique_used or "unknown",
-                request=request,
-                context=context,
-                sdk_session=sdk_session,
-            )
-
-        print(f"[Spec-First Modify] Using existing APISpec: {len(api_spec.domain_attributes)} domain, "
-              f"{len(api_spec.flow_attributes)} flow attrs", file=sys.stderr)
-
-        # Format the API spec for the prompt
-        spec_text = format_api_spec_for_prompt(api_spec)
-
-        # Build quality feedback section
-        quality_section = ""
-        if quality_feedback:
-            quality_section = f"""## Quality Feedback (What to Fix)
-Score: {quality_feedback.overall_score:.1f}
-Primary Issue: {quality_feedback.primary_issue or 'None'}
-Issues: {', '.join(quality_feedback.issues[:5]) if quality_feedback.issues else 'None'}
-Suggestions: {', '.join(quality_feedback.suggestions[:3]) if quality_feedback.suggestions else 'None'}
-"""
-
-        # Create the modification prompt
-        code_prompt = f"""REWRITE this Blender script to fix issues, using ONLY the verified APIs below.
-
-{spec_text}
-
-## Current Script to Modify
-Path: {previous_script.script_path}
-Technique: {previous_script.technique_used}
-
-## Modification Instructions (from Coordinator)
-{modification_instructions}
-
-{quality_section}
-
-## Asset Parameters
-- Asset Name: {request.asset_name}
-- Effect Type: {request.effect_type.value}
-- Description: {request.description}
-- Resolution: {request.resolution}
-- Frames: {request.frame_start}-{request.frame_end}
-
-## CRITICAL RULES
-1. ONLY use attributes listed in the VERIFIED API SPECIFICATION above
-2. DO NOT search for or use any other Blender APIs
-3. Read the current script first to understand existing structure
-4. Fix the issues while keeping working parts intact
-5. Use variable names: dset for domain_settings, fset for flow_settings
-6. Output name: {request.asset_name}_script_iter{iteration}_specfix
-
-Call write_script to generate the fixed script, then validate_script to check it.
-Return the VerifiedScriptOutput with script_path and apis_used."""
-
-        # Create hooks for Code Writer
-        code_writer_hooks = create_code_writer_hooks()
-
-        run_config = self._build_run_config(
-            session=context.session,
-            request=request,
-            iteration=iteration,
-            phase="spec_first_modify",
-        )
-
-        try:
-            code_result = await self._run_agent(
-                self._code_writer_agent,
-                code_prompt,
-                context=context,
-                session=sdk_session,
-                hooks=code_writer_hooks,
-                max_turns=8,
-                run_config=run_config,
-            )
-            verified_output: VerifiedScriptOutput = code_result.final_output
-
-            # Convert VerifiedScriptOutput to ScriptOutput for pipeline compatibility
-            script = ScriptOutput(
-                script_path=verified_output.script_path,
-                technique_used=verified_output.technique_used + " (spec-modified)",
-                parameters_set=verified_output.parameters_set,
-                validation_passed=verified_output.validation_passed,
-                validation_errors=verified_output.validation_errors,
-            )
-            print(f"[Spec-First Modify] Script modified: {script.script_path}", file=sys.stderr)
-            print(f"[Spec-First Modify] APIs used: {verified_output.apis_used}", file=sys.stderr)
-
-        except Exception as e:
-            print(f"[Spec-First Modify] ERROR: Code Writer failed: {e}", file=sys.stderr)
-            # Create error output
-            script = ScriptOutput(
-                script_path="",
-                technique_used=previous_script.technique_used or "unknown",
-                parameters_set={},
-                validation_passed=False,
-                validation_errors=[f"Spec-First modification failed: {e}"],
-            )
-
-        print(f"[Spec-First Modify] Code Writer hooks stats: {code_writer_hooks.get_stats()}", file=sys.stderr)
-        return script
+    # Phase 2A-6: Removed 4 spec-first methods (_run_api_spec_only,
+    # _run_parallel_technique_and_spec, _run_spec_first_pipeline,
+    # _run_spec_first_modification). Truth pack + tool guardrails
+    # handle API validation at $0. See git history for reference.
 
     async def _run_original_script_writer(
         self,
@@ -2040,33 +1458,8 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
         # Quality Gate Coordinator (after each iteration)
         self._quality_gate_coordinator = create_quality_gate_coordinator()
 
-        # =============================================================
-        # Phase 7: Spec-First Pipeline Agents (API Hallucination Prevention)
-        # =============================================================
-        # Two-phase approach that makes API hallucinations structurally impossible:
-        # 1. API Spec Agent: Creates verified APISpec from Blender 5.0 docs
-        # 2. Code Writer Agent: Writes code using ONLY verified APIs from spec
-        #
-        # SDK Reference: https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md
-
-        if self._use_spec_first_pipeline:
-            print("[Orchestrator] Creating Phase 7 Spec-First Pipeline agents...", file=sys.stderr)
-
-            # API Spec Agent - creates verified API specifications
-            # Has output guardrail that rejects specs with missing/invalid doc_refs
-            self._api_spec_agent = create_api_spec_agent(
-                model="gpt-5.2",
-                use_high_reasoning=True,
-            )
-
-            # Code Writer Agent - writes code using ONLY verified APIs
-            # Has output guardrail that validates code against the APISpec
-            self._code_writer_agent = create_code_writer_agent(
-                model="gpt-5.2",
-                use_high_reasoning=True,
-            )
-
-            print("[Orchestrator] Spec-First Pipeline agents ready", file=sys.stderr)
+        # Phase 7 (DEPRECATED 2A-6): Spec-First agents removed.
+        # Truth pack + tool guardrails (2A-3) handle API validation at $0.
 
         # Phase 2A-3: Attach tool-level guardrails to FunctionTool instances
         try:
@@ -2076,10 +1469,7 @@ IMPORTANT: Always include run_dir from the execute_blender_script result - this 
             print(f"[Orchestrator] WARNING: Tool guardrail attachment failed: {e}", file=sys.stderr)
 
         self._initialized = True
-        agent_count = "5 standalone + 3 coordinators"
-        if self._use_spec_first_pipeline:
-            agent_count += " + 2 spec-first"
-        print(f"[Orchestrator] Initialization complete ({agent_count} ready)", file=sys.stderr)
+        print(f"[Orchestrator] Initialization complete (5 standalone + 3 coordinators ready)", file=sys.stderr)
 
     async def create_asset_pipeline(
         self,
@@ -2253,43 +1643,12 @@ Doc Refs: {', '.join(research_output.doc_refs) if research_output.doc_refs else 
                         )
                         print(f"[Pipeline] Research artifact: {research_artifact_path}", file=sys.stderr)
 
-                    # ====== PHASE 0.5: TECHNIQUE SELECTION + API SPEC (Parallel) ======
-                    # Run Technique Coordinator and API Spec Agent in parallel to save ~25s
-                    print("[Pipeline] PHASE 0.5: Technique Selection + API Spec (PARALLEL)", file=sys.stderr)
+                    # ====== PHASE 0.5: TECHNIQUE SELECTION ======
+                    # Phase 2A-6: Parallel API spec removed. Truth pack handles validation at $0.
+                    print("[Pipeline] PHASE 0.5: Technique Selection", file=sys.stderr)
 
-                    # Try parallel path first
-                    precomputed_api_spec = None
-                    parallel_result = await self._run_parallel_technique_and_spec(
-                        request=request,
-                        context=context,
-                        research_output=research_output,
-                        research_artifact_path=research_artifact_path,
-                        session=session,
-                        sdk_session=sdk_session,
-                    )
-
-                    if parallel_result != (None, None):
-                        # Parallel path succeeded
-                        selected_technique, precomputed_api_spec = parallel_result
-
-                        if selected_technique:
-                            print(f"[Pipeline] Parallel Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
-                            session.current_technique = selected_technique.selected_technique
-                            if selected_technique.alternative_techniques:
-                                for alt in selected_technique.alternative_techniques:
-                                    if alt not in session.alternative_approaches:
-                                        session.alternative_approaches.append(alt)
-
-                        if precomputed_api_spec:
-                            # Store in context for later use in Phase 1
-                            context.api_spec = precomputed_api_spec
-                            print(f"[Pipeline] API Spec pre-computed: {len(precomputed_api_spec.domain_attributes)} domain attrs", file=sys.stderr)
-                    else:
-                        # Fall back to sequential path (parallel disabled or not available)
-                        print("[Pipeline] PHASE 0.5: Technique Selection (Sequential fallback)", file=sys.stderr)
-
-                        research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
-                        technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
+                    research_ref = f"Research artifact: {research_artifact_path}" if research_artifact_path else "No research artifact"
+                    technique_prompt = f"""Select the best technique for creating a {request.effect_type.value} VFX effect.
 
 ## Research Summary
 {research_ref}
@@ -2307,33 +1666,33 @@ Key params: {list(research_output.key_parameters.keys()) if research_output and 
 
 Select the optimal technique and provide starting parameters."""
 
-                        try:
-                            technique_result = await self._run_agent(
-                                self._technique_coordinator,
-                                technique_prompt,
-                                context=context,
-                                session=sdk_session,
-                                max_turns=6,
-                                run_config=self._build_run_config(
-                                    session=session,
-                                    request=request,
-                                    iteration=0,
-                                    phase="technique_select",
-                                ),
-                            )
-                            selected_technique = technique_result.final_output
-                            print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
-                            print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
+                    try:
+                        technique_result = await self._run_agent(
+                            self._technique_coordinator,
+                            technique_prompt,
+                            context=context,
+                            session=sdk_session,
+                            max_turns=6,
+                            run_config=self._build_run_config(
+                                session=session,
+                                request=request,
+                                iteration=0,
+                                phase="technique_select",
+                            ),
+                        )
+                        selected_technique = technique_result.final_output
+                        print(f"[Pipeline] Coordinator selected: {selected_technique.selected_technique}", file=sys.stderr)
+                        print(f"[Pipeline] Reasoning: {selected_technique.reasoning[:60]}...", file=sys.stderr)
 
-                            session.current_technique = selected_technique.selected_technique
-                            if selected_technique.alternative_techniques:
-                                for alt in selected_technique.alternative_techniques:
-                                    if alt not in session.alternative_approaches:
-                                        session.alternative_approaches.append(alt)
+                        session.current_technique = selected_technique.selected_technique
+                        if selected_technique.alternative_techniques:
+                            for alt in selected_technique.alternative_techniques:
+                                if alt not in session.alternative_approaches:
+                                    session.alternative_approaches.append(alt)
 
-                        except Exception as e:
-                            print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
-                            selected_technique = None
+                    except Exception as e:
+                        print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
+                        selected_technique = None
 
                 else:
                     # ====== RESUME: Skip Phase 0 and 0.5 ======
@@ -2366,8 +1725,8 @@ Select the optimal technique and provide starting parameters."""
                           f"domain attrs", file=sys.stderr)
                 except Exception as e:
                     print(f"[Pipeline] WARNING: Truth pack build failed: {e}. "
-                          f"Falling back to API Spec Agent path.", file=sys.stderr)
-                    # Don't block pipeline — fall through to existing spec-first path
+                          f"Continuing without truth pack.", file=sys.stderr)
+                    # Don't block pipeline — Script Writer can still generate scripts
 
                 # ====== ITERATION LOOP SETUP ======
                 if is_resuming and session.iterations:
@@ -2545,48 +1904,24 @@ Select the optimal technique and provide starting parameters."""
                         if selected_technique:
                             technique_name = selected_technique.selected_technique
 
-                        # ====== PHASE 7: SPEC-FIRST PIPELINE (API Hallucination Prevention) ======
-                        # Two-phase approach: API Spec Agent → Code Writer Agent
-                        # This makes hallucinated attributes structurally impossible.
-                        if self._use_spec_first_pipeline and self._api_spec_agent and self._code_writer_agent:
-                            print(f"[Pipeline] Using SPEC-FIRST pipeline (Phase 7)", file=sys.stderr)
-                            try:
-                                script = await self._run_spec_first_pipeline(
-                                    effect_type=request.effect_type.value,
-                                    technique=technique_name,
-                                    request=request,
-                                    context=context,
-                                    sdk_session=sdk_session,
-                                )
-                            except Exception as e:
-                                print(f"[Pipeline] Spec-First pipeline failed: {e}", file=sys.stderr)
-                                print(f"[Pipeline] Falling back to original Script Writer", file=sys.stderr)
-                                # Fall back to original Script Writer
-                                script = await self._run_original_script_writer(
-                                    effect_type=request.effect_type.value,
-                                    technique=technique_name,
-                                    request=request,
-                                    context=context,
-                                    sdk_session=sdk_session,
-                                )
-                        else:
-                            # Original Script Writer flow (deprecated but kept for compatibility)
-                            print(f"[Pipeline] Using ORIGINAL Script Writer (Spec-First disabled)", file=sys.stderr)
+                        # Phase 2A-6: Spec-First pipeline removed. Truth pack + tool guardrails
+                        # handle API validation at $0 (see parameter_bounds, truth_pack).
+                        print(f"[Pipeline] Script Writer with truth pack validation", file=sys.stderr)
 
-                            # Build script prompt with Coordinator's technique selection
-                            technique_guidance = ""
-                            starting_params = {}
-                            if selected_technique:
-                                technique_guidance = f"""
+                        # Build script prompt with Coordinator's technique selection
+                        technique_guidance = ""
+                        starting_params = {}
+                        if selected_technique:
+                            technique_guidance = f"""
 ## COORDINATOR SELECTED TECHNIQUE
 Technique: {selected_technique.selected_technique}
 Reasoning: {selected_technique.reasoning}
 Starting Parameters: {json.dumps(selected_technique.key_parameters, indent=2) if selected_technique.key_parameters else 'None specified'}
 
 YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selected this as optimal."""
-                                starting_params = selected_technique.key_parameters or {}
+                            starting_params = selected_technique.key_parameters or {}
 
-                            script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
+                        script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
 {technique_guidance}
 
 ## Research Findings
@@ -2602,57 +1937,57 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
 
 Generate a complete, validated script using the selected technique. Return the script_path in your output."""
 
-                            # Run Script Writer for iteration 1 with enforcement hooks
-                            try:
-                                script_result = await self._run_agent(
-                                    self._script_agent_standalone,
-                                    script_prompt,
-                                    context=context,
-                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
-                                    hooks=script_hooks,
-                                    max_turns=15,
-                                    run_config=self._build_run_config(
-                                        session=session,
-                                        request=request,
-                                        iteration=iteration,
-                                        phase="script_writer",
-                                    ),
-                                )
-                                script: ScriptOutput = script_result.final_output
-                            except LoopDetectedError as e:
-                                print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
-                                # Create a minimal script output to continue
+                        # Run Script Writer for iteration 1 with enforcement hooks
+                        try:
+                            script_result = await self._run_agent(
+                                self._script_agent_standalone,
+                                script_prompt,
+                                context=context,
+                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                hooks=script_hooks,
+                                max_turns=15,
+                                run_config=self._build_run_config(
+                                    session=session,
+                                    request=request,
+                                    iteration=iteration,
+                                    phase="script_writer",
+                                ),
+                            )
+                            script: ScriptOutput = script_result.final_output
+                        except LoopDetectedError as e:
+                            print(f"[Pipeline] WARN: Script Writer loop: {e}", file=sys.stderr)
+                            # Create a minimal script output to continue
+                            script = ScriptOutput(
+                                script_path="",
+                                technique_used="loop_detected",
+                                parameters_set={},
+                                validation_passed=False,
+                                validation_errors=[str(e)]
+                            )
+                        except DocQueryRequiredError as e:
+                            print(f"[Pipeline] ERROR: Script Writer missing doc query: {e}", file=sys.stderr)
+                            # Force research before continuing
+                            script = ScriptOutput(
+                                script_path="",
+                                technique_used="doc_query_missing",
+                                parameters_set={},
+                                validation_passed=False,
+                                validation_errors=[str(e)]
+                            )
+                        except Exception as e:
+                            # SDK wraps LoopDetectedError in UserError - check for it
+                            if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                print(f"[Pipeline] WARN: Script Writer loop (wrapped): {e}", file=sys.stderr)
                                 script = ScriptOutput(
                                     script_path="",
                                     technique_used="loop_detected",
                                     parameters_set={},
                                     validation_passed=False,
-                                    validation_errors=[str(e)]
+                                    validation_errors=["Loop detected - agent made too many consecutive doc queries"]
                                 )
-                            except DocQueryRequiredError as e:
-                                print(f"[Pipeline] ERROR: Script Writer missing doc query: {e}", file=sys.stderr)
-                                # Force research before continuing
-                                script = ScriptOutput(
-                                    script_path="",
-                                    technique_used="doc_query_missing",
-                                    parameters_set={},
-                                    validation_passed=False,
-                                    validation_errors=[str(e)]
-                                )
-                            except Exception as e:
-                                # SDK wraps LoopDetectedError in UserError - check for it
-                                if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
-                                    print(f"[Pipeline] WARN: Script Writer loop (wrapped): {e}", file=sys.stderr)
-                                    script = ScriptOutput(
-                                        script_path="",
-                                        technique_used="loop_detected",
-                                        parameters_set={},
-                                        validation_passed=False,
-                                        validation_errors=["Loop detected - agent made too many consecutive doc queries"]
-                                    )
-                                else:
-                                    raise  # Re-raise if it's a different error
-                            print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
+                            else:
+                                raise  # Re-raise if it's a different error
+                        print(f"[Pipeline] Script hooks stats: {script_hooks.get_stats()}", file=sys.stderr)
                     else:
                         # Track if we successfully modified the script directly
                         direct_modification_success = False
@@ -2670,11 +2005,10 @@ Generate a complete, validated script using the selected technique. Return the s
                         if (
                             is_exec_failure
                             and session_mgr.issue_tracker.consecutive_same_issue >= 2
-                            and self._use_spec_first_pipeline
                         ):
                             consec = session_mgr.issue_tracker.consecutive_same_issue
                             print(
-                                f"[Pipeline] EXECUTION FAILURE x{consec} -- forcing spec-first regeneration",
+                                f"[Pipeline] EXECUTION FAILURE x{consec} -- forcing full regeneration",
                                 file=sys.stderr,
                             )
                             # Pick an untried technique
@@ -2685,7 +2019,7 @@ Generate a complete, validated script using the selected technique. Return the s
                             new_technique = untried[0] if untried else f"alternative_{len(session_mgr.techniques_tried) + 1}"
                             print(f"[Pipeline] Switching to technique: {new_technique}", file=sys.stderr)
                             try:
-                                script = await self._run_spec_first_pipeline(
+                                script = await self._run_original_script_writer(
                                     effect_type=request.effect_type.value,
                                     technique=new_technique,
                                     request=request,
@@ -2695,10 +2029,10 @@ Generate a complete, validated script using the selected technique. Return the s
                                 direct_modification_success = True
                                 session_mgr.reset_for_technique_switch(new_technique)
                                 self._pipeline_monitor.reset()  # Phase 2A-4
-                                print(f"[Pipeline] Spec-first regen succeeded: {script.script_path}", file=sys.stderr)
+                                print(f"[Pipeline] Regeneration succeeded: {script.script_path}", file=sys.stderr)
                             except Exception as e:
                                 print(
-                                    f"[Pipeline] Spec-first regen failed: {e}, falling back to Coordinator",
+                                    f"[Pipeline] Regeneration failed: {e}, falling back to Coordinator",
                                     file=sys.stderr,
                                 )
                                 # Fall through to existing Coordinator path below
@@ -2909,10 +2243,9 @@ Decide: modify_params, modify_code, OR switch_technique.
                                 print(f"[Pipeline] Coordinator decision: {mod_decision.action}", file=sys.stderr)
                                 print(f"[Pipeline] Reasoning: {mod_decision.reasoning[:60]}...", file=sys.stderr)
 
-                                # TECHNIQUE SWITCH: Route through spec-first pipeline for a fresh script
-                                # This avoids the modify_script path which can only patch Config params
-                                if mod_decision.action == 'switch_technique' and self._use_spec_first_pipeline:
-                                    print(f"[Pipeline] TECHNIQUE SWITCH → Re-running spec-first pipeline", file=sys.stderr)
+                                # TECHNIQUE SWITCH: Generate a fresh script with a new technique
+                                if mod_decision.action == 'switch_technique':
+                                    print(f"[Pipeline] TECHNIQUE SWITCH → Generating fresh script", file=sys.stderr)
 
                                     # Pick new technique from alternatives
                                     new_technique = mod_decision.reasoning[:80] if mod_decision.reasoning else "alternative"
@@ -2943,7 +2276,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         print(f"[Pipeline] WARNING: Truth pack rebuild failed: {e}", file=sys.stderr)
 
                                     try:
-                                        script = await self._run_spec_first_pipeline(
+                                        script = await self._run_original_script_writer(
                                             effect_type=request.effect_type.value,
                                             technique=new_technique,
                                             request=request,
@@ -2954,39 +2287,15 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         session_mgr.reset_for_technique_switch(new_technique)
                                         self._pipeline_monitor.reset()  # Phase 2A-4
                                     except Exception as e:
-                                        print(f"[Pipeline] Spec-first switch failed: {e}, falling back to Script Writer", file=sys.stderr)
+                                        print(f"[Pipeline] Technique switch failed: {e}, falling back to Script Writer", file=sys.stderr)
                                         # Fall through to existing Script Writer path
 
-                                # MODIFY CODE: Route through Spec-First pipeline to prevent API hallucination
-                                # Uses Code Writer (no doc search tools) with existing verified APISpec
+                                # MODIFY CODE: Script Writer rewrites with truth pack validation
                                 if mod_decision.action == 'modify_code' and mod_decision.code_change_description and previous_script and previous_script.script_path:
-                                    print(f"[Pipeline] MODIFY CODE → Spec-First modification (prevents hallucination)", file=sys.stderr)
+                                    print(f"[Pipeline] MODIFY CODE → Script Writer rewrite", file=sys.stderr)
                                     print(f"[Pipeline] Changes requested: {mod_decision.code_change_description[:120]}", file=sys.stderr)
 
-                                    # Use Spec-First modification if available (prevents doc search / hallucination)
-                                    if self._use_spec_first_pipeline and self._code_writer_agent:
-                                        try:
-                                            code_fix_output = await self._run_spec_first_modification(
-                                                previous_script=previous_script,
-                                                modification_instructions=mod_decision.code_change_description,
-                                                quality_feedback=quality,
-                                                request=request,
-                                                context=context,
-                                                iteration=iteration,
-                                                sdk_session=sdk_session,
-                                            )
-                                            if code_fix_output and code_fix_output.script_path:
-                                                print(f"[Pipeline] Spec-First fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
-                                                script = code_fix_output
-                                                direct_modification_success = True
-                                            else:
-                                                print(f"[Pipeline] Spec-First fix produced no script_path", file=sys.stderr)
-                                        except Exception as e:
-                                            print(f"[Pipeline] Spec-First fix failed: {e}", file=sys.stderr)
-                                    else:
-                                        # Fallback: Original Script Writer (has doc search - can hallucinate)
-                                        print(f"[Pipeline] WARN: Spec-First unavailable, using Script Writer (may hallucinate)", file=sys.stderr)
-                                        code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
+                                    code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
 
 ## Current Script
 Path: {previous_script.script_path}
@@ -3014,31 +2323,31 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
 5. Use write_script to output the complete fixed script
 6. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
 
-                                        try:
-                                            code_fix_hooks = create_error_recovery_hooks()
-                                            code_fix_result = await self._run_agent(
-                                                self._script_agent_standalone,
-                                                code_fix_prompt,
-                                                context=context,
-                                                session=sdk_session,
-                                                hooks=code_fix_hooks,
-                                                max_turns=8,
-                                                run_config=self._build_run_config(
-                                                    session=session,
-                                                    request=request,
-                                                    iteration=iteration,
-                                                    phase="code_fix_fallback",
-                                                ),
-                                            )
-                                            code_fix_output = code_fix_result.final_output
-                                            if code_fix_output and code_fix_output.script_path:
-                                                print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
-                                                script = code_fix_output
-                                                direct_modification_success = True
-                                            else:
-                                                print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
-                                        except Exception as e:
-                                            print(f"[Pipeline] Code fix failed: {e}, falling back to Script Writer", file=sys.stderr)
+                                    try:
+                                        code_fix_hooks = create_error_recovery_hooks()
+                                        code_fix_result = await self._run_agent(
+                                            self._script_agent_standalone,
+                                            code_fix_prompt,
+                                            context=context,
+                                            session=sdk_session,
+                                            hooks=code_fix_hooks,
+                                            max_turns=8,
+                                            run_config=self._build_run_config(
+                                                session=session,
+                                                request=request,
+                                                iteration=iteration,
+                                                phase="code_fix",
+                                            ),
+                                        )
+                                        code_fix_output = code_fix_result.final_output
+                                        if code_fix_output and code_fix_output.script_path:
+                                            print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
+                                            script = code_fix_output
+                                            direct_modification_success = True
+                                        else:
+                                            print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Pipeline] Code fix failed: {e}, falling back", file=sys.stderr)
 
                                 # If Coordinator provides parameter changes, try direct modification
                                 if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
@@ -3121,38 +2430,15 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
 
                             mod_instructions = "\n".join(mod_instructions_parts) or "Improve overall quality"
 
-                            # Use Spec-First modification if available (prevents hallucination)
-                            if self._use_spec_first_pipeline and self._code_writer_agent and previous_script:
-                                try:
-                                    script = await self._run_spec_first_modification(
-                                        previous_script=previous_script,
-                                        modification_instructions=mod_instructions,
-                                        quality_feedback=quality,
-                                        request=request,
-                                        context=context,
-                                        iteration=iteration,
-                                        sdk_session=sdk_session,
-                                    )
-                                    print(f"[Pipeline] Spec-First modification result: {script.script_path or 'failed'}", file=sys.stderr)
-                                except Exception as e:
-                                    print(f"[Pipeline] WARN: Spec-First modification failed: {e}", file=sys.stderr)
-                                    script = ScriptOutput(
-                                        script_path="",
-                                        technique_used="spec_first_failed",
-                                        parameters_set={},
-                                        validation_passed=False,
-                                        validation_errors=[str(e)]
-                                    )
-                            else:
-                                # Fallback: Original Script Writer (has doc search - can hallucinate)
-                                print(f"[Pipeline] WARN: Spec-First unavailable, using Script Writer (may hallucinate)", file=sys.stderr)
+                            # Phase 2A-6: Script Writer with truth pack validation
+                            print(f"[Pipeline] Fallback modification via Script Writer (iter {iteration})", file=sys.stderr)
 
-                                # Build compact alternatives/techniques lists
-                                untried = [a for a in session.alternative_approaches if a not in session.techniques_tried][:5]
-                                untried_str = ", ".join(untried) if untried else "None"
-                                tried_str = ", ".join(session.techniques_tried) if session.techniques_tried else "None"
+                            # Build compact alternatives/techniques lists
+                            untried = [a for a in session.alternative_approaches if a not in session.techniques_tried][:5]
+                            untried_str = ", ".join(untried) if untried else "None"
+                            tried_str = ", ".join(session.techniques_tried) if session.techniques_tried else "None"
 
-                                script_prompt = f"""Modify the existing script to fix quality issues.
+                            script_prompt = f"""Modify the existing script to fix quality issues.
 
 ## Script
 Path: {previous_script.script_path if previous_script else 'Unknown'}
@@ -3175,45 +2461,45 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
 1. FIRST: Call blender_doc_search_bundle("{request.effect_type.value}") to get verified Blender APIs
 2. Then fix the primary issue using ONLY verified APIs from the bundle"""
 
-                                iter_script_hooks = create_fallback_script_writer_hooks()
-                                try:
-                                    script_result = await self._run_agent(
-                                        self._script_agent_standalone,
-                                        script_prompt,
-                                        context=context,
-                                        session=sdk_session,
-                                        hooks=iter_script_hooks,
-                                        max_turns=15,
-                                        run_config=self._build_run_config(
-                                            session=session,
-                                            request=request,
-                                            iteration=iteration,
-                                            phase="script_modify_fallback",
-                                        ),
-                                    )
-                                    script = script_result.final_output
-                                except LoopDetectedError as e:
-                                    print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}): {e}", file=sys.stderr)
+                            iter_script_hooks = create_fallback_script_writer_hooks()
+                            try:
+                                script_result = await self._run_agent(
+                                    self._script_agent_standalone,
+                                    script_prompt,
+                                    context=context,
+                                    session=sdk_session,
+                                    hooks=iter_script_hooks,
+                                    max_turns=15,
+                                    run_config=self._build_run_config(
+                                        session=session,
+                                        request=request,
+                                        iteration=iteration,
+                                        phase="script_modify",
+                                    ),
+                                )
+                                script = script_result.final_output
+                            except LoopDetectedError as e:
+                                print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}): {e}", file=sys.stderr)
+                                script = ScriptOutput(
+                                    script_path="",
+                                    technique_used="loop_detected",
+                                    parameters_set={},
+                                    validation_passed=False,
+                                    validation_errors=[str(e)]
+                                )
+                            except Exception as e:
+                                if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
+                                    print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}, wrapped): {e}", file=sys.stderr)
                                     script = ScriptOutput(
                                         script_path="",
                                         technique_used="loop_detected",
                                         parameters_set={},
                                         validation_passed=False,
-                                        validation_errors=[str(e)]
+                                        validation_errors=["Loop detected"]
                                     )
-                                except Exception as e:
-                                    if "Loop detected" in str(e) or "LoopDetectedError" in str(e):
-                                        print(f"[Pipeline] WARN: Script Writer loop (iter {iteration}, wrapped): {e}", file=sys.stderr)
-                                        script = ScriptOutput(
-                                            script_path="",
-                                            technique_used="loop_detected",
-                                            parameters_set={},
-                                            validation_passed=False,
-                                            validation_errors=["Loop detected"]
-                                        )
-                                    else:
-                                        raise
-                                print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
+                                else:
+                                    raise
+                            print(f"[Pipeline] Script hooks stats (iter {iteration}): {iter_script_hooks.get_stats()}", file=sys.stderr)
 
                     # Always capture script_path if available (for subsequent iterations)
                     if script.script_path:
@@ -3488,14 +2774,14 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                         # ====== PHASE 2.6: FIX PLAN (EXECUTE failure) ======
                         print(f"[Pipeline] PHASE 2.6: FIX (execute failure)", file=sys.stderr)
                         execute_fix_steps = [
-                            "Regenerate/fix script via spec-first modification flow.",
+                            "Regenerate/fix script via Script Writer with truth pack validation.",
                             "Preserve verified API usage; do not introduce new unverified attributes.",
                             "Re-run executor once with recovered script.",
                         ]
                         execute_fix_artifact = artifact_mgr.write_fix_from_values(
                             iteration=iteration,
                             phase="execute",
-                            strategy="spec_first_recovery",
+                            strategy="script_recovery",
                             instructions=execute_fix_steps,
                             script_input_path=script.script_path if script else None,
                             script_output_path=None,
@@ -3543,63 +2829,45 @@ Fix the script and output it with write_script. Keep the same technique name
 but append '_errfix' to the output name."""
 
                             try:
-                                # Use Spec-First modification for error recovery to prevent
-                                # hallucinated APIs. The Code Writer will fix the script
-                                # using ONLY verified APIs from the existing APISpec.
-                                recovery_instructions = f"""CRITICAL FIX REQUIRED - Script execution FAILED.
-
-## Error Message
-{error_msg}
-
-## What Went Wrong
-This is a STRUCTURAL code issue. You must fix the script using ONLY the verified
-Blender APIs provided in the API spec above. Do NOT guess or search for new APIs.
-
-## Common Structural Fixes
-- Bake context: bpy.ops.fluid.bake_data() requires the domain object to be
-  bpy.context.view_layer.objects.active AND selected
-- Effector setup: Collision objects need a Fluid modifier with fluid_type='EFFECTOR'
-- Object context: bpy.ops calls require correct context (active object, selection)
-- Missing depsgraph update: call bpy.context.view_layer.depsgraph.update() after setup
-
-Fix the script completely. Keep the same technique but append '_errfix' to the output name."""
-
-                                if self._use_spec_first_pipeline and self._code_writer_agent and script:
-                                    # Spec-First path: Use Code Writer with verified APIs
-                                    recovery_script = await self._run_spec_first_modification(
-                                        previous_script=script,
-                                        modification_instructions=recovery_instructions,
-                                        quality_feedback=None,  # No quality feedback for error recovery
+                                # Phase 2A-6: Script Writer for error recovery with truth pack validation
+                                recovery_hooks = create_error_recovery_hooks()
+                                recovery_result = await self._run_agent(
+                                    self._script_agent_standalone,
+                                    recovery_prompt,
+                                    context=context,
+                                    session=sdk_session,
+                                    hooks=recovery_hooks,
+                                    max_turns=6,
+                                    run_config=self._build_run_config(
+                                        session=session,
                                         request=request,
-                                        context=context,
                                         iteration=iteration,
-                                        sdk_session=sdk_session,
-                                    )
-                                else:
-                                    # Legacy fallback: Use Script Writer (has doc search - can hallucinate)
-                                    recovery_hooks = create_error_recovery_hooks()
-                                    recovery_result = await self._run_agent(
-                                        self._script_agent_standalone,
-                                        recovery_prompt,
-                                        context=context,
-                                        session=sdk_session,
-                                        hooks=recovery_hooks,
-                                        max_turns=6,
-                                        run_config=self._build_run_config(
-                                            session=session,
-                                            request=request,
-                                            iteration=iteration,
-                                            phase="recover_script",
-                                        ),
-                                    )
-                                    recovery_script = recovery_result.final_output
+                                        phase="recover_script",
+                                    ),
+                                )
+                                recovery_script = recovery_result.final_output
+
+                                # Truth pack validation on recovered script
+                                if context.truth_pack and recovery_script and recovery_script.script_path:
+                                    try:
+                                        fixed_path, fixes = validate_and_fix_script(
+                                            recovery_script.script_path, context.truth_pack
+                                        )
+                                        if fixes:
+                                            print(f"[Recovery] Truth pack auto-fixed {len(fixes)} issues:",
+                                                  file=sys.stderr)
+                                            for fix in fixes[:5]:
+                                                print(f"  - {fix}", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Recovery] WARNING: Truth pack validation failed: {e}",
+                                              file=sys.stderr)
 
                                 if recovery_script and recovery_script.script_path:
                                     print(f"[Pipeline] Recovery produced: {recovery_script.script_path}", file=sys.stderr)
                                     artifact_mgr.write_fix_from_values(
                                         iteration=iteration,
                                         phase="execute",
-                                        strategy="spec_first_recovery_applied",
+                                        strategy="script_recovery_applied",
                                         instructions=execute_fix_steps,
                                         script_input_path=script.script_path if script else None,
                                         script_output_path=recovery_script.script_path,

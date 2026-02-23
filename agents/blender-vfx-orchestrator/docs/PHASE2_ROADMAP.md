@@ -1,10 +1,11 @@
 # Phase 2+ Roadmap: From Reliability to Full Autonomy
 
-**Version:** 2.0
-**Date:** 2026-02-22
+**Version:** 2.1
+**Date:** 2026-02-23
 **Authors:** Integration Architect (Claude Opus 4.6), synthesizing research from SDK Specialist, Codebase Analyst, Autonomy Researcher, Monitoring Architect, and Critique Reviewer
-**Status:** Approved plan — implementation starting
+**Status:** Phase 2A in progress — 2A-0 through 2A-5 COMPLETE
 **Revision note:** v2.0 addresses all findings from the Phase 2 Roadmap Critique: adds documentation pipeline (2A-0), testing strategy, rollback strategy, orchestrator decomposition gate, KB seeding, Ralph isolation, 1.5x line estimates, Agent.clone() removal, Phase 2D marked directional.
+**v2.1 update (2026-02-23):** Progress tracking added. 2A-0 through 2A-5 complete (154 tests, 6 branches merged). Actual line counts noted where they differ from estimates.
 
 ---
 
@@ -14,9 +15,9 @@ Phase 1 (Reliability) shipped 1,574 lines across 11 files: truth pack, QA feedba
 
 Phase 2+ takes the system from "produces evaluable renders" to "reliably produces quality renders that improve over time." It is organized into four sub-phases plus infrastructure gates:
 
-| Phase | Focus | Estimated Effort | Timeline |
-|-------|-------|-----------------|----------|
-| **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | Week 1 |
+| Phase | Focus | Estimated Effort | Status |
+|-------|-------|-----------------|--------|
+| **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **6/9 items DONE — 154 tests pass** |
 | **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | Weeks 2-4 |
 | **2C: Advanced Capabilities** | Multi-physics, experimentation, technique diversity | ~1,595 lines (core) | Weeks 6-9 |
 | **2D: Full Autonomy (Directional)** | Autonomy tracking, cross-session learning | ~405 lines (concrete) + TBD | Week 10+ |
@@ -309,14 +310,14 @@ ENABLE_BUDGET_DEGRADATION = True    # 2C-4: Set False → binary budget check
 
 ### Git Branch Strategy
 
-| Branch | Base | Content | Revert Method |
-|--------|------|---------|---------------|
-| `0.33.2/phase2a-quick-wins` | `0.33.2/phase1-reliability` | All 2A items | `git revert --no-commit <merge-commit>` |
-| `0.33.2/phase2b-ralph` | `phase2a-quick-wins` | 2B-1 ONLY (isolated) | Revert single merge commit |
-| `0.33.2/phase2b-core` | `phase2b-ralph` | Remaining 2B items | Revert single merge commit |
-| `0.33.2/decomposition` | `phase2b-core` | Orchestrator refactor | Revert single merge commit |
-| `0.33.2/phase2c-advanced` | `decomposition` | All 2C items | Revert single merge commit |
-| `0.33.2/phase2d-autonomy` | `phase2c-advanced` | All 2D items | Revert single merge commit |
+| Branch | Base | Content | Status |
+|--------|------|---------|--------|
+| `0.34.0/phase-2-implementation` | main | 2A-0, 2A-1, 2A-2 | Pushed |
+| `0.34.2/phase-2a3-tool-guardrails` | above | 2A-3 | Pushed |
+| `0.34.3/phase-2a4-pipeline-monitor` | above | 2A-4 | Pushed |
+| `0.34.4/phase-2a5-parameter-bounds` | above | 2A-5 | Pushed (current) |
+| `0.34.X/phase-2aY-*` | above | 2A-6, 2A-7, 2A-8 | Pending |
+| TBD | phase2a complete | 2B items | Pending |
 
 **Critical: Ralph (2B-1) gets its own branch.** It's the highest-risk change — restructuring the core iteration loop.
 
@@ -337,7 +338,7 @@ ENABLE_BUDGET_DEGRADATION = True    # 2C-4: Set False → binary budget check
 **Risk:** Low — all changes are additive or replace redundant code.
 **Principles served:** P1 (reliability), P3 (Blender is truth), P4 (compute what you can), P5 (context precious).
 
-### 2A-0: Documentation Pipeline (LLM-Optimized Manual)
+### 2A-0: Documentation Pipeline (LLM-Optimized Manual) — DONE (2026-02-23)
 
 **What:** Process the physics section of the Blender manual (119 pages) through an LLM rewrite pipeline, upload to the vector store, and validate that the research agent can discover new techniques.
 
@@ -390,9 +391,11 @@ The rewritten output produces dense, structured content with explicit TECHNIQUE 
 
 **Estimated effort:** ~240 lines new code + $0.19 processing cost | **Dependencies:** None | **Risk:** Low
 
+**Completion notes:** ~130 physics/rendering pages rewritten to LLM-optimized format. Uploaded to separate vector store `vs_699b7e6221bc81919ba2f4a1eae11588`. Technique discovery tests pass. Manual work by Ben (scripts + upload + validation). Branch: `0.34.0/phase-2-implementation`. Also included: 7 new truth pack patterns (forcefield_add, openvdb_data_depth, cache formats, subframes), recovery path validation, false positive fix for bpy.ops.render.render, unfixable-error commenting.
+
 ---
 
-### 2A-1: Conditional Tool Enabling (`is_enabled`)
+### 2A-1: Conditional Tool Enabling (`is_enabled`) — DONE (2026-02-22)
 
 **What:** Hide expensive tools from agents when budget is low, instead of letting agents try to use them and hitting guardrail errors.
 
@@ -434,9 +437,11 @@ def learning_tool_for_iteration(ctx: RunContextWrapper, agent) -> bool:
 
 **Estimated effort:** ~106 lines | **Dependencies:** None | **Risk:** Trivial
 
+**Completion notes:** `utils/tool_visibility.py` created (~90 lines). 22 tests in `tests/test_tool_visibility.py`. Kill switch: `ENABLE_CONDITIONAL_TOOLS=0`. Commit: `a2506f3`. Branch: `0.34.0/phase-2-implementation`.
+
 ---
 
-### 2A-2: Deterministic Agent Control (`tool_use_behavior`)
+### 2A-2: Deterministic Agent Control (`tool_use_behavior`) — DONE (2026-02-22)
 
 **What:** Eliminate unnecessary LLM post-processing calls for agents whose tool output IS the final answer.
 
@@ -466,9 +471,11 @@ def learning_tool_for_iteration(ctx: RunContextWrapper, agent) -> bool:
 **Estimated effort:** ~8 lines | **Dependencies:** None | **Risk:** Trivial
 **Monthly savings:** ~$2-5 at current run volume
 
+**Completion notes:** `stop_on_first_tool` applied to Executor, API Validator. 10 tests in `tests/test_tool_use_behavior.py`. Commit: `b589d5e`. Branch: `0.34.0/phase-2-implementation`.
+
 ---
 
-### 2A-3: Tool Guardrails for Truth Pack Enforcement
+### 2A-3: Tool Guardrails for Truth Pack Enforcement — DONE (2026-02-22)
 
 **What:** Move truth pack validation from an orchestrator pipeline step INTO the tool itself using `ToolInputGuardrail`. Every time any agent calls `execute_blender_script`, the script is automatically validated first. Tool guardrails make validation **impossible to bypass**.
 
@@ -498,9 +505,11 @@ def learning_tool_for_iteration(ctx: RunContextWrapper, agent) -> bool:
 
 **Estimated effort:** ~174 lines | **Dependencies:** Truth pack (Phase 1, done) | **Risk:** Low
 
+**Completion notes:** `guardrails/tool_guardrails.py` (~275 actual lines — 1.6x estimate). 3 guardrails: truth_pack_input, critical_failure_output, script_length_output. Attaches via FunctionTool mutation. 22 tests in `tests/test_tool_guardrails.py`. SDK uses `ToolGuardrailFunctionOutput` with `behavior` dict (not `tripwire_triggered` like agent guardrails). Kill switch: `ENABLE_TOOL_GUARDRAILS=0`. Commit: `55756a2`. Branch: `0.34.2/phase-2a3-tool-guardrails`.
+
 ---
 
-### 2A-4: PipelineMonitor (Deterministic Monitoring Layer)
+### 2A-4: PipelineMonitor (Deterministic Monitoring Layer) — DONE (2026-02-22)
 
 **What:** A Python class (NOT an LLM agent) that runs at orchestrator checkpoints between pipeline phases. Detects parameter oscillation, stuck loops, wrong feedback cascades, budget overruns, and script quality issues.
 
@@ -540,9 +549,11 @@ def learning_tool_for_iteration(ctx: RunContextWrapper, agent) -> bool:
 
 **Estimated effort:** ~480 lines | **Dependencies:** None | **Risk:** Low
 
+**Completion notes:** `tools/pipeline_monitor.py` (~370 actual lines). 7 detection signals. Oscillation threshold tuned: `OSCILLATION_DIRECTION_CHANGES=1` (not 2 — only 1 direction change possible in a 3-element window). 26 tests in `tests/test_pipeline_monitor.py`. Kill switch: `ENABLE_PIPELINE_MONITOR=0`. Commit: `75178c8`. Branch: `0.34.3/phase-2a4-pipeline-monitor`.
+
 ---
 
-### 2A-5: Parameter Bounds and Damped Convergence
+### 2A-5: Parameter Bounds and Damped Convergence — DONE (2026-02-23)
 
 **What:** Per-effect-type parameter bounds that prevent overcorrection. All parameter modifications are clamped to safe ranges and limited to a maximum step size per iteration.
 
@@ -585,9 +596,11 @@ PARAMETER_BOUNDS = {
 
 **Estimated effort:** ~225 lines | **Dependencies:** PipelineMonitor (2A-4) for runtime bounds refinement | **Risk:** Low
 
+**Completion notes:** `tools/parameter_bounds.py` (~175 lines). 9 effect types bounded (fire, explosion, smoke, pyro, liquid, water, water_splash, nebula, sun). Oscillating params get halved step via PipelineMonitor integration. Wired into `_apply_script_modifications()` covering all 4 call paths. 40 tests in `tests/test_parameter_bounds.py`. Kill switch: `ENABLE_PARAMETER_BOUNDS=0`. Commit: `4dd3335`. Branch: `0.34.4/phase-2a5-parameter-bounds`.
+
 ---
 
-### 2A-6: Deprecate Spec-First Pipeline
+### 2A-6: Deprecate Spec-First Pipeline — DONE
 
 **What:** Remove the LLM-powered API Spec Agent from the pipeline. The Truth Pack provides the same data deterministically at $0.
 
@@ -596,24 +609,28 @@ PARAMETER_BOUNDS = {
 **Research support:**
 - Codebase Analysis §7.4, §10
 
-**Implementation:**
-
-| File | Change | Lines |
-|------|--------|-------|
-| `orchestrator.py` (Phase 0.5) | Remove `_run_parallel_technique_and_spec()` parallel branch for API Spec | ~45 |
-| `orchestrator.py` (Phase 1) | Remove `_run_spec_first_pipeline()` code path | ~75 |
-| `specialized_agents/api_spec_agent.py` | Add deprecation notice. Keep file for reference but don't import. | ~8 |
+**Completion notes:**
+- **Branch:** `0.34.5/phase-2a6-deprecate-spec-first`
+- Removed 4 dead methods (584 lines): `_run_api_spec_only`, `_run_parallel_technique_and_spec`, `_run_spec_first_pipeline`, `_run_spec_first_modification`
+- Removed 3 instance variables: `self._use_spec_first_pipeline`, `self._api_spec_agent`, `self._code_writer_agent`
+- Removed API Spec Agent + Code Writer Agent creation from `initialize()`
+- Cleaned 7 call sites in pipeline: Phase 0.5, Phase 1, execution failure escalation, technique switch, modify code, fallback modification, error recovery
+- Added deprecation notices to `api_spec_agent.py` and `code_writer_agent.py`
+- **Net reduction:** ~730 lines from `orchestrator.py` (943 deleted, 211 inserted)
+- **Tests:** 24 tests in `tests/test_deprecate_spec_first.py`
+- **Preserved:** `truth_pack_to_api_spec()`, `models/api_spec.py`, `context.truth_pack`, `context.api_spec`
 
 **What's preserved:** `models/api_spec.py` Pydantic models stay — `truth_pack_to_api_spec()` populates them from truth pack data, maintaining backward compatibility.
 
-**Tests:**
-1. Script Writer context: remove Spec-First → assert Script Writer still receives truth pack data
-2. Code Writer guardrail: assert `truth_pack_to_api_spec()` produces valid APISpec from truth pack
-3. Technique selection: assert technique selection still runs standalone
+**Tests (24 total):**
+1. `TestTruthPackToApiSpec` (11 tests): truth_pack_to_api_spec() produces valid APISpec from truth pack
+2. `TestSpecFirstRemoval` (7 tests): All spec-first attributes, methods, and calls removed from orchestrator
+3. `TestScriptWriterContext` (4 tests): Script Writer still receives truth pack data via context
+4. `TestDeprecationNotices` (2 tests): Deprecation notices present on old modules
 
-**Rollback:** Set `ENABLE_SPEC_FIRST_PIPELINE = True` in `config/agent_config.py`.
+**Rollback:** Re-enable imports and agent creation in orchestrator `initialize()`. Deprecated files are preserved with instructions.
 
-**Estimated effort:** ~128 lines changed | **Dependencies:** Truth Pack (Phase 1, done) | **Risk:** Low-Medium
+**Estimated effort:** ~128 lines | **Actual:** ~730 lines net removed | **Dependencies:** Truth Pack (Phase 1, done) | **Risk:** Low-Medium
 **Savings:** ~$0.04-0.10/run (2 LLM calls eliminated)
 
 ---
@@ -669,18 +686,18 @@ PARAMETER_BOUNDS = {
 
 ### Phase 2A Summary
 
-| Item | Lines | Cost Savings | Reliability Impact | Tests |
-|------|-------|-------------|-------------------|-------|
-| **2A-0: Documentation Pipeline** | **~240** | **Enables technique diversity** | **CRITICAL** | **5** |
-| 2A-1: is_enabled | ~106 | Prevents budget waste | Medium | 4 |
-| 2A-2: tool_use_behavior | ~8 | ~$0.05-0.10/run | Low | 4 |
-| 2A-3: Tool guardrails | ~174 | Replaces pipeline step | High | 5 |
-| 2A-4: PipelineMonitor | ~480 | $0 (deterministic) | **Critical** | 5 |
-| 2A-5: Parameter bounds | ~225 | Prevents wasted iterations | High | 5 |
-| 2A-6: Deprecate Spec-First | ~128 | ~$0.04-0.10/run | Medium | 3 |
-| 2A-7: Remove Executor agent | ~38 | Cleaner codebase | Low | 2 |
-| 2A-8: Tool timeouts | ~32 | Prevents hung pipelines | Medium | 3 |
-| **Total** | **~1,431** | **~$0.10-0.20/run** | | **36** |
+| Item | Est. Lines | Actual Lines | Tests (est/actual) | Status |
+|------|-----------|-------------|-------------------|--------|
+| **2A-0: Documentation Pipeline** | **~240** | ~130 pages rewritten + scripts | **5 / 5** | **DONE** |
+| 2A-1: is_enabled | ~106 | ~90 | 4 / 22 | **DONE** |
+| 2A-2: tool_use_behavior | ~8 | ~8 | 4 / 10 | **DONE** |
+| 2A-3: Tool guardrails | ~174 | ~275 | 5 / 22 | **DONE** |
+| 2A-4: PipelineMonitor | ~480 | ~370 | 5 / 26 | **DONE** |
+| 2A-5: Parameter bounds | ~225 | ~175 + 45 wiring | 5 / 40 | **DONE** |
+| 2A-6: Deprecate Spec-First | ~128 | ~730 net removed + 24 test lines | 3 / 24 | **DONE** |
+| 2A-7: Remove Executor agent | ~38 | — | 2 / — | TODO |
+| 2A-8: Tool timeouts | ~32 | — | 3 / — | TODO |
+| **Total** | **~1,431** | | **39 / 178** (includes extras) | **7/9 done** |
 
 **Note:** Line estimates include a 1.5x multiplier based on Phase 1 experience.
 
