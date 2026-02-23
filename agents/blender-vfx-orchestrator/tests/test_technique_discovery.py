@@ -1,7 +1,7 @@
 """Integration tests for technique discovery via semantic doc search.
 
-These tests require a populated vector store. They are skipped when the
-BLENDER_MANUAL_VECTOR_STORE_ID env var is not set (CI-safe).
+These tests require a populated vector store and an OpenAI API key.
+They are skipped when OPENAI_API_KEY is not available (CI-safe).
 """
 import json
 import os
@@ -10,15 +10,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import pytest
 
 from tools.semantic_docs_tools import _search_vector_store
 
-_HAS_STORE = bool(os.getenv("BLENDER_MANUAL_VECTOR_STORE_ID"))
-skip_no_store = pytest.mark.skipif(not _HAS_STORE, reason="Vector store env var not set")
+_HAS_API_KEY = bool(os.getenv("OPENAI_API_KEY"))
+skip_no_api = pytest.mark.skipif(not _HAS_API_KEY, reason="OPENAI_API_KEY not set")
 
 
-@skip_no_store
+@skip_no_api
 class TestTechniqueDiscovery:
     """Validate that semantic search returns diverse technique results."""
 
