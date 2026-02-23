@@ -319,6 +319,9 @@ from tools.knowledge_distillation_tools import (
 # Script modification for direct parameter changes
 from tools.script_generator_tools import _modify_script_impl
 
+# Phase 2A-5: Parameter bounds and damped convergence
+from tools.parameter_bounds import apply_bounds as apply_parameter_bounds
+
 # Deterministic quality-to-parameter mapping (zero LLM fallback)
 from utils.quality_parameter_map import (
     map_quality_issues_to_params,
@@ -858,8 +861,14 @@ class BlenderVFXOrchestrator:
         script_path: str,
         modifications: Dict[str, Any],
         output_name: Optional[str] = None,
+        effect_type: Optional[str] = None,
+        previous_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Apply script changes through guarded modify_script tool path only."""
+        """Apply script changes through guarded modify_script tool path only.
+
+        If effect_type is provided, parameter bounds and damped convergence
+        are applied before passing modifications to the script modifier (Phase 2A-5).
+        """
         if not modifications:
             return {
                 "success": False,
@@ -869,6 +878,19 @@ class BlenderVFXOrchestrator:
                 "changes_made": [],
                 "parameters_changed": {},
             }
+
+        # Phase 2A-5: Apply parameter bounds before modification
+        if effect_type and modifications:
+            oscillating: set = set()
+            if hasattr(self, '_pipeline_monitor'):
+                status = self._pipeline_monitor.get_status_report()
+                oscillating = set(status.get("oscillating_params", []))
+            modifications = apply_parameter_bounds(
+                effect_type=effect_type,
+                modifications=modifications,
+                previous_params=previous_params,
+                oscillating_params=oscillating if oscillating else None,
+            )
 
         try:
             # Call _modify_script_impl directly (sync function), NOT the
@@ -2721,6 +2743,8 @@ Generate a complete, validated script using the selected technique. Return the s
                                         script_path=previous_script.script_path,
                                         modifications=pattern_params,
                                         output_name=output_name,
+                                        effect_type=request.effect_type.value,  # Phase 2A-5
+                                        previous_params=previous_script.parameters_set,  # Phase 2A-5
                                     )
 
                                     if modify_result.get("success") and modify_result.get("modified_path"):
@@ -2756,6 +2780,8 @@ Generate a complete, validated script using the selected technique. Return the s
                                 script_path=previous_script.script_path,
                                 modifications=learning.parameter_modifications,
                                 output_name=output_name,
+                                effect_type=request.effect_type.value,  # Phase 2A-5
+                                previous_params=previous_script.parameters_set,  # Phase 2A-5
                             )
 
                             if modify_result.get("success") and modify_result.get("modified_path"):
@@ -2794,6 +2820,8 @@ Generate a complete, validated script using the selected technique. Return the s
                                         script_path=previous_script.script_path,
                                         modifications=det_params,
                                         output_name=output_name,
+                                        effect_type=request.effect_type.value,  # Phase 2A-5
+                                        previous_params=previous_script.parameters_set,  # Phase 2A-5
                                     )
 
                                     if modify_result.get("success") and modify_result.get("modified_path"):
@@ -3029,6 +3057,8 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                         script_path=previous_script.script_path,
                                         modifications=mod_decision.parameter_changes,
                                         output_name=output_name,
+                                        effect_type=request.effect_type.value,  # Phase 2A-5
+                                        previous_params=previous_script.parameters_set,  # Phase 2A-5
                                     )
 
                                     # Track changes made for communication breakdown detection
