@@ -67,6 +67,8 @@ from tools.experiment_tracker_tools import _query_knowledge_base_impl as query_k
 from tools.experiment_tracker_tools import _suggest_experiments_impl as suggest_experiments_direct
 # Phase 2B-3: Deterministic render quality checks (Tier 1, $0)
 from tools.deterministic_quality_checks import run_deterministic_checks
+# Phase 2B-5: HITL framework (pipeline-level checkpoints)
+from utils.hitl_handler import HITLHandler, CheckpointDecision
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -763,6 +765,13 @@ class BlenderVFXOrchestrator:
         # Config system for preset-based settings
         self._config: AgentConfigManager = get_config()
         print(f"[Orchestrator] Using preset: {self._config.preset.name} ({self._config.preset.description})", file=sys.stderr)
+
+        # Phase 2B-5: HITL checkpoint handler (pipeline-level, not SDK-level)
+        self._hitl = HITLHandler(
+            autonomy_level=self._config.get_hitl_autonomy_level(),
+            interactive=self._config.is_hitl_interactive(),
+            enabled=self._config.use_hitl(),
+        )
 
         # Local tracing for AI-parseable analysis
         # Tracks Coordinator → modify_script communication flow
@@ -1771,7 +1780,20 @@ Select the optimal technique and provide starting parameters."""
                     )
                     print(f"[Pipeline] Initial baseline recorded (score=0.0)", file=sys.stderr)
 
+                # Phase 2B-5: Check for pending HITL checkpoint on resume
+                if session.pending_checkpoint and self._hitl:
+                    print(f"[Pipeline] HITL: Pending checkpoint found on resume", file=sys.stderr)
+                    pending_cp = self._hitl.check_pending(session)
+                    if pending_cp and pending_cp.decision == CheckpointDecision.ABORT:
+                        print(f"[Pipeline] HITL: Human chose ABORT on pending checkpoint", file=sys.stderr)
+                        session.status = SessionStatus.PAUSED
+                    elif pending_cp and pending_cp.decision == CheckpointDecision.SWITCH_TECHNIQUE:
+                        session.stuck_state.escape_level = EscapeLevel.SWITCH_TECHNIQUE
+                    session.pending_checkpoint = None  # Consumed
+
                 while iteration < effective_max_iterations:
+                    if session.status == SessionStatus.PAUSED:
+                        break  # HITL abort from pending checkpoint
                     iteration += 1
                     session.current_iteration = iteration
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{effective_max_iterations} ======", file=sys.stderr)
@@ -3309,6 +3331,33 @@ Provide detailed feedback for improvement."""
                             if not quality.primary_issue or "BLACK_SCREEN" not in (quality.primary_issue or ""):
                                 quality.primary_issue = alert.details.get("keywords", ["CRITICAL_RENDER"])[0]
 
+                    # ====== PHASE 3.95: HITL CHECKPOINT (After Evaluation) ======
+                    if self._hitl:
+                        budget_status = self._budget_tracker.get_status()
+                        hitl_checkpoint = self._hitl.check_post_eval(session, quality, budget_status)
+                        if hitl_checkpoint:
+                            if hitl_checkpoint.decision == CheckpointDecision.ABORT:
+                                print(f"[Pipeline] HITL: Human chose ABORT", file=sys.stderr)
+                                session.status = SessionStatus.PAUSED
+                                break
+                            elif hitl_checkpoint.decision == CheckpointDecision.SWITCH_TECHNIQUE:
+                                session.stuck_state.escape_level = EscapeLevel.SWITCH_TECHNIQUE
+                            elif hitl_checkpoint.decision == CheckpointDecision.INCREASE_BUDGET:
+                                # Bump vision budget by $5
+                                self._budget_tracker.state.category_limits["vision"] = (
+                                    self._budget_tracker.state.category_limits.get("vision", 10.0) + 5.0
+                                )
+                                print(f"[Pipeline] HITL: Budget increased by $5", file=sys.stderr)
+                            elif hitl_checkpoint.decision is None:
+                                # Non-interactive: save and pause
+                                session.pending_checkpoint = hitl_checkpoint.to_dict()
+                                session.status = SessionStatus.PAUSED
+                                print(f"[Pipeline] HITL: Checkpoint saved, pausing for human decision", file=sys.stderr)
+                                break
+                            # Record in history
+                            if hasattr(session, "hitl_history"):
+                                session.hitl_history.append(hitl_checkpoint.to_dict())
+
                     # ====== PHASE 4+5: LEARNING + QUALITY GATE (Parallel or Sequential) ======
                     print(f"[Pipeline] PHASE 4+5: Learning + Quality Gate", file=sys.stderr)
 
@@ -3553,7 +3602,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                         or session_mgr.should_switch_technique()
                     )
 
-                    # Level 4: Stop and request human guidance
+                    # Level 4: Request human guidance via HITL (Phase 2B-5)
                     if (
                         session.stuck_state.escape_level == EscapeLevel.REQUEST_GUIDANCE
                         or (gate_decision and gate_decision.escape_level >= 4)
@@ -3564,8 +3613,34 @@ Decide: Is quality gate PASSED? What is the next action?"""
                             f"best score: {session.best_score:.1f}",
                             file=sys.stderr,
                         )
-                        session.status = SessionStatus.PAUSED
-                        break
+                        if self._hitl:
+                            l4_checkpoint = self._hitl.check_escalation(session)
+                            if l4_checkpoint and l4_checkpoint.decision:
+                                # Interactive: decision already captured
+                                if hasattr(session, "hitl_history"):
+                                    session.hitl_history.append(l4_checkpoint.to_dict())
+                                if l4_checkpoint.decision == CheckpointDecision.ABORT:
+                                    session.status = SessionStatus.PAUSED
+                                    break
+                                elif l4_checkpoint.decision == CheckpointDecision.SWITCH_TECHNIQUE:
+                                    session.stuck_state.escape_level = EscapeLevel.SWITCH_TECHNIQUE
+                                    # Fall through to should_switch handling below
+                                elif l4_checkpoint.decision == CheckpointDecision.CONTINUE:
+                                    pass  # Continue loop
+                                # Other decisions: continue loop
+                            elif l4_checkpoint:
+                                # Non-interactive: save and pause
+                                session.pending_checkpoint = l4_checkpoint.to_dict()
+                                session.status = SessionStatus.PAUSED
+                                break
+                            else:
+                                # HITL disabled at level 4 — old behavior
+                                session.status = SessionStatus.PAUSED
+                                break
+                        else:
+                            # No HITL handler — old behavior
+                            session.status = SessionStatus.PAUSED
+                            break
 
                     if should_switch:
                         consecutive = session_mgr.issue_tracker.consecutive_same_issue

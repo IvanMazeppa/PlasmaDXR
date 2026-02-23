@@ -38,6 +38,12 @@ from .quality_parameter_map import (
     merge_suggestions_to_modifications,
     format_suggestions_for_prompt,
 )
+from .hitl_handler import (
+    HITLHandler,
+    HITLCheckpoint,
+    CheckpointType,
+    CheckpointDecision,
+)
 
 __all__ = [
     "MCPConnectionPool",
@@ -69,4 +75,9 @@ __all__ = [
     "map_quality_issues_to_params",
     "merge_suggestions_to_modifications",
     "format_suggestions_for_prompt",
+    # HITL Framework (Phase 2B-5)
+    "HITLHandler",
+    "HITLCheckpoint",
+    "CheckpointType",
+    "CheckpointDecision",
 ]

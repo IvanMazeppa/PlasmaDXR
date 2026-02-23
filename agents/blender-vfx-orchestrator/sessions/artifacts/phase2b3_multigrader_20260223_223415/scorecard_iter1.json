@@ -1,0 +1,26 @@
+{
+  "session_id": "phase2b3_multigrader_20260223_223415",
+  "iteration": 1,
+  "overall_score": 45.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "(Shader/Lookdev \u2013 biggest win) Add/drive a temperature-based color map (Blackbody or ColorRamp) so only the hottest regions go near-white/yellow, with cooler regions going orange/red and outer smoke going dark. If you don\u2019t have a temperature attribute yet, consider authoring one (or deriving from density/height) so color isn\u2019t uniform.",
+    "Increase volumetric forward scattering to get a brighter, more \u201cfiery\u201d glow in the core while keeping edges smoky: Line 280 pv.inputs['Anisotropy'] from 0.15 \u2192 0.4\u20130.7 (test increments).",
+    "Push the volume toward a hotter core color (even if it\u2019s only a partial fix without true emission control): Line 274 pv.inputs['Color'] from (0.12,0.12,0.13,1) \u2192 try something warmer/brighter like (0.8,0.55,0.25,1) or (1.0,0.8,0.5,1), then re-balance density/absorption to avoid a flat glow.",
+    "Add more internal contrast (smoky shadowing) by increasing absorption relative to scatter: Line 281 pv.inputs['Absorption Color'] from (0.05,0.05,0.055,1) \u2192 try (0.12,0.12,0.13,1) for stronger extinction, then compensate with emission/core brightness (preferably via temperature) so it doesn\u2019t just go dark.",
+    "Reduce the \u201csingle-scale blob\u201d look by changing procedural detail scales:\n- Line 247 noise.inputs['Scale'] 25.0 \u2192 try 40\u201380 for finer breakup (or add a second noise at lower scale if available).\n- Line 248 noise.inputs['Detail'] 4.0 \u2192 try 6\u201310 to introduce smaller eddies.\n- Line 113 noise.inputs['Roughness'] 0.55 \u2192 try 0.7\u20130.85 to increase high-frequency contribution.",
+    "Rebalance the noise mixing so you get both large licks and small turbulence: Line 174 mix.inputs['Factor'] 0.6 \u2192 test 0.35\u20130.5 (more influence from the secondary pattern if it adds breakup) or 0.7\u20130.8 (if the secondary pattern is currently harming structure).",
+    "Tune wave deformation so it creates flame tongues rather than broad warping:\n- Line 164 wave.inputs['Scale'] 14.0 \u2192 test 20\u201335 for more frequent tongues.\n- Line 165 wave.inputs['Distortion'] 6.0 \u2192 test 2\u20134 if distortion is smearing forms; or 7\u201310 if it\u2019s currently too smooth (pick the direction that creates sharper breakup).",
+    "If the bump is contributing to \u201cmushy\u201d shading rather than detail, either strengthen it for clearer surface breakup or disable it: Line 205 bump.inputs['Strength'] 0.15 \u2192 test 0.25\u20130.4 (more crisp) or 0.05 (less blobby shading).",
+    "Mitigate banding/posterization: render to 16/32-bit (EXR) and keep the fire in HDR; add bloom/glare only to the hottest core (not the entire volume).",
+    "Background/scene integration: if the environment light is flattening contrast, reduce it: Line 66 bg.inputs['Strength'] 0.2 \u2192 test 0.05\u20130.12 so the flame reads hotter against a darker scene (then rely on flame lighting for local illumination)."
+  ],
+  "cache_size_mb": 14.212170600891113,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 326.692372902,
+  "utility_score": 0.475,
+  "timestamp": "2026-02-23T22:40:12.142656"
+}

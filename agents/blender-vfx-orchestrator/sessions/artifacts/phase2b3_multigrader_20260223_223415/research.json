@@ -1,0 +1,45 @@
+{
+  "recommended_approach": "Use a Mantaflow **Gas (smoke/fire) simulation** with the standard workflow **Domain \u2192 Flow \u2192 (Effectors) \u2192 Bake**, then render the plume by assigning a **volume material on the Domain** that drives **blackbody fire emission from the simulation\u2019s temperature/flame fields**. For shading, start with **Principled Volume** (physically-based volume shader) and use its built-in **Blackbody** controls, sourcing the volume grids via **Temperature Attribute (typically \"temperature\")** and density via **Density Attribute (typically \"density\")**; alternatively use the **Volume Info** node outputs (**Flame**, **Temperature**, **Density**) to build a custom emission/scatter setup.",
+  "key_parameters": {
+    "mantaflow_workflow": {
+      "required_objects": [
+        "Domain (simulation bounds + global settings)",
+        "Flow (emitter mesh/particles)",
+        "Effector(s) (optional, to shape motion)"
+      ],
+      "bake_note": "Save the .blend before baking; bake cache after setting up Domain/Flow/Effector and the Domain material."
+    },
+    "principled_volume_node": {
+      "density_attribute": "density (typical smoke density grid name)",
+      "color_attribute": "color (typical color grid name for smoke)",
+      "temperature_attribute": "temperature (typical temperature grid name for fire)",
+      "blackbody_intensity": "Set to 1 for physically accurate intensity (per docs).",
+      "temperature_units": "Kelvin; higher values emit more."
+    },
+    "volume_info_node_outputs": {
+      "density": "Smoke density scalar from Fluid Domain",
+      "flame": "Fire (flame) scalar density from Fluid Domain (outputs are the same across its channels)",
+      "temperature": "0\u20131 mapped to 0\u20131000 kelvin (per docs); often needs scaling/remapping for desired look"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "Mantaflow setup order matters: you need at least one Domain and one Flow, and the Domain must exist before baking.",
+    "Save the blend file before baking the cache (recommended in the documented workflow).",
+    "If using the Volume Info node for temperature-driven blackbody, note its Temperature output mapping: 0\u20131 corresponds to 0\u20131000 K (may require scaling/remapping for a convincing orange flame).",
+    "Principled Volume\u2019s Blackbody Intensity is documented as physically accurate at 1; changing it will be an artistic override. \u0d32\u0d15\u0d4d\u0d37"
+  ],
+  "alternative_approaches": [
+    "Instead of Principled Volume, build a custom volume shader using volume components (Volume Absorption/Scatter/Emission) and read simulation fields via Attribute/Volume Info (e.g., Temperature \u2192 Blackbody \u2192 Emission)."
+  ],
+  "doc_refs": [
+    "blender_manual_html/render/materials/components/volume.html#shading- (Principled Volume; fire with blackbody emission; volume attributes density/color/temperature)",
+    "blender_manual_html/render/shader_nodes/shader/volume_principled.html#inputs- (Principled Volume inputs: Density Attribute, Temperature Attribute, Blackbody Intensity/Tint)",
+    "blender_manual_html/render/shader_nodes/input/volume_info.html#outputs- (Volume Info: Density/Flame/Temperature outputs; temperature 0\u20131 maps to 0\u20131000 K)",
+    "Fluid simulation (Mantaflow) introduction/workflow excerpt from tool results: Domain \u2192 Flow \u2192 Effector \u2192 Material \u2192 Save \u2192 Bake (source: introduction.md in results)"
+  ],
+  "timestamp": "2026-02-23T22:34:55.744141"
+}

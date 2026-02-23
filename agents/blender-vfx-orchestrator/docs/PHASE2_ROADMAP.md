@@ -18,7 +18,7 @@ Phase 2+ takes the system from "produces evaluable renders" to "reliably produce
 | Phase | Focus | Estimated Effort | Status |
 |-------|-------|-----------------|--------|
 | **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **9/9 COMPLETE — 192 tests pass** |
-| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | **2/8 COMPLETE (2B-1, 2B-3)** — 243 tests pass |
+| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | **3/8 COMPLETE (2B-1, 2B-3, 2B-5)** — 269 tests pass |
 | **2C: Advanced Capabilities** | Multi-physics, experimentation, technique diversity | ~1,595 lines (core) | Weeks 6-9 |
 | **2D: Full Autonomy (Directional)** | Autonomy tracking, cross-session learning | ~405 lines (concrete) + TBD | Week 10+ |
 
@@ -917,44 +917,38 @@ Tier 3 always runs on iteration 1 (baseline assessment)
 
 ---
 
-### 2B-5: HITL Framework (`needs_approval`)
+### 2B-5: HITL Framework — **DONE**
 
-**What:** Native SDK approval gates that pause the pipeline, serialize state, and resume after human review. Implements the 5 HITL checkpoints from the Mission Statement.
+**What:** Pipeline-level HITL checkpoints that pause execution when the system needs human guidance. Two modes: interactive (CLI `input()`) and non-interactive (save checkpoint to session, PAUSED). Autonomy levels (0-4) gate which checkpoints fire.
 
-**Why it matters:** Ben explicitly wants this (Mission Statement §9). Currently Level 4 escape velocity sets `session.status = PAUSED` with no structured pause/resume flow.
+**Why it matters:** Ben explicitly wants this (Mission Statement §9). Previously Level 4 escape velocity set `session.status = PAUSED` with no structured pause/resume flow.
 
-**Research support:**
-- SDK Analysis §3, Mission Statement §9
+**SDK reality:** `needs_approval` is MCP-only (`HostedMCPTool`). `RunResult` has no `interruptions` field. Implemented as pure Python pipeline-level checkpoints per Architecture doc recommendation.
 
-**Implementation:**
+**Implementation (actual):**
 
 | File | Change | Lines |
 |------|--------|-------|
-| `tools/blender_executor_tools.py` | Add conditional `needs_approval` | ~15 |
-| `tools/asset_evaluator_tools.py` | Add conditional `needs_approval` (budget-based) | ~15 |
-| `orchestrator.py:_run_agent()` | Handle `result.interruptions` — serialize state, notify user | ~60 |
-| New: `utils/hitl_handler.py` | Approval logic: serialize state, poll, resume | ~150 |
-| `session_manager.py` | Add `pending_approvals: List[ApprovalRequest]` | ~23 |
+| New: `utils/hitl_handler.py` | Core HITL logic: CheckpointType/Decision enums, HITLCheckpoint dataclass, HITLHandler with autonomy gating | ~230 |
+| `models/shared_context.py` | `pending_checkpoint`, `hitl_history`, `autonomy_level` on SessionState | ~15 |
+| `config/agent_config.py` | `hitl_enabled`, `hitl_autonomy_level`, `hitl_interactive` + accessors | ~25 |
+| `config/presets.yaml` | HITL flags on all 7 presets | ~21 |
+| `orchestrator.py` | 4 integration points: import+init, resume, post-eval (Phase 3.95), escape L4 | ~60 |
+| New: `tests/test_hitl_framework.py` | 26 tests: models, autonomy gating, triggers, interactive mock, resume, config | ~480 |
 
 **HITL triggers:**
 
-| Checkpoint | Trigger | Implementation |
-|-----------|---------|----------------|
-| Stall detection | 3+ iterations, no score improvement | `needs_approval` on evaluate_render |
-| Budget warning | >80% of per-run budget spent | `needs_approval` on execute_blender_script |
-| Critical issue | BLACK_SCREEN etc. by monitor | Pipeline pause with diagnostic report |
-| Escalation | Escape velocity L4 | Pipeline pause with full state dump |
+| Checkpoint | Trigger | Autonomy Levels |
+|-----------|---------|-----------------|
+| Quality plateau | Score plateau 3+ iterations | 0 only |
+| Stall detection | Same issue 3x at escape >= 2 | 0, 1 |
+| Budget warning | >80% budget spent | 0, 1 |
+| Critical issue | Score=0 for 2+ consecutive iterations | 0, 1, 2 |
+| Escalation (L4) | Escape velocity Level 4 | 0, 1, 2, 3 |
 
-**Tests:**
-1. Approval gate fires: budget at 80% → assert `needs_approval` triggers
-2. State serialization: trigger approval → assert state file written
-3. Resume from state: serialize → deserialize → assert pipeline continues
-4. Timeout: trigger approval, don't respond 5 min → assert graceful pause
-5. Always_approve: approve with `always_approve=True` → assert subsequent calls skip approval
+**Tests:** 26 pass — checkpoint models, autonomy gating (5 levels), budget/stall/critical triggers, escalation, interactive prompt mocking, pending resume, config integration, disabled handler.
 
-**Rollback:** Set `ENABLE_HITL_FRAMEWORK = False` in `config/agent_config.py`.
-
-**Estimated effort:** ~263 lines | **Dependencies:** 2A-4 (PipelineMonitor) | **Risk:** Medium-High
+**Rollback:** Set `hitl_enabled: false` in the active preset.
 
 ---
 
@@ -1064,7 +1058,7 @@ def compute_retention(entry, now):
 | 2B-2: Context trimming | ~143 | High — per-agent precision | 4 | Week 3 |
 | **2B-3: Multi-grader evaluation** | **~390 actual** | **High — saves $0.05/failed render** | **28** | **DONE — deterministic Tier 1 checks before LLM vision** |
 | 2B-4: AdvancedSQLiteSession | ~210 | Medium — branching + token tracking | 4 | Week 3 (parallel w/ 2B-1 testing) |
-| 2B-5: HITL framework | ~263 | Medium — user-requested | 5 | Week 4 |
+| **2B-5: HITL framework** | **~830 actual** | **Medium — user-requested** | **26** | **DONE — pipeline-level checkpoints with autonomy gating** |
 | 2B-6: Memory decay | ~121 | Medium — prevents KB re-poisoning | 4 | Week 3 |
 | 2B-7: Effect-type evidence gating | ~60 | Medium — prevents cross-effect contamination | 4 | Week 3 (after 2B-6) |
 | 2B-8: Artifact-based sharing | ~225 | High — 75% token reduction per handoff | 4 | Week 3 |

@@ -715,6 +715,21 @@ class SessionState(BaseModel):
         description="Patterns extracted during this session for outcome tracking"
     )
 
+    # Phase 2B-5: HITL state
+    pending_checkpoint: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Pending HITL checkpoint awaiting human decision (serialized)"
+    )
+    hitl_history: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="History of HITL checkpoint decisions"
+    )
+    autonomy_level: int = Field(
+        default=1,
+        ge=0, le=4,
+        description="Current autonomy level (0=guided, 1=supervised, 2=semi-auto, 3=autonomous, 4=full)"
+    )
+
     # Final outputs
     final_render_path: Optional[str] = Field(
         default=None,

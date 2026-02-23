@@ -97,6 +97,9 @@ class PresetConfig:
     verbose: bool = False
     stateless_iterations: bool = True  # Phase 2B-1: Don't share SDK session across iterations
     multi_grader_eval: bool = True  # Phase 2B-3: Deterministic checks before LLM vision
+    hitl_enabled: bool = True       # Phase 2B-5: Enable HITL checkpoints
+    hitl_autonomy_level: int = 1    # Phase 2B-5: 0=guided, 1=supervised, 2=semi-auto, 3=autonomous, 4=full
+    hitl_interactive: bool = True   # Phase 2B-5: CLI prompts vs file-based decisions
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -114,6 +117,9 @@ class PresetConfig:
             verbose=data.get("verbose", False),
             stateless_iterations=data.get("stateless_iterations", True),
             multi_grader_eval=data.get("multi_grader_eval", True),
+            hitl_enabled=data.get("hitl_enabled", True),
+            hitl_autonomy_level=data.get("hitl_autonomy_level", 1),
+            hitl_interactive=data.get("hitl_interactive", True),
         )
 
 
@@ -246,6 +252,18 @@ class AgentConfigManager:
     def use_multi_grader_eval(self) -> bool:
         """Phase 2B-3: Check if deterministic quality checks are enabled."""
         return self.preset.multi_grader_eval
+
+    def use_hitl(self) -> bool:
+        """Phase 2B-5: Check if HITL checkpoints are enabled."""
+        return self.preset.hitl_enabled
+
+    def get_hitl_autonomy_level(self) -> int:
+        """Phase 2B-5: Get HITL autonomy level (0-4)."""
+        return self.preset.hitl_autonomy_level
+
+    def is_hitl_interactive(self) -> bool:
+        """Phase 2B-5: Check if HITL uses interactive CLI prompts."""
+        return self.preset.hitl_interactive
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""
