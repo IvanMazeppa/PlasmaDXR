@@ -1,0 +1,24 @@
+{
+  "session_id": "phase2a_e2e_fire_20260223_044204",
+  "iteration": 1,
+  "overall_score": 42.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Shader (highest impact): drive fire color from temperature via blackbody explicitly. In the domain material, use Temperature -> Map Range to a hotter range (e.g. 1200\u20133800K, not capped around ~2200K) and feed that into a Blackbody node; plug Blackbody color into Principled Volume Emission Color. Keep Blackbody Intensity at 1.0 and use Flame to drive Emission Strength (with a stronger multiplier).",
+    "Boost emission contrast: increase the Flame\u2192Emission Strength multiplier significantly (e.g. 35 \u2192 100\u2013250) and reduce volume Density so it doesn\u2019t turn into a thick white fog. Aim for a bright core with lower surrounding density.",
+    "Rebalance density sources: reduce or remove the smoke Density contribution for a \u201cfire-only\u201d look (or heavily downscale it). Use Flame (or Heat) more than Density for the visible volume when you want a clean flame plume.",
+    "Simulation detail: increase domain resolution (64 is typically too low for a close, small indoor flame). Try 128 as a minimum; 192\u2013256 for close-up production shots. Then rebake.",
+    "Turbulence: increase vorticity and flame vorticity, and ensure noise/high-res detail is enabled and strong enough to break the laminar column look (increase noise strength and adjust noise scale for finer detail).",
+    "Rendering quality: lower Cycles Volume Step Size / increase volumetric sampling to reduce banding/stepping (at the cost of render time). Increase samples if needed after fixing emission.",
+    "Emitter/base: slightly enlarge the flow emitter volume and/or soften the base falloff so the flame doesn\u2019t appear abruptly clipped at the bottom; verify the domain fully contains the visible plume with margin.",
+    "Lighting integration: once emission is correct, verify the volume is actually contributing light (Cycles) and consider modest bloom/glare only for the hottest core (avoid blooming the whole column)."
+  ],
+  "cache_size_mb": 14.561980247497559,
+  "render_count": 1,
+  "vdb_count": 50,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 317.7704190300028,
+  "utility_score": 0.45999999999999996,
+  "timestamp": "2026-02-23T04:48:34.702703"
+}

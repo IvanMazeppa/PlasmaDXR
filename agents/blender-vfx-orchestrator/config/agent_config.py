@@ -95,6 +95,7 @@ class PresetConfig:
     max_turns: int = 10
     max_iterations: int = 3
     verbose: bool = False
+    stateless_iterations: bool = True  # Phase 2B-1: Don't share SDK session across iterations
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -110,6 +111,7 @@ class PresetConfig:
             max_turns=data.get("max_turns", 10),
             max_iterations=data.get("max_iterations", 3),
             verbose=data.get("verbose", False),
+            stateless_iterations=data.get("stateless_iterations", True),
         )
 
 
@@ -234,6 +236,10 @@ class AgentConfigManager:
     def is_verbose(self) -> bool:
         """Check if verbose mode is enabled."""
         return self.preset.verbose
+
+    def use_stateless_iterations(self) -> bool:
+        """Phase 2B-1: Check if stateless iterations are enabled."""
+        return self.preset.stateless_iterations
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""

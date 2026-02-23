@@ -1529,6 +1529,11 @@ STOP after T3. Do NOT retry tools. Return structured output only.""",
         sdk_session = get_or_create_sdk_session(session_id)
         print(f"[Pipeline] SDK Session (compacted): {session_id}", file=sys.stderr)
 
+        # Phase 2B-1: Stateless iterations — each iteration gets fresh context
+        use_stateless = self._config.use_stateless_iterations()
+        iter_session = None if use_stateless else sdk_session
+        print(f"[Pipeline] Stateless iterations: {'ON' if use_stateless else 'OFF'}", file=sys.stderr)
+
         # Artifact-First Handoffs: Create manager for file-based agent communication
         # Instead of passing full data inline in prompts, agents write to disk and pass file refs
         artifact_mgr = get_artifact_manager(session_id)
@@ -1924,7 +1929,7 @@ Generate a complete, validated script using the selected technique. Return the s
                                 self._script_agent_standalone,
                                 script_prompt,
                                 context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                session=iter_session,  # Phase 2B-1: Stateless iterations
                                 hooks=script_hooks,
                                 max_turns=15,
                                 run_config=self._build_run_config(
@@ -2005,7 +2010,7 @@ Generate a complete, validated script using the selected technique. Return the s
                                     technique=new_technique,
                                     request=request,
                                     context=context,
-                                    sdk_session=sdk_session,
+                                    sdk_session=iter_session,  # Phase 2B-1
                                 )
                                 direct_modification_success = True
                                 session_mgr.reset_for_technique_switch(new_technique)
@@ -2211,7 +2216,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                     self._modification_coordinator,
                                     mod_prompt,
                                     context=context,
-                                    session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                    session=iter_session,  # Phase 2B-1: Stateless iterations
                                     max_turns=4,  # Coordinators should be fast
                                     run_config=self._build_run_config(
                                         session=session,
@@ -2262,7 +2267,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                             technique=new_technique,
                                             request=request,
                                             context=context,
-                                            sdk_session=sdk_session,
+                                            sdk_session=iter_session,  # Phase 2B-1
                                         )
                                         direct_modification_success = True
                                         session_mgr.reset_for_technique_switch(new_technique)
@@ -2310,7 +2315,7 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                             self._script_agent_standalone,
                                             code_fix_prompt,
                                             context=context,
-                                            session=sdk_session,
+                                            session=iter_session,  # Phase 2B-1
                                             hooks=code_fix_hooks,
                                             max_turns=8,
                                             run_config=self._build_run_config(
@@ -2448,7 +2453,7 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                     self._script_agent_standalone,
                                     script_prompt,
                                     context=context,
-                                    session=sdk_session,
+                                    session=iter_session,  # Phase 2B-1
                                     hooks=iter_script_hooks,
                                     max_turns=15,
                                     run_config=self._build_run_config(
@@ -2816,7 +2821,7 @@ but append '_errfix' to the output name."""
                                     self._script_agent_standalone,
                                     recovery_prompt,
                                     context=context,
-                                    session=sdk_session,
+                                    session=iter_session,  # Phase 2B-1
                                     hooks=recovery_hooks,
                                     max_turns=6,
                                     run_config=self._build_run_config(
@@ -3096,7 +3101,7 @@ Provide detailed feedback for improvement."""
                             self._quality_agent_standalone,
                             eval_prompt,
                             context=context,
-                            session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                            session=iter_session,  # Phase 2B-1: Stateless iterations
                             hooks=quality_hooks,
                             max_turns=6,
                             run_config=self._build_run_config(
@@ -3291,7 +3296,7 @@ Provide detailed feedback for improvement."""
                         request=request,
                         context=context,
                         session=session,
-                        sdk_session=sdk_session,
+                        sdk_session=iter_session,  # Phase 2B-1: Stateless iterations
                         script=script,
                         execution=execution,
                         quality=quality,
@@ -3389,7 +3394,7 @@ Refine the deterministic suggestions above using the ACTUAL identifiers you find
                                 self._learning_agent_standalone,
                                 learn_prompt,
                                 context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                session=iter_session,  # Phase 2B-1: Stateless iterations
                                 hooks=learning_hooks,
                                 max_turns=8,
                                 run_config=self._build_run_config(
@@ -3478,7 +3483,7 @@ Decide: Is quality gate PASSED? What is the next action?"""
                                 self._quality_gate_coordinator,
                                 gate_prompt,
                                 context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                session=iter_session,  # Phase 2B-1: Stateless iterations
                                 max_turns=3,  # Quality gate should be very fast
                                 run_config=self._build_run_config(
                                     session=session,
@@ -3566,7 +3571,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 self._research_agent,
                                 switch_prompt,
                                 context=context,
-                                session=sdk_session,  # Phase 4: SDK session for conversation persistence
+                                session=iter_session,  # Phase 2B-1: Stateless iterations
                                 hooks=switch_research_hooks,
                                 max_turns=4,  # Phase 3: Aligned with prompt turn budget
                                 run_config=self._build_run_config(
@@ -3623,15 +3628,16 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
                     print(f"[Pipeline] Iteration artifact: {iteration_artifact_path}", file=sys.stderr)
 
                     # ====== END OF ITERATION: COMPACT SESSION HISTORY ======
-                    # Trigger manual compaction to summarize old conversation history.
-                    # This keeps token usage bounded across iterations while preserving
-                    # full context within each iteration.
-                    if sdk_session and hasattr(sdk_session, 'run_compaction'):
-                        try:
-                            await sdk_session.run_compaction({"force": True})
-                            print(f"[Pipeline] Session history compacted after iteration {iteration}", file=sys.stderr)
-                        except Exception as e:
-                            print(f"[Pipeline] WARN: Session compaction failed: {e}", file=sys.stderr)
+                    # Phase 2B-1: No compaction needed in stateless mode
+                    if not use_stateless:
+                        if sdk_session and hasattr(sdk_session, 'run_compaction'):
+                            try:
+                                await sdk_session.run_compaction({"force": True})
+                                print(f"[Pipeline] Session history compacted after iteration {iteration}", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Session compaction failed: {e}", file=sys.stderr)
+                    else:
+                        print(f"[Pipeline] Stateless mode — no compaction needed", file=sys.stderr)
 
                 # End of iteration loop
                 if session.status != SessionStatus.PASSED:

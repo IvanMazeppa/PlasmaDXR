@@ -1,0 +1,63 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/phase2a_e2e_fire_v1.py",
+  "technique_used": "mantaflow_fire_blackbody_principled_volume",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2a_e2e_fire/phase2a_e2e_fire.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2a_e2e_fire/cache",
+  "score": 42.0,
+  "passed": false,
+  "primary_issue": "The effect does not read as fire: it looks like a pale/white smoke/steam plume with flat emission (missing convincing temperature-driven blackbody color + bright hot core).",
+  "parameter_changes": {
+    "asset_name": "phase2a_e2e_fire",
+    "frame_range": [
+      1,
+      25
+    ],
+    "render_resolution": [
+      1280,
+      720
+    ],
+    "domain": {
+      "domain_type": "GAS",
+      "resolution_max": 64,
+      "cache_type": "ALL",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/phase2a_e2e_fire/cache",
+      "cache_frame_start": 1,
+      "cache_frame_end": 25,
+      "cache_data_format": "OPENVDB",
+      "cache_noise_format": "OPENVDB",
+      "burning_rate": 1.1,
+      "flame_smoke": 0.25,
+      "vorticity": 0.18,
+      "flame_vorticity": 0.75,
+      "flame_ignition": 1.25,
+      "flame_max_temp": 3.4,
+      "use_dissolve_smoke": true,
+      "dissolve_speed": 24,
+      "use_noise": true,
+      "noise_scale": 2,
+      "noise_strength": 1.2,
+      "noise_time_anim": 0.2,
+      "use_adaptive_timesteps": true,
+      "timesteps_min": 1,
+      "timesteps_max": 4
+    },
+    "flow": {
+      "flow_type": "FIRE",
+      "flow_behavior": "INFLOW",
+      "fuel_amount": 1.0,
+      "temperature": 2.2,
+      "density": 0.2,
+      "subframes": 2,
+      "use_initial_velocity": true,
+      "velocity_normal": 2.0,
+      "velocity_random": 0.2
+    },
+    "shader": {
+      "domain_volume_shader": "Principled Volume (Blackbody Intensity=1.0)",
+      "driver_nodes": "Volume Info (Flame/Temperature/Density) -> Map Range (900..2200K) -> Temperature; Flame->Emission Strength; Flame+Density->Density"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-23T04:49:26.018950"
+}

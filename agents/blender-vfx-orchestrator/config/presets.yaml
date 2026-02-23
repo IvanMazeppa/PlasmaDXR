@@ -23,6 +23,7 @@ presets:
     max_output_tokens: 2000
     max_turns: 5
     max_iterations: 2
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
   # Standard development - balanced cost/quality
   development:
@@ -33,6 +34,7 @@ presets:
     max_output_tokens: 4000
     max_turns: 10
     max_iterations: 3
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
   # Full quality - best results, higher cost
   production:
@@ -44,6 +46,7 @@ presets:
     max_output_tokens: 8000
     max_turns: 15
     max_iterations: 5
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
   # Budget saver - absolute minimum
   budget_saver:
@@ -54,6 +57,7 @@ presets:
     max_output_tokens: 1000
     max_turns: 3
     max_iterations: 1
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
   # Debug mode - verbose, detailed tracing
   debug:
@@ -65,6 +69,7 @@ presets:
     max_turns: 8
     max_iterations: 2
     verbose: true
+    stateless_iterations: false  # Keep session for conversation inspection
 
   # Reasoning mode - uses full reasoning for complex tasks
   reasoning:
@@ -75,6 +80,7 @@ presets:
     max_output_tokens: 8000
     max_turns: 10
     max_iterations: 3
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
   # Creative mode - gpt-5.2 with temperature (reasoning=none)
   creative:
@@ -85,6 +91,7 @@ presets:
     max_output_tokens: 4000
     max_turns: 10
     max_iterations: 3
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
 
 # Per-agent overrides (applied on top of preset defaults)
 # These apply globally across all presets.

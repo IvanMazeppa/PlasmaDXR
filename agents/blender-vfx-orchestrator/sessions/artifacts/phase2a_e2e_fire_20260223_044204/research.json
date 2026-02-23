@@ -1,0 +1,57 @@
+{
+  "recommended_approach": "Use a Mantaflow gas simulation (at minimum a Fluid **Domain** plus one **Flow** emitter), bake the cache, and render the resulting volume grids using a volume shader configured for fire: primarily **Principled Volume** with **Blackbody** emission driven by the simulation\u2019s **temperature** (and optionally **flame**) volume attributes. For shading control, you can also use the **Volume Info** node outputs (Density/Flame/Temperature) to drive a Blackbody/Principled Volume setup.",
+  "key_parameters": {
+    "mantaflow_workflow_minimum": [
+      "Create a Fluid Domain (simulation bounds) before baking",
+      "Create one or more Flow objects to emit smoke/gas inside the Domain",
+      "(Optional) Add Effectors/force fields to shape motion",
+      "Assign a material to the Domain for volume rendering",
+      "Save the .blend before baking",
+      "Bake the Cache to generate voxel data used for playback/rendering"
+    ],
+    "principled_volume_relevant_inputs": {
+      "density_attribute": "Typically \"density\"",
+      "color_attribute": "Typically \"color\" (noted for smoke coloring)",
+      "temperature_attribute": "Typically \"temperature\"",
+      "blackbody_intensity": "Set to 1 for physically accurate intensity (per Principled Volume docs)",
+      "temperature_kelvin": "Higher values emit more (per Principled Volume docs)",
+      "emission_strength": "Controls emitted light amount (per Principled Volume docs)"
+    },
+    "volume_info_node_outputs": {
+      "density": "Scalar density of smoke inside the Fluid Domain",
+      "flame": "Scalar density of fire inside the Fluid Domain",
+      "temperature": "Scalar temperature; values 0\u20131 map to 0\u20131000 kelvin (per Volume Info docs)"
+    },
+    "volume_shading_notes": {
+      "principled_volume": "Recommended general-purpose physically-based volume shader; supports scattering/absorption/emission; fire can be rendered with blackbody emission",
+      "custom_shader_option": "Use Attribute node(s) to fetch grids such as density/color/temperature when building a custom volume shader"
+    }
+  },
+  "api_modules": [
+    "bpy.data.materials",
+    "bpy.types.ShaderNodeTexNoise",
+    "bpy.types.CloudsTexture",
+    "bpy.types.MarbleTexture",
+    "bpy.types.MusgraveTexture",
+    "bpy.types.StucciTexture",
+    "bpy.types.VoronoiTexture",
+    "bpy.types.WoodTexture"
+  ],
+  "warnings": [
+    "Tooling did not return direct Blender 5.0 API reference pages for Mantaflow domain/flow settings (e.g., bpy.types.FluidDomainSettings), so exact property names for scripting domain/flow setup are not grounded by the retrieved API docs.",
+    "Remember the simulation workflow order matters: Domain must exist before baking; save the blend-file before baking; changes to domain/flow settings generally require re-baking (noted in the retrieved workflow text).",
+    "Volume Info Temperature is normalized: 0\u20131 maps to 0\u20131000 kelvin; if you need hotter fire shading you may need to scale/remap this value in shading (implied by the mapping statement)."
+  ],
+  "alternative_approaches": [
+    "Use a custom volume shader network instead of Principled Volume by combining Volume Absorption/Scatter/Emission and driving them via volume attributes (density/color/temperature) fetched with nodes like Attribute/Volume Info (per volume shading docs).",
+    "Drive blackbody-style fire using the Volume Info node\u2019s Temperature output (0\u20131 mapped to kelvin) feeding a Blackbody/Principled Volume setup (per Volume Info + volume shading docs)."
+  ],
+  "doc_refs": [
+    "blender_manual_html/render/shader_nodes/shader/volume_principled.html#inputs-",
+    "blender_manual_html/render/materials/components/volume.html#shading-",
+    "blender_manual_html/render/shader_nodes/input/volume_info.html#outputs-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-23T04:42:48.987043"
+}
