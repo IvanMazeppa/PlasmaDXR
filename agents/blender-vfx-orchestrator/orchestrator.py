@@ -24,6 +24,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from pydantic import BaseModel, Field, model_validator
 
 from agents import Agent, ModelSettings, Runner, trace, RunContextWrapper, ItemHelpers, SQLiteSession, function_tool
