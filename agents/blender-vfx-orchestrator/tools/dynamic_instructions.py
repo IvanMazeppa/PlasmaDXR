@@ -89,6 +89,21 @@ def query_validated_learnings(
             if success_rate >= min_success_rate:
                 validated.append(learning)
 
+        # Phase 2B-6: Filter by Ebbinghaus retention
+        if validated:
+            try:
+                from config.agent_config import get_config
+                if get_config().use_memory_decay():
+                    from datetime import datetime
+                    from utils.code_pattern_memory import compute_retention, RETENTION_ACTIVE
+                    now = datetime.now()
+                    validated = [
+                        e for e in validated
+                        if compute_retention(e, now) >= RETENTION_ACTIVE
+                    ]
+            except Exception:
+                pass  # Config unavailable — skip decay filtering
+
         return validated
     except Exception as e:
         # QW-2: Log KB query failures instead of silently swallowing
@@ -117,15 +132,32 @@ def format_learnings_as_instructions(
         return ""
 
     lines = [f"\n## {header}"]
+
+    # Phase 2B-6: Compute retention scores for display
+    retention_available = False
+    try:
+        from datetime import datetime
+        from utils.code_pattern_memory import compute_retention
+        now = datetime.now()
+        retention_available = True
+    except Exception:
+        pass
+
     for learning in learnings:
         rule = learning.get("rule", learning.get("description", "Unknown rule"))
         success_rate = learning.get("success_rate", 0)
         effect_type = learning.get("effect_type", "")
 
+        # Build suffix with optional retention score
+        suffix = f"success: {success_rate:.0%}"
+        if retention_available:
+            retention = compute_retention(learning, now)
+            suffix += f", retention: {retention:.0%}"
+
         if effect_type:
-            lines.append(f"- [{effect_type}] {rule} (success: {success_rate:.0%})")
+            lines.append(f"- [{effect_type}] {rule} ({suffix})")
         else:
-            lines.append(f"- {rule} (success: {success_rate:.0%})")
+            lines.append(f"- {rule} ({suffix})")
 
     return "\n".join(lines)
 

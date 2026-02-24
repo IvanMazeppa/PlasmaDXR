@@ -22,6 +22,10 @@ from .code_pattern_memory import (
     CodePattern,
     CodePatternMemory,
     get_pattern_memory,
+    # Phase 2B-6: Ebbinghaus Memory Decay
+    compute_retention,
+    RETENTION_ACTIVE,
+    RETENTION_ARCHIVE,
 )
 from .artifact_manager import (
     ArtifactManager,
@@ -80,4 +84,8 @@ __all__ = [
     "HITLCheckpoint",
     "CheckpointType",
     "CheckpointDecision",
+    # Ebbinghaus Memory Decay (Phase 2B-6)
+    "compute_retention",
+    "RETENTION_ACTIVE",
+    "RETENTION_ARCHIVE",
 ]

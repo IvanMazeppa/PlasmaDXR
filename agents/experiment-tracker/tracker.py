@@ -689,16 +689,20 @@ class ExperimentTracker:
                     parameter
                 ))
             else:
+                now_iso = datetime.now().isoformat()
                 conn.execute("""
                     INSERT INTO parameter_knowledge (
-                        parameter, rules, warnings, last_updated, confidence
-                    ) VALUES (?, ?, ?, ?, ?)
+                        parameter, rules, warnings, last_updated, confidence,
+                        last_reinforced, reinforcement_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     parameter,
                     json.dumps([rule] if rule else []),
                     json.dumps([warning] if warning else []),
-                    datetime.now().isoformat(),
-                    0.5  # Manual entries start with moderate confidence
+                    now_iso,
+                    0.5,  # Manual entries start with moderate confidence
+                    now_iso,  # Phase 2B-6: Initialize reinforcement so seeds don't decay
+                    1,        # Phase 2B-6: Count=1 prevents immediate decay
                 ))
 
     # =========================================================================

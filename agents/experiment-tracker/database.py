@@ -255,6 +255,23 @@ class ExperimentDatabase:
                     ON causal_relationships(parameter);
             """)
 
+            # Phase 2B-6: Migration — add Ebbinghaus decay columns if missing
+            cols = [
+                r[1] for r in conn.execute(
+                    "PRAGMA table_info(parameter_knowledge)"
+                ).fetchall()
+            ]
+            if "last_reinforced" not in cols:
+                conn.execute(
+                    "ALTER TABLE parameter_knowledge "
+                    "ADD COLUMN last_reinforced TEXT DEFAULT ''"
+                )
+            if "reinforcement_count" not in cols:
+                conn.execute(
+                    "ALTER TABLE parameter_knowledge "
+                    "ADD COLUMN reinforcement_count INTEGER DEFAULT 0"
+                )
+
     # =========================================================================
     # Experiment CRUD
     # =========================================================================
@@ -530,7 +547,11 @@ class ExperimentDatabase:
                     'parameter': row['parameter'],
                     'rules': json.loads(row['rules'] or '[]'),
                     'warnings': json.loads(row['warnings'] or '[]'),
-                    'confidence': row['confidence']
+                    'confidence': row['confidence'],
+                    # Phase 2B-6: Ebbinghaus decay fields
+                    'last_reinforced': row['last_reinforced'] if 'last_reinforced' in row.keys() else '',
+                    'reinforcement_count': row['reinforcement_count'] if 'reinforcement_count' in row.keys() else 0,
+                    'last_updated': row['last_updated'] if 'last_updated' in row.keys() else '',
                 })
 
             for row in causal_results:

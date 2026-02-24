@@ -1110,6 +1110,96 @@ async def seed_technique_entry(
     )
 
 
+# =============================================================================
+# Phase 2B-6: Ebbinghaus Memory Decay — Reinforcement
+# =============================================================================
+
+def _reinforce_entry_impl(entry_id: str, quality_score: float = 60.0) -> str:
+    """
+    Reinforce a KB entry — resets decay clock and increments reinforcement count.
+
+    Called when a pattern/technique from the KB is used successfully.
+
+    Args:
+        entry_id: The 'parameter' key in parameter_knowledge
+                  (e.g., 'technique:fire:mantaflow_gas')
+        quality_score: Quality score achieved (0-100), updates confidence via EMA
+
+    Returns:
+        JSON confirmation with updated reinforcement state
+    """
+    try:
+        tracker = _get_tracker_instance()
+        db = tracker.db
+
+        now_iso = datetime.now().isoformat()
+
+        with db._connection() as conn:
+            row = conn.execute(
+                "SELECT confidence, reinforcement_count FROM parameter_knowledge WHERE parameter = ?",
+                (entry_id,)
+            ).fetchone()
+
+            if not row:
+                return json.dumps({
+                    "success": False,
+                    "error": f"Entry '{entry_id}' not found in knowledge base"
+                })
+
+            old_confidence = row['confidence'] if row['confidence'] else 50.0
+            old_count = row['reinforcement_count'] if row['reinforcement_count'] else 0
+
+            # EMA update for confidence
+            new_confidence = old_confidence + 0.1 * (quality_score - old_confidence)
+            new_count = old_count + 1
+
+            conn.execute(
+                """UPDATE parameter_knowledge
+                   SET last_reinforced = ?, reinforcement_count = ?,
+                       confidence = ?, last_updated = ?
+                   WHERE parameter = ?""",
+                (now_iso, new_count, new_confidence, now_iso, entry_id)
+            )
+
+        return json.dumps({
+            "success": True,
+            "entry_id": entry_id,
+            "reinforcement_count": new_count,
+            "confidence": round(new_confidence, 2),
+            "message": f"Reinforced '{entry_id}': count={new_count}, confidence={new_confidence:.1f}"
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "entry_id": entry_id
+        })
+
+
+@function_tool
+async def reinforce_entry(
+    entry_id: str,
+    quality_score: float = 60.0,
+) -> str:
+    """
+    Reinforce a knowledge base entry after successful use.
+
+    Resets the Ebbinghaus decay clock and increments the reinforcement count.
+    Call this when a pattern or technique from the KB is used successfully
+    in a production run.
+
+    Args:
+        entry_id: The parameter key in knowledge base
+                  (e.g., 'technique:fire:mantaflow_gas')
+        quality_score: Quality score achieved (0-100)
+
+    Returns:
+        JSON with updated reinforcement state
+    """
+    return _reinforce_entry_impl(entry_id, quality_score)
+
+
 @function_tool
 async def get_effective_strategy(issue: str) -> str:
     """

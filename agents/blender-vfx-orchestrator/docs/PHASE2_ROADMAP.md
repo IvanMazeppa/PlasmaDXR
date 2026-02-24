@@ -18,7 +18,7 @@ Phase 2+ takes the system from "produces evaluable renders" to "reliably produce
 | Phase | Focus | Estimated Effort | Status |
 |-------|-------|-----------------|--------|
 | **2A: Quick Wins** | Documentation pipeline, cost savings, safety nets, monitoring | ~1,431 lines | **9/9 COMPLETE — 192 tests pass** |
-| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL | ~2,027 lines | **3/8 COMPLETE (2B-1, 2B-3, 2B-5)** — 269 tests pass |
+| **2B: Core Architecture** | Stateless iterations, context management, multi-grader eval, HITL, memory decay | ~2,027 lines | **4/8 COMPLETE (2B-1, 2B-3, 2B-5, 2B-6)** — 292 tests pass |
 | **2C: Advanced Capabilities** | Multi-physics, experimentation, technique diversity | ~1,595 lines (core) | Weeks 6-9 |
 | **2D: Full Autonomy (Directional)** | Autonomy tracking, cross-session learning | ~405 lines (concrete) + TBD | Week 10+ |
 
@@ -953,6 +953,8 @@ Tier 3 always runs on iteration 1 (baseline assessment)
 ---
 
 ### 2B-6: Ebbinghaus Memory Decay
+
+**Status:** COMPLETE | **Branch:** `0.34.12/phase-2b6-memory-decay` | **Tests:** 23 new (292 total) | **Actual lines:** ~265
 
 **What:** Knowledge base entries decay exponentially if not reinforced by successful outcomes. Entries below retention threshold are archived (not deleted).
 

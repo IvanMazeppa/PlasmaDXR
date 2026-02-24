@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -53,6 +54,8 @@ class CodePattern:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_used_at: str = ""
+    last_reinforced: str = ""       # Phase 2B-6: ISO timestamp of last positive reinforcement
+    reinforcement_count: int = 0    # Phase 2B-6: Number of positive reinforcement events
 
     @property
     def success_rate(self) -> float:
@@ -119,6 +122,9 @@ Context:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CodePattern":
         """Create CodePattern from dictionary."""
+        # Backward compat: old JSON files may lack Phase 2B-6 fields
+        data.setdefault("last_reinforced", "")
+        data.setdefault("reinforcement_count", 0)
         return cls(**data)
 
 
@@ -406,9 +412,13 @@ class CodePatternMemory:
             pattern.average_improvement = (
                 (pattern.average_improvement * (n - 1) + improvement) / n
             )
+            # Phase 2B-6: Reset decay clock on successful use
+            pattern.last_reinforced = datetime.now().isoformat()
+            pattern.reinforcement_count += 1
         else:
             pattern.failure_count += 1
 
+        pattern.last_used_at = datetime.now().isoformat()
         self._save_pattern(pattern)
         return True
 
@@ -563,6 +573,59 @@ class CodePatternMemory:
             "total_usage": total_usage,
             "high_confidence_patterns": sum(1 for p in self.patterns.values() if p.confidence >= 70)
         }
+
+
+# --- Phase 2B-6: Ebbinghaus Memory Decay ---
+
+# Retention thresholds
+RETENTION_ACTIVE = 0.3     # Above this: pattern is active, included in queries
+RETENTION_ARCHIVE = 0.1    # Below this: pattern should be archived
+
+
+def compute_retention(
+    entry: Union[CodePattern, Dict[str, Any]],
+    now: Optional[datetime] = None,
+) -> float:
+    """Compute Ebbinghaus retention score for a memory entry.
+
+    Accepts either a CodePattern (for code pattern memory) or a dict
+    (for KB entries from parameter_knowledge).
+
+    Returns float in [0.0, 1.0]. Higher = more retained.
+    Formula: R(t) = e^(-t / S) where t = days since last reinforcement,
+    S = strength = reinforcement_count * quality_factor (min 0.1).
+    """
+    if now is None:
+        now = datetime.now()
+
+    # Extract fields — handle both CodePattern and dict
+    if isinstance(entry, dict):
+        last_reinforced_str = entry.get("last_reinforced", "")
+        reinforcement_count = entry.get("reinforcement_count", 0)
+        avg_score = entry.get("confidence", 50.0)
+    else:
+        last_reinforced_str = entry.last_reinforced
+        reinforcement_count = entry.reinforcement_count
+        avg_score = entry.average_improvement if entry.average_improvement > 0 else 50.0
+
+    # If never reinforced, fall back to created_at
+    if not last_reinforced_str:
+        created_str = entry.get("created_at", "") if isinstance(entry, dict) else entry.created_at
+        if not created_str:
+            return 0.5  # No timestamps at all — neutral retention
+        last_reinforced_str = created_str
+
+    try:
+        last_reinforced = datetime.fromisoformat(last_reinforced_str)
+    except (ValueError, TypeError):
+        return 0.5  # Unparseable timestamp — neutral
+
+    days_since = max((now - last_reinforced).total_seconds() / 86400, 0)
+
+    # Strength: higher reinforcement count + quality → slower decay
+    strength = max(reinforcement_count * avg_score / 100.0, 0.1)
+
+    return math.exp(-days_since / strength)
 
 
 # Global instance (lazy initialization)

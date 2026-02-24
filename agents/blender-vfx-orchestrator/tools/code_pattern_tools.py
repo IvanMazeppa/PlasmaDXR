@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from typing import Optional, List
 
 from agents import function_tool, RunContextWrapper
@@ -25,7 +26,9 @@ from agents import function_tool, RunContextWrapper
 # @function_tool decorator evaluates type hints at runtime
 from models.shared_context import SharedContext
 
-from utils.code_pattern_memory import get_pattern_memory, CodePattern
+from utils.code_pattern_memory import (
+    get_pattern_memory, CodePattern, compute_retention, RETENTION_ACTIVE,
+)
 
 
 @function_tool
@@ -181,6 +184,15 @@ def search_code_patterns(
             max_results=max_results
         )
 
+        # Phase 2B-6: Filter by Ebbinghaus retention
+        try:
+            from config.agent_config import get_config
+            if get_config().use_memory_decay():
+                now = datetime.now()
+                patterns = [p for p in patterns if compute_retention(p, now) >= RETENTION_ACTIVE]
+        except Exception:
+            pass  # Config unavailable — skip decay filtering
+
         if not patterns:
             return json.dumps({
                 "patterns_found": 0,
@@ -188,6 +200,7 @@ def search_code_patterns(
                 "recommendation": "No matching patterns found. Try a novel approach and record it if successful."
             })
 
+        now = datetime.now()
         pattern_data = []
         for p in patterns:
             pattern_data.append({
@@ -200,7 +213,8 @@ def search_code_patterns(
                 "usage_count": p.usage_count,
                 "success_rate": p.success_rate,
                 "effect_types": p.effect_types,
-                "parameters_affected": p.parameters_affected
+                "parameters_affected": p.parameters_affected,
+                "retention_score": round(compute_retention(p, now), 2),
             })
 
         # Recommendation based on confidence
@@ -485,8 +499,19 @@ def search_patterns_impl(
     """Direct callable version for searching patterns from non-agent code."""
     memory = get_pattern_memory()
 
-    return memory.retrieve_patterns_for_issue(
+    patterns = memory.retrieve_patterns_for_issue(
         issue=issue,
         effect_type=effect_type if effect_type else None,
         min_confidence=min_confidence
     )
+
+    # Phase 2B-6: Filter by Ebbinghaus retention
+    try:
+        from config.agent_config import get_config
+        if get_config().use_memory_decay():
+            now = datetime.now()
+            patterns = [p for p in patterns if compute_retention(p, now) >= RETENTION_ACTIVE]
+    except Exception:
+        pass  # Config unavailable — skip decay filtering
+
+    return patterns

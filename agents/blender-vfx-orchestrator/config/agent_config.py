@@ -100,6 +100,7 @@ class PresetConfig:
     hitl_enabled: bool = True       # Phase 2B-5: Enable HITL checkpoints
     hitl_autonomy_level: int = 1    # Phase 2B-5: 0=guided, 1=supervised, 2=semi-auto, 3=autonomous, 4=full
     hitl_interactive: bool = True   # Phase 2B-5: CLI prompts vs file-based decisions
+    memory_decay_enabled: bool = True  # Phase 2B-6: Ebbinghaus decay on KB entries
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -120,6 +121,7 @@ class PresetConfig:
             hitl_enabled=data.get("hitl_enabled", True),
             hitl_autonomy_level=data.get("hitl_autonomy_level", 1),
             hitl_interactive=data.get("hitl_interactive", True),
+            memory_decay_enabled=data.get("memory_decay_enabled", True),
         )
 
 
@@ -264,6 +266,10 @@ class AgentConfigManager:
     def is_hitl_interactive(self) -> bool:
         """Phase 2B-5: Check if HITL uses interactive CLI prompts."""
         return self.preset.hitl_interactive
+
+    def use_memory_decay(self) -> bool:
+        """Phase 2B-6: Check if Ebbinghaus memory decay is enabled."""
+        return self.preset.memory_decay_enabled
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""
