@@ -1106,7 +1106,7 @@ def compute_retention(entry, now):
 | **2B-5: HITL framework** | **~830 actual** | **Medium — user-requested** | **26** | **DONE — pipeline-level checkpoints with autonomy gating** |
 | **2B-6: Memory decay** | **~292 actual** | **Medium — prevents KB re-poisoning** | **11** | **DONE — Ebbinghaus decay on KB + code pattern entries** |
 | **2B-7: Effect-type evidence gating** | **~162 actual** | **Medium — prevents cross-effect contamination** | **15** | **DONE — KB entries scoped by effect_type, config-gated** |
-| 2B-8: Artifact-based sharing | ~225 | High — 75% token reduction per handoff | 4 | Week 3 |
+| **2B-8: Artifact-based sharing** | **~153 actual** | **High — agents read artifacts on demand via tool** | **13** | **DONE — read_artifact + list_session_artifacts tools, config-gated** |
 | 2B-9: Prompt enhancement | ~172 | **Critical — eliminates garbage scripts from vague prompts** | 4 | Week 3 |
 | **Total** | **~2,199** | | **39** | |
 

@@ -102,6 +102,7 @@ class PresetConfig:
     hitl_interactive: bool = True   # Phase 2B-5: CLI prompts vs file-based decisions
     memory_decay_enabled: bool = True  # Phase 2B-6: Ebbinghaus decay on KB entries
     effect_type_scoping: bool = True   # Phase 2B-7: KB entries scoped by effect type
+    artifact_sharing: bool = True      # Phase 2B-8: Agents read artifacts via tool
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -124,6 +125,7 @@ class PresetConfig:
             hitl_interactive=data.get("hitl_interactive", True),
             memory_decay_enabled=data.get("memory_decay_enabled", True),
             effect_type_scoping=data.get("effect_type_scoping", True),
+            artifact_sharing=data.get("artifact_sharing", True),
         )
 
 
@@ -276,6 +278,10 @@ class AgentConfigManager:
     def use_effect_type_scoping(self) -> bool:
         """Phase 2B-7: Check if KB entries are scoped by effect type."""
         return self.preset.effect_type_scoping
+
+    def use_artifact_sharing(self) -> bool:
+        """Phase 2B-8: Check if agents use artifact tools instead of inline data."""
+        return self.preset.artifact_sharing
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""

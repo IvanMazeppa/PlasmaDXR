@@ -69,6 +69,8 @@ from tools.experiment_tracker_tools import _suggest_experiments_impl as suggest_
 from tools.deterministic_quality_checks import run_deterministic_checks
 # Phase 2B-5: HITL framework (pipeline-level checkpoints)
 from utils.hitl_handler import HITLHandler, CheckpointDecision
+# Phase 2B-8: Artifact read tools for agents
+from tools.artifact_tools import read_artifact, list_session_artifacts
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -688,6 +690,7 @@ Determine if quality gate is passed and what action to take next.
 - Issues identified (critical vs minor)
 - Iteration count and history
 - Escape velocity level
+- Use read_artifact() to get full details from scorecard/quality artifact paths
 
 ## Decision Logic
 1. PASSED: score >= threshold AND no critical issues (ZERO_LIGHTS, BLACK_SCREEN)
@@ -713,6 +716,7 @@ Return a QualityDecision with:
         model_settings=ModelSettings(**model_settings_kwargs),
         tools=[
             evaluate_escape_velocity,
+            read_artifact,  # Phase 2B-8: Read scorecard/quality artifacts for full details
         ],
         output_type=AgentOutputSchema(QualityDecision, strict_json_schema=False),
         # Phase 3: Validate decision consistency (e.g., passed=True must have next_action='complete')
@@ -1414,7 +1418,7 @@ STOP after T3. Do NOT retry tools. Return structured output only.""",
             model=learning_model,
             model_settings=learning_settings,
             output_type=AgentOutputSchema(LearningOutput, strict_json_schema=False),
-            tools=base_learning_standalone.tools,
+            tools=base_learning_standalone.tools + [read_artifact, list_session_artifacts],  # Phase 2B-8
         )
 
         # Docs Expert Standalone - for parallel preflight (no handoffs)
