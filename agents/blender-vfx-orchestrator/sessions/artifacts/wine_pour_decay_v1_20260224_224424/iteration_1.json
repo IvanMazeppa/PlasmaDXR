@@ -1,0 +1,67 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_decay_v1_errfix.py",
+  "technique_used": "mantaflow_flip_liquid_mesh",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_decay_v1/wine_pour_decay_v1.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_decay_v1/cache",
+  "score": 55.0,
+  "passed": false,
+  "primary_issue": "The pour does not convincingly read as water/wine: the liquid surface looks blobby/low\u2011resolution and the material lacks strong Fresnel reflections + refraction/absorption cues, so it reads like a dark solid/gummy mass rather than a transparent liquid.",
+  "parameter_changes": {
+    "asset_name": "wine_pour_decay_v1",
+    "render": {
+      "engine_preference": [
+        "CYCLES",
+        "BLENDER_EEVEE (fallback)"
+      ],
+      "resolution_x": 1280,
+      "resolution_y": 720
+    },
+    "mantaflow_liquid": {
+      "domain": {
+        "domain_type": "LIQUID",
+        "resolution_max": 72,
+        "cache_type": "ALL",
+        "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_decay_v1/cache",
+        "cache_data_format": "OPENVDB",
+        "use_mesh": true,
+        "mesh_scale": 2,
+        "timesteps_min": 1,
+        "timesteps_max": 4,
+        "use_adaptive_timesteps": true
+      },
+      "flow": {
+        "flow_type": "LIQUID",
+        "flow_behavior": "INFLOW",
+        "use_inflow_keyframes": [
+          {
+            "frame": 1,
+            "use_inflow": true
+          },
+          {
+            "frame": 45,
+            "use_inflow": true
+          },
+          {
+            "frame": 52,
+            "use_inflow": false
+          }
+        ],
+        "subframes": 2,
+        "surface_distance": 0.6
+      },
+      "effectors": [
+        "Glass",
+        "Table",
+        "Coaster",
+        "Plate"
+      ]
+    },
+    "output": {
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_decay_v1/wine_pour_decay_v1.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_decay_v1/wine_pour_decay_v1.blend"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-24T23:03:06.399920"
+}

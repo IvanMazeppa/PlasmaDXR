@@ -1,0 +1,24 @@
+{
+  "session_id": "wine_pour_decay_v1_20260224_224424",
+  "iteration": 1,
+  "overall_score": 55.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase environment/reflection energy so the liquid has something bright to reflect: Line 132 bg.inputs['Strength'] from 0.15 \u2192 ~0.6\u20132.0 (then re-balance exposure).",
+    "Make the liquid surface much smoother (liquids should not have strong bump/noise at this scale): Line 284 bump Strength 0.15 \u2192 0.0\u20130.03; Line 285 bump Distance 0.001 \u2192 0.0001\u20130.0003.",
+    "Reduce procedural distortion that can create a \u201cgummy/chunky\u201d look: Line 196 noise Distortion 1.5 \u2192 0.2\u20130.6.",
+    "Tone down high-frequency patterning in the surface coloration (it reads like textured clay rather than volumetric wine): Line 259 noise1 Detail 12 \u2192 4\u20138; Line 262 noise2 Scale 80 \u2192 20\u201350; Line 267 mix Factor 0.65 \u2192 0.3\u20130.5.",
+    "If the intention is wine (not opaque juice), ensure the material uses transmission + volume absorption (depth darkening). If it\u2019s currently only surface color (base_col/tint_col), shift most coloration into volume absorption rather than diffuse-like surface tint.",
+    "Increase surface resolution/smoothing for the liquid mesh/surface (higher sim resolution or smoother meshing) so the stream can form thin filaments and small droplets; add secondary droplets/spray if available.",
+    "Add at least one bright area/mesh light positioned for a strong rim highlight on the stream and glass; without it, transparent materials won\u2019t read.",
+    "Add/strengthen wet-contact shading on the receiving surface (darker + higher spec at contact) to anchor the liquid and improve realism."
+  ],
+  "cache_size_mb": 540.1889715194702,
+  "render_count": 1,
+  "vdb_count": 160,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 1026.082720071001,
+  "utility_score": 0.525,
+  "timestamp": "2026-02-24T23:01:53.358878"
+}

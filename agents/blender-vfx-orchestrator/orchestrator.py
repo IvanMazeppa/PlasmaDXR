@@ -1759,6 +1759,7 @@ Select the optimal technique and provide starting parameters."""
                     previous_params: Dict[str, Any] = {}
                     quality: Optional[QualityOutput] = None
                     learning: Optional[LearningOutput] = None
+                    code_grounded_feedback = ""  # Phase 3.5: init before loop
                     session_mgr = SessionManager(session_id=session.session_id)
 
                 # Create enforcement hooks for each agent type

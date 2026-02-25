@@ -1,0 +1,62 @@
+{
+  "recommended_approach": "Use a Mantaflow LIQUID (FLIP) workflow where you stabilize and control the pour/splash behavior primarily via liquid particle resampling/coverage controls and liquid diffusion properties:\n- First tune **Liquid Domain \u25b8 Liquid** particle coverage/resampling so the stream and splashes keep volume and don\u2019t \u201cleak\u201d or artificially grow: adjust **Particle Radius** (in grid-cell units) when you see undesired volume loss/gain; increase radius if liquid disappears, decrease if too much liquid is produced. Use **Sampling** to sample more particles (at the cost of computation), and use **Randomness** to bias inflow toward laminar (lower randomness) vs more turbulent (higher randomness). Constrain particle counts with **Particles Maximum/Minimum** per cell.\n- Then set the fluid\u2019s physical feel in **Liquid Domain \u25b8 Liquid \u25b8 Diffusion**: choose/modify a preset and set **Viscosity** in kinematic units (m\u00b2/s) using the Base/Exponent scientific-notation UI (example values are provided for water).\n- For the \u201cruby glow / scattering\u201d look (render-side), Cycles\u2019 Principled BSDF **Subsurface** options document that **Random Walk** is best for thin/curved *closed meshes* (and warns that holes/overlaps cause issues), and that radius is RGB-mapped; this is relevant if you choose to approximate scattering with SSS on the liquid mesh rather than purely volumetric shading.",
+  "key_parameters": {
+    "liquid_domain_particle_radius": {
+      "unit": "grid cells",
+      "doc_guidance": "Increase when liquid appears to leak/disappear; decrease when too much liquid is being produced (volume gain)."
+    },
+    "liquid_domain_sampling": {
+      "doc_guidance": "Higher values sample more particles; particle resampling happens at every simulation step (compute cost increases)."
+    },
+    "liquid_domain_randomness": {
+      "range": "0.0+ (described)",
+      "doc_guidance": "0.0 yields uniform sampling inside grid cells; higher values add more random particle positions in inflow regions (useful for laminar vs turbulent inflow control)."
+    },
+    "liquid_domain_particles_maximum": {
+      "unit": "particles per grid cell",
+      "doc_guidance": "Upper threshold for resampling; helps estimate total particle counts along with grid resolution."
+    },
+    "liquid_domain_particles_minimum": {
+      "unit": "particles per grid cell",
+      "doc_guidance": "Ensures at least a certain amount of particles per cell."
+    },
+    "diffusion_viscosity_water_example": {
+      "value": "1.002\u00d710^-6 m^2/s",
+      "ui_entry_example": {
+        "base": 1.002,
+        "exponent": 6
+      },
+      "doc_context": "Example conversion given for water at ~20\u00b0C (dynamic viscosity 1.002 cP; density ~1000 kg/m^3)."
+    },
+    "principled_subsurface_method": {
+      "options_from_docs": [
+        "Christensen-Burley (faster/less accurate, may resolve noise faster)",
+        "Random Walk (Cycles-only, accurate for thin/curved objects; best for closed meshes)"
+      ]
+    },
+    "principled_subsurface_radius_mapping": {
+      "doc_guidance": "Subsurface Radius uses separate RGB channel distances (X/Y/Z mapped to R/G/B) to shape color-dependent scattering distances."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "Liquid particle resampling occurs at every simulation step; increasing Sampling/particle thresholds can raise bake cost substantially.",
+    "If the liquid appears to lose volume (disappear/leak), the docs explicitly recommend increasing Particle Radius; if it gains too much volume, decrease Particle Radius.",
+    "Cycles Principled Subsurface: Random Walk works best for closed meshes; overlapping faces or holes can cause problems."
+  ],
+  "alternative_approaches": [
+    "Use Diffusion panel presets as a starting point, then adjust viscosity from there (docs note a preset menu can be enabled/disabled in the Diffusion panel header).",
+    "For render-time scattering, consider Christensen-Burley subsurface if Random Walk is too noisy at your sample budget (docs note Christensen-Burley can resolve noise faster in some situations)."
+  ],
+  "doc_refs": [
+    "physics/fluid/type/domain/liquid/diffusion.html",
+    "b7_blender_manual_html_physics_fluid_type_domain_settings_html_liquid-_0.md (Liquid Domain \u25b8 Liquid: Particle Radius/Sampling/Randomness/Particles Min/Max)",
+    "b8_blender_manual_html_render_shader_nodes_shader_principled_html_inputs-_0.md (Principled BSDF \u25b8 Subsurface inputs/methods/limitations)",
+    "b26_blender_python_reference_5_0_genindex-all_html_f_1.md (index entries incl. bpy.types.FluidDomainSettings, flip_ratio attribute)",
+    "b26_blender_python_reference_5_0_genindex-all_html_n_2.md (index entries incl. bpy.types.FluidFlowSettings attributes)"
+  ],
+  "timestamp": "2026-02-24T22:45:42.002870"
+}

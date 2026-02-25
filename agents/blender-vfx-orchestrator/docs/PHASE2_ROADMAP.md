@@ -1052,6 +1052,49 @@ def compute_retention(entry, now):
 
 ---
 
+### 2B-9: Prompt Enhancement Pipeline Step
+
+**Status:** PLANNED
+
+**What:** Add a mandatory prompt enhancement step at pipeline start (before Phase 0) that transforms short user descriptions into structured, detailed VFX prompts following the Structured VFX Prompt Pattern defined in `docs/PROMPT_ENHANCEMENT_GUIDE.md`.
+
+**Why it matters:** The Script Writer is designed to produce complex 500-900 line scripts with full scene geometry, materials, lighting, and camera setup. Short/vague input prompts (e.g., "fire explosion") force the LLM to guess creative decisions, producing garbage — misplaced geometry, missing simulations, bloated irrelevant set dressing. The wine_pour test proves the system produces excellent results when given detailed, structured input. This step bridges the gap between casual user input and the specificity the pipeline requires.
+
+**Evidence:**
+- fire_decay_test_v2: 5-word prompt → 768 lines of garbage (workshop furniture, no visible fire, exploded scenery)
+- wine_pour: ~25-line structured prompt → high-quality liquid simulation with proper scene geometry
+
+**Implementation:**
+
+| File | Change | Lines |
+|------|--------|-------|
+| New: `utils/prompt_enhancer.py` | LLM-powered prompt expansion using PROMPT_ENHANCEMENT_GUIDE template | ~120 |
+| `orchestrator.py` (before Phase 0) | Call prompt enhancer, store enhanced prompt in session | ~30 |
+| `models/shared_context.py` | Add `enhanced_prompt` field to SessionState | ~5 |
+| `config/agent_config.py` | Add `prompt_enhancement_enabled` flag | ~10 |
+| `config/presets.yaml` | Add flag to all presets (enabled by default) | ~7 |
+
+**Enhancement template sections** (from PROMPT_ENHANCEMENT_GUIDE.md):
+1. Effect Type & Technique hints
+2. Scene Description (geometry, materials, environment)
+3. Mood and Look (color palette, atmosphere)
+4. Camera (position, angle, focal length)
+5. Physical Details (simulation parameters)
+6. Motion/Timing Details (keyframes, duration)
+7. Hard Constraints (resolution, frame count, export format)
+
+**Tests:**
+1. Short prompt → enhanced prompt has all 7 sections populated
+2. Already-detailed prompt → enhancement preserves existing detail, doesn't overwrite
+3. Enhancement disabled → original prompt passes through unchanged
+4. Enhanced prompt stored in SessionState and used by Script Writer
+
+**Rollback:** Set `prompt_enhancement_enabled: false` in the active preset.
+
+**Estimated effort:** ~172 lines | **Dependencies:** None | **Risk:** Low
+
+---
+
 ### Phase 2B Summary
 
 | Item | Lines | Impact | Tests | Sprint |
@@ -1064,7 +1107,8 @@ def compute_retention(entry, now):
 | 2B-6: Memory decay | ~121 | Medium — prevents KB re-poisoning | 4 | Week 3 |
 | 2B-7: Effect-type evidence gating | ~60 | Medium — prevents cross-effect contamination | 4 | Week 3 (after 2B-6) |
 | 2B-8: Artifact-based sharing | ~225 | High — 75% token reduction per handoff | 4 | Week 3 |
-| **Total** | **~2,027** | | **35** | |
+| 2B-9: Prompt enhancement | ~172 | **Critical — eliminates garbage scripts from vague prompts** | 4 | Week 3 |
+| **Total** | **~2,199** | | **39** | |
 
 **Note:** Line estimates include a 1.5x multiplier based on Phase 1 experience.
 
