@@ -1,0 +1,22 @@
+{
+  "session_id": "wine_pour_v5_20260225_221532",
+  "iteration": 1,
+  "overall_score": 67.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Depth tint (script params): increase/adjust volume absorption so thicker liquid reads darker. Try Line 264 vol_abs Density from 0.8 \u2192 1.5\u20133.0, and tune Line 263 Color slightly darker/less saturated to avoid \u201cflat pink\u201d (e.g., deepen red and reduce brightness). If this has little effect, the material likely isn\u2019t using true transmission/volume correctly\u2014verify the liquid shader uses Transmission\u22481 and a proper IOR (water ~1.333).",
+    "Lighting environment (script params): current world strength is very low. Try Line 111 bg Strength from 0.15 \u2192 0.3\u20131.0 to add softer ambient/reflection fill. If you want softer rectangular highlights, use larger/softer lights (not a tiny hard panel).",
+    "Micro-surface breakup: add subtle liquid surface ripples (very small amplitude). If your bump is driving the liquid, Line 158 bump Distance 0.1 is extremely large for micro detail\u2014drop to ~0.005\u20130.02 and then tune Line 297 bump Strength to ~0.02\u20130.08 so it reads as micro-variation instead of deformation. Use higher frequency noise (Line 322 noise Scale 8 \u2192 20\u201360) for fine ripples, and reduce overly harsh noise if needed (Line 323 Detail 6 \u2192 3\u20135).",
+    "If emissive glow is contributing to \u201cCG look\u201d, reduce it: Line 329 em Strength 25 \u2192 0\u20135 unless you intentionally want stylized lighting.",
+    "Geometry/material (non-parameter but critical): smooth shading + more subdivisions on the glass, add a small bevel on rim/base, and ensure the glass has real thickness (solidify). Use physically plausible IOR (~1.45 glass) and very low roughness (0\u20130.02).",
+    "Render realism: enable/allow transmission/refraction bounces and (if feasible) caustics; increase samples and use denoising to remove rim jaggies and background noise. Strengthen soft contact shadows to anchor the base to the table."
+  ],
+  "cache_size_mb": 38.9420747756958,
+  "render_count": 1,
+  "vdb_count": 60,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 606.419548025,
+  "utility_score": 0.585,
+  "timestamp": "2026-02-25T22:26:11.480070"
+}

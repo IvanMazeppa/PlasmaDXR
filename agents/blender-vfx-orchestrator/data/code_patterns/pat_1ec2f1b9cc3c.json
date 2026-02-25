@@ -1,0 +1,34 @@
+{
+  "pattern_id": "pat_1ec2f1b9cc3c",
+  "name": "liquid_mesh_quality_smoothing",
+  "issue_category": "liquid_surface_looks_blobby__chunky__low_resolutio",
+  "code_snippet": "# Liquid domain mesh quality settings for smooth, detailed liquid surface\ndset = mod.domain_settings\ndset.domain_type = 'LIQUID'\ndset.use_mesh = True           # Enable mesh generation (required for render)\ndset.mesh_concave_upper = 3.0  # Concavity threshold \u2014 higher = more detail in concave areas\ndset.mesh_smoothen_pos = 4     # Positive smoothing passes \u2014 smooths outward bumps\ndset.mesh_smoothen_neg = 4     # Negative smoothing passes \u2014 smooths inward dents\ndset.use_flip_particles = True # FLIP solver for better splashes\ndset.flip_ratio = 0.95         # High ratio = more particles retained\ndset.particle_radius = 1.0     # Default particle size",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "Default mesh generation produces chunky, blobby liquid surfaces with visible facets",
+  "context_after": "mesh_smoothen_pos/neg=4 with mesh_concave_upper=3.0 produces smooth, detailed liquid surface",
+  "parameters_affected": [
+    "mesh_smoothen_neg",
+    "particle_radius",
+    "mesh_concave_upper",
+    "mesh_smoothen_pos",
+    "use_flip_particles",
+    "use_mesh",
+    "domain_type",
+    "flip_ratio"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 15.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.341686",
+  "updated_at": "2026-02-25T21:22:01.341691",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

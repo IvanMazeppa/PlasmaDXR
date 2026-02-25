@@ -1,0 +1,139 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_v5_water_vfx_v1.py",
+  "technique_used": "mantaflow_flip_liquid_mesh",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v5/wine_pour_v5.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v5/cache",
+  "score": 67.0,
+  "passed": false,
+  "primary_issue": "Liquid does not read as physically plausible (refraction/transmission + depth-dependent absorption/thickness are off), so it looks like a flat pink slab rather than wine/water in glass.",
+  "parameter_changes": {
+    "asset_name": "wine_pour_v5",
+    "frame_range": [
+      1,
+      60
+    ],
+    "render": {
+      "engine_target": "CYCLES (GPU) via try/except",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "resolution_percentage": 100,
+      "samples_max_target": 256
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "simulation_method": "FLIP",
+      "resolution_max": 96,
+      "use_adaptive_domain": false,
+      "cache_type": "ALL",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v5/cache",
+      "cache_frame_start": 1,
+      "cache_frame_end": 60,
+      "use_flip_particles": true,
+      "flip_ratio": 0.95,
+      "particle_radius": 1.0,
+      "particle_number": 2,
+      "particle_randomness": 0.15,
+      "particle_band_width": 2.0,
+      "use_mesh": true,
+      "mesh_concave_upper": 3.0,
+      "mesh_smoothen_pos": 4,
+      "mesh_smoothen_neg": 4,
+      "mesh_scale": 1
+    },
+    "flow_inflow": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "surface_distance": 0.0,
+      "use_initial_velocity": true,
+      "velocity_normal": 2.3,
+      "velocity_factor": 1.0,
+      "velocity_random": 0.15,
+      "timing": {
+        "use_inflow_keyframes": [
+          [
+            1,
+            true
+          ],
+          [
+            60,
+            true
+          ],
+          [
+            61,
+            false
+          ]
+        ]
+      },
+      "geometry": {
+        "disc_radius_m": 0.004,
+        "location": [
+          0.015,
+          0.0,
+          0.29
+        ]
+      }
+    },
+    "flow_initial_volume": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "GEOMETRY",
+      "surface_distance": 0.0,
+      "cylinder_radius_m": 0.035,
+      "cylinder_depth_m": 0.055,
+      "location": [
+        0.0,
+        0.0,
+        0.035
+      ]
+    },
+    "effectors": [
+      {
+        "object": "WineGlass",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      },
+      {
+        "object": "Table",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      },
+      {
+        "object": "LeakFixDisc",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      }
+    ],
+    "lookdev": {
+      "mood": "warm intimate",
+      "world_bg_color": [
+        0.02,
+        0.012,
+        0.008,
+        1.0
+      ],
+      "lights": [
+        "KeyLight(area,warm)",
+        "FillLight(area)",
+        "RimLight(area)",
+        "3 candle point lights"
+      ],
+      "materials": [
+        "Wood_Dark",
+        "Backdrop_Cloth",
+        "Glass_Clear",
+        "Wine_Liquid (principled+volume absorption)",
+        "Candle_Wax",
+        "Flame_Emission"
+      ]
+    },
+    "outputs": {
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v5/wine_pour_v5.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v5/wine_pour_v5.blend"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-25T22:27:02.709655"
+}

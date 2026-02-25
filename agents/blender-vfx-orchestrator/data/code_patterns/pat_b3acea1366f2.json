@@ -1,0 +1,27 @@
+{
+  "pattern_id": "pat_b3acea1366f2",
+  "name": "smooth_shading_all_meshes",
+  "issue_category": "surfaces_look_faceted__angular__flat_shading_makes",
+  "code_snippet": "# Apply smooth shading to mesh for better specular highlights and realism\n# Method 1: Per-polygon (works on any mesh)\nfor poly in obj.data.polygons:\n    poly.use_smooth = True\n\n# Method 2: Bulk set via foreach_set (faster for large meshes)\nmesh.polygons.foreach_set(\"use_smooth\", [True] * len(mesh.polygons))",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "Default flat shading makes cubes/cylinders/spun profiles look faceted and artificial",
+  "context_after": "Smooth shading on all visible geometry gives proper specular highlights and surface continuity",
+  "parameters_affected": [
+    "use_smooth"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 10.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.342015",
+  "updated_at": "2026-02-25T21:22:01.342020",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

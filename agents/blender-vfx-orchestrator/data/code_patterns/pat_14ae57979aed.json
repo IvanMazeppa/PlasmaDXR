@@ -1,0 +1,33 @@
+{
+  "pattern_id": "pat_14ae57979aed",
+  "name": "glass_bottom_collision_disc",
+  "issue_category": "liquid_flows_through_glass_stem__wine_leaks_out_bo",
+  "code_snippet": "# Invisible collision disc at bowl-stem junction prevents liquid escape\nbpy.ops.mesh.primitive_cylinder_add(\n    vertices=32,\n    radius=0.022,   # Match inner bowl radius at junction\n    depth=0.008,    # Thin disc\n    location=(0.0, 0.0, 0.125),  # At bowl-stem junction height\n)\ndisc = bpy.context.active_object\ndisc.name = \"GlassBottom\"\n\n# Make invisible but still collide\ndisc.hide_render = True\ndisc.display_type = 'WIRE'\n\n# Add as fluid effector for collision\nmod = disc.modifiers.new(name='Fluid', type='FLUID')\nmod.fluid_type = 'EFFECTOR'\nmod.effector_settings.effector_type = 'COLLISION'",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "Hollow glass mesh allows liquid to flow through stem, producing unrealistic leak",
+  "context_after": "Hidden collision disc at bowl-stem junction contains liquid correctly; invisible to render",
+  "parameters_affected": [
+    "effector_type",
+    "fluid_type",
+    "hide_render",
+    "display_type"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.mesh.primitive_cylinder_add"
+  ],
+  "average_improvement": 25.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.341361",
+  "updated_at": "2026-02-25T21:22:01.341366",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

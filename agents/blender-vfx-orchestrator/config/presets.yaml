@@ -29,6 +29,7 @@ presets:
     hitl_autonomy_level: 3      # Autonomous — only L4 escalation pauses
     hitl_interactive: false     # Non-interactive (fast, minimal pauses)
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
   # Standard development - balanced cost/quality
   development:
@@ -45,6 +46,7 @@ presets:
     hitl_autonomy_level: 1      # Supervised — budget + critical + stall checkpoints
     hitl_interactive: true      # CLI prompts for human decisions
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
   # Full quality - best results, higher cost
   production:
@@ -62,6 +64,7 @@ presets:
     hitl_autonomy_level: 2      # Semi-autonomous — only critical checkpoints
     hitl_interactive: false     # File-based decisions (no CLI blocking)
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
   # Budget saver - absolute minimum
   budget_saver:
@@ -78,6 +81,7 @@ presets:
     hitl_autonomy_level: 0      # Guided — all checkpoints fire
     hitl_interactive: true      # CLI prompts for every checkpoint
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
   # Debug mode - verbose, detailed tracing
   debug:
@@ -95,6 +99,7 @@ presets:
     hitl_autonomy_level: 0      # Guided — all checkpoints fire (debug everything)
     hitl_interactive: true      # CLI prompts for debugging
     memory_decay_enabled: false # Phase 2B-6: Disabled — see all patterns when debugging
+    effect_type_scoping: false # Phase 2B-7: Disabled — see all effect types when debugging
 
   # Reasoning mode - uses full reasoning for complex tasks
   reasoning:
@@ -111,6 +116,7 @@ presets:
     hitl_autonomy_level: 2      # Semi-autonomous — only critical checkpoints
     hitl_interactive: true      # CLI prompts for critical decisions
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
   # Creative mode - gpt-5.2 with temperature (reasoning=none)
   creative:
@@ -127,6 +133,7 @@ presets:
     hitl_autonomy_level: 1      # Supervised — human guides creative direction
     hitl_interactive: true      # CLI prompts for creative decisions
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
 
 # Per-agent overrides (applied on top of preset defaults)
 # These apply globally across all presets.

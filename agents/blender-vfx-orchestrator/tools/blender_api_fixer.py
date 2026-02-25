@@ -46,11 +46,12 @@ while len(\1) > 1:
         "ColorRamp.elements.clear() → while loop removal"
     ),
 
-    # use_nodes deprecated, use tree instead (only add comment once)
+    # use_nodes is always True in Blender 5.0 — remove line entirely (no-op that triggers
+    # DeprecationWarning → exit_code=1 in headless mode)
     (
-        r"(\w+)\.use_nodes\s*=\s*True(?!\s*#)",
-        r"\1.use_nodes = True  # Deprecated in 5.0, but still works",
-        "use_nodes deprecation warning"
+        r"[^\n]*\.use_nodes\s*=\s*True[^\n]*\n?",
+        r"",
+        "use_nodes removal (always True in 5.0)"
     ),
 
     # lamp → light (old API)
@@ -569,7 +570,7 @@ def _api_fixer_setup_volume_material(domain_obj, effect_type="SMOKE"):
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
-        mat.use_nodes = True
+        # use_nodes is always True in Blender 5.0 — no need to set it
 
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
@@ -706,7 +707,7 @@ def _api_fixer_setup_liquid_material(domain_obj):
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
-        mat.use_nodes = True
+        # use_nodes is always True in Blender 5.0 — no need to set it
 
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links

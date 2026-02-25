@@ -1,0 +1,35 @@
+{
+  "pattern_id": "pat_16beaeeae652",
+  "name": "glass_mesh_solidify_subdivision",
+  "issue_category": "glass_mesh_looks_faceted__low_poly__unrealistic__w",
+  "code_snippet": "# Build glass via bmesh profile spin, then add modifiers for quality\nimport bmesh, math\nfrom mathutils import Vector\n\nmesh = bpy.data.meshes.new(\"WineGlassMesh\")\nobj = bpy.data.objects.new(\"WineGlass\", mesh)\nbpy.context.collection.objects.link(obj)\n\nbm = bmesh.new()\n# Profile points (radius, height) \u2014 Bordeaux glass shape\nprofile = [\n    (0.002, 0.000),  # center base\n    (0.028, 0.004),  # base flare\n    (0.030, 0.006),  # base edge\n    (0.024, 0.008),  # base-to-stem taper\n    (0.010, 0.010),  # stem start\n    (0.007, 0.030),  # stem\n    (0.007, 0.110),  # stem top\n    (0.014, 0.125),  # bowl taper start\n    (0.022, 0.135),  # bowl expanding\n    (0.036, 0.150),  # bowl widening\n    (0.048, 0.170),  # bowl near max\n    (0.054, 0.190),  # max radius\n    (0.052, 0.210),  # slight taper in\n    (0.048, 0.220),  # rim\n]\nverts = [bm.verts.new((r, 0.0, z)) for r, z in profile]\nedges = [bm.edges.new((verts[i], verts[i+1])) for i in range(len(verts)-1)]\nbmesh.ops.spin(bm, geom=list(edges)+list(verts),\n               cent=Vector((0,0,0)), axis=Vector((0,0,1)),\n               angle=math.tau, steps=96)\nbmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)\nbmesh.ops.recalc_face_normals(bm, faces=bm.faces)\nbm.to_mesh(mesh)\nbm.free()\n\n# KEY: Solidify gives wall thickness, Subdivision smooths geometry\nsolid = obj.modifiers.new(name=\"Solidify\", type='SOLIDIFY')\nsolid.thickness = 0.002   # 2mm glass wall\nsolid.offset = 1.0        # grow inward\n\nsubs = obj.modifiers.new(name=\"Subsurf\", type='SUBSURF')\nsubs.levels = 2           # viewport\nsubs.render_levels = 2    # render\n\n# Smooth shading eliminates faceting\nfor poly in obj.data.polygons:\n    poly.use_smooth = True",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "Raw bmesh spin profile produces a faceted surface that looks like a low-poly chalice",
+  "context_after": "Solidify + SubdivisionSurface + smooth shading produces photo-realistic glass with proper curvature and wall thickness",
+  "parameters_affected": [
+    "use_smooth",
+    "thickness",
+    "levels",
+    "render_levels",
+    "offset"
+  ],
+  "blender_apis_used": [
+    "bpy.data.meshes",
+    "bpy.context.collection",
+    "bpy.data.objects"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.340599",
+  "updated_at": "2026-02-25T21:22:01.340605",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

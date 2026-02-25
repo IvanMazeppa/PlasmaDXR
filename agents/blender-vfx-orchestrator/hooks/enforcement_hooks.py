@@ -636,9 +636,9 @@ def create_research_hooks() -> EnforcementHooks:
     domain, flow, mesh, particles, materials, environment, etc.
     """
     config = EnforcementConfig(
-        max_same_tool_calls=4,  # Phase 3: tighter research budget
-        max_consecutive_same_tool=3,
-        max_exempt_tool_calls=6,
+        max_same_tool_calls=6,  # Allow parallel batches (SDK fires on_tool_start per call)
+        max_consecutive_same_tool=5,  # Parallel calls look consecutive to hooks — allow batches
+        max_exempt_tool_calls=8,
         max_turns=4,
         hard_turn_limit=6,
         require_doc_query_before=[],  # Research agents ARE the doc queries

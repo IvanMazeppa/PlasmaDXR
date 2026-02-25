@@ -101,6 +101,7 @@ class PresetConfig:
     hitl_autonomy_level: int = 1    # Phase 2B-5: 0=guided, 1=supervised, 2=semi-auto, 3=autonomous, 4=full
     hitl_interactive: bool = True   # Phase 2B-5: CLI prompts vs file-based decisions
     memory_decay_enabled: bool = True  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: bool = True   # Phase 2B-7: KB entries scoped by effect type
 
     @classmethod
     def from_dict(cls, name: str, data: Dict[str, Any]) -> "PresetConfig":
@@ -122,6 +123,7 @@ class PresetConfig:
             hitl_autonomy_level=data.get("hitl_autonomy_level", 1),
             hitl_interactive=data.get("hitl_interactive", True),
             memory_decay_enabled=data.get("memory_decay_enabled", True),
+            effect_type_scoping=data.get("effect_type_scoping", True),
         )
 
 
@@ -270,6 +272,10 @@ class AgentConfigManager:
     def use_memory_decay(self) -> bool:
         """Phase 2B-6: Check if Ebbinghaus memory decay is enabled."""
         return self.preset.memory_decay_enabled
+
+    def use_effect_type_scoping(self) -> bool:
+        """Phase 2B-7: Check if KB entries are scoped by effect type."""
+        return self.preset.effect_type_scoping
 
     def list_presets(self) -> Dict[str, str]:
         """List available presets with descriptions."""

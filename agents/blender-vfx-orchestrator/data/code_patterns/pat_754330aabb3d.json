@@ -1,0 +1,29 @@
+{
+  "pattern_id": "pat_754330aabb3d",
+  "name": "filmic_color_management",
+  "issue_category": "render_looks_washed_out__unrealistic_colors__poor_",
+  "code_snippet": "# Filmic color management for photorealistic tone mapping\ntry:\n    scene.view_settings.view_transform = 'Filmic'\n    scene.view_settings.look = 'Medium High Contrast'\n    scene.view_settings.exposure = 0.25\nexcept Exception:\n    pass  # Fall back to defaults if Filmic not available",
+  "effect_types": [
+    "water"
+  ],
+  "context_before": "Default color management produces washed-out, unrealistic renders with poor dynamic range",
+  "context_after": "Filmic with Medium High Contrast gives cinematic look with better highlight rolloff and richer colors",
+  "parameters_affected": [
+    "exposure",
+    "look",
+    "view_transform"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 10.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.342330",
+  "updated_at": "2026-02-25T21:22:01.342336",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

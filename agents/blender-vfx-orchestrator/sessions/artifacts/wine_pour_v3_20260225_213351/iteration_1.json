@@ -1,0 +1,98 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_v3_v2.py",
+  "technique_used": "mantaflow_flip_liquid_mesh",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v3/wine_pour_v3.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v3/cache",
+  "score": 40.0,
+  "passed": false,
+  "primary_issue": "The liquid does not read as water: it appears too opaque/tinted and overly rough/metallic, with weak/incorrect refraction and visible meshing/voxel artifacts\u2014so the pour lacks convincing water-like transparency and specular behavior.",
+  "parameter_changes": {
+    "asset_name": "wine_pour_v3",
+    "frame_range": [
+      1,
+      60
+    ],
+    "render": {
+      "engine": "CYCLES (best-effort set)",
+      "device": "GPU (best-effort set)",
+      "samples": 256,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "motion_blur": {
+        "enabled": true,
+        "shutter": 0.35
+      }
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "simulation_method": "FLIP",
+      "resolution_max": 96,
+      "cache": {
+        "cache_type": "ALL",
+        "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_v3/cache",
+        "cache_resumable": true,
+        "cache_frame_start": 1,
+        "cache_frame_end": 60
+      },
+      "liquid": {
+        "flip_ratio": 1.0,
+        "sys_particle_maximum": 0,
+        "particle_radius": 0.5,
+        "use_viscosity": true,
+        "viscosity_value": 0.0015,
+        "viscosity_exponent": 6,
+        "viscosity_base": 1.0,
+        "surface_tension": 0.07
+      },
+      "mesh_generation": {
+        "use_mesh": true,
+        "mesh_scale": 1,
+        "mesh_particle_radius": 1.0,
+        "mesh_smoothen_pos": 4,
+        "mesh_smoothen_neg": 1,
+        "mesh_concave_upper": 0.1,
+        "mesh_concave_lower": 0.02,
+        "use_speed_vectors": true
+      }
+    },
+    "inflow_emitter": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "use_inflow": true,
+      "use_initial_velocity": true,
+      "velocity_normal": 4.5,
+      "velocity_random": 0.05,
+      "velocity_factor": 1.0,
+      "stream_radius_m": 0.004,
+      "wobble_keyframes_every_n_frames": 4
+    },
+    "effectors": {
+      "table": {
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0,
+        "use_plane_init": true,
+        "subframes": 2
+      },
+      "glass": {
+        "effector_type": "COLLISION",
+        "surface_distance": 0.001,
+        "use_plane_init": false,
+        "subframes": 2
+      }
+    },
+    "materials": [
+      "DarkWood (procedural)",
+      "GlassClear",
+      "WineLiquid (transmission + volume absorption)",
+      "CandleWax",
+      "CandleFlame (emission)",
+      "BackdropVelvet"
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-25T21:51:42.488966"
+}

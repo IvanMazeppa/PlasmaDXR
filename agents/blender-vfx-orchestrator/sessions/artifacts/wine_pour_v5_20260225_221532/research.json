@@ -1,0 +1,48 @@
+{
+  "recommended_approach": "Use a Mantaflow **Liquid Domain** with **FLIP** enabled and **mesh generation** enabled, driven by an **inflow** (use_plane_init=True) positioned above the glass. For stable volume and controllable splash/turbulence, tune the liquid particle system controls documented under Liquid domain settings: **Particle Radius** (primary control for apparent volume loss/gain/leaks), **Sampling** (more particles sampled per step), and **Randomness** (0.0 for more laminar inflow; higher for more turbulent inflow). For renderable wine surface quality, apply domain mesh-quality parameters (concavity + smoothing passes) and ensure the glass is a clean collision object (optionally add an invisible collision \u201cdisc\u201d at the bowl\u2013stem junction to prevent leakage through thin geometry).",
+  "key_parameters": {
+    "domain": {
+      "domain_type": "LIQUID",
+      "use_flip_particles": true,
+      "flip_ratio": 0.95,
+      "use_mesh": true,
+      "mesh_concave_upper": 3.0,
+      "mesh_smoothen_pos": 4,
+      "mesh_smoothen_neg": 4,
+      "particle_radius_guidance": "If liquid seems to disappear (volume loss/leaks), increase Particle Radius; if too much liquid is produced, decrease it.",
+      "sampling_guidance": "Higher Sampling will sample more particles; note resampling occurs every simulation step.",
+      "randomness_guidance": "0.0 yields uniform (less random) particle placement for a more laminar inflow; higher values increase turbulence in inflow regions."
+    },
+    "glass_geometry": {
+      "solidify_thickness": 0.002,
+      "subsurf_levels_viewport": 2,
+      "subsurf_levels_render": 2,
+      "smooth_shading": true
+    },
+    "glass_material": {
+      "principled_transmission_weight": 1.0,
+      "principled_ior": 1.47,
+      "principled_roughness": 0.01
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh",
+    "bpy.types.SolidifyModifier",
+    "bpy.types.Mesh"
+  ],
+  "warnings": [
+    "Liquid domain docs note **Particle Radius** is the first parameter to adjust when the sim appears to **leak / lose volume** (increase it) or **gain volume** (decrease it).",
+    "Liquid domain docs note **particle resampling occurs every simulation step**; increasing Sampling/particle counts can increase cost significantly.",
+    "Liquid domain docs note **Randomness=0.0** gives uniform particle placement (more laminar inflow); higher randomness increases turbulence in inflow regions, which can change splash character.",
+    "Pattern guidance: thin glass/stem geometry can allow liquid to appear to escape; adding a hidden collision \u201cdisc\u201d effector at the bowl\u2013stem junction can prevent leakage artifacts."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "b7_blender_manual_html_physics_fluid_type_domain_settings_html_liquid-_0.md (Manual: Physics > Fluid > Domain > Liquid settings; Particle Radius/Sampling/Randomness/Particles Min/Max)",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-25T22:16:34.031224"
+}

@@ -1104,8 +1104,8 @@ def compute_retention(entry, now):
 | **2B-3: Multi-grader evaluation** | **~390 actual** | **High — saves $0.05/failed render** | **28** | **DONE — deterministic Tier 1 checks before LLM vision** |
 | 2B-4: AdvancedSQLiteSession | ~210 | Medium — branching + token tracking | 4 | Week 3 (parallel w/ 2B-1 testing) |
 | **2B-5: HITL framework** | **~830 actual** | **Medium — user-requested** | **26** | **DONE — pipeline-level checkpoints with autonomy gating** |
-| 2B-6: Memory decay | ~121 | Medium — prevents KB re-poisoning | 4 | Week 3 |
-| 2B-7: Effect-type evidence gating | ~60 | Medium — prevents cross-effect contamination | 4 | Week 3 (after 2B-6) |
+| **2B-6: Memory decay** | **~292 actual** | **Medium — prevents KB re-poisoning** | **11** | **DONE — Ebbinghaus decay on KB + code pattern entries** |
+| **2B-7: Effect-type evidence gating** | **~162 actual** | **Medium — prevents cross-effect contamination** | **15** | **DONE — KB entries scoped by effect_type, config-gated** |
 | 2B-8: Artifact-based sharing | ~225 | High — 75% token reduction per handoff | 4 | Week 3 |
 | 2B-9: Prompt enhancement | ~172 | **Critical — eliminates garbage scripts from vague prompts** | 4 | Week 3 |
 | **Total** | **~2,199** | | **39** | |

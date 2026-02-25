@@ -579,9 +579,17 @@ class ExperimentTracker:
     # Knowledge Queries
     # =========================================================================
 
-    def query_knowledge(self, query: str) -> Dict[str, Any]:
-        """Query the knowledge base for information."""
-        results = self.db.query_knowledge(query)
+    def query_knowledge(
+        self, query: str, effect_type: str = ""
+    ) -> Dict[str, Any]:
+        """Query the knowledge base for information.
+
+        Args:
+            query: Search string
+            effect_type: Phase 2B-7 — if non-empty, scope results to this
+                         effect type (plus universal entries with empty effect_type).
+        """
+        results = self.db.query_knowledge(query, effect_type=effect_type)
 
         return {
             'query': query,
@@ -658,9 +666,18 @@ class ExperimentTracker:
         parameter: str,
         rule: str,
         warning: Optional[str] = None,
-        context: str = ""
+        context: str = "",
+        effect_type: str = ""
     ):
-        """Manually add a learning to the knowledge base."""
+        """Manually add a learning to the knowledge base.
+
+        Args:
+            parameter: Parameter key for the entry
+            rule: The rule or guideline
+            warning: Optional warning message
+            context: Optional context string
+            effect_type: Phase 2B-7 — effect type scope (empty = universal)
+        """
         # Create a synthetic experiment to record this
         with self.db._connection() as conn:
             # Get or create parameter knowledge
@@ -678,23 +695,40 @@ class ExperimentTracker:
                 if warning and warning not in warnings_list:
                     warnings_list.append(warning)
 
-                conn.execute("""
-                    UPDATE parameter_knowledge
-                    SET rules = ?, warnings = ?, last_updated = ?
-                    WHERE parameter = ?
-                """, (
-                    json.dumps(rules),
-                    json.dumps(warnings_list),
-                    datetime.now().isoformat(),
-                    parameter
-                ))
+                # Phase 2B-7: Update effect_type if provided and not already set
+                update_effect_type = effect_type and not (
+                    existing['effect_type'] if 'effect_type' in existing.keys() else ''
+                )
+                if update_effect_type:
+                    conn.execute("""
+                        UPDATE parameter_knowledge
+                        SET rules = ?, warnings = ?, last_updated = ?, effect_type = ?
+                        WHERE parameter = ?
+                    """, (
+                        json.dumps(rules),
+                        json.dumps(warnings_list),
+                        datetime.now().isoformat(),
+                        effect_type,
+                        parameter
+                    ))
+                else:
+                    conn.execute("""
+                        UPDATE parameter_knowledge
+                        SET rules = ?, warnings = ?, last_updated = ?
+                        WHERE parameter = ?
+                    """, (
+                        json.dumps(rules),
+                        json.dumps(warnings_list),
+                        datetime.now().isoformat(),
+                        parameter
+                    ))
             else:
                 now_iso = datetime.now().isoformat()
                 conn.execute("""
                     INSERT INTO parameter_knowledge (
                         parameter, rules, warnings, last_updated, confidence,
-                        last_reinforced, reinforcement_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        last_reinforced, reinforcement_count, effect_type
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     parameter,
                     json.dumps([rule] if rule else []),
@@ -703,6 +737,7 @@ class ExperimentTracker:
                     0.5,  # Manual entries start with moderate confidence
                     now_iso,  # Phase 2B-6: Initialize reinforcement so seeds don't decay
                     1,        # Phase 2B-6: Count=1 prevents immediate decay
+                    effect_type,  # Phase 2B-7: Effect type scope
                 ))
 
     # =========================================================================

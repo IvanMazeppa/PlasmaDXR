@@ -1,0 +1,35 @@
+{
+  "pattern_id": "pat_cb522011fc56",
+  "name": "subdivision_surface_smooth_objects",
+  "issue_category": "object_surface_looks_low_poly__faceted__not_smooth",
+  "code_snippet": "# Subdivision Surface modifier smooths any mesh geometry\n# Use on: glass, bottles, curved containers, organic shapes, any smooth object\nsubs = obj.modifiers.new(name=\"Subsurf\", type='SUBSURF')\nsubs.levels = 2           # Viewport subdivisions\nsubs.render_levels = 2    # Render subdivisions (can go to 3 for hero objects)\n\n# ALWAYS combine with smooth shading\nfor poly in obj.data.polygons:\n    poly.use_smooth = True\n\n# Optional: add Solidify first if object needs wall thickness (glasses, bowls, shells)\n# solid = obj.modifiers.new(name=\"Solidify\", type='SOLIDIFY')\n# solid.thickness = 0.002",
+  "effect_types": [
+    "water",
+    "fire",
+    "smoke",
+    "explosion",
+    "nebula",
+    "solar"
+  ],
+  "context_before": "Primitive-based meshes (cubes, cylinders, spun profiles) show visible edges/facets",
+  "context_after": "SubdivisionSurface level 2 + smooth shading produces curved, professional-looking surfaces",
+  "parameters_affected": [
+    "thickness",
+    "render_levels",
+    "use_smooth",
+    "levels"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 20.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_wine_pour_v1"
+  ],
+  "created_at": "2026-02-25T21:22:01.342693",
+  "updated_at": "2026-02-25T21:22:01.342960",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

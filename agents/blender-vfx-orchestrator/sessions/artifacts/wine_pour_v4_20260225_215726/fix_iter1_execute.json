@@ -1,0 +1,16 @@
+{
+  "iteration": 1,
+  "phase": "execute",
+  "strategy": "script_recovery_applied",
+  "instructions": [
+    "Regenerate/fix script via Script Writer with truth pack validation.",
+    "Preserve verified API usage; do not introduce new unverified attributes.",
+    "Re-run executor once with recovered script."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_v4_v1.py",
+  "script_output_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_v4_v1_errfix.py",
+  "notes": [
+    "recovery_source=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/wine_pour_v4_20260225_215726/fix_iter1_execute.json"
+  ],
+  "timestamp": "2026-02-25T22:09:45.368395"
+}

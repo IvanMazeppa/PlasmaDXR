@@ -78,7 +78,19 @@ def query_validated_learnings(
     kb_query = _get_knowledge_base()
 
     try:
-        result = kb_query(f"{category} rules for {effect_type}")
+        # Phase 2B-7: Scope KB query by effect_type when enabled
+        scope_effect_type = ""
+        try:
+            from config.agent_config import get_config
+            if get_config().use_effect_type_scoping():
+                scope_effect_type = effect_type
+        except Exception:
+            pass  # Config unavailable — no scoping
+
+        result = kb_query(
+            f"{category} rules for {effect_type}",
+            effect_type=scope_effect_type,
+        )
         data = json.loads(result) if isinstance(result, str) else result
         results = data.get("results", [])
 

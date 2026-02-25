@@ -1,0 +1,55 @@
+{
+  "recommended_approach": "Use a Mantaflow liquid setup with the standard three roles (Liquid Domain + Flow emitter + Effector colliders), then generate/render the liquid via the domain\u2019s Liquid Mesh output. Keep guiding disabled unless you explicitly need art-directed steering (guides add solver cost even when not used). For a wine-in-glass shot, prioritize robust collision geometry (glass thickness / collision sealing) and mesh-quality tuning (particle radius + concavity/smoothing + FLIP particle retention) to get clean splashes and stable fill behavior before shading/rendering.",
+  "key_parameters": {
+    "domain_liquid_mesh": {
+      "use_mesh": true,
+      "use_flip_particles": true,
+      "flip_ratio": 0.95,
+      "particle_radius": 1.0,
+      "mesh_concave_upper": 3.0,
+      "mesh_smoothen_pos": 4,
+      "mesh_smoothen_neg": 4
+    },
+    "glass_geometry_render_quality": {
+      "solidify_thickness_m": 0.002,
+      "solidify_offset": 1.0,
+      "subsurf_levels_viewport": 2,
+      "subsurf_levels_render": 2,
+      "shade_smooth": true
+    },
+    "glass_material_cycles_principled": {
+      "principled_transmission_weight": 1.0,
+      "principled_roughness": 0.01,
+      "principled_ior": 1.47
+    },
+    "collision_sealing": {
+      "add_hidden_collision_disc": true,
+      "collision_disc_hide_render": true,
+      "collision_disc_display_type": "WIRE",
+      "effector_type": "COLLISION"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh",
+    "bpy.types.Mesh"
+  ],
+  "warnings": [
+    "Liquid Mesh output depends on a combination of parameters; changing Particle Radius affects how concavity-related mesh settings behave (mesh shape is not controlled by a single knob).",
+    "If Mesh is enabled but no baked mesh data is available to read, the domain may display as the original domain object rather than the simulated mesh (the checkbox can switch view between domain and baked mesh).",
+    "When liquid appears to leak/disappear or gain volume non-physically, adjust Particle Radius (increase it when liquid disappears; decrease it when too much liquid is produced).",
+    "Enable Guides only when you intend to use guiding; simply turning on Guides increases computational cost even if no guide data is baked/used."
+  ],
+  "alternative_approaches": [
+    "Use the domain\u2019s Guides system (global guiding grid; can source velocity from Effectors or another Domain) when you need directed/controlled flow, but expect higher solver cost.",
+    "Use the Liquid Mesh \u2018Upres Factor\u2019 to generate a higher-resolution render mesh from a lower-resolution base simulation (mesh can be higher resolution than the base \u2018Resolution Divisions\u2019)."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "physics/fluid/type/domain/liquid/mesh.html",
+    "physics/fluid/type/domain/guides.html",
+    "blender_python_reference_5_0/info_overview.html#class-registration-"
+  ],
+  "timestamp": "2026-02-25T21:58:42.262949"
+}

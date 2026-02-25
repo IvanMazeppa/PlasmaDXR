@@ -272,6 +272,13 @@ class ExperimentDatabase:
                     "ADD COLUMN reinforcement_count INTEGER DEFAULT 0"
                 )
 
+            # Phase 2B-7: Migration — add effect_type column if missing
+            if "effect_type" not in cols:
+                conn.execute(
+                    "ALTER TABLE parameter_knowledge "
+                    "ADD COLUMN effect_type TEXT DEFAULT ''"
+                )
+
     # =========================================================================
     # Experiment CRUD
     # =========================================================================
@@ -520,16 +527,34 @@ class ExperimentDatabase:
                 last_updated=row['last_updated']
             )
 
-    def query_knowledge(self, query: str) -> List[Dict[str, Any]]:
-        """Search knowledge base for relevant information."""
+    def query_knowledge(
+        self, query: str, effect_type: str = ""
+    ) -> List[Dict[str, Any]]:
+        """Search knowledge base for relevant information.
+
+        Args:
+            query: Search string (matched against parameter, rules, warnings)
+            effect_type: If non-empty, only return entries whose effect_type
+                         matches OR is empty (universal entries).
+        """
         with self._connection() as conn:
             # Search parameter knowledge
-            param_results = conn.execute("""
-                SELECT * FROM parameter_knowledge
-                WHERE parameter LIKE ?
-                   OR rules LIKE ?
-                   OR warnings LIKE ?
-            """, (f'%{query}%', f'%{query}%', f'%{query}%')).fetchall()
+            if effect_type:
+                param_results = conn.execute("""
+                    SELECT * FROM parameter_knowledge
+                    WHERE (parameter LIKE ?
+                           OR rules LIKE ?
+                           OR warnings LIKE ?)
+                      AND (effect_type = '' OR effect_type = ?)
+                """, (f'%{query}%', f'%{query}%', f'%{query}%',
+                      effect_type)).fetchall()
+            else:
+                param_results = conn.execute("""
+                    SELECT * FROM parameter_knowledge
+                    WHERE parameter LIKE ?
+                       OR rules LIKE ?
+                       OR warnings LIKE ?
+                """, (f'%{query}%', f'%{query}%', f'%{query}%')).fetchall()
 
             # Search causal relationships
             causal_results = conn.execute("""
@@ -552,6 +577,8 @@ class ExperimentDatabase:
                     'last_reinforced': row['last_reinforced'] if 'last_reinforced' in row.keys() else '',
                     'reinforcement_count': row['reinforcement_count'] if 'reinforcement_count' in row.keys() else 0,
                     'last_updated': row['last_updated'] if 'last_updated' in row.keys() else '',
+                    # Phase 2B-7: Effect type scope
+                    'effect_type': row['effect_type'] if 'effect_type' in row.keys() else '',
                 })
 
             for row in causal_results:

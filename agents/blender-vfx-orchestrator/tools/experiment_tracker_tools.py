@@ -425,12 +425,13 @@ def _suggest_experiments_impl(
         })
 
 
-def _query_knowledge_base_impl(query: str) -> str:
+def _query_knowledge_base_impl(query: str, effect_type: str = "") -> str:
     """
     Search the knowledge base.
 
     Args:
         query: Search query
+        effect_type: Phase 2B-7 — if non-empty, scope results to this effect type
 
     Returns:
         JSON with matching knowledge entries
@@ -438,7 +439,7 @@ def _query_knowledge_base_impl(query: str) -> str:
     try:
         tracker = _get_tracker_instance()
 
-        results = tracker.query_knowledge(query=query)
+        results = tracker.query_knowledge(query=query, effect_type=effect_type)
 
         if isinstance(results, list):
             return json.dumps({
@@ -502,7 +503,8 @@ def _add_manual_learning_impl(
     parameter: str,
     rule: str,
     warning: str = "",
-    context: str = ""
+    context: str = "",
+    effect_type: str = ""
 ) -> str:
     """
     Manually add a learning to the knowledge base.
@@ -512,6 +514,7 @@ def _add_manual_learning_impl(
         rule: The rule or guideline
         warning: Optional warning message
         context: Optional context for when this applies
+        effect_type: Phase 2B-7 — effect type scope (empty = universal)
 
     Returns:
         JSON confirmation
@@ -523,7 +526,8 @@ def _add_manual_learning_impl(
             parameter=parameter,
             rule=rule,
             warning=warning if warning else None,
-            context=context if context else None
+            context=context if context else None,
+            effect_type=effect_type,
         )
 
         return json.dumps({
@@ -1055,7 +1059,8 @@ def _seed_technique_entry_impl(
                 "source": dated_source,
                 "retention": 1.0,
                 "parameters": json.loads(parameters) if isinstance(parameters, str) else parameters,
-            })
+            }),
+            effect_type=effect_type,  # Phase 2B-7: Scope to effect type
         )
 
         return json.dumps({
