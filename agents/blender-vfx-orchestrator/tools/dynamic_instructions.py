@@ -346,39 +346,58 @@ full-size objects but the domain is half-sized.
 
 **Rule:** `obj.scale = (width, depth, height)` — use the ACTUAL dimensions directly.
 
-## SCENE DESIGN REQUIREMENTS (MANDATORY — THIS IS 40% OF YOUR JOB)
-Your script creates a COMPLETE, VISUALLY RICH SCENE. The environment, lighting, and
-atmosphere are what make the render look professional versus a tech demo.
+## SCENE DESIGN: PROMPT IS YOUR BLUEPRINT (THIS IS 40% OF YOUR JOB)
 
-**MINIMUM SCENE COMPLEXITY:**
+**RULE #1: THE PROMPT OVERRIDES EVERYTHING BELOW.**
+The user's description defines the scene — its mood, colors, materials, atmosphere, and
+composition. These instructions provide STRUCTURE, not content. If the prompt says
+"warm amber lighting on dark wood," you create warm amber lighting on dark wood — NOT
+grey concrete with overhead fluorescents.
+
+Read the prompt. Extract:
+1. **Setting** — what location/environment? (kitchen, outdoors, abstract, close-up tabletop)
+2. **Mood** — what feeling? (cozy, dramatic, clinical, eerie, warm, cold)
+3. **Color palette** — what colors are described or implied?
+4. **Key surfaces** — what materials are mentioned? (wood, marble, metal, glass)
+5. **Lighting intent** — what light sources are described? (fireplace, candles, studio, natural)
+
+If the prompt doesn't specify something, make a CREATIVE CHOICE that fits the described
+mood — don't default to grey concrete.
+
+### Minimum Scene Complexity
 - 8+ distinct objects (not counting domain/emitter/effectors)
 - 5+ distinct materials with procedural texture variation
 - 3+ lights (key, fill, accent/practical)
-- Environmental context: floor, walls/ceiling, props, practical objects
-
-A 400-line script with 50 lines of scene building = BAD RENDER.
-A 600-line script with 200 lines of scene building = GOOD RENDER.
-The prompt describes a LOCATION — build that location, not a grey void with one prop in it.
+- Environmental context appropriate to the prompt's setting
+- 200+ lines of scene building code (environment, props, materials, lighting)
 
 ### World Background (REQUIRED)
-- NEVER leave the default white/grey background. Set a dark or contextual world color.
-- For indoor scenes: near-black world (0.01-0.03 RGB), scene lit entirely by placed lights.
-- For outdoor scenes: dark blue/grey gradient or simple sky color.
+Set the world background to match the prompt's mood. NEVER leave the default white/grey.
 ```python
 scene.world = bpy.data.worlds.new("World") if scene.world is None else scene.world
 scene.world.use_nodes = True
 bg = scene.world.node_tree.nodes.get('Background')
 if bg:
-    bg.inputs['Color'].default_value = (0.01, 0.01, 0.015, 1.0)  # Near-black
+    # Choose color based on prompt mood:
+    # Warm/cozy scene: (0.015, 0.008, 0.005, 1.0)  dark warm
+    # Cool/clinical:   (0.005, 0.008, 0.015, 1.0)  dark blue
+    # Neutral/studio:  (0.01, 0.01, 0.015, 1.0)    near-black
+    # Outdoor night:   (0.003, 0.005, 0.02, 1.0)   deep blue
+    bg.inputs['Color'].default_value = (0.01, 0.01, 0.015, 1.0)
     bg.inputs['Strength'].default_value = 0.1
 ```
 
-### Lighting (MINIMUM 3 LIGHTS)
-Every scene MUST have at least 3 lights. 2-light scenes look flat.
+### Lighting — Match the Prompt's Atmosphere
+Every scene MUST have at least 3 lights. But their COLOR and PLACEMENT must serve the
+prompt's mood, not follow a generic template.
+
+**Prompt says "warm/cozy/amber/fireplace":** warm key (1.0, 0.85, 0.6), warm fill, orange accents
+**Prompt says "clinical/lab/sterile":** cool key (0.9, 0.95, 1.0), bright fill, white accents
+**Prompt says "dramatic/moody":** strong key from one side, minimal fill, colored rim
+**Prompt says "natural/outdoor":** sun-like directional, sky fill, bounce from ground
 
 **CRITICAL — LIGHT ENERGY vs SCENE SCALE (Cycles):**
-Light energy in Watts drops off with inverse-square distance. For CLOSE-UP scenes
-(objects < 2m from camera), use LOW energy values. High values = washed-out white render.
+Light energy in Watts drops off with inverse-square distance.
 
 | Scene Scale        | Key Light Energy | Fill Light Energy | Notes                    |
 |--------------------|-----------------|-------------------|--------------------------|
@@ -387,111 +406,52 @@ Light energy in Watts drops off with inverse-square distance. For CLOSE-UP scene
 | Medium (2-5m)      | 100-400 W       | 25-100 W          | Room-scale scenes        |
 | Wide (5m+)         | 500-2000 W      | 100-500 W         | Large environments       |
 
-**Rule of thumb:** Fill energy = 15-25% of key energy. Rim/accent = 30-50% of key.
-**HARD RULE:** For close-up (<2m), key light MUST be <=80W. Going above this = white washout.
+Fill energy = 15-25% of key. Rim/accent = 30-50% of key.
+**HARD RULE:** For close-up (<2m), key light MUST be <=80W. Above this = white washout.
 
-**3-Point Lighting Pattern (use this as your baseline):**
-```python
-# Example for close-up scene (~0.6m from camera):
-# Key light — primary illumination, warm
-bpy.ops.object.light_add(type='AREA', location=(x, y, z))
-key = bpy.context.active_object
-key.data.energy = 50   # Close-up scene = low energy!
-key.data.size = 0.5    # Larger = softer shadows
-key.data.color = (1.0, 0.95, 0.9)  # Slightly warm
+**Practical lights** (visible objects like lamps, candles, LED strips) add enormous realism.
+If the prompt mentions a light source (fireplace, candle, lamp), create BOTH the mesh AND
+a light at that position.
 
-# Fill light — prevents pitch-black shadows, cool
-bpy.ops.object.light_add(type='AREA', location=(x2, y2, z2))
-fill = bpy.context.active_object
-fill.data.energy = 12  # ~25% of key
-fill.data.size = 1.0   # Very soft
-fill.data.color = (0.85, 0.9, 1.0)  # Cool for contrast
+### Environmental Geometry — Build What the Prompt Describes
+The prompt tells you WHAT to build. These are structural minimums, not a template to copy.
 
-# Accent/rim light — edge definition, separates subject from background
-bpy.ops.object.light_add(type='AREA', location=(x3, y3, z3))
-rim = bpy.context.active_object
-rim.data.energy = 25  # ~50% of key
-rim.data.size = 0.3
-rim.data.color = (1.0, 0.92, 0.85)  # Warm
-```
+**If the prompt describes a specific setting**, build THAT setting with appropriate materials:
+- "cozy evening" → dark wood, warm textures, intimate scale
+- "industrial workshop" → concrete, metal, exposed fixtures
+- "clean laboratory" → white surfaces, glass, stainless steel
+- "outdoor garden" → ground plane with grass material, plants, natural elements
 
-**Practical lights** (lights that are visible objects in the scene, like lamps, overhead
-fixtures, LED strips) add enormous realism. If the scene has a lamp or fixture, add a
-point/spot light at that location AND a mesh object representing the fixture.
+**If the prompt describes a CLOSE-UP** (glass, object, small subject), you DON'T need a
+full room. Build: the subject, the surface it sits on, 2-3 background elements for depth,
+and appropriate lighting. A close-up of a wine glass does NOT need 4 walls and a ceiling.
 
-### Environmental Geometry (REQUIRED — THIS IS WHERE MOST SCRIPTS FAIL)
-If the prompt describes a location (basement, lab, kitchen, workshop), you MUST create
-a BELIEVABLE version of that space. A flat floor plane and a flat wall plane is NOT a room.
-
-**MINIMUM for indoor scenes:**
-- Floor with appropriate material (tile, wood, concrete)
-- 2-3 wall surfaces (back wall + at least one side wall)
-- Ceiling or overhead element (even partial)
+**Structural minimums for ROOM-SCALE scenes:**
+- Floor with prompt-appropriate material
+- 2-3 wall surfaces (only if the prompt implies an enclosed space)
+- Ceiling or overhead element (only if visible in frame)
 - The primary subject/object
-- 3-5 CONTEXT PROPS that belong in the described location
+- 3-5 context props that match the prompt's described setting
 
-**Context props are essential.** They tell the viewer WHERE this scene is. Examples:
-- Kitchen: cabinet boxes, countertop slab, sink basin, dish rack, bottles, towel
-- Bathroom: vanity box, mirror plane, towel bar cylinder, tile grid on walls
-- Basement: exposed beam, pipe runs, shelving unit, cardboard boxes, bare bulb fixture
-- Workshop: workbench slab, tool silhouettes, vise block, pegboard plane
-- Lab: bench surface, flask/beaker cylinders, monitor box, cable runs
+**Structural minimums for CLOSE-UP/TABLETOP scenes:**
+- Surface the subject sits on (table, counter, ground)
+- The primary subject/object
+- 1-2 background elements for depth (blurred wall, shelf, dark backdrop)
+- Props that belong with the subject (coaster under a glass, plate, napkin)
 
-Props can be simple primitives (cubes, cylinders, planes) with good materials.
+Props can be simple primitives with good materials.
 A cube with wood material = cabinet. A cylinder with chrome material = pipe.
 Silhouette + material > geometric detail.
 
-### Material Variety (MINIMUM 5 MATERIALS)
-Use at least 5 distinct materials. Scenes with identical surfaces look artificial.
+### Materials — Derive Colors From the Prompt
+Use at least 5 distinct materials. Every material should have procedural texture variation.
 
-**Every material should have procedural texture variation.** A flat color reads as plastic.
-```python
-# GOOD: Tile material with procedural grout lines
-def make_tile_material(name="Tiles", tile_color=(0.82, 0.78, 0.72, 1.0), grout_color=(0.3, 0.28, 0.25, 1.0)):
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    bsdf = nodes.get('Principled BSDF')
+**CRITICAL: Extract your color palette from the prompt.** If the prompt says "dark wood,"
+use dark wood tones (0.15, 0.08, 0.04) — not grey concrete (0.22, 0.22, 0.23).
+If the prompt says "warm amber," your lighting and accent materials should be warm.
 
-    # Brick texture for tile grid
-    brick = nodes.new('ShaderNodeTexBrick')
-    brick.inputs['Color1'].default_value = tile_color
-    brick.inputs['Color2'].default_value = grout_color
-    brick.inputs['Mortar'].default_value = grout_color  # NOT 'Mortar Color' — that was removed
-    brick.inputs['Scale'].default_value = 8.0
-    brick.inputs['Mortar Size'].default_value = 0.02
-    links.new(brick.outputs['Color'], bsdf.inputs['Base Color'])
-    # Roughness variation from brick pattern
-    links.new(brick.outputs['Fac'], bsdf.inputs['Roughness'])
-    return mat
-
-# GOOD: Wood material with grain
-def make_wood_material(name="Wood", base_color=(0.35, 0.2, 0.1, 1.0)):
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-    bsdf = nodes.get('Principled BSDF')
-
-    noise = nodes.new('ShaderNodeTexNoise')
-    noise.inputs['Scale'].default_value = 30.0
-    noise.inputs['Detail'].default_value = 6.0
-    noise.inputs['Distortion'].default_value = 2.0
-
-    ramp = nodes.new('ShaderNodeValToRGB')
-    elems = ramp.color_ramp.elements
-    elems[0].color = base_color
-    e1 = elems.new(0.6)
-    e1.color = (base_color[0]*0.7, base_color[1]*0.7, base_color[2]*0.7, 1.0)
-    links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
-    links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
-    bsdf.inputs['Roughness'].default_value = 0.4
-    return mat
-```
-
-**BAD: Flat single-color materials.** `bsdf.inputs['Base Color'] = (0.3, 0.3, 0.3, 1.0)` with
-nothing else reads as untextured plastic.
+Materials should use procedural textures (noise, brick, wave, voronoi) for variation.
+A flat single color reads as untextured plastic.
 
 **CRITICAL for LIQUID domains:** Water/liquid uses Glass BSDF (IOR ~1.333), NOT volume shaders.
 Volume Principled is for GAS domains (smoke/fire) only.
@@ -508,12 +468,11 @@ if bsdf:
     bsdf.inputs['Transmission Weight'].default_value = 1.0  # Fully transparent
 ```
 
-### Camera Composition
-- Frame the VFX EFFECT as the focal point, not just the geometry
+### Camera Composition — Follow the Prompt's Framing
+- **If the prompt specifies camera** (close-up, low angle, wide shot): FOLLOW IT EXACTLY
+- Frame the VFX EFFECT as the focal point
 - Use moderate DOF (f/4.0-f/8.0) unless the prompt explicitly requests shallow DOF
-- Ensure the camera can see the full extent of the simulation domain
 - Point look_at toward the action (spray impact, flame tips, explosion center)
-- Include environmental context in frame — don't crop so tight that the setting is invisible
 
 ## BLENDER 5.0 ONLY
 We use Blender 5.0.1. **MANDATORY DOC QUERY** - verify API names before write_script.

@@ -1,0 +1,39 @@
+{
+  "recommended_approach": "Use a Mantaflow liquid domain driven primarily by the base liquid solver, and only enable Domain-level Fluid Guides when you explicitly intend to steer the flow: the manual notes that simply enabling Guides makes the solver use a more accurate (and more expensive) pressure-guiding algorithm even if no guiding data is baked/attached. If guiding is needed, choose a Velocity Source (Effector vs Domain) and tune the guide grid influence via Weight/Size/Velocity Factor.",
+  "key_parameters": {
+    "guides": {
+      "enabled": "Recommended OFF unless you will use guiding (manual notes added solver cost even with no guiding data).",
+      "weight": "Controls guiding lag (alpha guiding). Numeric range/default not specified in retrieved doc.",
+      "size": "Determines vortex size produced by guiding (blur radius/beta guiding). Numeric range/default not specified in retrieved doc.",
+      "velocity_factor": "Scalar multiplier applied to guiding velocities. Numeric range/default not specified in retrieved doc.",
+      "velocity_source": "Effector or Domain (manual-described options).",
+      "guide_parent": "Object reference (property mentioned in retrieved doc; details truncated in retrieved excerpt)."
+    },
+    "domain_settings_attributes_seen_in_api_index": {
+      "flip_ratio": "Attribute exists on bpy.types.FluidDomainSettings (value guidance not present in retrieved excerpt).",
+      "noise_strength": "Attribute exists on bpy.types.FluidDomainSettings (value guidance not present in retrieved excerpt).",
+      "noise_time_anim": "Attribute exists on bpy.types.FluidDomainSettings (value guidance not present in retrieved excerpt)."
+    },
+    "flow_settings_attribute_seen_in_api_index": {
+      "noise_texture": "Mentioned as an attribute of bpy.types.FluidFlowSettings in retrieved API index snippet (no value guidance in retrieved excerpt)."
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "Manual note: enabling Guides increases computational cost because it switches to a more accurate pressure-guiding algorithm, even if no guiding objects are baked or no guiding domain is attached.",
+    "Tool warning from doc bundle: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\" (i.e., the bundled search did not return direct API reference pages for the fluid settings beyond index mentions)."
+  ],
+  "alternative_approaches": [
+    "If guiding is required, set Guides > Velocity Source to Effector (sample effector objects inside the domain) instead of Domain.",
+    "If guiding is required, set Guides > Velocity Source to Domain (use another fluid domain as the guiding velocity source; the source domain must be baked prior to use; guiding domain can differ in type/resolution per the manual excerpt)."
+  ],
+  "doc_refs": [
+    "physics/fluid/type/domain/guides.html",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-25T01:20:46.055523"
+}

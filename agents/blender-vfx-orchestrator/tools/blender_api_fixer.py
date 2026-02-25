@@ -811,7 +811,9 @@ for _api_fixer_obj in bpy.data.objects:
 
 CAMERA_DISTANCE_FIX_SNIPPET = '''
 # ==== API FIXER: Camera Distance Validation ====
-# Validates camera is not inside scene geometry or too close for its focal length.
+# Validates camera is not inside SUBJECT geometry (domains, small objects).
+# Excludes room-scale geometry (walls, floors, ceilings) from bounding box —
+# a camera INSIDE a room is normal for interior shots, not an error.
 # Also fixes scale=(0,0,0) corruption from matrix_world look_at() functions.
 import math as _cam_math
 for _cam_obj in bpy.data.objects:
@@ -819,14 +821,29 @@ for _cam_obj in bpy.data.objects:
         continue
     # Fix scale first (matrix_world corruption causes black renders)
     _cam_obj.scale = (1.0, 1.0, 1.0)
-    # Compute scene bounding box from visible mesh objects
-    _mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH' and o.visible_get()]
-    if not _mesh_objs:
+    # Collect visible mesh objects, separating subject from environment
+    _all_mesh = [o for o in bpy.data.objects if o.type == 'MESH' and o.visible_get()]
+    if not _all_mesh:
         continue
     from mathutils import Vector as _V
+    # Filter out room-scale geometry: objects with any world-space dimension > 2.5m
+    # are likely walls, floors, ceilings — not subjects the camera should avoid
+    _env_names = {'floor', 'wall', 'ceiling', 'ground', 'room', 'backdrop'}
+    _subject_objs = []
+    for _mo in _all_mesh:
+        _bb = [_mo.matrix_world @ _V(_c) for _c in _mo.bound_box]
+        _omin = _V((min(v[i] for v in _bb) for i in range(3)))
+        _omax = _V((max(v[i] for v in _bb) for i in range(3)))
+        _dims = _omax - _omin
+        _max_dim = max(_dims[0], _dims[1], _dims[2])
+        _is_env = _max_dim > 2.5 or any(n in _mo.name.lower() for n in _env_names)
+        if not _is_env:
+            _subject_objs.append(_mo)
+    # Use subject objects for bounding box; fall back to all if none qualify
+    _target_objs = _subject_objs if _subject_objs else _all_mesh
     _smin = _V((1e9, 1e9, 1e9))
     _smax = _V((-1e9, -1e9, -1e9))
-    for _mo in _mesh_objs:
+    for _mo in _target_objs:
         for _c in _mo.bound_box:
             _wc = _mo.matrix_world @ _V(_c)
             _smin = _V((min(_smin[i], _wc[i]) for i in range(3)))
@@ -835,12 +852,12 @@ for _cam_obj in bpy.data.objects:
     _diag = (_smax - _smin).length
     if _diag < 0.01:
         continue
-    # Compute minimum distance from focal length and scene size
+    # Compute minimum distance from focal length and SUBJECT size (not room size)
     _focal = _cam_obj.data.lens
     _sensor = _cam_obj.data.sensor_width
     _hfov = 2 * _cam_math.atan(_sensor / (2 * _focal))
     _min_dist = max((_diag / (2 * _cam_math.tan(_hfov / 2))) * 0.6, 0.3)
-    # Check if camera is inside bounding box or too close
+    # Only reposition if camera is inside the SUBJECT bounding box or very close
     _loc = _cam_obj.location.copy()
     _inside = all(_smin[i] - 0.05 <= _loc[i] <= _smax[i] + 0.05 for i in range(3))
     _dist = (_loc - _center).length
@@ -854,6 +871,8 @@ for _cam_obj in bpy.data.objects:
         _look = (_center - _cam_obj.location).normalized()
         _cam_obj.rotation_euler = _look.to_track_quat('-Z', 'Y').to_euler()
         print(f"[API Fixer] Camera repositioned: {_loc} -> {_cam_obj.location} (was {'inside' if _inside else 'too close'}, min_dist={_min_dist:.2f})")
+    else:
+        print(f"[API Fixer] Camera OK: dist={_dist:.2f}, min_dist={_min_dist:.2f}, subject_diag={_diag:.2f}")
 # ==== END API FIXER: Camera Distance Validation ====
 '''
 
