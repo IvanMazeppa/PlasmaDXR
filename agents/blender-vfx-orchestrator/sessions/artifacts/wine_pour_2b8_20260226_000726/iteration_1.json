@@ -1,0 +1,72 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_2b8_v1.py",
+  "technique_used": "mantaflow_liquid_flip_mesh_wine_pour (mantaflow_liquid_flip_mesh)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8/wine_pour_2b8.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8/cache",
+  "score": 28.0,
+  "passed": false,
+  "primary_issue": "The liquid does not read as a coherent refractive water/wine stream; it looks like a noisy volumetric/particle cloud with heavy fireflies, so the core \u201cliquid pour\u201d effect is not achieved.",
+  "parameter_changes": {
+    "asset_name": "wine_pour_2b8",
+    "frame_range": [
+      1,
+      60
+    ],
+    "render_frame": 40,
+    "output_paths": {
+      "output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8",
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8/wine_pour_2b8.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8/wine_pour_2b8.blend",
+      "cache_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_2b8/cache"
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "simulation_method": "FLIP",
+      "resolution_max": 96,
+      "use_mesh": true,
+      "use_adaptive_domain": false,
+      "cache_type": "ALL",
+      "cache_frame_start": 1,
+      "cache_frame_end": 60,
+      "flip_ratio": 1.0,
+      "use_flip_particles": true,
+      "particle_radius": 1.0,
+      "sys_particle_maximum": 0,
+      "mesh_concave_upper": 3.0,
+      "mesh_smoothen_pos": 4,
+      "mesh_smoothen_neg": 4,
+      "use_adaptive_timesteps": true,
+      "timesteps_min": 1,
+      "timesteps_max": 6
+    },
+    "flow_inflow_emitter": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_plane_init": true,
+      "subframes": 6,
+      "use_initial_velocity": true,
+      "velocity_normal": 1.2,
+      "velocity_random": 0.05,
+      "surface_distance": 0.2
+    },
+    "flow_initial_fill": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "GEOMETRY",
+      "use_inflow": false
+    },
+    "effectors": [
+      "WineGlass (COLLISION)",
+      "CollisionHelperDisc (COLLISION, hide_render=True)",
+      "TableTop (COLLISION)"
+    ],
+    "render": {
+      "engine": "CYCLES (best-effort set)",
+      "device": "GPU (best-effort set)",
+      "samples": 128,
+      "denoising": false
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-02-26T00:19:12.149662"
+}

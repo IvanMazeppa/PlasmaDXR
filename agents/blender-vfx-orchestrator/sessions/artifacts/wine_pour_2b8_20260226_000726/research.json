@@ -1,0 +1,118 @@
+{
+  "recommended_approach": "Use Mantaflow\u2019s **Liquid Domain** with a **liquid Flow object set to Inflow** to emit a continuous pour, and choose the liquid simulation method based on the desired splashiness/stability: **FLIP** is documented as \u201cvery splashy\u2026 with lots of particles dispersed in the air,\u201d while **APIC** is \u201cmore energetic but also more stable\u201d and preserves vortices better. For a vigorous wine stream with airborne droplets and splashing, start with **FLIP** and keep the domain\u2019s **Liquid** settings focused on adequate particle coverage (Particle Radius / Sampling) and controllable emission continuity via the Flow object\u2019s **Sampling Substeps** (\u201creduce gaps in emission of fluid from fast-moving sources\u201d). For clean rendering, enable domain **mesh generation** and tune mesh smoothing/concavity (per proven pattern) to avoid a blobby/chunky surface; ensure the glass container is a reliable effector collision (optionally add an invisible \u2018collision disc\u2019 at the bowl\u2013stem junction to prevent leakage).",
+  "key_parameters": {
+    "domain_liquid_simulation_method": {
+      "values": [
+        "FLIP",
+        "APIC"
+      ],
+      "notes_from_docs": "FLIP: very splashy with many particles in the air; APIC: more stable/energetic, preserves vortices better.",
+      "source": "Manual: Liquid settings"
+    },
+    "flip_ratio": {
+      "doc_notes": "Controls how much FLIP velocity is used; value 1.0 is completely FLIP and more chaotic splashes; lower values reduce turbulence and make splashes more subtle.",
+      "source": "Manual: Liquid settings"
+    },
+    "liquid_system_maximum_particles": {
+      "doc_notes": "If nonzero, caps total particles; zero allows solver to sample new particles as needed.",
+      "source": "Manual: Liquid settings"
+    },
+    "particle_radius": {
+      "doc_notes": "Radius of a liquid particle in grid-cell units; increase if liquid appears to disappear/leak volume; decrease if too much liquid is produced.",
+      "source": "Manual: Liquid settings"
+    },
+    "liquid_sampling_factor": {
+      "doc_notes": "Higher values sample more particles; resampling occurs at every simulation step.",
+      "source": "Manual: Liquid settings"
+    },
+    "liquid_randomness": {
+      "doc_notes": "Controls positional randomness of newly sampled particles in inflow regions; 0.0 is uniform; higher can help turbulent inflows; lower can help laminar inflows.",
+      "source": "Manual: Liquid settings"
+    },
+    "flow_behavior": {
+      "values": [
+        "INFLOW",
+        "OUTFLOW",
+        "GEOMETRY"
+      ],
+      "doc_notes": "Inflow emits fluid, Outflow removes fluid within its bounding box, Geometry turns the mesh volume into fluid; for Geometry, ensure surface normals point outward.",
+      "source": "Manual: Flow settings"
+    },
+    "flow_use_flow_toggle": {
+      "doc_notes": "Use Flow property allows enabling/disabling emission/removal for animation control.",
+      "source": "Manual: Flow settings"
+    },
+    "flow_sampling_substeps": {
+      "doc_notes": "Number of sub-steps to reduce gaps in emission from fast-moving sources; sub-steps occur at every simulation step (not per frame).",
+      "source": "Manual: Flow settings"
+    },
+    "domain_mesh_generation_and_smoothing__pattern_start": {
+      "domain_type": "LIQUID",
+      "use_mesh": true,
+      "use_flip_particles": true,
+      "mesh_concave_upper": 3.0,
+      "mesh_smoothen_pos": 4,
+      "mesh_smoothen_neg": 4,
+      "flip_ratio": 0.95,
+      "particle_radius": 1.0,
+      "source": "Pattern: liquid_mesh_quality_smoothing"
+    },
+    "glass_container_quality__pattern_start": {
+      "solidify_thickness": 0.002,
+      "solidify_offset": 1.0,
+      "subsurf_levels": 2,
+      "subsurf_render_levels": 2,
+      "use_smooth": true,
+      "source": "Pattern: glass_mesh_solidify_subdivision"
+    },
+    "glass_material__pattern_start": {
+      "principled_transmission_weight": 1.0,
+      "principled_roughness": 0.01,
+      "principled_ior": 1.47,
+      "source": "Pattern: glass_material_principled_transmission"
+    },
+    "leak_prevention_collision_helper__pattern_start": {
+      "collision_disc_radius": 0.022,
+      "collision_disc_depth": 0.008,
+      "collision_disc_location_xyz": [
+        0.0,
+        0.0,
+        0.125
+      ],
+      "fluid_modifier_fluid_type": "EFFECTOR",
+      "effector_type": "COLLISION",
+      "hide_render": true,
+      "display_type": "WIRE",
+      "source": "Pattern: glass_bottom_collision_disc"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh.primitive_cylinder_add",
+    "bpy.ops.mesh (module)",
+    "bpy.types.ShaderNodeBsdfPrincipled",
+    "bpy.data.materials",
+    "bpy.types.Mesh",
+    "bmesh",
+    "mathutils"
+  ],
+  "warnings": [
+    "Manual note: Disabling the Liquid checkbox deletes the attached particle system and its settings.",
+    "Manual note (Flow \u2192 Geometry): ensure surface normals point outwards or the fluid will not simulate properly.",
+    "Manual note: Sampling Substeps occur at every simulation step (not per frame).",
+    "Doc-bundle diagnostic warning: \u201cNo API doc_refs found (expected bpy.types.* or bpy.ops.* references).\u201d"
+  ],
+  "alternative_approaches": [
+    "Use **APIC** liquid simulation method instead of FLIP if the pour becomes too chaotic/unstable (manual: APIC is more stable; preserves vortices).",
+    "Reduce **FLIP Ratio** from 1.0 if you need subtler splashes at smaller scale (manual: lower values are less turbulent).",
+    "Add an **Outflow** object (Flow Behavior: Outflow) to prevent the domain from filling up (manual: outflow removes any fluid entering its bounding box)."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/fluid/type/domain/settings.html#liquid-",
+    "blender_manual_html/physics/fluid/type/flow.html#settings-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_manual_html/render/output/animation_player.html#hotkeys-"
+  ],
+  "timestamp": "2026-02-26T00:09:03.967090"
+}

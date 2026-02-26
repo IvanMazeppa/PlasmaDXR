@@ -1,0 +1,24 @@
+{
+  "session_id": "wine_pour_2b8_20260226_000726",
+  "iteration": 1,
+  "overall_score": 28.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Render/technical: Increase samples substantially and enable a strong denoiser (OIDN/OptiX). Also clamp indirect/specular to reduce fireflies while iterating.",
+    "Core effect workflow: If this is coming from volumes/particles, switch to a surface-based liquid representation (mesh the sim / particle-to-mesh) so the pour has a continuous refractive surface. Without a contiguous surface, it will not read as water/wine.",
+    "Material sanity check: ensure the liquid is not emissive. If emission is contributing, reduce it hard: Line 299 (emission Strength) \u2192 try 0.0\u20130.2 (or disable emission entirely for a realistic liquid).",
+    "Absorption tuning: Line 258 (Volume Absorption Density = 12.0) is likely making the fluid look overly thick/cloudy at this scene scale. Try 1.0\u20134.0 for wine (depends on thickness units), and near-0 for water (or very low with slight tint).",
+    "Reduce procedural micro-noise that\u2019s reading as \u201cgrain\u201d: Line 152 (noise Detail 8.0) \u2192 2\u20134; Line 175 (bump Strength 0.25) \u2192 0.03\u20130.08; Line 183 (mix Factor 0.35) \u2192 0.10\u20130.20 to lessen noisy breakup.",
+    "Calm the wave distortion: Line 146 (wave Distortion 6.0) \u2192 1.0\u20132.5; consider lowering Line 145 (wave Scale 18.0) if the surface looks like turbulent shader noise rather than physically driven ripples.",
+    "Lighting/readability: Provide a stronger environment reflection source for clean specular cues (even a dim HDRI or larger soft area light). If you keep the dark mood, increase background strength slightly: Line 101 (bg Strength 0.12) \u2192 0.2\u20130.5 so the liquid has something to reflect.",
+    "Camera/DOF: Reduce DOF blur or move the focus plane onto the stream so at least part of the pour is tack-sharp; keep cinematic DOF only after the liquid reads correctly."
+  ],
+  "cache_size_mb": 128.7004861831665,
+  "render_count": 1,
+  "vdb_count": 60,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 562.4633129030008,
+  "utility_score": 0.39,
+  "timestamp": "2026-02-26T00:18:09.297792"
+}
