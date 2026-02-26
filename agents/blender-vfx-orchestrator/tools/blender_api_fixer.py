@@ -173,6 +173,13 @@ while len(\1) > 1:
         "use_auto_smooth removed"
     ),
 
+    # Material.shadow_method removed in Blender 5.0
+    (
+        r"(?m)^.*\.shadow_method\s*=\s*.*$",
+        r"# Blender 5.0: shadow_method removed (shadows controlled at object level)",
+        "shadow_method removed"
+    ),
+
     # FluidFlowSettings.sampling_substeps does NOT EXIST - correct is subframes
     (
         r"\.sampling_substeps\s*=",

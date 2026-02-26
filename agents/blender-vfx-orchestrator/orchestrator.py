@@ -2724,9 +2724,16 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                     # location that _find_output_files doesn't cover.
                     if not execution.render_path:
                         _discover_dirs = [_exec_output_dir]
+                        # Search sibling dirs matching asset name (e.g. wine_pour_v1/)
+                        _parent = os.path.dirname(_exec_output_dir)
+                        _base = os.path.basename(_exec_output_dir)
+                        if os.path.isdir(_parent):
+                            for _sibling in sorted(Path(_parent).iterdir(), reverse=True):
+                                if _sibling.is_dir() and _sibling.name.startswith(_base) and str(_sibling) != _exec_output_dir:
+                                    _discover_dirs.append(str(_sibling))
                         if os.path.isdir(_exec_output_dir):
                             for _subdir in sorted(Path(_exec_output_dir).iterdir(), reverse=True):
-                                if _subdir.is_dir() and _subdir.name.startswith("run_"):
+                                if _subdir.is_dir():
                                     _discover_dirs.append(str(_subdir))
                         if execution.run_dir:
                             _discover_dirs.append(execution.run_dir)
@@ -2919,6 +2926,18 @@ but append '_errfix' to the output name."""
                                         # Fallback render discovery
                                         if not reexec_output.render_path:
                                             _search_dirs = [_exec_output_dir]
+                                            # Search sibling dirs matching asset name (e.g. wine_pour_v1/)
+                                            _parent = os.path.dirname(_exec_output_dir)
+                                            _base = os.path.basename(_exec_output_dir)
+                                            if os.path.isdir(_parent):
+                                                for _sibling in sorted(Path(_parent).iterdir(), reverse=True):
+                                                    if _sibling.is_dir() and _sibling.name.startswith(_base) and str(_sibling) != _exec_output_dir:
+                                                        _search_dirs.append(str(_sibling))
+                                            # Search subdirectories (run_* dirs inside output dir)
+                                            if os.path.isdir(_exec_output_dir):
+                                                for _subdir in sorted(Path(_exec_output_dir).iterdir(), reverse=True):
+                                                    if _subdir.is_dir():
+                                                        _search_dirs.append(str(_subdir))
                                             if reexec_output.run_dir:
                                                 _search_dirs.append(reexec_output.run_dir)
                                             for _dir in _search_dirs:

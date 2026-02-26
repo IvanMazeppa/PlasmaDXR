@@ -264,7 +264,7 @@ BLENDER_5_FIXES = {
         None
     ),
     "shadow_method": (
-        "mat.shadow_method removed in Blender 5.0. Use hasattr guard: if hasattr(mat, 'shadow_method'): mat.shadow_method = 'NONE'. For shadows, disable at object level with obj.visible_shadow = False instead.",
+        "mat.shadow_method removed in Blender 5.0. Shadows are controlled at object level with obj.visible_shadow = False.",
         None
     ),
 
