@@ -1,0 +1,64 @@
+{
+  "recommended_approach": "Use a Mantaflow LIQUID domain with FLIP-style liquid behavior, a continuous inflow emitter for the pour, and a collision glass obstacle; then prioritize simulation stability/detail via Substeps Per Frame and liquid mesh quality controls (Mesh Generator=Final, careful smoothing/concavity), and bake cache before rendering in Cycles.",
+  "key_parameters": {
+    "domain_type": "LIQUID",
+    "use_mesh": true,
+    "resolution_divisions": 96,
+    "sampling_substeps": 6,
+    "use_plane_init": true,
+    "inflow_velocity_mps": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": -1.0,
+      "range_note": "~1.0 to 1.5 m/s downward"
+    },
+    "frame_range": {
+      "start": 1,
+      "end": 60
+    },
+    "render_frame": 40,
+    "cache_type": "ALL",
+    "cache_step": 1,
+    "mesh_generator": "FINAL",
+    "mesh_notes": {
+      "smoothing_positive": "keep moderate (too high can remove small droplets)",
+      "smoothing_negative": "increase moderately to preserve splash detail",
+      "concavity_rule": "keep concavity_lower <= concavity_upper"
+    },
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU",
+      "samples_max": 128
+    },
+    "shading_notes": {
+      "liquid": "Principled BSDF transmission/liquid look with warm lighting",
+      "subsurface": "Principled Subsurface methods documented (Christensen-Burley / Random Walk) for translucent appearance control"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.BakeSettings",
+    "bpy.types.Mesh"
+  ],
+  "warnings": [
+    "No API doc_refs found (expected bpy.types.* or bpy.ops.* references).",
+    "Bake operations require Object Mode.",
+    "If the .blend is unsaved, cache may remain in memory and be lost on quit.",
+    "High positive mesh smoothing can suppress small droplets/splash detail.",
+    "Setting Concavity Lower higher than Concavity Upper can create distorted/non-manifold liquid meshes."
+  ],
+  "alternative_approaches": [
+    "If liquid detail is too noisy/heavy, use Preview mesh generator during look-dev and switch to Final for final bake.",
+    "Use the glass collision fix pattern (bottom collision disc) if liquid leaks through thin stem/base areas.",
+    "Use glass/material optimization patterns (Principled transmission + smoother glass mesh) to improve realism even when sim settings are fixed."
+  ],
+  "doc_refs": [
+    "mesh.md (Fluid mesh settings: Mesh Generator, Smoothing, Concavity, Speed Vectors)",
+    "baking.md (physics cache/bake workflow and cache step behavior)",
+    "blender_manual_html/render/shader_nodes/shader/principled.html#inputs-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-27T01:03:33.234378"
+}

@@ -1,0 +1,42 @@
+{
+  "recommended_approach": "Use a pre-fractured rigid-body workflow (Cell Fracture/Voronoi shards) and drive the shatter with rigid body collision from the brick. From the docs search results: use Triangle Mesh collision for detailed shard interactions (with the tradeoff that it is slower/less stable), set shard mesh margin to 0 when accuracy is needed, and bake the simulation before final render (Object Mode, cache/bake workflow) to avoid re-sim glitches.",
+  "key_parameters": {
+    "collision_shape_shards": "Mesh (triangle-only, supports concave geometry; more detailed interactions, but slower/less stable)",
+    "collision_shape_frame_wall": "Passive collider (can use simpler/compound setup for stability)",
+    "collision_margin_triangle_mesh": "0 (docs indicate Active/Passive Triangle Mesh can typically use 0)",
+    "margin_guidance": "Nonzero margin often improves stability/performance for many shapes; Triangle Mesh behaves differently",
+    "mesh_source_options": "Base / Deform / Final (Final includes all deformations/modifiers)",
+    "surface_response": {
+      "friction": "Higher values increase resistance and reduce post-collision motion",
+      "bounciness": "Range [0,1]"
+    },
+    "cache_step": 1,
+    "bake_requirement": "Bake in Object Mode",
+    "bake_workflow": "Use Bake / Bake All Dynamics and persistent cache before rendering"
+  },
+  "api_modules": [
+    "bpy.types.Mesh",
+    "bpy.types.BakeSettings",
+    "bpy.ops.mesh"
+  ],
+  "warnings": [
+    "Triangle Mesh collision is more detailed but slower and generally less stable than primitive/convex approaches.",
+    "Increasing Cache Step reduces cache size but interpolates between stored frames and may deviate from original sim.",
+    "Baking can make Blender temporarily unresponsive; do sim baking before final renders.",
+    "Unnamed/ambiguous cache usage can cause conflicts across physics objects.",
+    "No API doc_refs found (expected bpy.types.* or bpy.ops.* references)."
+  ],
+  "alternative_approaches": [
+    "Use Convex Hull instead of Mesh when concavity is limited (faster/more stable).",
+    "Use Compound Parent built from primitive child colliders to approximate concave structures with better stability/performance."
+  ],
+  "doc_refs": [
+    "collisions.md",
+    "baking.md",
+    "physics/particles/emitter/render.html",
+    "blender_manual_html/render/shader_nodes/textures/image.html#properties-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-03-05T00:29:24.970475"
+}

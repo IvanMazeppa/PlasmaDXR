@@ -1,0 +1,34 @@
+{
+  "recommended_approach": "Use a Mantaflow Liquid Domain workflow centered on Liquid domain settings with a FLIP-based simulation for splashy impact behavior, then tune particle controls (flip ratio, particle radius, sampling, randomness, min/max particles) to stabilize volume while preserving energetic splashes from the pour. Keep APIC as a fallback if FLIP becomes too chaotic and you need more stable vortices.",
+  "key_parameters": {
+    "simulation_method": "FLIP (docs: produces very splashy simulation with many dispersed particles)",
+    "flip_ratio": "1.0 gives fully FLIP behavior (more chaotic splashes); lower values reduce turbulence for subtler/smaller-scale motion",
+    "particle_radius": "Increase if liquid appears to disappear/leak volume; decrease if too much liquid is produced",
+    "sampling_factor": "Higher values sample more particles each simulation step",
+    "inflow_randomness": "0.0 gives uniform/laminar inflow; higher values add more turbulent/random inflow sampling",
+    "particles_max_per_cell": "Use as upper resampling threshold to control particle count",
+    "particles_min_per_cell": "Use to enforce minimum particle density per cell",
+    "viscosity_kinematic_reference": "Water example from docs: ~1.002e-6 m^2/s (use diffusion/viscosity controls as physical baseline)",
+    "surface_tension": "Use liquid diffusion surface tension controls to shape cohesion/splash breakup"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "Disabling the Liquid checkbox deletes the attached particle system and its settings.",
+    "A fully FLIP setup (flip ratio near 1.0) can become very chaotic; reduce ratio for less turbulent behavior if needed.",
+    "Volume-based emission requires a manifold/watertight mesh; certain modifiers can break watertightness.",
+    "Doc bundle warning returned: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\""
+  ],
+  "alternative_approaches": [
+    "Switch simulation method to APIC for more stable, energetic motion with better vortex preservation when FLIP is too chaotic.",
+    "Use lower FLIP contribution (flip ratio below full FLIP) to keep splash motion but reduce instability on small-scale glass shots."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/fluid/type/domain/settings.html#liquid-",
+    "physics/fluid/type/domain/liquid/diffusion.html",
+    "physics/particles/emitter/emission.html"
+  ],
+  "timestamp": "2026-02-26T23:51:10.782097"
+}

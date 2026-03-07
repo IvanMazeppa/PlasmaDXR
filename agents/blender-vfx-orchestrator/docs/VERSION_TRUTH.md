@@ -12,11 +12,12 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Models (2026-01)
+## OpenAI Models (2026-02)
 
 ### CURRENT MODELS - USE THESE
 | Model | Use Case |
 |-------|----------|
+| `gpt-5.3-codex` | Coding-optimized agentic model (Feb 2026). 400K context, 128K output. No temperature support. |
 | `gpt-5.2` | High capability, complex reasoning |
 | `gpt-5-mini` | Fast, cheap, good for simple tasks |
 | `o4-mini` | Fast reasoning |
@@ -35,7 +36,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Agents SDK (v0.9.0)
+## OpenAI Agents SDK (v0.10.5)
 
 ### CURRENT PATTERNS
 ```python
@@ -94,12 +95,15 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
-**SDK Notes (v0.9.0):**
+**SDK Notes (v0.10.5):**
 - `agent.as_tool(max_turns=...)` is supported natively. Returns `FunctionTool` (narrowed from `Tool` in v0.9.0).
 - Guardrails are created via decorators (`@input_guardrail`, `@output_guardrail`).
 - Tool guardrails apply only to `@function_tool` tools; use RunHooks for cross-tool enforcement.
 - `@function_tool` now supports `timeout_seconds`, `timeout_behavior`, and `timeout_error_function`.
 - Child agents inherit parent `RunConfig` when invoked via `as_tool()` (v0.8.4+).
+- Parallel function tool failures are isolated (no cascade) (v0.10.4+).
+- `McpError` returns as structured result instead of crashing agent runs (v0.10.5+).
+- Trace reattachment fixed for resumed runs — no duplicate trace starts (v0.10.2+).
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## Runtime Truth Addendum (2026-02-13)
 
-- SDK runtime pin is `openai-agents==0.8.3`.
+- SDK runtime pin is `openai-agents==0.10.5`.
 - Spec-first mode defaults on via `ORCHESTRATOR_SPEC_FIRST=1`.
 - Missing quality artifact is a hard failure.
 - Doc grounding is strict:
@@ -1083,7 +1083,7 @@ Fields persisted:
 - Script Writer must perform a doc query before `write_script`/`modify_script`.
 - Enforced via RunHooks (`require_doc_query_before`).
 
-**SDK v0.8.3 Alignment:**
+**SDK v0.10.5 Alignment:**
 - `agent.as_tool(max_turns=...)` is supported natively; wrappers only needed for custom logic.
 
 **Budget Guardrail Consistency:**

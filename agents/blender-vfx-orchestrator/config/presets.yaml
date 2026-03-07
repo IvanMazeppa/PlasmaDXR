@@ -3,12 +3,13 @@
 #
 # Available models (from OpenAI Platform docs):
 #   gpt-5.2       - Latest, supports temperature ONLY when reasoning_effort=none
+#   gpt-5.3-codex - Coding-optimized model for agentic code tasks (NO temperature support)
 #   gpt-5-mini    - Fast, cost-effective (NO temperature support)
 #   gpt-5-nano    - Fastest, lowest cost (NO temperature support)
 #
 # Parameter compatibility:
 #   - temperature/top_p/logprobs: ONLY gpt-5.2/gpt-5.1 with reasoning_effort=none
-#   - gpt-5-mini/gpt-5-nano: Use text.verbosity and max_output_tokens instead
+#   - gpt-5.3-codex/gpt-5-mini/gpt-5-nano: Use text.verbosity and max_output_tokens instead
 #
 # Reasoning effort: none, low, medium, high, xhigh
 
@@ -49,6 +50,43 @@ presets:
     memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
     effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
     artifact_sharing: true     # Phase 2B-8: Agents read artifacts via tool instead of inline
+
+  # Codex rollout - safe migration preset for code-critical agents
+  # Global overrides remain in place; this preset only upgrades selected agents.
+  codex_upgrade:
+    description: "Rollout preset: gpt-5.3-codex for code-critical agents"
+    default_model: gpt-5-mini
+    reasoning_effort: medium
+    verbosity: medium
+    max_output_tokens: 4000
+    max_turns: 10
+    max_iterations: 3
+    stateless_iterations: true  # Phase 2B-1: Fresh context per iteration
+    multi_grader_eval: true     # Phase 2B-3: Deterministic checks before LLM vision
+    hitl_enabled: true          # Phase 2B-5: HITL checkpoints
+    hitl_autonomy_level: 1      # Supervised rollout
+    hitl_interactive: false      # Human checkpoints during rollout
+    memory_decay_enabled: true  # Phase 2B-6: Ebbinghaus decay on KB entries
+    effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
+    artifact_sharing: true     # Phase 2B-8: Agents read artifacts via tool instead of inline
+    agent_overrides:
+      # Primary code generation path
+      script_writer:
+        model: gpt-5.3-codex
+        reasoning_effort: high
+        max_output_tokens: 25000
+        verbosity: medium
+      # Strategy is tightly coupled to script generation quality
+      modification_coordinator:
+        model: gpt-5.3-codex
+        reasoning_effort: high
+        max_output_tokens: 2000
+        max_turns: 4
+      # Research output quality materially impacts generated scripts
+      research_agent:
+        model: gpt-5.3-codex
+        reasoning_effort: high
+        max_output_tokens: 4000
 
   # Full quality - best results, higher cost
   production:
@@ -160,6 +198,7 @@ presets:
 #
 # Model tiers:
 #   gpt-5.2  → complex reasoning, code generation, evaluation
+#   gpt-5.3-codex → coding-specialized model (enabled via codex_upgrade preset)
 #   gpt-5-mini → simple/formulaic tasks (routing, execution, pass/fail)
 agent_overrides:
 

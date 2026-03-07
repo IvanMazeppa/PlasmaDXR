@@ -1,0 +1,15 @@
+{
+  "iteration": 1,
+  "phase": "artifact_gate",
+  "issue_type": "artifact_gate_failure",
+  "summary": "Cache too small: 0.08MB < 0.10MB minimum",
+  "details": "## ARTIFACT GATE FAILURE\n\nThe following deterministic gates failed BEFORE quality evaluation:\n\n### CACHE_SIZE: FAILED\nReason: Cache too small: 0.08MB < 0.10MB minimum\nDetails: {'cache_size_bytes': 88620, 'cache_size_mb': 0.08451461791992188, 'min_size_bytes': 100000, 'file_count': 180}\n\n### VDB_VALIDITY: FAILED\nReason: All VDB files too small (< 10000 bytes)\nDetails: {'small_vdbs': [('/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_codex/cache/data/fluid_data_0001.vdb', 1367), ('/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_codex/cache/data/fluid_data_0002.vdb', 1367), ('/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_codex/cache/data/fluid_data_0003.vdb', 1367)], 'min_size_bytes': 10000}\n\n## Artifact Summary\n- Cache exists: True\n- Cache size: 0.08MB (180 files)\n- Render count: 1\n- VDB count: 60\n\n## Likely Causes\n- **Empty cache**: Simulation may not have run or emitter was misconfigured\n  - Check: `use_plane_init=True` for planar liquid emitters\n  - Check: Domain object selected and active during bake\n  - Check: Frame range includes simulation keyframes\n- **Invalid VDB**: Volume export may have failed\n  - Check: OpenVDB addon is enabled\n  - Check: Domain has valid cache data",
+  "recommended_fixes": [
+    "Verify cache outputs exist and exceed minimum size.",
+    "Ensure at least one render file is produced in expected run/output directory.",
+    "Check cache path wiring (BLENDER_CACHE_DIR / script output directories)."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_codex_v1.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_codex/wine_pour_codex.png",
+  "timestamp": "2026-02-27T01:08:05.502289"
+}

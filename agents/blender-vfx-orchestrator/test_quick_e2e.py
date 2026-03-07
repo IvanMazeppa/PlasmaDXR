@@ -166,7 +166,7 @@ Examples:
                         choices=['sun', 'fire', 'explosion', 'smoke', 'nebula', 'water'],
                         help='Effect type to test')
     parser.add_argument('--preset', type=str, default='quick_test',
-                        help='Config preset (quick_test, development, production, budget_saver, debug)')
+                        help='Config preset (quick_test, development, codex_upgrade, production, budget_saver, debug)')
     parser.add_argument('--iterations', type=int, default=3, help='Max iterations (overrides preset)')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose SDK logging')
     parser.add_argument('--list-presets', action='store_true', help='List available presets and exit')

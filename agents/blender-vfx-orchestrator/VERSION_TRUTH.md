@@ -32,7 +32,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Agents SDK (v0.6.9+)
+## OpenAI Agents SDK (v0.10.5)
 
 ### CURRENT PATTERNS
 ```python

@@ -166,7 +166,9 @@ async def run_execution_phase(
     # ====== PHASE 2: EXECUTION ======
     print(f"[Pipeline] PHASE 2: Deterministic Executor", file=sys.stderr)
 
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # phases/ → blender-vfx-orchestrator/ → agents/ → PlasmaDXR/
+    _orchestrator_root = Path(__file__).resolve().parent.parent
+    project_root = str(_orchestrator_root.parent.parent)
     exec_output_dir = os.path.join(project_root, "build", "vdb_output", request.asset_name)
     os.makedirs(exec_output_dir, exist_ok=True)
 

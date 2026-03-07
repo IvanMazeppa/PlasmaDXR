@@ -1,0 +1,42 @@
+{
+  "recommended_approach": "Use a Mantaflow LIQUID domain workflow centered on (1) liquid diffusion tuning (viscosity + surface tension) for wine-like flow behavior, (2) robust collision setup for the glass as an effector, and (3) higher collision Sampling Substeps to preserve a continuous fast inflow stream and reduce collision gaps/splash artifacts. Then refine liquid mesh appearance with smoothing-focused pattern guidance.",
+  "key_parameters": {
+    "domain_workflow": "Mantaflow Liquid Domain with mesh generation and baked cache",
+    "diffusion_settings": {
+      "viscosity_model": "Kinematic viscosity (m^2/s) via Base + Exponent scientific notation",
+      "documented_reference_value": "Water at 20\u00b0C example: 1.002\u00d710^-6 m^2/s (from diffusion docs)",
+      "surface_tension": "Enable/tune to control cohesion and splash breakup"
+    },
+    "effector_settings": {
+      "type": "Collision",
+      "sampling_substeps": "Increase for fast-moving fluid/effectors to reduce missed collisions/gaps",
+      "surface_thickness": "Increase if thin glass geometry causes leakage"
+    },
+    "pattern_guided_quality": [
+      "pat_1ec2f1b9cc3c (liquid_mesh_quality_smoothing)",
+      "pat_14ae57979aed (glass_bottom_collision_disc)",
+      "pat_16beaeeae652 (glass_mesh_solidify_subdivision)"
+    ]
+  },
+  "api_modules": [
+    "bpy.types.FluidFlowSettings"
+  ],
+  "warnings": [
+    "No API doc_refs found (expected bpy.types.* or bpy.ops.* references).",
+    "Higher Sampling Substeps improves collision robustness but increases simulation cost.",
+    "If particle-volume-style emitters are used for secondary droplets, source geometry must remain manifold/watertight."
+  ],
+  "alternative_approaches": [
+    "Apply pat_14ae57979aed (glass_bottom_collision_disc) if leakage appears near stem/base intersections.",
+    "Apply pat_1ec2f1b9cc3c (liquid_mesh_quality_smoothing) if liquid surface appears chunky at target resolution.",
+    "Apply pat_754330aabb3d (filmic_color_management) for improved highlight rolloff/color response in warm low-key lighting."
+  ],
+  "doc_refs": [
+    "physics/fluid/type/domain/liquid/diffusion.html",
+    "physics/fluid/type/effector.html",
+    "physics/particles/emitter/emission.html",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-02-26T23:12:09.301571"
+}

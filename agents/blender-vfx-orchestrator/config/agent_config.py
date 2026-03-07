@@ -5,7 +5,8 @@ Loads presets from YAML and provides agent-specific settings with overrides.
 
 GPT-5 Parameter Compatibility (from OpenAI Platform docs):
 - gpt-5.2/gpt-5.1: temperature/top_p/logprobs ONLY supported with reasoning_effort=none
-- gpt-5/gpt-5-mini/gpt-5-nano: NO temperature support, use text.verbosity and max_output_tokens
+- gpt-5-codex/gpt-5.3-codex/gpt-5.2-codex/gpt-5/gpt-5-mini/gpt-5-nano:
+  NO temperature support, use text.verbosity and max_output_tokens
 """
 
 from __future__ import annotations
@@ -28,7 +29,15 @@ PRESETS_FILE = CONFIG_DIR / "presets.yaml"
 TEMPERATURE_SUPPORTED_MODELS = {"gpt-5.2", "gpt-5.1"}
 
 # Models that DON'T support temperature at all
-NO_TEMPERATURE_MODELS = {"gpt-5", "gpt-5-mini", "gpt-5-nano"}
+NO_TEMPERATURE_MODELS = {
+    "codex",
+    "gpt-5-codex",
+    "gpt-5.3-codex",
+    "gpt-5.2-codex",
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
+}
 
 
 @dataclass
@@ -48,7 +57,8 @@ class AgentSettings:
 
         Handles parameter compatibility based on model type:
         - gpt-5.2/gpt-5.1: temperature only with reasoning_effort=none
-        - gpt-5/gpt-5-mini/gpt-5-nano: use text.verbosity, max_output_tokens
+        - codex/gpt-5-codex/gpt-5.3-codex/gpt-5.2-codex/gpt-5/gpt-5-mini/gpt-5-nano:
+          use text.verbosity, max_output_tokens
         """
         settings = {}
 
@@ -70,7 +80,7 @@ class AgentSettings:
             if self.temperature is not None:
                 settings["temperature"] = self.temperature
 
-        # Handle text verbosity (alternative to temperature for gpt-5-mini/nano)
+        # Handle text verbosity (alternative to temperature for codex/gpt-5/mini/nano)
         if model_no_temperature or self.reasoning_effort != "none":
             if self.verbosity:
                 settings["text"] = {"verbosity": self.verbosity}
@@ -140,6 +150,9 @@ class AgentConfigManager:
     """
     preset: PresetConfig
     agent_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    # Optional per-preset overrides (e.g., codex rollout) layered on top
+    # of global agent_overrides.
+    preset_agent_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     _raw_presets: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
@@ -147,7 +160,7 @@ class AgentConfigManager:
         """Load the presets YAML file."""
         if not path.exists():
             logger.warning(f"Presets file not found: {path}, using defaults")
-            return {"presets": {}, "agent_overrides": {}}
+            return {"presets": {}, "agent_overrides": {}, "preset_agent_overrides": {}}
 
         with open(path, "r") as f:
             return yaml.safe_load(f)
@@ -171,6 +184,7 @@ class AgentConfigManager:
         data = cls.load_presets_file(presets_file)
         presets = data.get("presets", {})
         overrides = data.get("agent_overrides", {})
+        preset_agent_overrides: Dict[str, Dict[str, Any]] = {}
 
         if preset_name not in presets:
             available = list(presets.keys())
@@ -180,13 +194,16 @@ class AgentConfigManager:
             )
             preset_config = PresetConfig(name=preset_name)
         else:
-            preset_config = PresetConfig.from_dict(preset_name, presets[preset_name])
+            preset_data = presets[preset_name]
+            preset_config = PresetConfig.from_dict(preset_name, preset_data)
+            preset_agent_overrides = preset_data.get("agent_overrides", {})
 
         logger.info(f"Loaded preset: {preset_name} ({preset_config.description})")
 
         return cls(
             preset=preset_config,
             agent_overrides=overrides,
+            preset_agent_overrides=preset_agent_overrides,
             _raw_presets=presets,
         )
 
@@ -223,23 +240,27 @@ class AgentConfigManager:
             verbose=self.preset.verbose,
         )
 
-        # Apply agent-specific overrides
-        overrides = self.agent_overrides.get(agent_name, {})
-        if overrides:
-            if "model" in overrides:
-                settings.model = overrides["model"]
-            if "reasoning_effort" in overrides:
-                settings.reasoning_effort = overrides["reasoning_effort"]
-            if "temperature" in overrides:
-                settings.temperature = overrides["temperature"]
-            if "verbosity" in overrides:
-                settings.verbosity = overrides["verbosity"]
-            if "max_output_tokens" in overrides:
-                settings.max_output_tokens = overrides["max_output_tokens"]
-            if "max_turns" in overrides:
-                settings.max_turns = overrides["max_turns"]
-            if "verbose" in overrides:
-                settings.verbose = overrides["verbose"]
+        def _apply_overrides(override_block: Dict[str, Any]) -> None:
+            if not override_block:
+                return
+            if "model" in override_block:
+                settings.model = override_block["model"]
+            if "reasoning_effort" in override_block:
+                settings.reasoning_effort = override_block["reasoning_effort"]
+            if "temperature" in override_block:
+                settings.temperature = override_block["temperature"]
+            if "verbosity" in override_block:
+                settings.verbosity = override_block["verbosity"]
+            if "max_output_tokens" in override_block:
+                settings.max_output_tokens = override_block["max_output_tokens"]
+            if "max_turns" in override_block:
+                settings.max_turns = override_block["max_turns"]
+            if "verbose" in override_block:
+                settings.verbose = override_block["verbose"]
+
+        # Apply global overrides first, then preset-specific rollout overrides.
+        _apply_overrides(self.agent_overrides.get(agent_name, {}))
+        _apply_overrides(self.preset_agent_overrides.get(agent_name, {}))
 
         return settings
 

@@ -4,7 +4,7 @@
 
 **Purpose:** Ensure OpenAI Agents SDK documentation is ALWAYS consulted before making changes.
 
-**Current SDK Version:** v0.8.3 (pinned in `requirements.txt`, verified 2026-02-13)
+**Current SDK Version:** v0.10.5 (pinned in `requirements.txt`, verified 2026-03-07)
 
 **Runtime Truth Override (2026-02-13):**
 - Runtime behavior and doc-grounding contract are defined in `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`.

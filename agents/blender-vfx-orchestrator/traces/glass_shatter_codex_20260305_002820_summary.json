@@ -1,0 +1,141 @@
+{
+  "trace_file": "glass_shatter_codex_20260305_002820.jsonl",
+  "trace_name": "VFX Pipeline: glass_shatter_codex",
+  "timestamp": "2026-03-05T00:28:21.899938",
+  "total_duration_s": 605.1,
+  "total_duration_min": 10.08,
+  "effect_type": "glass_shatter_codex",
+  "status": "completed",
+  "quality_score": null,
+  "iteration_count": 2,
+  "total_tool_calls": 11,
+  "total_doc_searches": 6,
+  "total_errors": 0,
+  "agents": {
+    "Script Writer": {
+      "calls": 2,
+      "duration_s": 506.7,
+      "pct_of_total": 83.7,
+      "doc_searches": 3,
+      "top_tools": {
+        "search_blender_api_by_intent": 2,
+        "write_script": 2,
+        "validate_script": 2,
+        "semantic_search_blender_docs": 1
+      }
+    },
+    "Research Agent": {
+      "calls": 1,
+      "duration_s": 63.1,
+      "pct_of_total": 10.4,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Technique Selector": {
+      "calls": 1,
+      "duration_s": 21.6,
+      "pct_of_total": 3.6,
+      "doc_searches": 0,
+      "top_tools": {}
+    },
+    "Documentation Expert (Standalone)": {
+      "calls": 1,
+      "duration_s": 19.3,
+      "pct_of_total": 3.2,
+      "doc_searches": 3,
+      "top_tools": {
+        "semantic_search_blender_docs": 1,
+        "blender_doc_search_bundle": 1,
+        "list_patterns_by_effect": 1,
+        "search_code_patterns": 1
+      }
+    }
+  },
+  "efficiency": {
+    "doc_searches_per_minute": 0.59,
+    "seconds_per_iteration": 302.5
+  },
+  "agent_order": [
+    "Research Agent",
+    "Documentation Expert (Standalone)",
+    "Technique Selector",
+    "Script Writer"
+  ],
+  "guardrail_checks": 8,
+  "guardrail_triggers": 0,
+  "guardrail_trigger_rate": 0.0,
+  "llm_calls": 16,
+  "llm_duration_total_s": 593.5,
+  "llm_duration_mean_s": 37.09,
+  "quality_score_final": null,
+  "quality_passed": null,
+  "blender_runs": 0,
+  "blender_success_count": 0,
+  "blender_total_duration_s": 0.0,
+  "score_trajectory": [],
+  "max_depth": 8,
+  "tool_details": {
+    "semantic_search_blender_docs": {
+      "call_count": 2,
+      "total_duration_ms": 7865.2,
+      "avg_duration_ms": 3932.6
+    },
+    "blender_doc_search_bundle": {
+      "call_count": 1,
+      "total_duration_ms": 6288.5,
+      "avg_duration_ms": 6288.5
+    },
+    "search_blender_api_by_intent": {
+      "call_count": 2,
+      "total_duration_ms": 2806.1,
+      "avg_duration_ms": 1403.0
+    },
+    "validate_script": {
+      "call_count": 2,
+      "total_duration_ms": 24.5,
+      "avg_duration_ms": 12.2
+    },
+    "write_script": {
+      "call_count": 2,
+      "total_duration_ms": 19.3,
+      "avg_duration_ms": 9.6
+    },
+    "list_patterns_by_effect": {
+      "call_count": 1,
+      "total_duration_ms": 1.3,
+      "avg_duration_ms": 1.3
+    },
+    "search_code_patterns": {
+      "call_count": 1,
+      "total_duration_ms": 0.7,
+      "avg_duration_ms": 0.7
+    }
+  },
+  "guardrail_details": {
+    "require_research_context": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_effect_type": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_script_output": {
+      "check_count": 2,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_research_output": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    },
+    "validate_technique_decision": {
+      "check_count": 1,
+      "trigger_count": 0,
+      "trigger_rate": 0.0
+    }
+  }
+}

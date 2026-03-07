@@ -12,10 +12,10 @@ THE SOLUTION:
 Make wrong code fail immediately with clear error messages pointing
 to the correct documentation.
 
-CURRENT VERSIONS (2026-01):
-- OpenAI Models: gpt-5.2, gpt-5-mini, o3, o4-mini (NOT gpt-4o, gpt-4-mini!)
+CURRENT VERSIONS (2026-02):
+- OpenAI Models: gpt-5.3-codex, gpt-5.2, gpt-5-mini, o3, o4-mini (NOT gpt-4o, gpt-4-mini!)
 - Blender: 5.0 (NOT 2.8x, 3.x, 4.x!)
-- Agents SDK: v0.9.0 (NOT pre-v0.6!)
+- Agents SDK: v0.10.5 (NOT pre-v0.6!)
 """
 
 from __future__ import annotations
@@ -30,9 +30,10 @@ from typing import List, Set, Tuple
 # AUTHORITATIVE VERSION CONSTANTS
 # =============================================================================
 
-# OpenAI Models - CURRENT as of 2026-01
+# OpenAI Models - CURRENT as of 2026-02
 VALID_OPENAI_MODELS: Set[str] = {
     # GPT-5 family (current)
+    "gpt-5.3-codex",
     "gpt-5.2",
     "gpt-5-mini",
     "gpt-5",
@@ -42,6 +43,7 @@ VALID_OPENAI_MODELS: Set[str] = {
     "o4-mini",
     # Codex (current)
     "codex",
+    "gpt-5-codex",
     "gpt-5.2-codex",
 }
 
@@ -124,11 +126,12 @@ def check_model_name(model: str, context: str = "") -> None:
             f"\n"
             f"This model is from AI training data, NOT current reality.\n"
             f"\n"
-            f"VALID MODELS (2026-01):\n"
-            f"  - gpt-5.2      (high capability)\n"
-            f"  - gpt-5-mini   (fast, cheap)\n"
-            f"  - o3           (reasoning)\n"
-            f"  - o4-mini      (fast reasoning)\n"
+            f"VALID MODELS (2026-02):\n"
+            f"  - gpt-5.3-codex (coding-specialized)\n"
+            f"  - gpt-5.2       (high capability)\n"
+            f"  - gpt-5-mini    (fast, cheap)\n"
+            f"  - o3            (reasoning)\n"
+            f"  - o4-mini       (fast reasoning)\n"
             f"\n"
             f"DO NOT USE: gpt-4o, gpt-4-mini, gpt-4, gpt-3.5-turbo\n"
             f"{'='*70}\n"
@@ -191,7 +194,7 @@ def scan_file_for_violations(filepath: Path) -> List[str]:
         for pattern in patterns:
             if re.search(pattern, content, re.IGNORECASE):
                 violations.append(
-                    f"{filepath}: Deprecated model '{model}' - use gpt-5.2 or gpt-5-mini"
+                    f"{filepath}: Deprecated model '{model}' - use gpt-5.3-codex, gpt-5.2, or gpt-5-mini"
                 )
                 break
 

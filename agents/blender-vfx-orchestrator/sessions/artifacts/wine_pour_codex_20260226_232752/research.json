@@ -1,0 +1,38 @@
+{
+  "recommended_approach": "Use a Mantaflow **LIQUID Domain** with **Simulation Method = FLIP** as the primary setup, because Blender docs describe FLIP as the splashiest method with dispersed droplets (best match for vigorous wine impact/splash behavior). Keep liquid meshing enabled, tune particle sampling/radius for volume retention and droplet detail, and bake with Cache Type **All** for a single full bake pass.",
+  "key_parameters": {
+    "simulation_method": "FLIP (docs: splashy, chaotic droplets)",
+    "flip_ratio": "1.0 (FLIP-only) for strongest chaotic splash character",
+    "cache_type": "ALL",
+    "cache_frame_range": "Start/End per shot range (requested 1-60)",
+    "particle_radius": "Increase if liquid appears to disappear/leak numerically; decrease if excess volume appears",
+    "sampling": "Increase sampling factor to generate more particles/detail",
+    "randomness": "Lower for cleaner/laminar inflow stream, higher for more turbulent inflow breakup",
+    "viscosity_reference_water": "~1.002e-6 m^2/s (from diffusion example)",
+    "surface_tension": "Increase for stronger cohesion and rounder droplets",
+    "high_viscosity_solver": "Use only for very thick/slow liquids; not generally required for water-like wine pour"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.BakeSettings"
+  ],
+  "warnings": [
+    "Disabling the Liquid checkbox removes the attached liquid particle system/settings.",
+    "Very high viscosity values are not suitable for making non-fluid/rigid behavior and can cause instability.",
+    "Replay cache mode depends on playback sync = Play Every Frame; otherwise prefer Modular or All.",
+    "Doc bundle diagnostic warning returned: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\""
+  ],
+  "alternative_approaches": [
+    "Use APIC instead of FLIP if you need a more stable (less chaotic) fill while retaining energetic motion.",
+    "Lower FLIP ratio from 1.0 for subtler, smaller-scale splash behavior.",
+    "Use Cache Type Modular for stepwise rebakes when iterating mesh/particle stages."
+  ],
+  "doc_refs": [
+    "physics/fluid/type/domain/settings.html#liquid-",
+    "physics/fluid/type/domain/liquid/diffusion.html",
+    "physics/fluid/type/domain/cache.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#liquid-"
+  ],
+  "timestamp": "2026-02-26T23:28:50.899896"
+}
