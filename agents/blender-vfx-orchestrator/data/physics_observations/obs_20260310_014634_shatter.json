@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-10T01:46:34.306410",
+  "effect_type": "shatter",
+  "observation": "Impact event reads very weak: glass barely fractures and there is little/no outward ejection of shards; brick motion/penetration is not clearly communicated in the still.",
+  "expected_behavior": "Per scene description: a high-speed brick strike should create a clear central hole with dense radial cracking and an outward 'explosion' of shards (many fragments, varied sizes, significant spread), with the brick continuing through trailing fragments and some remaining glass collapsing from the frame.",
+  "actual_behavior": "Only a faint/sparse crack/shatter is visible near the window; shard count and spread appear minimal, with little sense of outward velocity or trailing fragments; the brick is not clearly readable as a fast-moving object.",
+  "suspected_parameters": {
+    "impact_velocity": "too low",
+    "shard_initial_velocity": "too low",
+    "fracture_cell_scale": "too large / too sparse",
+    "shard_count": "too low",
+    "rigidbody_impulse": "insufficient",
+    "motion_blur": "disabled/too low"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_script_iter2_codefix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

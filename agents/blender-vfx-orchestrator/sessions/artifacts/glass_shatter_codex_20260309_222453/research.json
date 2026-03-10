@@ -1,0 +1,69 @@
+{
+  "recommended_approach": "Rigid Body \u2014 impact-centered Voronoi pre-fracture + breakable FIXED rigid body constraints + kinematic-to-active brick projectile, optionally augmented with small particle debris for micro-chips. This matches the documented 'Constraint-Based Glass Shattering' / 'Combined Hero Destruction' approach and is the best fit for a realistic cinematic window break.",
+  "key_parameters": {
+    "constraint_network": {
+      "type": "FIXED",
+      "use_breaking": true,
+      "breaking_threshold": "8.0 + distance_from_impact * 35.0"
+    },
+    "rigid_body_world": {
+      "substeps_per_frame": 10,
+      "solver_iterations": 20
+    },
+    "glass_shards": {
+      "collision_shape": "CONVEX_HULL",
+      "mass": "0.05 + random(0, 0.15)",
+      "friction": 0.4,
+      "restitution": 0.3,
+      "linear_damping": 0.04,
+      "angular_damping": 0.1,
+      "collision_margin": 0.001
+    },
+    "projectile": {
+      "mass": 2.5,
+      "collision_shape": "BOX",
+      "kinematic": "True during approach, switch to False at impact"
+    },
+    "optional_debris_particles": {
+      "count": 200,
+      "frame_start": "impact_frame",
+      "frame_end": "impact_frame + 3",
+      "lifetime": 40,
+      "physics_type": "NEWTON",
+      "mass": 0.005,
+      "normal_factor": 8.0,
+      "factor_random": 3.0,
+      "tangent_factor": 2.0,
+      "damping": 0.3,
+      "particle_size": 0.003,
+      "size_random": 0.5,
+      "render_type": "OBJECT"
+    }
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyConstraint",
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.object.empty_add",
+    "bpy.context.scene"
+  ],
+  "warnings": [
+    "Basic pre-fracture alone is less realistic for this shot; without breakable constraints, shards tend to separate/fall all at once instead of propagating from the impact.",
+    "Use higher rigid body world quality for fast glass events; low substeps/solver iterations can cause jitter or missed collisions.",
+    "Use substeps_per_frame, not steps_per_second; the pattern notes steps_per_second was removed in Blender 5.0.",
+    "For a projectile hit, keep the brick kinematic during the animated approach and switch to active at impact, otherwise the hit can miss or behave unpredictably.",
+    "CONVEX_HULL is the recommended shard collision shape here as the documented speed/accuracy balance for many small fragments."
+  ],
+  "alternative_approaches": [
+    "Simpler pre-fractured rigid body swap: reveal a pre-broken glass set at impact and simulate shards without a breakable constraint network.",
+    "Manual Voronoi / geometry-nodes-inspired fracture with impact-centered point density, then convert those pieces to rigid bodies for more art direction over shard shapes.",
+    "Hybrid approach: rigid body hero shards for large pieces plus a particle debris emitter for tiny chips and secondary breakup."
+  ],
+  "doc_refs": [
+    "techniques/destruction/constraint_breaking",
+    "techniques/destruction/combined_hero",
+    "techniques/destruction/overview",
+    "physics/rigid_body/index.html",
+    "physics/rigid_body/world.html"
+  ],
+  "timestamp": "2026-03-09T22:26:38.399689"
+}

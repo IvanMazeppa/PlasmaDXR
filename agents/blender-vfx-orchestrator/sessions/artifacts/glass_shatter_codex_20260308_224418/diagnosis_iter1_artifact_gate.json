@@ -1,0 +1,15 @@
+{
+  "iteration": 1,
+  "phase": "artifact_gate",
+  "issue_type": "artifact_gate_failure",
+  "summary": "Cache too small: 0.00MB < 0.10MB minimum",
+  "details": "## ARTIFACT GATE FAILURE\n\nThe following deterministic gates failed BEFORE quality evaluation:\n\n### CACHE_SIZE: FAILED\nReason: Cache too small: 0.00MB < 0.10MB minimum\nDetails: {'cache_size_bytes': 0, 'cache_size_mb': 0.0, 'min_size_bytes': 100000, 'file_count': 0}\n\n## Artifact Summary\n- Cache exists: True\n- Cache size: 0.00MB (0 files)\n- Render count: 1\n- VDB count: 0\n\n## Likely Causes\n- **Empty cache**: Simulation may not have run or emitter was misconfigured\n  - Check: `use_plane_init=True` for planar liquid emitters\n  - Check: Domain object selected and active during bake\n  - Check: Frame range includes simulation keyframes",
+  "recommended_fixes": [
+    "Verify cache outputs exist and exceed minimum size.",
+    "Ensure at least one render file is produced in expected run/output directory.",
+    "Check cache path wiring (BLENDER_CACHE_DIR / script output directories)."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "timestamp": "2026-03-08T22:53:52.617912"
+}

@@ -1,0 +1,68 @@
+{
+  "recommended_approach": "Rigid Body \u2014 Combined Hero Destruction: pre-fracture the window into impact-centered irregular shards (Voronoi/Cell Fracture style), assign each shard an ACTIVE rigid body, glue adjacent shards with FIXED rigid body constraints using use_breaking=True and distance-based breaking_threshold values, drive the brick with a kinematic-to-active handoff at impact, and optionally add a short particle-chip burst for fine secondary debris.",
+  "key_parameters": {
+    "RigidBodyConstraint.type": "FIXED",
+    "RigidBodyConstraint.use_breaking": true,
+    "RigidBodyConstraint.breaking_threshold": "8.0 + dist * 35.0 (weaker near impact, stronger toward frame edges)",
+    "scene.rigidbody_world.substeps_per_frame": 10,
+    "scene.rigidbody_world.solver_iterations": 20,
+    "RigidBodyObject.collision_shape": "CONVEX_HULL for glass shards; BOX for brick",
+    "RigidBodyObject.mass": "glass shards: 0.05-0.20 each; brick: 2.5",
+    "RigidBodyObject.friction": 0.4,
+    "RigidBodyObject.restitution": 0.3,
+    "RigidBodyObject.linear_damping": 0.04,
+    "RigidBodyObject.angular_damping": 0.1,
+    "RigidBodyObject.collision_margin": 0.001,
+    "RigidBodyObject.kinematic": "Brick True on approach, then False at impact frame",
+    "ParticleSettings.count": 200,
+    "ParticleSettings.frame_start": "impact_frame",
+    "ParticleSettings.frame_end": "impact_frame + 3",
+    "ParticleSettings.lifetime": 40,
+    "ParticleSettings.physics_type": "NEWTON",
+    "ParticleSettings.mass": 0.005,
+    "ParticleSettings.normal_factor": 8.0,
+    "ParticleSettings.factor_random": 3.0,
+    "ParticleSettings.tangent_factor": 2.0,
+    "ParticleSettings.damping": 0.3,
+    "ParticleSettings.particle_size": 0.003,
+    "ParticleSettings.size_random": 0.5,
+    "ParticleSettings.render_type": "OBJECT"
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyObject",
+    "bpy.types.RigidBodyConstraint",
+    "bpy.types.ParticleSettings",
+    "bpy.ops.rigidbody.object_add",
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.rigidbody.world_add",
+    "bpy.ops.object.empty_add",
+    "bpy.ops.object.add_fracture_cell_objects",
+    "bpy.ops.preferences.addon_enable"
+  ],
+  "warnings": [
+    "Basic pre-fracture without breakable FIXED constraints tends to make all shards fall at once instead of producing impact-led fracture propagation.",
+    "For a fast brick impact, raise scene.rigidbody_world.substeps_per_frame and solver_iterations; the Blender 5.0 pattern explicitly notes to use substeps_per_frame, not steps_per_second.",
+    "Use a very small RigidBodyObject.collision_margin (~0.001) for thin glass shards to avoid unstable contacts and inflated spacing.",
+    "A projectile driven only by physics from frame 1 can miss or hit inconsistently; the proven pattern is kinematic on approach, then active at impact.",
+    "The Cell Fracture workflow requires enabling the object_cell_fracture add-on before calling bpy.ops.object.add_fracture_cell_objects().",
+    "Rigid-body hero shards alone can look too clean; add secondary particle chips if the break lacks fine debris."
+  ],
+  "alternative_approaches": [
+    "Cell Fracture add-on workflow: enable object_cell_fracture, run bpy.ops.object.add_fracture_cell_objects(), then assign ACTIVE rigid bodies to the resulting pieces; simpler setup but less progressive than a breakable-constraint network.",
+    "Constraint-Based Glass Shattering only: keep the pre-fractured shards and FIXED breakable constraints, but skip particle-chip augmentation if performance or setup time is tighter.",
+    "Hybrid backup: large visible shards as rigid bodies plus a ParticleSettings-driven chip burst for micro-fragments that would be too expensive to simulate as full rigid bodies."
+  ],
+  "doc_refs": [
+    "techniques/destruction/overview",
+    "techniques/destruction/constraint_breaking",
+    "techniques/destruction/combined_hero",
+    "techniques/destruction/cell_fracture",
+    "blender_manual_html/physics/rigid_body/index.html",
+    "bpy.types.RigidBodyConstraint",
+    "bpy.types.RigidBodyObject",
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.rigidbody.object_add",
+    "bpy.types.ParticleSettings"
+  ],
+  "timestamp": "2026-03-09T23:17:11.897578"
+}

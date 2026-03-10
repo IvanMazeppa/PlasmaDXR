@@ -231,6 +231,15 @@ def gate_cache_size(
             )
 
     if summary.cache_size_bytes < min_size_bytes:
+        if not require_cache:
+            # Cache exists but is tiny — OK for effects that don't need
+            # Mantaflow cache (e.g., rigid body uses .blend pointcache)
+            return ArtifactGateResult(
+                passed=True,
+                gate_name="CACHE_SIZE",
+                reason=f"Cache small ({summary.cache_size_mb:.2f}MB) but not required for this technique",
+                details={"cache_required": False, "cache_size_mb": summary.cache_size_mb},
+            )
         return ArtifactGateResult(
             passed=False,
             gate_name="CACHE_SIZE",
@@ -370,6 +379,7 @@ def validate_execution_artifacts(
     require_vdb: bool = False,
     verbose: bool = True,
     script_path: Optional[str] = None,
+    technique: Optional[str] = None,
 ) -> tuple[bool, List[ArtifactGateResult], ExecutionArtifactSummary]:
     """
     Run all artifact gates and return combined result.
@@ -400,11 +410,25 @@ def validate_execution_artifacts(
         print(f"  VDBs: {summary.vdb_count}", file=sys.stderr)
 
     # Determine if cache is required based on effect type
-    # Shader-only effects (procedural, shader_based) don't need simulation cache
+    # Shader-only effects (procedural, shader_based) don't need Mantaflow cache.
+    # Rigid body simulations store state in the .blend pointcache, not as
+    # separate cache files — so the cache-size gate is a false positive.
     cache_required = True
+    no_cache_keywords = [
+        "shader", "procedural", "material",
+        "rigid_body", "rigid body", "rigidbody",
+        "cell_fracture", "voronoi_fracture",
+        "prefracture", "constraint", "fracture",
+    ]
+    # Check effect type
     if effect_type:
         effect_lower = effect_type.lower()
-        if any(kw in effect_lower for kw in ["shader", "procedural", "material"]):
+        if any(kw in effect_lower for kw in no_cache_keywords):
+            cache_required = False
+    # Check technique (rigid body techniques don't produce Mantaflow cache)
+    if technique and not cache_required is False:
+        technique_lower = technique.lower()
+        if any(kw in technique_lower for kw in no_cache_keywords):
             cache_required = False
 
     # Run gates

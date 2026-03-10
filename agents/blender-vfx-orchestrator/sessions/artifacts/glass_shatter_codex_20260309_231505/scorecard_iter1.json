@@ -1,0 +1,25 @@
+{
+  "session_id": "glass_shatter_codex_20260309_231505",
+  "iteration": 1,
+  "overall_score": 27.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Reframe so the window break fills ~30\u201350% of the frame; remove/avoid the large dark foreground obstruction and bring the camera closer to the impact point.",
+    "Stage the \u201chero moment\u201d clearly: brick intersecting the pane center, shards already erupting outward along the brick\u2019s path, with a readable trail of fragments behind the brick.",
+    "Increase fracture detail: add dense radial + concentric cracks and edge splintering; ensure a mix of large hero shards + medium fragments + fine debris for scale and energy.",
+    "Strengthen outward velocity and angular spin for shards so the event reads as an explosion outward (even in a still).",
+    "Add lighting that makes glass readable: a cool back/side rim light aimed to catch shard edges + a motivated practical/warehouse light for environment definition.",
+    "Upgrade environment/materials to match the brief (aged concrete with staining/pitting; rusted steel with roughness variation; grime/dust masks; warehouse structural detail).",
+    "Reduce render noise: increase samples and/or improve denoiser settings; ensure enough light for cleaner sampling in the key areas (glass + impact region).",
+    "If the brick looks too dark/not clearly red clay, adjust the brick material colors (if driven by these nodes):\n  - Line 232 Color1: raise to a brighter clay red (e.g., ~ (0.60, 0.18, 0.10, 1.0))\n  - Line 233 Color2: slightly darker warm red (e.g., ~ (0.45, 0.12, 0.08, 1.0))\n  - Line 289 mix Factor: increase toward ~0.5 to increase contrast between tones.\n  - Consider reducing overly busy surface distortion if it muddies silhouette (Line 277 Distortion: try 2\u20133 instead of 6).",
+    "If glass looks too rough/milky, reduce the controlling roughness noise (Line 140 Roughness 0.55 is very high for clean glass; try ~0.1\u20130.25). Keep IOR (Line 329: 1.52) unless you\u2019re stylizing."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 793.1667088569993,
+  "utility_score": 0.385,
+  "timestamp": "2026-03-09T23:29:52.281390"
+}

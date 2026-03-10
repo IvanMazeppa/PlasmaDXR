@@ -66,9 +66,12 @@ async def run_parallel_preflight(
 
 Effect Type: {request.effect_type.value}
 Description: {request.description}
+Semantic Query: {request.semantic_query or ""}
 Reference: {request.reference_path or "None"}
 
-Research documentation, patterns, and APIs to find the optimal starting approach."""
+First, identify which Blender physics system best fits this effect (rigid body, Mantaflow gas, Mantaflow liquid, particles, cloth, geometry nodes, or a combination). Use that as the domain parameter when searching docs.
+
+Find at least one alternative technique beyond the obvious first choice."""
 
     # Use standalone docs expert (no handoffs) for parallel execution
     if not orch._enable_parallel_preflight or not orch._docs_expert_standalone:
@@ -80,7 +83,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
             context=context,
             session=sdk_session,
             hooks=research_hooks,
-            max_turns=4,
+            max_turns=8,
             run_config=run_config,
         )
         elapsed = _time.perf_counter() - preflight_start
@@ -90,9 +93,12 @@ Research documentation, patterns, and APIs to find the optimal starting approach
     # PARALLEL MODE: Run research and docs expert concurrently
     print(f"[Parallel Preflight] PARALLEL mode enabled for {request.effect_type.value}", file=sys.stderr)
 
-    docs_prompt = f"""Search Blender 5.0 docs for high-risk API usage for {request.effect_type.value}.
+    docs_prompt = f"""Search Blender 5.0 docs for high-risk API usage for a {request.effect_type.value} effect.
 
-Focus on Mantaflow domain/flow settings, bake ops, and any known Blender 5.0 renames.
+Description: {request.description[:200]}
+
+Identify which physics system this effect uses (rigid body, Mantaflow gas, Mantaflow liquid, particles, cloth, geometry nodes) and search for that specific domain.
+Focus on: known Blender 5.0 API renames, bake operations, cache settings, and common pitfalls.
 Return a concise bullet list with doc_refs."""
 
     print(f"[Parallel Preflight] Launching Research Agent + DocsExpert in parallel...", file=sys.stderr)
@@ -102,7 +108,7 @@ Return a concise bullet list with doc_refs."""
         context=context,
         session=sdk_session,
         hooks=research_hooks,
-        max_turns=4,
+        max_turns=8,
         run_config=run_config,
     )
     docs_task = orch._run_agent(

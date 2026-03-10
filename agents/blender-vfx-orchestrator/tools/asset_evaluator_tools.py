@@ -41,7 +41,7 @@ RENDER_DIRS = [
     PROJECT_ROOT / "build" / "renders",
     PROJECT_ROOT / "evaluation_outputs",
 ]
-VISION_MODEL = os.getenv("VISION_MODEL", "gpt-5-mini")
+VISION_MODEL = os.getenv("VISION_MODEL", "gpt-5.4")
 
 
 # =============================================================================
@@ -53,7 +53,8 @@ async def _analyze_with_vision_impl(
     analysis_type: str = "quality",
     reference_path: str = "",
     effect_type: str = "auto",
-    custom_prompt: str = ""
+    custom_prompt: str = "",
+    scene_description: str = "",
 ) -> str:
     """Internal implementation of vision analysis."""
     # Load render image as base64
@@ -77,18 +78,38 @@ async def _analyze_with_vision_impl(
     suffix = render_file.suffix.lower()
     media_type = "image/png" if suffix == ".png" else "image/jpeg"
 
+    # Build effect label for prompts
+    _effect_label = effect_type if effect_type != "auto" else "volumetric effect"
+
+    # Build scene context block — this is the key to description-aware evaluation.
+    # When a scene_description is provided, the vision model evaluates the render
+    # against WHAT WAS REQUESTED, not just the generic effect_type label.
+    if scene_description:
+        _scene_context = f"""SCENE DESCRIPTION (what was requested):
+{scene_description[:600]}
+
+IMPORTANT: Evaluate this render against the scene description above. The render should
+match what was described — judge it on how well it achieves the described scene, NOT on
+whether it matches a generic "{_effect_label}" effect. For example, if the description
+asks for glass shattering, do NOT penalize for missing fireballs or smoke plumes."""
+    else:
+        _scene_context = f"Effect type: {_effect_label}."
+
     # Build analysis prompt based on type
     if custom_prompt:
         prompt = custom_prompt
     elif analysis_type == "quality":
-        prompt = f"""Analyze this VFX render for overall quality. Effect type: {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+        prompt = f"""Analyze this VFX render for overall quality.
+
+{_scene_context}
 
 Evaluate these aspects:
-1. Visual Impact: Does it look impressive and believable?
+1. Visual Impact: Does it look impressive and believable for what was described?
 2. Color & Lighting: Are colors natural? Is lighting convincing?
 3. Detail & Structure: Is there good detail? Any flat/blobby areas?
 4. Composition: Does the effect fill the frame appropriately?
 5. Artifacts: Any visible problems (clipping, banding, noise)?
+6. Scene Accuracy: Does the render match the described scene?
 
 Provide:
 - overall_assessment: 2-3 sentence summary
@@ -100,7 +121,9 @@ Provide:
 Be BRUTALLY HONEST. If it looks bad, say so clearly."""
 
     elif analysis_type == "issues":
-        prompt = f"""Identify ALL visual problems in this VFX render. Effect type: {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+        prompt = f"""Identify ALL visual problems in this VFX render.
+
+{_scene_context}
 
 Look for:
 - Color issues (unrealistic colors, wrong tint, oversaturation)
@@ -120,7 +143,9 @@ For EACH issue found:
 Be EXHAUSTIVE - miss nothing. Better to flag questionable areas than miss problems."""
 
     elif analysis_type == "realism":
-        prompt = f"""Assess how realistic this {effect_type if effect_type != 'auto' else 'volumetric effect'} render looks.
+        prompt = f"""Assess how realistic this render looks.
+
+{_scene_context}
 
 Compare to real-world expectations:
 - Would this pass as real footage or clearly CGI?
@@ -137,7 +162,9 @@ Score from 0-100 where:
 Be honest about realism level."""
 
     else:  # comparison
-        prompt = f"""Compare this render to the reference image for a {effect_type if effect_type != 'auto' else 'volumetric effect'}.
+        prompt = f"""Compare this render to the reference image.
+
+{_scene_context}
 
 Analyze:
 1. How well does the render match the reference style?
@@ -227,6 +254,9 @@ async def _find_reference_images_impl(
         "nebula": ["nebula"],
         "sun": ["star", "sun"],
         "star": ["star", "sun"],
+        "destruction": ["destruction", "glass_shatter", "shatter", "debris"],
+        "shatter": ["glass_shatter", "shatter", "destruction", "glass_shatter+explosion"],
+        "rigid_body": ["destruction", "glass_shatter", "shatter", "rigid_body"],
     }
 
     search_dirs = effect_mappings.get(effect_lower, [effect_lower])
@@ -348,26 +378,37 @@ async def _list_renders_impl(
 async def _compare_to_reference_impl(
     render_path: str,
     reference_path: str,
-    effect_type: str = "auto"
+    effect_type: str = "auto",
+    scene_description: str = "",
 ) -> str:
     """Internal implementation of reference comparison."""
+    _effect_label = effect_type if effect_type != "auto" else "VFX effect"
+
+    if scene_description:
+        _context = f"""The render was created for: {scene_description[:400]}
+Evaluate the reference comparison in the context of what was requested."""
+    else:
+        _context = f"The render is a {_effect_label} effect."
+
     return await _analyze_with_vision_impl(
         render_path=render_path,
         analysis_type="comparison",
         reference_path=reference_path,
         effect_type=effect_type,
-        custom_prompt=f"""Compare this render to the reference image for a {effect_type} effect.
+        custom_prompt=f"""Compare this render to the reference image.
+
+{_context}
 
 You are comparing:
 1. RENDER (first image): What we generated
-2. REFERENCE (second image): The quality target we're trying to match
+2. REFERENCE (second image): A quality/style reference
 
 Analyze:
-1. SIMILARITY: Rate 0-100 how close the render is to reference quality
+1. SIMILARITY: Rate 0-100 how close the render is to reference quality and style
 2. KEY DIFFERENCES: What specific visual differences exist?
 3. REFERENCE QUALITIES: What makes the reference look good?
 4. GAP ANALYSIS: What is the render missing that the reference has?
-5. IMPROVEMENTS: Specific changes to make render closer to reference
+5. IMPROVEMENTS: Specific changes to make render closer to reference quality
 
 Focus on:
 - Color palette and temperature
@@ -375,6 +416,8 @@ Focus on:
 - Lighting and emission quality
 - Structure and form
 - Overall visual impact
+
+NOTE: The reference may show a different scene type. Focus on matching QUALITY and CRAFTSMANSHIP, not replicating the exact content. A glass shatter reference compared to an explosion reference should be judged on render quality, not on whether both show fire.
 
 Be specific about what parameters to adjust to close the gap.
 
@@ -388,14 +431,16 @@ async def _evaluate_render_impl(
     effect_type: str = "auto",
     profile: str = "standard",
     include_diagnostics: bool = True,
-    include_suggestions: bool = True
+    include_suggestions: bool = True,
+    scene_description: str = "",
 ) -> str:
     """Internal implementation of unified render evaluation."""
     # First, do quality analysis
     quality_result = await _analyze_with_vision_impl(
         render_path=render_path,
         analysis_type="quality",
-        effect_type=effect_type
+        effect_type=effect_type,
+        scene_description=scene_description,
     )
 
     try:
@@ -418,7 +463,8 @@ async def _evaluate_render_impl(
         comparison_result = await _compare_to_reference_impl(
             render_path=render_path,
             reference_path=reference_path,
-            effect_type=effect_type
+            effect_type=effect_type,
+            scene_description=scene_description,
         )
         try:
             comparison_data = json.loads(comparison_result)
@@ -436,7 +482,8 @@ async def _evaluate_render_impl(
         issues_result = await _analyze_with_vision_impl(
             render_path=render_path,
             analysis_type="issues",
-            effect_type=effect_type
+            effect_type=effect_type,
+            scene_description=scene_description,
         )
         try:
             issues_data = json.loads(issues_result)
@@ -600,14 +647,19 @@ async def analyze_with_vision(
     analysis_type: str = "quality",
     reference_path: str = "",
     effect_type: str = "auto",
-    custom_prompt: str = ""
+    custom_prompt: str = "",
+    scene_description: str = "",
 ) -> str:
     """
-    Analyze a render using GPT-5-mini's native vision capabilities.
+    Analyze a render using vision capabilities.
 
-    This is the PRIMARY quality analysis tool - uses GPT-5-mini vision to directly
+    This is the PRIMARY quality analysis tool - uses vision to directly
     "see" the render and provide intelligent, context-aware quality assessment.
-    More intelligent than ML metrics for nuanced visual issues.
+
+    IMPORTANT: Always pass scene_description when available. This ensures the
+    vision model evaluates the render against what was actually requested, not
+    just a generic effect_type label. Without it, a glass shatter scene will be
+    penalized for "missing fireballs" if effect_type is "explosion".
 
     Analysis types:
     - quality: Overall visual quality assessment with detailed breakdown
@@ -619,23 +671,20 @@ async def analyze_with_vision(
         render_path: Path to rendered image to analyze
         analysis_type: Type of analysis (quality, issues, comparison, realism)
         reference_path: Optional reference image for comparison
-        effect_type: Effect category hint (auto, explosion, fire, smoke, nebula, sun)
-        custom_prompt: Optional custom analysis prompt
+        effect_type: Effect category (auto, explosion, fire, smoke, shatter, destruction, etc.)
+        custom_prompt: Optional custom analysis prompt (overrides all other prompts)
+        scene_description: The original scene description that was requested. Pass this
+            to ground evaluation in what was asked for, not just the effect_type label.
 
     Returns:
-        JSON with:
-        - overall_assessment: Text summary of quality
-        - score: 0-100 quality score
-        - issues: List of identified problems
-        - strengths: What looks good
-        - suggestions: Specific improvement recommendations
-        - comparison_notes: If reference provided, how render compares
+        JSON with overall_assessment, score, issues, strengths, suggestions
 
     Example:
         analyze_with_vision(
-            render_path="build/vdb_output/explosion_v1/render_0012.png",
+            render_path="build/vdb_output/glass_shatter/render.png",
             analysis_type="quality",
-            effect_type="explosion"
+            effect_type="shatter",
+            scene_description="Glass window shattering from a brick impact in a warehouse"
         )
     """
     return await _analyze_with_vision_impl(
@@ -643,7 +692,8 @@ async def analyze_with_vision(
         analysis_type=analysis_type,
         reference_path=reference_path,
         effect_type=effect_type,
-        custom_prompt=custom_prompt
+        custom_prompt=custom_prompt,
+        scene_description=scene_description,
     )
 
 
@@ -685,19 +735,21 @@ async def find_reference_images(
 async def compare_to_reference(
     render_path: str,
     reference_path: str,
-    effect_type: str = "auto"
+    effect_type: str = "auto",
+    scene_description: str = "",
 ) -> str:
     """
     Compare a render against a reference image using vision analysis.
 
     This is the primary tool for reference-based quality assessment.
-    Uses GPT-5.2 vision to intelligently compare the render to a reference,
+    Uses vision to intelligently compare the render to a reference,
     identifying differences and suggesting improvements.
 
     Args:
         render_path: Path to the render to evaluate
         reference_path: Path to the reference image to compare against
-        effect_type: Effect category (auto, explosion, fire, smoke, nebula, sun)
+        effect_type: Effect category (auto, explosion, fire, smoke, shatter, destruction, etc.)
+        scene_description: The original scene description — grounds comparison in what was requested
 
     Returns:
         JSON with:
@@ -709,15 +761,17 @@ async def compare_to_reference(
 
     Example:
         compare_to_reference(
-            render_path="build/vdb_output/explosion_v5/render_0030.png",
-            reference_path="assets/reference_images/explosion/ref_001.jpg",
-            effect_type="explosion"
+            render_path="build/vdb_output/glass_shatter/render.png",
+            reference_path="assets/reference_images/glass_shatter/ref_001.jpg",
+            effect_type="shatter",
+            scene_description="Glass window shattering in a warehouse"
         )
     """
     return await _compare_to_reference_impl(
         render_path=render_path,
         reference_path=reference_path,
-        effect_type=effect_type
+        effect_type=effect_type,
+        scene_description=scene_description,
     )
 
 
@@ -728,13 +782,17 @@ async def evaluate_render(
     effect_type: str = "auto",
     profile: str = "standard",
     include_diagnostics: bool = True,
-    include_suggestions: bool = True
+    include_suggestions: bool = True,
+    scene_description: str = "",
 ) -> str:
     """
     Unified render evaluation using vision analysis.
 
     This is the PRIMARY evaluation tool for the orchestrator.
-    Uses GPT-5.2 vision for intelligent quality assessment.
+    Uses vision for intelligent quality assessment.
+
+    IMPORTANT: Always pass scene_description when available to ground the
+    evaluation in what was actually requested.
 
     Profiles (all use vision analysis):
     - quick: Basic quality check (~5 seconds)
@@ -744,25 +802,21 @@ async def evaluate_render(
     Args:
         render_path: Path to rendered image to evaluate
         reference_path: Optional reference image for comparison
-        effect_type: Effect category (auto, sun, explosion, nebula, fire, smoke)
+        effect_type: Effect category (auto, explosion, fire, smoke, shatter, destruction, etc.)
         profile: Evaluation depth (quick, standard, comprehensive)
         include_diagnostics: Include detailed issue detection
         include_suggestions: Include parameter change suggestions
+        scene_description: The original scene description — grounds evaluation in what was requested
 
     Returns:
-        JSON with:
-        - overall_score: 0-100 (quality score)
-        - passed: True if score >= 60
-        - vision_assessment: Detailed quality analysis
-        - issues: Identified problems with severity
-        - suggestions: Parameter changes to try
-        - reference_comparison: If reference provided
+        JSON with overall_score, passed, vision_assessment, issues, suggestions
 
     Example:
         evaluate_render(
-            render_path="build/vdb_output/explosion_v1/render_0030.png",
-            effect_type="explosion",
-            profile="standard"
+            render_path="build/vdb_output/glass_shatter/render.png",
+            effect_type="shatter",
+            profile="standard",
+            scene_description="Glass window shattering in a warehouse"
         )
     """
     return await _evaluate_render_impl(
@@ -771,7 +825,8 @@ async def evaluate_render(
         effect_type=effect_type,
         profile=profile,
         include_diagnostics=include_diagnostics,
-        include_suggestions=include_suggestions
+        include_suggestions=include_suggestions,
+        scene_description=scene_description,
     )
 
 

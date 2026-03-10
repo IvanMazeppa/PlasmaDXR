@@ -166,6 +166,22 @@ async def run_execution_phase(
     # ====== PHASE 2: EXECUTION ======
     print(f"[Pipeline] PHASE 2: Deterministic Executor", file=sys.stderr)
 
+    # Pre-execution truth pack validation (catches hallucinations the API
+    # validator and API fixer miss, e.g. Color 1, Action.fcurves)
+    if context.truth_pack and script.script_path:
+        try:
+            _, fixes = validate_and_fix_script(
+                script.script_path, context.truth_pack
+            )
+            if fixes:
+                print(f"[Pipeline] Pre-exec truth pack fixed {len(fixes)} issues:",
+                      file=sys.stderr)
+                for fix in fixes[:5]:
+                    print(f"  - {fix}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Pipeline] WARNING: Pre-exec truth pack validation failed: {e}",
+                  file=sys.stderr)
+
     # phases/ → blender-vfx-orchestrator/ → agents/ → PlasmaDXR/
     _orchestrator_root = Path(__file__).resolve().parent.parent
     project_root = str(_orchestrator_root.parent.parent)
@@ -304,7 +320,7 @@ but append '_errfix' to the output name."""
                 # Truth pack validation on recovered script
                 if context.truth_pack and recovery_script and recovery_script.script_path:
                     try:
-                        fixed_path, fixes = validate_and_fix_script(
+                        _, fixes = validate_and_fix_script(
                             recovery_script.script_path, context.truth_pack
                         )
                         if fixes:
@@ -412,6 +428,7 @@ but append '_errfix' to the output name."""
         effect_type=request.effect_type.value,
         verbose=True,
         script_path=current_script_path,
+        technique=session.current_technique,
     )
 
     if not gates_passed:

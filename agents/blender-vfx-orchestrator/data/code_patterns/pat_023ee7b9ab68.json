@@ -4,7 +4,10 @@
   "issue_category": "glass_material_looks_opaque_or_plastic_instead_of_",
   "code_snippet": "# Realistic glass material using Principled BSDF transmission\nmat = bpy.data.materials.new(\"M_Glass\")\nmat.use_nodes = True\nnt = mat.node_tree\n# Clear defaults\nfor n in list(nt.nodes):\n    nt.nodes.remove(n)\nout = nt.nodes.new(\"ShaderNodeOutputMaterial\")\nbsdf = nt.nodes.new(\"ShaderNodeBsdfPrincipled\")\nbsdf.inputs[\"Base Color\"].default_value = (1, 1, 1, 1)       # White for clear glass\nbsdf.inputs[\"Roughness\"].default_value = 0.01                 # Near-perfect smooth\nbsdf.inputs[\"Transmission Weight\"].default_value = 1.0        # Fully transparent\nbsdf.inputs[\"IOR\"].default_value = 1.47                       # Glass IOR\nnt.links.new(bsdf.outputs[\"BSDF\"], out.inputs[\"Surface\"])\nobj.data.materials.append(mat)",
   "effect_types": [
-    "water"
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
   ],
   "context_before": "Flat color or missing transmission makes glass look like plastic or metal",
   "context_after": "Principled BSDF with Transmission Weight=1.0 and IOR=1.47 gives convincing clear glass with Fresnel reflections",
@@ -15,15 +18,17 @@
   "blender_apis_used": [
     "bpy.data.materials"
   ],
-  "average_improvement": 20.0,
-  "usage_count": 1,
-  "success_count": 1,
+  "average_improvement": 16.666666666666668,
+  "usage_count": 3,
+  "success_count": 3,
   "failure_count": 0,
   "source_experiments": [
-    "seed_wine_pour_v1"
+    "seed_wine_pour_v1",
+    "seed_destruction_v1",
+    "seed_destruction_v1"
   ],
   "created_at": "2026-02-25T21:22:01.341016",
-  "updated_at": "2026-02-25T21:22:01.341022",
+  "updated_at": "2026-03-10T00:52:57.666178",
   "last_used_at": "",
   "last_reinforced": "",
   "reinforcement_count": 0

@@ -1,0 +1,23 @@
+{
+  "session_id": "glass_shatter_codex_20260309_024232",
+  "iteration": 1,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "If the goal is truly an explosion (not shatter): add/drive a high-intensity emissive core (blackbody/temperature ramp) and enable bloom/glare so the blast is clearly the brightest element in-frame.",
+    "Add dense volumetric smoke/dust with multi-scale turbulence and density variation; you need a thick, expanding plume to sell energy/scale.",
+    "Add debris/particulates: a mix of fine dust spray + mid fragments + a few large chunks, with outward radial directionality. If this is an animation, enable motion blur for fast fragments.",
+    "Make the blast light the set: strong warm light bounce on nearby walls/beams/pole with realistic falloff; expose so the core can clip slightly while still revealing smoke structure.",
+    "Camera/compositing: tighten framing or crop in; add subtle camera shake (if animated) to increase impact.",
+    "Shader/material fixes (your listed params) to make shards read less \u201cmetal\u201d and more \u201cglass\u201d:\n- Line 126: bsdf Metallic 0.75 \u2192 ~0.0\u20130.1 (metallic glass looks wrong).\n- Line 133: noise Roughness 0.7 \u2192 ~0.35\u20130.55 to reduce overly harsh/dirty breakup.\n- Line 98\u2013100: moisture Scale/Detail/Roughness are fairly strong; consider lowering Scale (1.35 \u2192 ~0.6\u20131.0) and/or Roughness (0.5 \u2192 ~0.2\u20130.35) if it\u2019s making the surface look muddy rather than clean fractured glass.\n- Line 137: voronoi Scale 16 \u2192 adjust based on desired fracture frequency (increase to ~30\u201360 for finer cracks; decrease to ~8\u201312 for larger shards), and introduce more variation if possible.",
+    "If the intent is *glass shatter* (not explosion): rename/re-scope the target effect, light the shards with a motivated key/rim, add smaller splinters + dust, and consider adding subtle volumetric dust only (no fireball) for realism."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 644.9543189460019,
+  "utility_score": 0.4,
+  "timestamp": "2026-03-09T02:55:30.340044"
+}

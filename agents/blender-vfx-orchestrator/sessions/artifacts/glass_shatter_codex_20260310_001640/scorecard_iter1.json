@@ -1,0 +1,22 @@
+{
+  "session_id": "glass_shatter_codex_20260310_001640",
+  "iteration": 1,
+  "overall_score": 30.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Shot/scene (highest impact): move camera closer or reframe so the window fills more of the frame and the impact point is the focal area; add a motivated rim/kicker light to catch shard edges and crack lines.",
+    "Simulation/content: increase fracture density (radial + concentric cracking), shard count, and outward initial velocities from the impact point; ensure some glass remains attached to the frame and collapses afterward; add trailing fragments behind the brick.",
+    "Brick readability: use a clearly textured red clay brick (chips/dust), staged clearly entering from left; add motion blur for speed.",
+    "Material/lighting polish: add grime/decals (stains, dust, fingerprints on glass), roughness variation, and stronger specular/refraction so glass thickness and shard edges read.",
+    "Script param tweaks (to improve glass read, not to fix missing sim):\n- Line 251 (absorption density): lower from 0.12 \u2192 ~0.03\u20130.06 to avoid the glass going too dark/green and hiding cracks/shards.\n- Line 267 (emission strength): increase 2\u20134\u00d7 (or clamp so it\u2019s subtle) to help crack/shard edges pop if emission is being used as an artistic highlight.\n- Line 221 (bump strength): raise 0.08 \u2192 ~0.15\u20130.25 to make micro-surface breakup/crack normals read.\n- Line 220 (wave distortion): raise 2.0 \u2192 ~4\u20136 and/or Line 119 (noise scale) 5.0 \u2192 ~10\u201315 to get finer breakup (only if these nodes drive crack/imperfection detail).",
+    "Lighting mood: reduce the flat wall wash and introduce more contrast/shadow breakup for a gritty nighttime warehouse feel; consider subtle haze/dust for depth."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 924.308254192998,
+  "utility_score": 0.4,
+  "timestamp": "2026-03-10T00:33:08.949092"
+}

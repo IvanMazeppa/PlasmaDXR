@@ -1,0 +1,26 @@
+{
+  "session_id": "glass_shatter_codex_20260309_222453",
+  "iteration": 2,
+  "overall_score": 24.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Reframe/recompose so the window and impact point are the hero (impact should fill ~30\u201350% of frame). Remove/raise the foreground obstruction and move the camera closer/lower.",
+    "Increase overall scene illumination and motivated keys so glass can read in darkness; specifically raise background/world intensity (Line 274: bg.inputs['Strength'] from 0.08 \u2192 ~0.25\u20130.6) and adjust exposure so blacks aren\u2019t crushing the action.",
+    "Make the glass material read more physically: keep metallic at 0 (Line 131), and consider slightly increasing roughness only if highlights are noisy (Line 154: 0.015 \u2192 ~0.02\u20130.04) while ensuring strong, clean reflections.",
+    "Reduce overly strong green tint if it\u2019s muddying the shards: lower absorption density (Line 164: 0.12 \u2192 ~0.03\u20130.08) and/or neutralize absorption color (Line 163) for clearer shard readability.",
+    "Add subtle micro-surface breakup to help specular sparkle: increase bump strength a bit (Line 128) and tune noise scale (Line 120) so glass isn\u2019t perfectly CG-smooth, but avoid heavy distortion.",
+    "If emission is contributing to a non-photoreal look, keep it minimal/disabled for realism (Line 178: emission strength \u2192 0 or very low). Use lighting instead of glowing glass.",
+    "Increase fracture/shard resolution and drive higher initial shard velocity + angular spin (simulation/fracture settings, not in the listed material params): you need a clear radial crack pattern + wide debris spread from the impact point, plus remaining cracked glass still attached to the frame that collapses later.",
+    "Improve set realism (beyond current material params): add rusted steel frame detail, aged concrete texture variation, grime, and industrial dressing; right now it reads too geometric and empty.",
+    "Address render noise with higher samples/denoising (render settings), especially because dark scenes amplify grain.",
+    "Add motion cues if this is part of an animation (motion blur on brick/shards, directional debris spread from left-to-center impact) so the event reads as high-speed and violent."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 366.7817054400002,
+  "utility_score": 0.37,
+  "timestamp": "2026-03-09T22:43:51.342145"
+}

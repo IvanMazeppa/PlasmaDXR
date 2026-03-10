@@ -1,0 +1,43 @@
+{
+  "recommended_approach": "Pre-fractured glass shard objects + Rigid Body World: create the window as many irregular shard meshes, assign the shards as Active rigid bodies, keep the steel frame/wall as Passive rigid bodies, and use higher world accuracy settings so the fast brick impact produces a violent outward burst and secondary collapse.",
+  "key_parameters": {
+    "Substeps Per Frame": "Higher than default for accuracy on the fast brick impact and many small shard collisions.",
+    "Solver Iterations": "Higher than default for more stable shard-to-shard and shard-to-frame contacts.",
+    "shape": "Use a rigid body collision shape appropriate for shards; docs surface Mesh and Convex Hull as the relevant options.",
+    "Translation": "Keep damping low so shards preserve outward velocity after impact.",
+    "Rotation": "Keep damping low so shards continue visible tumbling/spin.",
+    "Animated": "Enable when a rigid body is driven by keyframes; docs warn that a keyframed Passive object without Animated is treated as static by the solver.",
+    "Deactivation": "Use for the settling phase; docs expose a dedicated Deactivation section for rigid body dynamics.",
+    "size": "Enable when using a particle-instanced secondary splinter pass so instances scale by particle size.",
+    "show_unborn": "Only enable for particle-instanced debris if pre-birth visibility is needed."
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyObject",
+    "bpy.types.Object",
+    "bpy.types.ParticleSettings"
+  ],
+  "warnings": [
+    "Rigid Body is the correct primary physics system for this effect; the retrieved non-rigid-body results were mostly irrelevant for the core break.",
+    "The docs explicitly warn that if a Passive rigid body is keyframed without Animated enabled, it may move visually while the physics solver still treats it as static at its original pose.",
+    "Higher Substeps Per Frame and Solver Iterations improve accuracy/stability but increase simulation cost.",
+    "Retrieved documentation did not surface a strong dedicated Cell Fracture page, so fracture preprocessing may need to be done manually or via add-on workflow outside the retrieved rigid body docs.",
+    "Pattern search returned no direct glass-shatter or rigid-body destruction fix pattern, so there is no proven library snippet to reuse here.",
+    "The particle-based alternative returned weak API grounding/no valid API doc refs, so it is best treated as a secondary embellishment layer rather than the core break simulation."
+  ],
+  "alternative_approaches": [
+    "Hybrid approach: keep hero shards as rigid bodies, then add a Particle Instance Modifier pass for tiny secondary splinters/dust that would be too expensive to simulate as full rigid bodies.",
+    "Manual pre-cut shard layout instead of automated fracture preprocessing: model irregular shard pieces ahead of time, then assign rigid bodies and tune world/collision settings for the impact.",
+    "Constraint-assisted variation: use rigid body constraints/common-options workflow to keep some remaining pane pieces attached briefly, then release them for the delayed collapse."
+  ],
+  "doc_refs": [
+    "physics/rigid_body/world.html",
+    "blender_manual_html/physics/rigid_body/world.html#settings-",
+    "physics/rigid_body/properties/collisions.html",
+    "physics/rigid_body/properties/dynamics.html",
+    "blender_manual_html/physics/rigid_body/properties/dynamics.html#deactivation-",
+    "physics/rigid_body/tips.html",
+    "blender_manual_html/physics/rigid_body/introduction.html#creating-a-rigid-body-",
+    "modeling/modifiers/physics/particle_instance.html"
+  ],
+  "timestamp": "2026-03-09T02:09:15.257161"
+}

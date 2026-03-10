@@ -1,0 +1,47 @@
+{
+  "recommended_approach": "Pre-fractured glass pane + Active/Passive Rigid Body World: model the window as irregular shard pieces, make the brick and shards ACTIVE rigid bodies, keep the steel frame/wall/floor PASSIVE, keyframe the brick into impact, and use the rigid body animation behavior plus world cache/settings to bake frames 1-60. For the 'remaining glass stays attached then collapses' beat, use the documented rigid-body constraints/animation workflow as the control layer for delayed release.",
+  "key_parameters": {
+    "rigid_body.type": {
+      "glass_shards": "ACTIVE",
+      "brick": "ACTIVE",
+      "steel_frame": "PASSIVE",
+      "concrete_wall": "PASSIVE",
+      "warehouse_floor": "PASSIVE"
+    },
+    "rigid_body.Animated": "Enable while the brick is keyframed/driven into the hit; docs note animated/keyframed rigid bodies need Animated enabled or physics treats them as static/original-pose objects.",
+    "rigid_body.steps_per_second": "Increase for small, fast glass fragments to improve stability; Blender docs warn that pushing this beyond ~1000 usually indicates the setup should be fixed rather than brute-forced.",
+    "rigid_body.object_mesh_only": true,
+    "rigid_body.point_cache.frame_start": 1,
+    "rigid_body.point_cache.frame_end": 60,
+    "timing": {
+      "impact_frame": 5,
+      "main_shatter_window": "frames 5-15",
+      "secondary_collapse": "frames 15-30",
+      "settling_from": 40,
+      "peak_render_frame": 12
+    }
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyObject"
+  ],
+  "warnings": [
+    "Blender docs state only mesh objects can participate in rigid body simulation, so all glass pieces must be mesh shards.",
+    "Blender rigid body tips warn that a keyframed moving object without Animated enabled can move visually while the solver still treats it as static at its original pose.",
+    "Rigid body stability guidance says increasing steps_per_second helps accuracy, but excessive values can reduce stability; needing more than about 1000 suggests solving the setup another way.",
+    "Bundled API lookup returned some irrelevant armature API hits, so exact scripting properties/operators should be verified against the Blender 5.0 API when implementing automation.",
+    "The alternative-technique search was weaker than the core rigid-body documentation, so the primary rigid-body workflow is much better grounded than non-core backups."
+  ],
+  "alternative_approaches": [
+    "Pre-cut shard pieces held together with rigid body constraints, then released at impact for more controllable 'still attached then collapse' behavior.",
+    "Hero rigid-body simulation for the visible shards, plus an instanced/Geometry-Nodes micro-shard layer for extra fine glass spray while keeping the sim manageable."
+  ],
+  "doc_refs": [
+    "physics/rigid_body/index.html",
+    "physics/rigid_body/introduction.html",
+    "physics/rigid_body/world.html",
+    "physics/rigid_body/tips.html",
+    "blender_manual_html/physics/rigid_body/world.html#settings-",
+    "blender_manual_html/physics/rigid_body/properties/settings.html"
+  ],
+  "timestamp": "2026-03-09T02:44:55.856605"
+}

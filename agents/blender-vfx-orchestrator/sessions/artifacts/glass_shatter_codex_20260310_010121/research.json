@@ -1,0 +1,60 @@
+{
+  "recommended_approach": "Cell Fracture pre-fracture + per-shard Rigid Body + FIXED breakable constraint network (`use_breaking=True`) for progressive glass fracture, with the brick switched from kinematic to active at impact.",
+  "key_parameters": {
+    "source_limit": 60,
+    "source_noise": 0.05,
+    "margin": 0.0005,
+    "use_smooth_faces": false,
+    "use_data_match": true,
+    "use_island_split": true,
+    "use_interior_vgroup": true,
+    "constraint_type": "FIXED",
+    "use_breaking": true,
+    "breaking_threshold": "8.0 + dist * 35.0",
+    "substeps_per_frame": 10,
+    "solver_iterations": 20,
+    "shard_collision_shape": "CONVEX_HULL",
+    "shard_mass": "0.05 + random.uniform(0, 0.15)",
+    "shard_friction": 0.4,
+    "shard_restitution": 0.3,
+    "shard_linear_damping": 0.04,
+    "shard_angular_damping": 0.1,
+    "collision_margin": 0.001,
+    "projectile_mass": 2.5,
+    "projectile_collision_shape": "BOX",
+    "projectile_kinematic": true,
+    "debris_count": 200,
+    "debris_normal_factor": 8.0,
+    "debris_factor_random": 3.0,
+    "debris_tangent_factor": 2.0,
+    "debris_particle_size": 0.003
+  },
+  "api_modules": [
+    "bpy.ops.object.add_fracture_cell_objects",
+    "bpy.ops.rigidbody.object_add",
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.rigidbody.world_add",
+    "bpy.ops.object.empty_add",
+    "bpy.context.view_layer.objects.active",
+    "bpy.context.active_object"
+  ],
+  "warnings": [
+    "Constraint-based glass shattering is explicitly recommended for realism; basic prefracture alone is less realistic because it lacks progressive fracture propagation.",
+    "Use `substeps_per_frame`, not `steps_per_second`; the rigid body world pattern notes `steps_per_second` was removed in Blender 5.0.",
+    "Fast impacts can fail or look wrong unless the projectile is kinematic before impact and released to active rigid body at impact.",
+    "Without a secondary debris layer, the destruction can read too clean and miss small glass chips.",
+    "The rigid-body API lookup returned some irrelevant armature/class-registration references, so the strongest grounding here comes from the destruction technique docs and proven code patterns rather than clean API-reference hits."
+  ],
+  "alternative_approaches": [
+    "Basic pre-fractured rigid body glass without breakable constraints (simpler setup, less realistic than progressive constraint breaking).",
+    "Cell Fracture complete glass shatter workflow using many rigid body shards but no adjacency constraint network.",
+    "Rigid body shard sim plus a separate particle debris pass for micro-chips and dust-like secondary breakup."
+  ],
+  "doc_refs": [
+    "techniques/destruction/constraint_breaking",
+    "techniques/destruction/overview",
+    "blender_python_reference_5_0/bpy_types_custom_properties.html",
+    "blender_python_reference_5_0/info_overview.html#class-registration-"
+  ],
+  "timestamp": "2026-03-10T01:02:59.619254"
+}

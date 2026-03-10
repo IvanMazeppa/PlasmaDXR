@@ -857,23 +857,45 @@ Note: Learning Agent is also analyzing in parallel - make your decision based on
             instructions="""ROLE: Blender documentation research specialist.
 INPUTS: effect_type, description.
 TOOLS: blender_doc_search_bundle, search_code_patterns, list_patterns_by_effect.
-TURNS: MAX 4.
+TURNS: MAX 8.
 
-## Tool Order
-T1: blender_doc_search_bundle(effect_type, description, intent="create {effect_type} effect")
-T2: list_patterns_by_effect(effect_type) OR search_code_patterns(issue="", effect_type=effect_type)
-T3: Return ResearchOutput
+<research_mode>
+Before calling any tool, state in one sentence what you expect to find and why.
 
-## Output Contract (ResearchOutput)
-- recommended_approach: str (from docs search - REQUIRED)
-- key_parameters: dict (from patterns or docs)
-- api_modules: list[str] (from doc bundle related_apis)
-- code_patterns: list[{pattern_id, issue, code_snippet}] (from pattern search)
-- warnings: list[str] (from doc bundle warnings or patterns)
-- alternative_approaches: list[str] (optional; leave empty if not found)
-- doc_refs: list[str] (Blender 5.0 doc references - REQUIRED)
+PASS 1 — PLAN: Identify 2-3 sub-questions from the description:
+  - What physics system fits this effect? (rigid body, Mantaflow, particles, cloth, geometry nodes)
+  - What techniques exist for this specific visual result?
+  - What API modules are needed?
 
-STOP after T3. Do NOT retry tools. Return structured output only.""",
+PASS 2 — RETRIEVE: Call tools to answer each sub-question.
+  T1: blender_doc_search_bundle(effect_type, description, domain=<physics_system>)
+       Set domain to the specific physics system (e.g. "rigid_body", "mantaflow", "particles")
+       — do NOT leave domain empty, it causes irrelevant results.
+  T2: list_patterns_by_effect(effect_type) OR search_code_patterns(issue="", effect_type=effect_type)
+
+PASS 3 — SYNTHESIZE: Combine findings into ResearchOutput.
+</research_mode>
+
+<empty_result_recovery>
+If blender_doc_search_bundle returns irrelevant results (wrong physics type, wrong domain):
+1. Retry with a more specific domain parameter (e.g. domain="rigid_body" instead of empty)
+2. Retry with alternative search terms from the description
+3. If still empty, note in warnings and proceed with best available info
+Do NOT give up after one failed search.
+</empty_result_recovery>
+
+<output_contract>
+ResearchOutput fields — ALL REQUIRED unless marked optional:
+- recommended_approach: str — specific technique name, NOT generic (e.g. "Cell Fracture + Rigid Body" not "physics simulation")
+- key_parameters: dict — actual Blender parameter names and suggested values
+- api_modules: list[str] — bpy.types/bpy.ops references from doc search
+- code_patterns: list[{pattern_id, issue, code_snippet}] — from pattern search
+- warnings: list[str] — doc search warnings, known gotchas
+- alternative_approaches: list[str] — at least 1 alternative technique (REQUIRED for technique diversity)
+- doc_refs: list[str] — Blender 5.0 doc references (REQUIRED)
+</output_contract>
+
+STOP after synthesizing. Return structured output only.""",
             model=research_model,
             model_settings=research_settings,
             output_type=AgentOutputSchema(ResearchOutput, strict_json_schema=False),
@@ -2095,12 +2117,20 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                     # ====== PHASE 3 TIER 3: LLM Vision Evaluation ($0.01-0.05) ======
                     if quality is None:
                         print(f"[Pipeline] PHASE 3: Quality Analyst (LLM-as-Judge)", file=sys.stderr)
+                        # Truncate description to avoid context bloat but keep enough for scene-aware eval
+                        _desc_for_eval = request.description[:600] if request.description else ""
                         eval_prompt = f"""Evaluate the render quality strictly.
 
 Render Path: {execution.render_path}
 Effect Type: {request.effect_type.value}
 Reference: {request.reference_path or "None"}
 Quality Threshold: {request.quality_threshold}
+
+Scene Description: {_desc_for_eval}
+
+IMPORTANT: When calling analyze_with_vision and compare_to_reference, ALWAYS pass the
+scene_description parameter with the scene description above. This ensures the vision
+model evaluates the render against what was actually requested, not just the effect_type label.
 
 Be a strict judge. Only pass renders that truly meet quality standards.
 Provide detailed feedback for improvement."""
@@ -2208,9 +2238,9 @@ Provide detailed feedback for improvement."""
                         passed=quality.passed,
                         critical_issues=critical_issues,
                         warnings=quality.suggestions if hasattr(quality, 'suggestions') else [],
-                        cache_size_mb=artifact_summary.cache_size_mb if artifact_summary else 0.0,
-                        render_count=artifact_summary.render_count if artifact_summary else 0,
-                        vdb_count=artifact_summary.vdb_count if artifact_summary else 0,
+                        cache_size_mb=context.last_artifact_summary.cache_size_mb if getattr(context, 'last_artifact_summary', None) else 0.0,
+                        render_count=context.last_artifact_summary.render_count if getattr(context, 'last_artifact_summary', None) else 0,
+                        vdb_count=context.last_artifact_summary.vdb_count if getattr(context, 'last_artifact_summary', None) else 0,
                         iteration_cost_usd=iteration_cost,
                         iteration_time_seconds=iteration_duration,
                         utility_score=utility_score,
@@ -2635,7 +2665,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 context=context,
                                 session=iter_session,  # Phase 2B-1: Stateless iterations
                                 hooks=switch_research_hooks,
-                                max_turns=4,  # Phase 3: Aligned with prompt turn budget
+                                max_turns=8,  # Match main research phase turn budget
                                 run_config=self._build_run_config(
                                     session=session,
                                     request=request,
@@ -2674,7 +2704,7 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
 
                     # ====== END OF ITERATION: WRITE ITERATION ARTIFACT ======
                     # Artifact-First: Write iteration snapshot for cross-iteration reference
-                    cache_path = str(Path(artifact_output_dir) / "cache") if artifact_output_dir else None
+                    cache_path = str(Path(artifact_mgr.artifact_dir) / "cache") if artifact_mgr else None
                     iteration_artifact_path = artifact_mgr.write_iteration_from_values(
                         iteration=iteration,
                         script_path=script.script_path if script else "",

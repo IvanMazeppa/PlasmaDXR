@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-09T22:43:28.268773",
+  "effect_type": "shatter",
+  "observation": "Glass fragments appear clustered near the impact area with little outward spread/trajectory; the event reads more like a small pile of debris than an explosive shatter driven by a fast brick.",
+  "expected_behavior": "A high-speed brick impact should produce a clear radial fracture pattern and shards erupting outward from the impact point, with visible directional debris spread and tumbling pieces catching highlights.",
+  "actual_behavior": "Shards are few/chunky and remain in a dark cluster; no clear radial crack propagation or energetic outward dispersion is visible in-frame.",
+  "suspected_parameters": {
+    "impact_impulse": "too low",
+    "shard_initial_velocity": "too low",
+    "angular_velocity": "too low",
+    "fracture_resolution": "too low",
+    "shard_count": "too low",
+    "camera_framing": "too wide/obstructed",
+    "lighting_specular_intensity": "too low"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_pattern_api_fixed.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-10T00:38:55.671897",
+  "effect_type": "shatter",
+  "observation": "Shatter event appears to produce only faint crack streaks with little to no flying shard field; impact energy reads extremely low and the projectile (brick) is not clearly interacting with the pane.",
+  "expected_behavior": "A heavy brick hits the center of the pane at high speed causing an explosive outward burst of many shards, with the brick continuing through trailing fragments; remaining glass in the frame should crack and partially collapse.",
+  "actual_behavior": "Window remains largely intact/dark with minimal visible fracture detail; few/no shards eject outward; brick/impact is hard to read and does not clearly penetrate; no visible secondary collapse at frame edges.",
+  "suspected_parameters": {
+    "fracture_density": "too low",
+    "shard_count": "too low",
+    "impact_impulse": "too low",
+    "collision_velocity": "too low or not applied",
+    "glass_thickness": "too high",
+    "visibility": "shards too dark / not lit"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_pattern.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

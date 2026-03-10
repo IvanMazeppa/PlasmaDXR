@@ -1,0 +1,23 @@
+{
+  "session_id": "glass_shatter_codex_20260310_010121",
+  "iteration": 1,
+  "overall_score": 28.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Reframe for readability (most important): move camera closer and/or enlarge the window in frame so the impact point and shard field dominate the shot.",
+    "Increase glass highlight/readability via shader tuning: raise Background strength (Line 90: 0.12 -> ~0.25\u20130.45) to give more exposure for speculars, and consider a slightly brighter background color (Line 89) to avoid crushing the action into near-black.",
+    "If the script uses emission to \u2018sell\u2019 cracks/shards, boost it carefully: increase Emission Strength (Line 164) moderately (e.g., +50\u2013150%) and keep it subtle so glass doesn\u2019t look self-lit; use it only to accent edges/cracks.",
+    "Improve crack/fragment breakup pattern: adjust Noise Scale/Detail (Lines 256\u2013257) to produce more varied fracture detail (try Scale 12\u201320, Detail 4\u20137 depending on current look) and reduce overly uniform procedural feel.",
+    "Increase micro-surface definition for glints: raise Bump Strength slightly (Line 296: 0.12 -> ~0.18\u20130.25) so cracks and edges catch light; avoid going so high that the pane looks rubbery.",
+    "Make the glass less \u2018milky\u2019 if absorption is hiding refraction/specular: lower Absorption Density (Line 332: 0.12 -> ~0.04\u20130.08) and neutralize Absorption Color slightly (Line 331) so shards read cleaner under low light.",
+    "(Not in the listed params but required for passing) Use a real fracture/rigid-body shatter setup with many shards and strong outward velocities + rotation, plus secondary pieces still attached to the frame that later collapse; add motion blur for the brick and fast shards."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 729.3511966959995,
+  "utility_score": 0.39,
+  "timestamp": "2026-03-10T01:14:38.910659"
+}

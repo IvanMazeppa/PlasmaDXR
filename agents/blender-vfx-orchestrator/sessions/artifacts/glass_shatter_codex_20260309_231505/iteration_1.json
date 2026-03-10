@@ -1,0 +1,28 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_errfix.py",
+  "technique_used": "constraint_breaking_rigidbody",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260309_231505/cache",
+  "score": 27.0,
+  "passed": false,
+  "primary_issue": "The shatter/impact event is not readable or cinematic (tiny, dark, low-energy burst); the scene reads like a blockout rather than a gritty warehouse shot where the window break is the hero moment.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex_errfix",
+    "root_cause_fixed": "Removed invalid Scene.cache_frame_start/cache_frame_end usage; simulation now advances via scene.frame_set() with rigid body world defaults",
+    "frame_start": 1,
+    "frame_end": 48,
+    "render_frame": 28,
+    "shard_rows": 6,
+    "shard_cols": 5,
+    "shard_count": 30,
+    "constraint_type": "FIXED breakable rigid body constraints",
+    "horizontal_breaking_threshold": 24.0,
+    "vertical_breaking_threshold": 20.0,
+    "impactor_type": "passive animated sphere",
+    "impactor_radius": 0.18,
+    "output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex_errfix"
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-09T23:30:52.958590"
+}

@@ -1,0 +1,36 @@
+{
+  "recommended_approach": "Use a Rigid Body World workflow for the shatter event: keep all simulated pieces and constraints in the Rigid Body World collections, increase simulation accuracy for the high-speed impact (Substeps Per Frame + Solver Iterations), and bake/cache the sim for frames 1-60 before rendering frame 12. This is the strongest documented path returned for a violent collision-style event.",
+  "key_parameters": {
+    "rigid_body_world.collection": "Required: only objects in the Rigid Body World Collection are simulated.",
+    "rigid_body_world.constraints_collection": "Required: only constraints in the assigned Constraints collection are evaluated.",
+    "rigid_body_world.speed": "Time scale control (higher=faster sim, lower=slower sim).",
+    "rigid_body_world.split_impulse": "Use when collision adds extra velocity artifacts; docs note possible stability tradeoff.",
+    "rigid_body_world.substeps_per_frame": "Increase for better high-speed collision accuracy.",
+    "rigid_body_world.solver_iterations": "Increase for more stable/accurate collision and constraints.",
+    "cache.start": 1,
+    "cache.end": 60,
+    "cache.cache_step": 1,
+    "cache.bake_mode_note": "Bake from Object Mode; bake to lock results before render."
+  },
+  "api_modules": [
+    "bpy.ops.mesh",
+    "bpy.types.Mesh",
+    "bpy.types.Action"
+  ],
+  "warnings": [
+    "No matching explosion-specific code patterns were found in the pattern library.",
+    "Doc bundle warning: \"No API doc_refs found (expected bpy.types.* or bpy.ops.* references).\"",
+    "Rigid Body World ignores objects/constraints not in its assigned collections.",
+    "Bake/cache can be lost if the .blend is unsaved (memory cache behavior noted in docs excerpt).",
+    "Using Split Impulse can reduce collision velocity artifacts but may reduce stacking stability.",
+    "Higher Cache Step reduces cache size but can change motion due to interpolation."
+  ],
+  "alternative_approaches": [],
+  "doc_refs": [
+    "physics/rigid_body/world.html",
+    "blender_manual_html/render/output/animation_player.html#hotkeys-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-03-07T23:21:05.871072"
+}

@@ -1,0 +1,71 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex.py",
+  "technique_used": "rigid_body_with_prefractured_irregular_shards",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260309_214431/cache",
+  "score": 32.0,
+  "passed": false,
+  "primary_issue": "The shatter event and key story beat (brick striking the center of a large window and exploding shards outward) are not clearly readable due to composition + severely underlit/crushed lighting; the shot doesn\u2019t convincingly match the described warehouse/window setup.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex",
+    "effect_type": "shatter",
+    "frame_range": [
+      1,
+      60
+    ],
+    "render_frame": 12,
+    "impact_frame": 5,
+    "window_dimensions_m": {
+      "width": 2.0,
+      "height": 1.5,
+      "thickness": 0.006
+    },
+    "approx_shard_count": "~600 via irregular pre-fractured grid with denser center splits",
+    "rigid_body_world": {
+      "steps_per_second": 240,
+      "substeps_per_frame": 8,
+      "solver_iterations": 18,
+      "time_scale": 1.0,
+      "split_impulse": true
+    },
+    "shard_rigid_body": {
+      "type": "ACTIVE",
+      "collision_shape": "MESH",
+      "collision_margin": 0.001,
+      "mass_range": [
+        0.01,
+        0.1
+      ],
+      "friction": 0.2,
+      "restitution": 0.05,
+      "linear_damping": 0.02,
+      "angular_damping": 0.02
+    },
+    "brick_rigid_body": {
+      "type": "ACTIVE",
+      "collision_shape": "CONVEX_HULL",
+      "mass": 2.5,
+      "friction": 0.6,
+      "restitution": 0.1,
+      "kinematic_until_frame": 5
+    },
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU",
+      "samples": 256,
+      "resolution": [
+        1920,
+        1080
+      ]
+    },
+    "lighting": {
+      "moonlight": "cold blue-white sun lamp",
+      "security_light": "warm orange spot + practical point",
+      "fill": "cool area light"
+    },
+    "scene_context": "derelict industrial warehouse interior with concrete wall, steel frame, floor, beams, crates, barrel, pipes, and security lamp"
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-09T21:54:45.632365"
+}

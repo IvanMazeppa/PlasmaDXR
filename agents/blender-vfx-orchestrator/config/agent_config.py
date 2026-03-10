@@ -4,7 +4,7 @@ Agent Configuration Manager.
 Loads presets from YAML and provides agent-specific settings with overrides.
 
 GPT-5 Parameter Compatibility (from OpenAI Platform docs):
-- gpt-5.2/gpt-5.1: temperature/top_p/logprobs ONLY supported with reasoning_effort=none
+- gpt-5.4/gpt-5.2/gpt-5.1: temperature/top_p/logprobs ONLY supported with reasoning_effort=none
 - gpt-5-codex/gpt-5.3-codex/gpt-5.2-codex/gpt-5/gpt-5-mini/gpt-5-nano:
   NO temperature support, use text.verbosity and max_output_tokens
 """
@@ -26,7 +26,7 @@ CONFIG_DIR = Path(__file__).parent
 PRESETS_FILE = CONFIG_DIR / "presets.yaml"
 
 # Models that support temperature (only with reasoning_effort=none)
-TEMPERATURE_SUPPORTED_MODELS = {"gpt-5.2", "gpt-5.1"}
+TEMPERATURE_SUPPORTED_MODELS = {"gpt-5.4", "gpt-5.2", "gpt-5.1"}
 
 # Models that DON'T support temperature at all
 NO_TEMPERATURE_MODELS = {
@@ -45,7 +45,7 @@ class AgentSettings:
     """Settings for a single agent."""
     model: str = "gpt-5-nano"
     reasoning_effort: str = "none"  # none, low, medium, high, xhigh
-    temperature: Optional[float] = None  # Only for gpt-5.2/5.1 with reasoning=none
+    temperature: Optional[float] = None  # Only for gpt-5.4/5.2/5.1 with reasoning=none
     verbosity: str = "medium"  # low, medium, high - for text output control
     max_output_tokens: Optional[int] = None
     max_turns: int = 10
@@ -56,7 +56,7 @@ class AgentSettings:
         Convert to SDK ModelSettings kwargs.
 
         Handles parameter compatibility based on model type:
-        - gpt-5.2/gpt-5.1: temperature only with reasoning_effort=none
+        - gpt-5.4/gpt-5.2/gpt-5.1: temperature only with reasoning_effort=none
         - codex/gpt-5-codex/gpt-5.3-codex/gpt-5.2-codex/gpt-5/gpt-5-mini/gpt-5-nano:
           use text.verbosity, max_output_tokens
         """
@@ -75,7 +75,7 @@ class AgentSettings:
         if self.reasoning_effort != "none":
             settings["reasoning"] = {"effort": self.reasoning_effort}
 
-        # Handle temperature (only for gpt-5.2/5.1 with reasoning=none)
+        # Handle temperature (only for gpt-5.4/5.2/5.1 with reasoning=none)
         if model_supports_temperature and self.reasoning_effort == "none":
             if self.temperature is not None:
                 settings["temperature"] = self.temperature

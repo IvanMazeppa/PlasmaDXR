@@ -1,0 +1,36 @@
+{
+  "recommended_approach": "Pre-fractured glass shard setup + Rigid Body World, with the window frame/wall as Passive rigid bodies, the glass pieces as Active rigid bodies, and the brick using the documented Animated rigid-body workflow for its keyframed entry into impact.",
+  "key_parameters": {
+    "Animated": "Enable `Animated` on the brick while it is keyframed into the window; the rigid body tips doc warns that keyframing without `Animated` makes the object move visually while the solver still treats it as static.",
+    "steps_per_second": "Increase `steps_per_second` above default for the 15 m/s impact; Blender's rigid body tips say higher values generally improve accuracy/stability, but needing more than `1000` indicates setup problems rather than a solver setting fix.",
+    "Cache": "Use the Rigid Body World `cache` controls and bake the simulation for frames `1-60` per the shot constraint.",
+    "Timing": "Use Rigid Body World `timing` controls so the main collision lands around frame 5 and the peak shard burst is available by frame 12.",
+    "Solver": "Tune the Rigid Body World `solver` settings before brute-forcing extreme step counts; the docs group these as the global controls for many-body stability.",
+    "Rigid Body roles": "Set the glass shards to Active behavior, and keep the steel frame / concrete wall as Passive collision objects within the same Rigid Body World."
+  },
+  "api_modules": [
+    "bpy.types.Node",
+    "bpy.types.NodeTree"
+  ],
+  "warnings": [
+    "The Blender doc search consistently confirmed `Rigid Body World`, rigid body settings, and rigid body tips, but did not surface a clean Blender 5.0 Python API page for rigid body classes; API hits were polluted by irrelevant armature results.",
+    "The rigid body tips doc explicitly warns that keyframed motion without `Animated` causes a mismatch between visible motion and solver motion.",
+    "The rigid body tips doc says increasing `steps_per_second` improves stability, but needing values above `1000` usually means the setup should be fixed instead of continuing to raise the solver rate.",
+    "The search results did not surface fracture-specific documentation for generating the glass shards themselves, so the shatter must still be prepared as pre-broken geometry before rigid body simulation.",
+    "Pattern search found no matching proven library pattern for realistic rigid-body glass shatter in this effect context; the only listed explosion pattern was unrelated to destruction physics."
+  ],
+  "alternative_approaches": [
+    "Geometry Nodes `Simulation Zone`-driven shard burst/debris motion as a lighter, more art-directable alternative when full rigid body glass is too heavy or hard to control.",
+    "A hybrid approach: rigid body for the larger hero shards and a Geometry Nodes / Simulation Zones secondary pass for fine glass spray and trailing debris."
+  ],
+  "doc_refs": [
+    "physics/rigid_body/world.html",
+    "blender_manual_html/physics/rigid_body/index.html",
+    "blender_manual_html/physics/rigid_body/world.html#settings-",
+    "physics/rigid_body/tips.html",
+    "blender_manual_html/modeling/geometry_nodes/simulation/simulation_zone.html#properties-",
+    "blender_manual_html/modeling/geometry_nodes/simulation/simulation_zone.html#inputs-",
+    "physics/simulation_nodes.html"
+  ],
+  "timestamp": "2026-03-09T02:23:33.596063"
+}

@@ -1,0 +1,25 @@
+{
+  "session_id": "glass_shatter_codex_20260310_012011",
+  "iteration": 2,
+  "overall_score": 34.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Recompose so the window/impact fills much more of the frame (closer camera or tighter crop); make the impact point the visual center of attention.",
+    "Increase fracture/shard detail and readability (denser micro-fractures + more breakup): try raising Voronoi density (Line 148: voronoi Scale 24.0 \u2192 ~35\u201350).",
+    "Increase high-frequency crack detail: Line 370 noise Scale 9.0 \u2192 ~15\u201325; Line 371 noise Detail 7.0 \u2192 ~9\u201312; Line 206 noise Roughness 0.7 \u2192 ~0.8\u20130.9.",
+    "Make cracks/shards catch light more strongly via normal/bump shaping: Line 372 bump Strength 0.1 \u2192 ~0.2\u20130.35; Line 373 bump Distance 0.02 \u2192 ~0.005\u20130.01 (sharper micro-relief).",
+    "If the shader uses wave/noise to form crack striations, push toward finer, more chaotic breakup: Line 368 wave Scale 14.0 \u2192 ~20\u201335; Line 369 wave Distortion 1.2 \u2192 ~1.8\u20132.5; Line 310 wave Detail Scale 2.0 \u2192 ~4\u20138.",
+    "Lift ambient just enough so the glass event doesn\u2019t disappear into black: Line 92 world Strength 0.08 \u2192 ~0.15\u20130.30 (keep it moody, but readable).",
+    "If emission is being used to make cracks visible, increase it carefully (Line 410 emission Strength): try ~2\u00d7\u20134\u00d7 for the crack component only (avoid making the whole pane glow unnaturally).",
+    "Art direction fixes (not just params): add believable rusted steel + aged concrete textures (roughness variation, grime, edge wear), and more warehouse set dressing/atmosphere so it reads \u2018derelict industrial at night\u2019.",
+    "Physics/story clarity: ensure the sim produces a clear blown-out impact hole, lots of varied shard sizes, and a visible debris trail behind the brick; add motion blur for the brick and fastest shards to sell speed."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 915.3793285329994,
+  "utility_score": 0.42000000000000004,
+  "timestamp": "2026-03-10T01:46:56.620587"
+}

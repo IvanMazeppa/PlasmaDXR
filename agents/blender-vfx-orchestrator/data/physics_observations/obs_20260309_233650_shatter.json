@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-03-09T23:36:50.107897",
+  "effect_type": "shatter",
+  "observation": "Glass impact lacks energy: debris/shards appear as a small dark cluster near the window opening with minimal outward spread; brick trajectory/through-pass is not clearly readable.",
+  "expected_behavior": "A high-speed brick striking the center of a large pane should produce a strong radial crack pattern and an outward burst of shards with clear separation and travel through space; the brick should visibly continue through trailing fragments.",
+  "actual_behavior": "Shatter is subtle and localized; shards do not read as transparent/reflective glass and do not appear to travel far from the pane; the brick is hard to see and the action is not legible in-frame.",
+  "suspected_parameters": {
+    "shard_initial_velocity": "too low",
+    "fracture_piece_count": "too low",
+    "rigidbody_damping": "too high",
+    "constraint_break_threshold": "too high",
+    "motion_blur": "insufficient"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_pattern.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

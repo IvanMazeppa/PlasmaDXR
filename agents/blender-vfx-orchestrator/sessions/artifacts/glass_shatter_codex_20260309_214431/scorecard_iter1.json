@@ -1,0 +1,25 @@
+{
+  "session_id": "glass_shatter_codex_20260309_214431",
+  "iteration": 1,
+  "overall_score": 32.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Camera/composition (most important): move camera closer and reframe so the window + impact fill ~40\u201370% of the frame; reduce the amount of empty black space so the viewer can actually read shards/brick.",
+    "Lighting: add a motivated key + rim specifically on the window plane to create bright specular hits on shard edges; lift local exposure around the action (avoid global overbrightening\u2014keep the night mood but stop crushing shadows).",
+    "Action clarity: make the brick unmistakable (size on screen, saturated red clay albedo, chipped edges) and ensure it is visible entering from the left and exiting through the pane with a trail of small fragments.",
+    "Shatter behavior: increase readability of fracture structure\u2014strong radial cracking at the impact point, mixed shard sizes (large primaries + fine secondaries), and clear outward directionality left\u2192right. (This likely needs geometry/sim layering beyond shader noise.)",
+    "Environment: replace/blockout with believable warehouse detail and materials\u2014aged concrete (pitting, stains), rusted steel (roughness breakup, edge wear), and some industrial clutter, while keeping the window as the hero element.",
+    "Shader/detail tuning (to help glass read cleaner in low light): reduce overly strong surface waviness\u2014Line 129 bump Distance: try 0.15 \u2192 0.02\u20130.05; Line 329 bump Strength: 0.12 \u2192 0.03\u20130.07 (too much bump can kill clean specular edge sparkle).",
+    "Glass micro-noise: if the glass looks \u201cdirty/noisy\u201d rather than crisp, reduce small-scale noise complexity\u2014Line 115 noise_small Scale: 42 \u2192 20\u201330; Line 116 Detail: 12 \u2192 6\u20138; Line 117 Roughness: 0.55 \u2192 0.35\u20130.45.",
+    "Crack pattern legibility (if driven by procedural patterns): adjust the cell/crack scale to avoid mushy detail\u2014Line 202 voronoi Scale: try 15 \u2192 8\u201312 for larger, more readable fracture regions (or higher, 20\u201330, if cracks are currently too blobby\u2014pick the direction that makes cracks sharper at your render resolution).",
+    "If you\u2019re using wave-based breakup for crack streaking: reduce distortion that can smear detail\u2014Line 312 wave Distortion: 6.0 \u2192 2.0\u20134.0; keep Line 311 wave Scale in a range that produces readable crack spacing (e.g., 6\u201310)."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 498.04577247199995,
+  "utility_score": 0.41000000000000003,
+  "timestamp": "2026-03-09T21:53:57.677826"
+}

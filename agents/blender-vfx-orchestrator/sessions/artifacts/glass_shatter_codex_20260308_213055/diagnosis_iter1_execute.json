@@ -1,0 +1,15 @@
+{
+  "iteration": 1,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "'RigidBodyWorld' object has no attribute 'steps_per_second'; script failed, file: 'build/blender_cli_logs/20260308_213953_glass_shatter_codex_v1/_wrapper.py', exiting.",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_v1.py.\nError: 'RigidBodyWorld' object has no attribute 'steps_per_second'; script failed, file: 'build/blender_cli_logs/20260308_213953_glass_shatter_codex_v1/_wrapper.py', exiting.\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_v1.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "timestamp": "2026-03-08T21:39:54.705447"
+}

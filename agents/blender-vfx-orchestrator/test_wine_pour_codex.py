@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Wine pour E2E test — validates orchestrator decomposition + gpt-5.3-codex rollout.
+Wine pour E2E test — validates orchestrator decomposition + GPT-5.4 rollout.
 
 Uses the codex_upgrade preset which upgrades script_writer, modification_coordinator,
-and research_agent to gpt-5.3-codex while keeping other agents on gpt-5-mini.
+and research_agent to gpt-5.4 while keeping other agents on gpt-5-mini.
 
 max_iterations=1 for quick feedback. HITL overridden to non-interactive/autonomous.
 """
@@ -54,9 +54,8 @@ for agent_name in [
     "learning_agent", "docs_expert", "executor",
 ]:
     settings = config.get_agent_settings(agent_name)
-    model_settings = settings.to_model_settings()
-    codex_marker = " <<< gpt-5.3-codex" if "codex" in settings.model else ""
-    print(f"  {agent_name:30s} model={settings.model:16s} reasoning={settings.reasoning_effort}{codex_marker}")
+    rollout_marker = " <<< gpt-5.4" if settings.model == "gpt-5.4" else ""
+    print(f"  {agent_name:30s} model={settings.model:16s} reasoning={settings.reasoning_effort}{rollout_marker}")
 print("=" * 70)
 print()
 
@@ -99,7 +98,7 @@ Research documentation, patterns, and APIs to find the optimal starting approach
 
 async def main():
     print("=" * 70)
-    print("WINE POUR CODEX TEST — Decomposition Gate + gpt-5.3-codex Rollout")
+    print("WINE POUR GPT-5.4 TEST — Decomposition Gate + GPT-5.4 Rollout")
     print("1 iteration, codex_upgrade preset, tracing enabled")
     print(f"Trace log: {log_file}")
     print("=" * 70)
@@ -150,20 +149,20 @@ async def main():
             for issue in result.current_issues:
                 print(f"  - {issue}")
 
-        # Verify codex model usage in trace
+        # Verify rollout model usage in trace
         print()
         print("=" * 70)
-        print("CODEX ROLLOUT ANALYSIS")
+        print("GPT-5.4 ROLLOUT ANALYSIS")
         print("=" * 70)
         trace_path = Path(log_file)
         if trace_path.exists():
             with open(trace_path) as f:
                 content = f.read()
 
-            if "gpt-5.3-codex" in content:
-                print("  [PASS] gpt-5.3-codex referenced in trace")
+            if "gpt-5.4" in content:
+                print("  [PASS] gpt-5.4 referenced in trace")
             else:
-                print("  [WARN] gpt-5.3-codex NOT found in trace — check model assignment")
+                print("  [WARN] gpt-5.4 NOT found in trace — check model assignment")
 
             if "read_artifact" in content:
                 print("  [PASS] read_artifact tool invoked (artifact sharing)")

@@ -1389,6 +1389,68 @@ def _fix_cube_scale_halving(content: str) -> tuple[str, bool]:
     return new_content, modified
 
 
+def _inject_cell_fracture_addon_enable(content: str) -> tuple[str, bool]:
+    """
+    Ensure Cell Fracture addon is correctly enabled if the script uses it.
+
+    Handles three cases:
+    1. Script uses cell fracture but has no enable call → inject correct one
+    2. Script has wrong module name (object_fracture_cell) → fix to object_cell_fracture
+    3. Script uses bpy.ops.preferences.addon_enable → fix to addon_utils.enable
+    """
+    # Check if script uses cell fracture operations
+    uses_cell_fracture = bool(re.search(
+        r'add_fracture_cell_objects',
+        content
+    ))
+    if not uses_cell_fracture:
+        return content, False
+
+    fixed = False
+
+    # Fix 1: Wrong module name — object_fracture_cell → object_cell_fracture
+    if 'object_fracture_cell' in content:
+        content = content.replace('object_fracture_cell', 'object_cell_fracture')
+        fixed = True
+
+    # Fix 2: Wrong API — bpy.ops.preferences.addon_enable → addon_utils.enable
+    wrong_api_pattern = re.compile(
+        r'bpy\.ops\.preferences\.addon_enable\s*\(\s*module\s*=\s*[\'"]object_cell_fracture[\'"]\s*\)',
+    )
+    if wrong_api_pattern.search(content):
+        content = wrong_api_pattern.sub(
+            "addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)",
+            content,
+        )
+        # Ensure addon_utils is imported
+        if 'import addon_utils' not in content:
+            import_match = re.search(r'^import bpy\b.*$', content, re.MULTILINE)
+            if import_match:
+                content = content[:import_match.end()] + "\nimport addon_utils" + content[import_match.end():]
+        fixed = True
+
+    # Fix 3: No enable call at all → inject one
+    has_enable = bool(re.search(
+        r'addon_utils\.enable\s*\(\s*[\'"]object_cell_fracture[\'"]',
+        content
+    ))
+    if not has_enable:
+        enable_snippet = (
+            "\n# API Fixer: Enable Cell Fracture addon (not enabled by default in headless)\n"
+            "import addon_utils\n"
+            "addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)\n"
+        )
+        import_match = re.search(r'^import bpy\b.*$', content, re.MULTILINE)
+        if import_match:
+            insert_pos = import_match.end()
+            content = content[:insert_pos] + enable_snippet + content[insert_pos:]
+        else:
+            content = "import bpy\n" + enable_snippet + content
+        fixed = True
+
+    return content, fixed
+
+
 def _inject_camera_distance_fix(content: str) -> tuple[str, bool]:
     """
     Inject camera distance validation before render calls.
@@ -1870,6 +1932,11 @@ def validate_and_fix_script(script_path: str) -> Dict:
     content, stills_fixed = _inject_animation_to_stills(content)
     if stills_fixed:
         fixes_applied.append("Replaced animation=True with representative still renders (headless fix)")
+
+    # P0 FIX: Enable Cell Fracture addon if script uses it (not enabled by default in headless)
+    content, cell_fracture_fixed = _inject_cell_fracture_addon_enable(content)
+    if cell_fracture_fixed:
+        fixes_applied.append("Injected Cell Fracture addon enable (required for headless Blender)")
 
     # Post-fix: Python syntax validation (catches errors introduced by fixers)
     # Loop to handle cascading indentation errors (fix one → new error on next line → repeat)

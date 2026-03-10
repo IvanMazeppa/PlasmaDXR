@@ -1,0 +1,26 @@
+{
+  "session_id": "glass_shatter_codex_20260309_022122",
+  "iteration": 1,
+  "overall_score": 32.0,
+  "passed": false,
+  "critical_issues": [
+    "Severe highlight clipping/overexposure in the core (pure white with hard transitions), which kills fire detail and looks non-physical."
+  ],
+  "warnings": [
+    "(Most important) Switch to an actual explosion workflow: simulate/render a volumetric fire+smoke element (pyro/VDB) and drive emission from temperature/heat, not from flat emissive geometry.",
+    "Adopt HDR + proper tonemapping: render to 16/32-bit EXR and use Filmic/ACES so the core stays bright without clipping; add bloom/glare in comp rather than letting the beauty pass blow out.",
+    "Build a two-layer volume: (1) short-lived luminous flame volume (high emission, lower absorption), (2) longer-lived darker smoke volume (higher absorption, more scattering) with internal self-shadowing.",
+    "Add multi-scale turbulence: combine low-frequency large lobes + higher-frequency detail noise so the silhouette becomes \u201ccauliflower/mushroom cloud\u201d rather than sharp/rectilinear shapes.",
+    "Add secondary particles: embers/sparks (additive, short lifetime) + fine dust/ash (longer lifetime) + a range of debris sizes; enable motion blur for fast fragments in animation renders.",
+    "Improve scene lighting response: ensure the explosion actually lights nearby objects (warm fill/rim, spec hits on surfaces) and that smoke/volume casts shadows onto the environment.",
+    "If you must iterate within the current script/material (glass/shatter look):\n- Line 341 (Metallic 0.6): reduce toward 0.0\u20130.1 for glass-like shards; high metallic reads wrong for debris.\n- Line 446 (Base Color): push closer to neutral/grey and rely on transmission/refraction rather than bright diffuse tint.\n- Line 209 (Bump Distance 0.1): reduce (e.g., 0.01\u20130.03) to avoid chunky surface breakup on shards.\n- Lines 105\u2013106 (BG Color/Strength): keep background darker but slightly raise environment contribution only if you need scene readability; avoid using BG to \u201cfake\u201d explosion brightness.\n- Noise scales (187\u2013195, 242\u2013243, 264, 366): use them for subtle roughness/imperfection variation, not for large-scale \u2018explosion\u2019 structure (explosion structure should come from volumetrics/sim).",
+    "For quality control, compare against an explosion reference each iteration (the auto-picked reference scored ~20/100 similarity here); aim for visible smoke volume, warm core gradient, and layered detail before tuning debris/shading."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 664.9489651289987,
+  "utility_score": 0.41000000000000003,
+  "timestamp": "2026-03-09T02:34:24.499454"
+}

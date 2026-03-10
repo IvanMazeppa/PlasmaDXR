@@ -7,6 +7,7 @@
 
 ## Runtime Truth (Current)
 - **OpenAI Agents SDK runtime pin:** `openai-agents==0.8.3` (`agents/blender-vfx-orchestrator/requirements.txt`).
+- **Code-critical rollout preset:** `codex_upgrade` now upgrades `script_writer`, `modification_coordinator`, and `research_agent` to `gpt-5.4` (preset name retained for backward compatibility).
 - **Spec-first pipeline mode:** enabled by default via `ORCHESTRATOR_SPEC_FIRST=1`.
 - **Trace metadata:** includes `generation_mode=spec_first|legacy` for each run.
 - **Script modification path:** orchestrator routes modifications through centralized `_apply_script_modifications(...)`; underlying `_modify_script_impl` is invoked in one guarded path with hallucination scanning.

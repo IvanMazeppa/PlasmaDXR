@@ -275,6 +275,39 @@ def setup_volume_material(domain_obj, effect_type="SMOKE"):
 For SUN/STAR effects: Emission sphere + procedural noise + corona volume
 For EXPLOSION effects: Follow research approach. **If using fluid sim: MUST add volume material!**
 
+## CRITICAL: CELL FRACTURE FOR GLASS/DESTRUCTION
+For ANY glass shattering, destruction, or fracture effect — you MUST use the Cell Fracture addon
+to create shard geometry. Do NOT manually create shards with loops, Boolean cuts, or bmesh operations.
+
+```python
+# Step 1: ALWAYS enable addon first (required in headless mode)
+import addon_utils
+addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)
+
+# Step 2: Select the object to fracture
+bpy.context.view_layer.objects.active = glass_obj
+glass_obj.select_set(True)
+
+# Step 3: Call Cell Fracture operator
+bpy.ops.object.add_fracture_cell_objects(
+    source={'PARTICLE_OWN'},
+    source_limit=60,         # Number of shards (40-80 for hero glass)
+    source_noise=0.05,
+    margin=0.0005,           # Tiny gap between shards
+    use_smooth_faces=False,  # Sharp edges for glass
+    use_data_match=True,     # Copy materials
+    use_island_split=True,
+)
+
+# Step 4: Get shard objects (Cell Fracture names them with _cell suffix)
+shards = [o for o in bpy.data.objects if o.name.startswith("GlassPane_cell")]
+```
+
+**WRONG module name:** `object_fracture_cell` — this DOES NOT EXIST
+**CORRECT module name:** `object_cell_fracture`
+**WRONG API:** `bpy.ops.preferences.addon_enable(module=...)` — unreliable for extensions
+**CORRECT API:** `addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)`
+
 ## REQUIRED SCRIPT ELEMENTS
 ALWAYS include in your generated scripts:
 - `import bpy` + scene cleanup (delete default objects)

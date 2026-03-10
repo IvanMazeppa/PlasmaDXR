@@ -12,13 +12,14 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Models (2026-02)
+## OpenAI Models (2026-03)
 
 ### CURRENT MODELS - USE THESE
 | Model | Use Case |
 |-------|----------|
-| `gpt-5.3-codex` | Coding-optimized agentic model (Feb 2026). 400K context, 128K output. No temperature support. |
-| `gpt-5.2` | High capability, complex reasoning |
+| `gpt-5.4` | Frontier model for complex professional work. Preferred default for mixed engineering, planning, writing, and business workflows. |
+| `gpt-5.3-codex` | Coding-specialized model for Codex-like environments and narrow agentic coding loops. |
+| `gpt-5.2` | Previous frontier model for complex reasoning; keep for known-stable baselines. |
 | `gpt-5-mini` | Fast, cheap, good for simple tasks |
 | `o4-mini` | Fast reasoning |
 
@@ -32,7 +33,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 | `gpt-4-turbo` | DEPRECATED |
 | `gpt-3.5-turbo` | ANCIENT |
 
-**If you find yourself typing "gpt-4", STOP and use "gpt-5.2" or "gpt-5-mini".**
+**If you find yourself typing "gpt-4", STOP and use "gpt-5.4" or "gpt-5-mini".**
 
 ---
 
@@ -183,7 +184,7 @@ Before using ANY Blender attribute:
 Before suggesting ANY OpenAI model:
 1. Check this document
 2. If it's gpt-4 anything, it's WRONG
-3. Use gpt-5.2 or gpt-5-mini
+3. Use `gpt-5.4` by default unless you have a specific reason to prefer `gpt-5.3-codex`, `gpt-5.2`, or `gpt-5-mini`
 
 ---
 

@@ -1,0 +1,25 @@
+{
+  "session_id": "glass_shatter_codex_20260309_214431",
+  "iteration": 2,
+  "overall_score": 28.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Reframe: move camera closer and/or zoom so the window and impact point dominate; remove/reposition the large dark foreground obstruction.",
+    "Stage the brick: increase size/readability, ensure it\u2019s clearly red clay, and place it on a strong left\u2192right path through the pane center; add motion blur.",
+    "Shatter dynamics: increase fracture density and vary shard sizes (large primary shards near impact, smaller secondary fragments outward); increase outward velocities so shards travel into camera space.",
+    "Add a crack pass: emphasize radial + concentric cracking before breakup so the remaining pane reads as stressed/partially attached and collapsing.",
+    "Lighting: add a motivated key + rim/specular lights aimed to catch shard edges; raise exposure ~0.7\u20131.5 stops while keeping a night mood.",
+    "Material work: build convincing rusted steel and aged concrete (roughness variation, grime, stains, chipped paint).",
+    "Glass shader: strengthen specular/edge highlights, ensure believable thickness/IOR; reduce \u201cflat\u201d look so shards sparkle when lit.",
+    "Render quality: increase samples and/or denoise more carefully to remove under-sampled grain without smearing shard detail.",
+    "Script parameter targets (shader microdetail): try reducing Line 129 bump Distance (0.15 \u2192 ~0.03\u20130.08) to avoid blobby surface distortion; adjust Line 203 voronoi Scale (15.0 \u2192 ~25\u201345) to increase perceived crack cell density; reduce overly strong wave distortion (Line 314 Distortion 6.0 \u2192 ~1\u20133) if it\u2019s warping the glass read; lower Line 331 bump Strength (0.12 \u2192 ~0.04\u20130.08) if highlights are breaking up unnaturally."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 178.85019559799912,
+  "utility_score": 0.4909581703350008,
+  "timestamp": "2026-03-09T21:57:30.877221"
+}

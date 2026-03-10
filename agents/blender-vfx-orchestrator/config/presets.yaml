@@ -2,13 +2,14 @@
 # Select preset via: ORCHESTRATOR_PRESET=quick_test
 #
 # Available models (from OpenAI Platform docs):
-#   gpt-5.2       - Latest, supports temperature ONLY when reasoning_effort=none
-#   gpt-5.3-codex - Coding-optimized model for agentic code tasks (NO temperature support)
+#   gpt-5.4       - Frontier default for complex professional work
+#   gpt-5.2       - Previous frontier model, supports temperature ONLY when reasoning_effort=none
+#   gpt-5.3-codex - Coding-specialized model for Codex-like environments
 #   gpt-5-mini    - Fast, cost-effective (NO temperature support)
 #   gpt-5-nano    - Fastest, lowest cost (NO temperature support)
 #
 # Parameter compatibility:
-#   - temperature/top_p/logprobs: ONLY gpt-5.2/gpt-5.1 with reasoning_effort=none
+#   - temperature/top_p/logprobs: ONLY gpt-5.4/gpt-5.2/gpt-5.1 with reasoning_effort=none
 #   - gpt-5.3-codex/gpt-5-mini/gpt-5-nano: Use text.verbosity and max_output_tokens instead
 #
 # Reasoning effort: none, low, medium, high, xhigh
@@ -51,10 +52,10 @@ presets:
     effect_type_scoping: true  # Phase 2B-7: KB entries scoped by effect type
     artifact_sharing: true     # Phase 2B-8: Agents read artifacts via tool instead of inline
 
-  # Codex rollout - safe migration preset for code-critical agents
-  # Global overrides remain in place; this preset only upgrades selected agents.
+  # Historical preset name retained for compatibility.
+  # This rollout now upgrades code-critical agents to GPT-5.4.
   codex_upgrade:
-    description: "Rollout preset: gpt-5.3-codex for code-critical agents"
+    description: "Rollout preset: gpt-5.4 for code-critical agents"
     default_model: gpt-5-mini
     reasoning_effort: medium
     verbosity: medium
@@ -72,19 +73,19 @@ presets:
     agent_overrides:
       # Primary code generation path
       script_writer:
-        model: gpt-5.3-codex
+        model: gpt-5.4
         reasoning_effort: high
         max_output_tokens: 25000
         verbosity: medium
       # Strategy is tightly coupled to script generation quality
       modification_coordinator:
-        model: gpt-5.3-codex
+        model: gpt-5.4
         reasoning_effort: high
         max_output_tokens: 2000
         max_turns: 4
       # Research output quality materially impacts generated scripts
       research_agent:
-        model: gpt-5.3-codex
+        model: gpt-5.4
         reasoning_effort: high
         max_output_tokens: 4000
 
@@ -197,8 +198,9 @@ presets:
 #     NL causes semantic redundancy, ambiguity, lossy compression between agents
 #
 # Model tiers:
+#   gpt-5.4  → frontier default for mixed engineering/planning workflows
 #   gpt-5.2  → complex reasoning, code generation, evaluation
-#   gpt-5.3-codex → coding-specialized model (enabled via codex_upgrade preset)
+#   gpt-5.3-codex → coding-specialized model (available, no longer rollout default)
 #   gpt-5-mini → simple/formulaic tasks (routing, execution, pass/fail)
 agent_overrides:
 

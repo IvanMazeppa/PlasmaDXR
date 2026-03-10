@@ -1,0 +1,25 @@
+{
+  "session_id": "glass_shatter_codex_20260310_001640",
+  "iteration": 2,
+  "overall_score": 26.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "(Outside current 13 shader params) Make the impact readable: increase brick size and place it clearly on a left-to-right trajectory through the pane; add motion blur on the brick and fastest shards.",
+    "(Outside current 13 shader params) Increase fracture/shard density dramatically (hundreds+ pieces), with a strong outward ballistic burst from the impact point and varied shard size/rotation; add a fragment \u201ctrail\u201d following the brick.",
+    "(Outside current 13 shader params) Add a second-stage collapse for edge-attached glass (larger retained chunks near the frame that crack and drop after the initial burst).",
+    "Reframe the camera closer or zoom so the window + impact point dominate the shot (reduce dead wall space).",
+    "Improve shard readability via lighting: add a strong grazing/rim light to catch shard edges; add subtle volumetric haze/dust so light beams and debris read.",
+    "Script shader tweaks to avoid overly dark/tinted glass: Line 251 absorption Density 0.12 \u2192 ~0.02\u20130.05; Line 250 absorption Color (0.55, 0.95, 0.66, 1.0) \u2192 more neutral/slightly green (e.g., ~0.85,0.95,0.9) to keep glass clear.",
+    "Reduce \u201cprocedural pattern\u201d dominance on glass: Line 220 wave Distortion 2.0 \u2192 ~0.5\u20131.0; Line 221 bump Strength 0.08 \u2192 ~0.02\u20130.05 (helps avoid plasticky/over-bumpy glass).",
+    "If emission is being used to \u2018show\u2019 glass, keep it subtle: Line 267 emission Strength \u2192 very low (or off) and rely on proper specular/rim lighting instead; emissive glass will look fake quickly.",
+    "Push gritty warehouse look (outside current params): rusted steel frame (roughness variation + corrosion), stained concrete, grime streaks, chipped paint, dusty props; add deeper interior set dressing visible through the window."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 351.6153765829986,
+  "utility_score": 0.38,
+  "timestamp": "2026-03-10T00:39:20.240630"
+}

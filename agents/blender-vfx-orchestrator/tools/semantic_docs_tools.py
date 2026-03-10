@@ -262,7 +262,7 @@ def _search_vector_store(
                         continue
 
                 all_results.append({
-                    'content': content[:2000],  # Limit content size
+                    'content': content[:800],  # Trimmed: was 2000, now 800 to reduce context bloat
                     'score': result.score or 0,
                     'file_id': result.file_id or '',
                     'filename': result.filename or 'unknown',
@@ -331,7 +331,7 @@ def _file_search_vector_store(
             doc_path = _extract_doc_path(content)
             doc_type = _extract_doc_type(content)
             results.append({
-                "content": content[:2000],
+                "content": content[:800],  # Trimmed: was 2000
                 "score": getattr(result, "score", 0) or 0,
                 "file_id": getattr(result, "file_id", "") or "",
                 "filename": getattr(result, "filename", "unknown") or "unknown",
@@ -493,7 +493,7 @@ def semantic_search_blender_docs(
         "results_found": len(results),
         "results": [
             {
-                "content": r['content'],
+                "content": _trim_doc_content(r['content'], max_chars=500),
                 "score": r['score'],
                 "source": r['filename'],
                 "doc_path": _normalize_doc_ref(r.get('doc_path')) if _is_valid_doc_ref(r.get('doc_path')) else "",
@@ -501,10 +501,66 @@ def semantic_search_blender_docs(
             }
             for r in results
         ],
-        "code_snippets": code_snippets[:5],  # Limit to 5 snippets
-        "related_apis": list(related_apis)[:20],  # Limit to 20 APIs
-        "doc_refs": doc_refs[:10],  # Stable document paths for citations
+        "code_snippets": code_snippets[:3],
+        "related_apis": list(related_apis)[:15],
+        "doc_refs": doc_refs[:10],
     })
+
+
+def _trim_doc_content(content: str, max_chars: int = 500) -> str:
+    """Trim doc content to essential information, preserving code and API refs.
+
+    Prioritizes:
+    1. Lines containing bpy.* references
+    2. Code blocks (```...```)
+    3. Header lines (## ...)
+    4. First N chars of remaining text
+    """
+    if len(content) <= max_chars:
+        return content
+
+    lines = content.split('\n')
+    priority_lines = []
+    other_lines = []
+    in_code_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip metadata headers (DocType:, DocPath:, etc.)
+        if stripped.startswith(('DocType:', 'DocPath:', 'DocVersion:', 'ChunkId:')):
+            continue
+        # Track code blocks — keep everything inside them
+        if stripped.startswith('```'):
+            in_code_block = not in_code_block
+            priority_lines.append(line)
+            continue
+        if in_code_block:
+            priority_lines.append(line)
+            continue
+        # High priority: API refs, headers
+        if 'bpy.' in stripped or stripped.startswith(('## ', '# ', '- `')):
+            priority_lines.append(line)
+        else:
+            other_lines.append(line)
+
+    # Build trimmed output: priority lines first, then fill with others
+    result_parts = []
+    chars_used = 0
+    for line in priority_lines:
+        if chars_used + len(line) + 1 > max_chars:
+            break
+        result_parts.append(line)
+        chars_used += len(line) + 1
+
+    for line in other_lines:
+        if chars_used + len(line) + 1 > max_chars:
+            break
+        result_parts.append(line)
+        chars_used += len(line) + 1
+
+    return '\n'.join(result_parts)
 
 
 def _blender_doc_search_bundle_impl(
@@ -556,22 +612,58 @@ def _blender_doc_search_bundle_impl(
     manual_queries.append(f"physics simulation types Blender")
 
     # --- API QUERIES: attribute names, function signatures, parameters ---
-    api_queries.extend([
-        "bpy.types.FluidDomainSettings",
-        "bpy.types.FluidFlowSettings",
-        "bpy.ops.fluid.bake",
-    ])
-    if domain:
-        api_queries.append(f"{domain} bpy.types.FluidDomainSettings")
+    # Domain-aware API queries — only include Mantaflow queries when relevant
+    _domain_lower = (domain or "").lower()
+    _mantaflow_domains = {"mantaflow", "mantaflow_gas", "mantaflow_liquid",
+                          "fluid", "smoke", "fire", "gas", "liquid"}
+    _rigid_body_domains = {"rigid_body", "rigidbody", "rigid", "fracture",
+                           "cell_fracture", "prefracture", "shatter",
+                           "destruction", "debris"}
+    _particle_domains = {"particles", "particle", "hair", "emitter"}
+
+    if _domain_lower in _mantaflow_domains or (
+        not domain and effect_type and effect_type.lower() in {"smoke", "fire", "pyro"}
+    ):
+        # Mantaflow-specific queries
+        api_queries.extend([
+            "bpy.types.FluidDomainSettings",
+            "bpy.types.FluidFlowSettings",
+            "bpy.ops.fluid.bake",
+        ])
+        if effect_type and effect_type.lower() in {"smoke", "fire", "explosion", "pyro"}:
+            api_queries.extend([
+                "bpy.types.FluidDomainSettings.resolution_max",
+                "bpy.types.FluidFlowSettings.flow_behavior",
+                "bpy.ops.fluid.bake_data",
+            ])
+    elif any(kw in _domain_lower for kw in _rigid_body_domains):
+        # Rigid body queries
+        api_queries.extend([
+            "bpy.types.RigidBodyObject",
+            "bpy.types.RigidBodyWorld",
+            "bpy.types.RigidBodyConstraint",
+            "bpy.ops.rigidbody.object_add",
+        ])
+    elif any(kw in _domain_lower for kw in _particle_domains):
+        # Particle system queries
+        api_queries.extend([
+            "bpy.types.ParticleSettings",
+            "bpy.types.ParticleSystem",
+            "bpy.ops.particle",
+        ])
+    else:
+        # Generic — search based on description/effect
+        if effect_type:
+            api_queries.append(f"bpy.types {effect_type} physics")
+        if domain:
+            api_queries.append(f"bpy.types {domain}")
+
     if intent:
         api_queries.append(f"{intent} bpy.types")
-    if effect_type and effect_type.lower() in {"smoke", "fire", "explosion", "pyro"}:
-        api_queries.extend([
-            "bpy.types.FluidDomainSettings.resolution_max",
-            "bpy.types.FluidFlowSettings.flow_behavior",
-            "bpy.ops.fluid.bake_data",
-            "bpy.ops.fluid.bake_noise",
-        ])
+
+    # Reduce default quota — fewer results = less context bloat
+    # Each result is ~500 chars trimmed = 8 results * 500 = ~4KB max
+    max_results = min(max_results, 8)
 
     # De-duplicate while preserving order
     def _dedupe_queries(items: list[str]) -> list[str]:
@@ -641,9 +733,9 @@ def _blender_doc_search_bundle_impl(
     if not results:
         warnings.append("No doc results from bundled queries. Check vector store ID or coverage.")
         fallback_queries = [
-            "bpy.types.FluidDomainSettings",
-            "bpy.ops.fluid.bake",
-            "Blender 5.0 manual fluid simulation",
+            f"Blender 5.0 {effect_type or 'physics'} simulation",
+            f"bpy.types {domain or 'physics'}",
+            "Blender 5.0 manual physics simulation",
         ]
         for q in fallback_queries:
             batch = _search_vector_store(q, max_results=max_results)
@@ -711,32 +803,33 @@ def _blender_doc_search_bundle_impl(
     if not api_doc_refs:
         warnings.append("No API doc_refs found (expected bpy.types.* or bpy.ops.* references).")
 
+    # Trim each result's content to reduce context bloat.
+    # Before: ~25KB output. Target: ~4KB max.
+    trimmed_results = []
+    for r in results[:max_results]:
+        raw_content = r.get("content", "")
+        trimmed_results.append({
+            "content": _trim_doc_content(raw_content, max_chars=500),
+            "score": r.get("score", 0),
+            "source": r.get("filename", "unknown"),
+            "doc_path": _normalize_doc_ref(r.get("doc_path")) or next(
+                (p for p in extracted_doc_paths if p in raw_content),
+                ""
+            ),
+            "query": r.get("query", ""),
+        })
+
     return json.dumps({
         "effect_type": effect_type,
         "queries_used": queries_used,
         "results_found": len(results),
-        "results": [
-            {
-                "content": r.get("content", ""),
-                "score": r.get("score", 0),
-                "source": r.get("filename", "unknown"),
-                "doc_path": _normalize_doc_ref(r.get("doc_path")) or next(
-                    (p for p in extracted_doc_paths if p in (r.get("content", "") or "")),
-                    ""
-                ),
-                "query": r.get("query", ""),
-            }
-            for r in results[:max_results]
-        ],
-        "code_snippets": code_snippets[:5],
-        "related_apis": list(related_apis)[:20],
+        "results": trimmed_results,
+        "code_snippets": code_snippets[:3],  # Was 5, trimmed to 3
+        "related_apis": list(related_apis)[:15],  # Was 20, trimmed to 15
         "doc_refs": doc_refs[:10],
         "warnings": warnings,
         "diagnostics": {
             "openai_available": True,
-            "manual_store_id": MANUAL_STORE_ID,
-            "rewritten_manual_store_id": REWRITTEN_MANUAL_STORE_ID or None,
-            "api_store_id": API_STORE_ID,
             "queries_attempted": len(queries_used),
         },
     })

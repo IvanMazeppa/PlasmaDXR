@@ -3,7 +3,7 @@
 Glass shatter E2E test — rigid body + cell fracture physics.
 
 Tests a completely different physics pipeline from the wine pour (Mantaflow liquid).
-Uses codex_upgrade preset with gpt-5.3-codex for code-critical agents.
+Uses codex_upgrade preset with gpt-5.4 for code-critical agents.
 """
 
 import asyncio
@@ -52,57 +52,47 @@ for agent_name in [
     "learning_agent", "docs_expert", "executor",
 ]:
     settings = config.get_agent_settings(agent_name)
-    codex_marker = " <<< gpt-5.3-codex" if "codex" in settings.model else ""
-    print(f"  {agent_name:30s} model={settings.model:16s} reasoning={settings.reasoning_effort}{codex_marker}")
+    rollout_marker = " <<< gpt-5.4" if settings.model == "gpt-5.4" else ""
+    print(f"  {agent_name:30s} model={settings.model:16s} reasoning={settings.reasoning_effort}{rollout_marker}")
 print("=" * 70)
 print()
 
 
 GLASS_SHATTER_DESCRIPTION = """SCENE DESCRIPTION:
-Inside a derelict industrial warehouse at night. A large single-pane glass window (~2m wide, ~1.5m tall) is mounted in a rusted steel frame set into an aged concrete wall. A heavy red clay brick (~21cm x 10cm x 6.5cm, ~2.5kg) flies in from the left side of frame at high speed and strikes the center of the window. The glass explodes outward in a spectacular radial fracture pattern — hundreds of razor-sharp shards erupt from the impact point, catching light as they tumble and spin through the air. The brick continues through the window trailing a cone of glass fragments. Smaller secondary fractures propagate in jagged veins across any glass still attached to the frame, before those sections also collapse and fall.
+Inside a derelict industrial warehouse at night. A large single-pane glass window (~2m wide, ~1.5m tall) is mounted in a rusted steel frame set into an aged concrete wall. A heavy red clay brick flies in from the left side of frame at high speed and strikes the center of the window. The glass explodes outward — shards erupt from the impact point, catching light as they tumble and spin through the air. The brick continues through the window trailing glass fragments. Remaining glass attached to the frame cracks and collapses.
 
 MOOD AND LOOK:
-Gritty, cinematic industrial atmosphere — like a scene from a heist or action film. Cold blue-white moonlight streams through the warehouse skylights above, creating hard directional shadows. A single sodium-vapor security light (warm orange, mounted high on the left wall) provides harsh rim lighting that makes the glass fragments glow brilliantly as they scatter. The moment of impact should feel violent and percussive. Dust motes and fine glass powder hang in the light beams after the main shatter.
+Gritty, cinematic industrial atmosphere. Cold blue-white moonlight streams through warehouse skylights above, creating hard directional shadows. A single sodium-vapor security light (warm orange, mounted high on the left wall) provides harsh rim lighting that makes the glass fragments glow as they scatter. The moment of impact should feel violent and percussive.
 
 CAMERA:
-Medium-wide shot from inside the warehouse, facing the window. Camera is ~4m back from the window, at chest height (1.3m), slightly angled to catch the security light's rim lighting on the glass spray. Static camera. 50mm lens equivalent — slight telephoto compression to stack the glass fragments visually. Deep focus (everything sharp).
+Medium-wide shot from inside the warehouse, facing the window. Camera is ~4m back from the window, at chest height (1.3m), angled to catch rim lighting on the glass spray. Static camera. 50mm lens equivalent. Deep focus.
 
 PHYSICAL DETAILS:
-- Window glass: Standard float glass, 6mm thick, clear with subtle green tint at edges
-- Glass surface: Slight grime/dust layer reducing transparency by ~10%
+- Window glass: Float glass, 6mm thick, clear with subtle green tint at edges
 - Steel frame: I-beam profile, ~8cm wide, rust-brown with peeling gray paint
-- Concrete wall: Aged industrial, gray with moisture staining, ~30cm thick
-- Brick: Standard UK engineering brick, frogged, deep red-brown clay, slightly chipped edges
-- Warehouse floor: Poured concrete with hairline cracks, oil stains, scattered debris
-- Glass shard sizes: Range from large plates (~30cm) near edges to fine powder at impact point
-- Glass behavior: Tempered-style radial fracture from impact, secondary collapse of remaining panes
+- Concrete wall: Aged industrial, gray with moisture staining
+- Brick: Red clay engineering brick, ~2.5kg
+- Warehouse floor: Poured concrete with oil stains
+- Glass shards should look like real broken glass — irregular, sharp, varied sizes
 
 MOTION/TIMING DETAILS:
-The brick enters frame at ~15 m/s from screen-left. Frame 1: brick is just entering frame. Frame 5: moment of impact — glass begins fracturing. Frames 5-15: main shattering event, glass fragments spraying outward in an expanding cone. Frame 15-30: secondary collapse of remaining glass sections, fragments bouncing off the floor. Frame 40: settling — most fragments have landed, fine glass dust still floating. Render frame 12 for peak shattering action with maximum fragment spread.
+Brick enters frame at ~15 m/s from screen-left. Impact around frame 5. Frames 5-15: main shattering event. Frames 15-30: secondary collapse, fragments bouncing. Frame 40+: settling. Render frame 12 for peak action.
 
 HARD CONSTRAINTS:
-- Physics simulation: Blender Rigid Body + Cell Fracture
-- Glass object: Use Cell Fracture addon (or manual Voronoi fracture via geometry) to pre-fracture the window into 200-400 fragments
-- Fracture source: Impact point with radial pattern, denser fragmentation near center
-- Rigid body: All glass fragments as Active rigid bodies, brick as Active, frame/wall as Passive
-- Glass material: Principled BSDF with Transmission Weight=1.0, IOR=1.52, Roughness=0.02, green tint via volume absorption
-- Brick: Active rigid body, mass=2.5kg, initial velocity=(15, 0, 0) or aimed at window center
-- Collision shape: Mesh (not convex hull) for glass fragments to get sharp-edge collisions
-- Fragment mass: Proportional to shard volume, total glass mass ~45kg for 6mm x 2m x 1.5m
+- Physics simulation: Blender Rigid Body
 - Bake frames: 1-60
 - Renderer: Cycles GPU
 - Samples: 256 max
-- Render frame: 12 (peak shatter with maximum fragment spread)
-- cache_type: ALL
+- Render frame: 12
 - Reference: None
 
-Research documentation, patterns, and APIs to find the optimal starting approach for rigid body cell fracture simulation."""
+Research documentation, patterns, and APIs to find the best approach for realistic glass shattering simulation."""
 
 
 async def main():
     print("=" * 70)
-    print("GLASS SHATTER CODEX TEST — Rigid Body + Cell Fracture")
-    print("1 iteration, codex_upgrade preset, tracing enabled")
+    print("GLASS SHATTER GPT-5.4 TEST — Rigid Body + Cell Fracture")
+    print("2 iterations, codex_upgrade preset, tracing enabled")
     print(f"Trace log: {log_file}")
     print("=" * 70)
     print()
@@ -110,13 +100,13 @@ async def main():
     request = AssetRequest(
         asset_name="glass_shatter_codex",
         description=GLASS_SHATTER_DESCRIPTION,
-        effect_type=EffectType.EXPLOSION,  # Closest match: shattering/debris
+        effect_type=EffectType.SHATTER,  # Correct type for glass shattering/destruction
         resolution=96,
         frame_start=1,
         frame_end=60,
         quality_threshold=60.0,
-        max_iterations=1,
-        semantic_query="rigid body cell fracture glass shatter window break fragments collision Voronoi",
+        max_iterations=2,
+        semantic_query="rigid body glass shatter break fragments realistic destruction simulation",
     )
 
     orchestrator = BlenderVFXOrchestrator()
@@ -133,7 +123,7 @@ async def main():
             result = await orchestrator.create_asset_pipeline(request)
 
         print("\n" + "=" * 70)
-        print("GLASS SHATTER CODEX TEST COMPLETE")
+        print("GLASS SHATTER GPT-5.4 TEST COMPLETE")
         print("=" * 70)
         print(f"Status: {result.status.value}")
         print(f"Best Score: {result.best_score:.1f}")

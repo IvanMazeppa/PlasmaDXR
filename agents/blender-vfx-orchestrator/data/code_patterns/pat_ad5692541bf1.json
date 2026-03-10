@@ -1,0 +1,50 @@
+{
+  "pattern_id": "pat_ad5692541bf1",
+  "name": "cell_fracture_complete_glass_shatter",
+  "issue_category": "glass_shatter_uses_manual_mesh_cutting_or_basic_pr",
+  "code_snippet": "# COMPLETE Cell Fracture glass shatter workflow \u2014 RECOMMENDED approach\n# Step 1: Enable Cell Fracture addon (required in headless mode)\nimport addon_utils\naddon_utils.enable('object_cell_fracture', default_set=True, persistent=True)\n\n# Step 2: Create glass pane geometry\nbpy.ops.mesh.primitive_plane_add(size=2.0, location=(0, 0, 1.5))\nglass = bpy.context.active_object\nglass.name = \"GlassPane\"\nglass.scale = (1.0, 0.003, 0.75)  # Thin pane shape\nbpy.ops.object.transform_apply(scale=True)\n\n# Step 3: Run Cell Fracture to create shards\nbpy.context.view_layer.objects.active = glass\nglass.select_set(True)\nbpy.ops.object.add_fracture_cell_objects(\n    source={'PARTICLE_OWN'},\n    source_limit=60,         # 40-80 shards for hero glass\n    source_noise=0.05,       # Slight randomness\n    cell_scale=(1, 1, 1),\n    margin=0.0005,           # Tiny gap between shards\n    use_smooth_faces=False,  # Sharp fracture edges for glass\n    use_data_match=True,     # Copy materials from original\n    use_island_split=True,\n    use_interior_vgroup=True,  # Marks interior faces\n)\n\n# Step 4: Collect shard objects and add rigid body physics\nshards = [o for o in bpy.data.objects if o.name.startswith(\"GlassPane_cell\")]\nfor shard in shards:\n    bpy.context.view_layer.objects.active = shard\n    shard.select_set(True)\n    bpy.ops.rigidbody.object_add(type='ACTIVE')\n    shard.rigid_body.mass = 0.05 + random.uniform(0, 0.15)\n    shard.rigid_body.collision_shape = 'CONVEX_HULL'\n    shard.rigid_body.friction = 0.4\n    shard.rigid_body.restitution = 0.3\n    shard.rigid_body.linear_damping = 0.04\n    shard.rigid_body.angular_damping = 0.1\n    shard.select_set(False)\n\n# Step 5: Add FIXED constraints between adjacent shards (for impact-driven breaking)\nimpact_point = Vector((0, 0, 1.5))\nfor i, (a, b) in enumerate(adjacent_shard_pairs):\n    midpoint = (a.location + b.location) / 2\n    bpy.ops.object.empty_add(type='PLAIN_AXES', location=midpoint)\n    empty = bpy.context.active_object\n    empty.name = f\"RBC_{i:03d}\"\n    bpy.ops.rigidbody.constraint_add()\n    rbc = empty.rigid_body_constraint\n    rbc.type = 'FIXED'\n    rbc.object1 = a\n    rbc.object2 = b\n    rbc.use_breaking = True\n    dist = (midpoint - impact_point).length\n    rbc.breaking_threshold = 8.0 + dist * 35.0  # Weaker near impact",
+  "effect_types": [
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
+  ],
+  "context_before": "Manual mesh cutting produces unrealistic fracture patterns; prefractured rigid body looks fake",
+  "context_after": "Cell Fracture addon creates realistic Voronoi shards, FIXED constraints with distance-based breaking threshold give impact-driven radial crack propagation",
+  "parameters_affected": [
+    "linear_damping",
+    "breaking_threshold",
+    "object1",
+    "use_breaking",
+    "mass",
+    "restitution",
+    "angular_damping",
+    "object2",
+    "active",
+    "friction",
+    "collision_shape"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.object.add_fracture_cell_objects",
+    "bpy.ops.mesh.primitive_plane_add",
+    "bpy.context.view_layer",
+    "bpy.ops.object.empty_add",
+    "bpy.ops.object.transform_apply",
+    "bpy.context.active_object",
+    "bpy.data.objects",
+    "bpy.ops.rigidbody.object_add"
+  ],
+  "average_improvement": 55.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_destruction_v2"
+  ],
+  "created_at": "2026-03-10T00:52:57.667127",
+  "updated_at": "2026-03-10T00:52:57.667828",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

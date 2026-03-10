@@ -1,0 +1,65 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex.py",
+  "technique_used": "constraint_based_rigid_body",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260310_001640/cache",
+  "score": 30.0,
+  "passed": false,
+  "primary_issue": "The shatter event is not readable or energetic: the glass does not convincingly \u201cexplode outward,\u201d shards are barely visible, and the brick/impact moment is unclear.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex",
+    "bake_frames": [
+      1,
+      60
+    ],
+    "render_frame": 12,
+    "renderer": "Cycles GPU",
+    "samples": 256,
+    "fracture_method": "impact-centered Voronoi pre-fracture",
+    "num_points": 40,
+    "seed": 42,
+    "glass_thickness": 0.006,
+    "rigid_body_world": {
+      "substeps_per_frame": 10,
+      "solver_iterations": 20
+    },
+    "shard_rigid_body": {
+      "type": "ACTIVE",
+      "collision_shape": "CONVEX_HULL",
+      "mass_range": "0.05-0.20 random",
+      "friction": 0.4,
+      "restitution": 0.25,
+      "linear_damping": 0.04,
+      "angular_damping": 0.1,
+      "collision_margin": 0.001
+    },
+    "constraint_network": {
+      "type": "FIXED",
+      "use_breaking": true,
+      "breaking_threshold_formula": "8.0 + distance_to_impact * 35.0"
+    },
+    "projectile_brick": {
+      "mass": 2.5,
+      "collision_shape": "BOX",
+      "kinematic_to_active_frame": 5,
+      "approach_speed_target_mps": 15.0
+    },
+    "secondary_debris": {
+      "enabled": true,
+      "count": 200,
+      "frame_start": 5,
+      "frame_end": 8,
+      "lifetime": 40,
+      "physics_type": "NEWTON",
+      "mass": 0.005,
+      "normal_factor": 8.0,
+      "tangent_factor": 2.0,
+      "damping": 0.3,
+      "particle_size": 0.003,
+      "render_type": "OBJECT"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-10T00:33:55.500480"
+}

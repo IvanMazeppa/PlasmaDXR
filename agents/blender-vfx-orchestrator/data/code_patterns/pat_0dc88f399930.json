@@ -1,0 +1,48 @@
+{
+  "pattern_id": "pat_0dc88f399930",
+  "name": "particle_debris_glass_chips",
+  "issue_category": "glass_destruction_looks_too_clean__missing_small_f",
+  "code_snippet": "# Add particle debris for secondary glass chips at impact\nbpy.ops.mesh.primitive_plane_add(size=0.3, location=impact_point)\nemitter = bpy.context.active_object\nemitter.name = \"DebrisEmitter\"\nemitter.hide_render = True\n\nps_mod = emitter.modifiers.new(\"Debris\", type='PARTICLE_SYSTEM')\nsettings = ps_mod.particle_system.settings\nsettings.count = 200\nsettings.frame_start = impact_frame\nsettings.frame_end = impact_frame + 3\nsettings.lifetime = 40\nsettings.physics_type = 'NEWTON'\nsettings.mass = 0.005\nsettings.normal_factor = 8.0    # Explode outward\nsettings.factor_random = 3.0\nsettings.tangent_factor = 2.0\nsettings.damping = 0.3\nsettings.particle_size = 0.003\nsettings.size_random = 0.5\nsettings.render_type = 'OBJECT'\nsettings.instance_object = chip_mesh_obj",
+  "effect_types": [
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
+  ],
+  "context_before": "Glass break only shows large shards \u2014 missing secondary debris that makes destruction look real",
+  "context_after": "200 particle chips emitted at impact frame with Newton physics adds convincing secondary debris",
+  "parameters_affected": [
+    "damping",
+    "render_type",
+    "normal_factor",
+    "hide_render",
+    "tangent_factor",
+    "count",
+    "lifetime",
+    "frame_start",
+    "mass",
+    "factor_random",
+    "frame_end",
+    "physics_type",
+    "instance_object",
+    "size_random",
+    "particle_size"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.mesh.primitive_plane_add"
+  ],
+  "average_improvement": 20.0,
+  "usage_count": 2,
+  "success_count": 2,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_destruction_v1",
+    "seed_destruction_v1"
+  ],
+  "created_at": "2026-03-09T22:08:47.477595",
+  "updated_at": "2026-03-10T00:52:57.665444",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

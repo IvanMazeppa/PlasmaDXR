@@ -5,7 +5,7 @@ Verifies that:
 - codex_upgrade preset exists in YAML
 - preset-specific overrides can supersede global agent_overrides
 - non-rollout presets keep existing model assignments
-- codex models use text verbosity path (no temperature)
+- GPT-5.4 rollout settings apply the expected temperature gating
 """
 
 import os
@@ -20,7 +20,7 @@ from config.agent_config import AgentConfigManager, AgentSettings
 
 
 class TestCodexRolloutPreset(unittest.TestCase):
-    """Validate safe codex rollout behavior in config system."""
+    """Validate safe rollout behavior for the historical codex_upgrade preset."""
 
     @classmethod
     def setUpClass(cls):
@@ -32,10 +32,10 @@ class TestCodexRolloutPreset(unittest.TestCase):
         self.assertIn("codex_upgrade", data.get("presets", {}))
 
     def test_codex_upgrade_overrides_script_writer_model(self):
-        """Preset-specific overrides should move script_writer to gpt-5.3-codex."""
+        """Preset-specific overrides should move script_writer to gpt-5.4."""
         mgr = AgentConfigManager.load_preset("codex_upgrade", self.config_path)
         settings = mgr.get_agent_settings("script_writer")
-        self.assertEqual(settings.model, "gpt-5.3-codex")
+        self.assertEqual(settings.model, "gpt-5.4")
         self.assertEqual(settings.reasoning_effort, "high")
 
     def test_codex_upgrade_keeps_non_target_agent_on_global_default(self):
@@ -50,18 +50,28 @@ class TestCodexRolloutPreset(unittest.TestCase):
         settings = mgr.get_agent_settings("script_writer")
         self.assertEqual(settings.model, "gpt-5.2")
 
-    def test_codex_model_settings_exclude_temperature(self):
-        """Codex models should map to reasoning + text verbosity without temperature."""
+    def test_rollout_model_settings_exclude_temperature_when_reasoning_enabled(self):
+        """High-reasoning GPT-5.4 settings should ignore temperature."""
         settings = AgentSettings(
-            model="gpt-5.3-codex",
+            model="gpt-5.4",
             reasoning_effort="high",
-            temperature=0.7,  # Should be ignored for codex models
+            temperature=0.7,  # Should be ignored when reasoning is enabled
             verbosity="medium",
         )
         model_settings = settings.to_model_settings()
         self.assertNotIn("temperature", model_settings)
         self.assertEqual(model_settings.get("reasoning", {}).get("effort"), "high")
         self.assertEqual(model_settings.get("text", {}).get("verbosity"), "medium")
+
+    def test_gpt_5_4_supports_temperature_when_reasoning_disabled(self):
+        """GPT-5.4 should allow temperature when reasoning_effort is none."""
+        settings = AgentSettings(
+            model="gpt-5.4",
+            reasoning_effort="none",
+            temperature=0.2,
+        )
+        model_settings = settings.to_model_settings()
+        self.assertEqual(model_settings.get("temperature"), 0.2)
 
 
 if __name__ == "__main__":

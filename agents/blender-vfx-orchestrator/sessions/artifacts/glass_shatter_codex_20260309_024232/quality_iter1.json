@@ -1,0 +1,29 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "It does not read as an explosion: there\u2019s no bright emissive fireball/core, no substantial volumetric smoke/dust plume, and no strong blast lighting affecting the environment\u2014what\u2019s visible reads more like static glass shatter/debris in a dark scene.",
+  "issues": [
+    "Wrong effect read (looks like glass shatter/static debris rather than an explosion).",
+    "No intense emissive core/fireball; highlights are mainly specular shard glints, not explosion luminosity.",
+    "Little/no volumetric smoke/dust and no layered turbulent billows typical of explosions.",
+    "Scene lighting is inconsistent with an explosion flash: nearby surfaces aren\u2019t illuminated by a strong, short-duration light source.",
+    "No motion cues (no streaking/motion blur/velocity impression); feels like a still-life rather than an energetic event.",
+    "Shard material response looks overly metallic/overly uniform in reflectivity; highlights feel artifact-y rather than glass-like.",
+    "Composition: effect is small within a lot of negative space, reducing perceived scale and impact.",
+    "Debris variety is limited (insufficient fine particulates/embers and fragment size range)."
+  ],
+  "suggestions": [
+    "If the goal is truly an explosion (not shatter): add/drive a high-intensity emissive core (blackbody/temperature ramp) and enable bloom/glare so the blast is clearly the brightest element in-frame.",
+    "Add dense volumetric smoke/dust with multi-scale turbulence and density variation; you need a thick, expanding plume to sell energy/scale.",
+    "Add debris/particulates: a mix of fine dust spray + mid fragments + a few large chunks, with outward radial directionality. If this is an animation, enable motion blur for fast fragments.",
+    "Make the blast light the set: strong warm light bounce on nearby walls/beams/pole with realistic falloff; expose so the core can clip slightly while still revealing smoke structure.",
+    "Camera/compositing: tighten framing or crop in; add subtle camera shake (if animated) to increase impact.",
+    "Shader/material fixes (your listed params) to make shards read less \u201cmetal\u201d and more \u201cglass\u201d:\n- Line 126: bsdf Metallic 0.75 \u2192 ~0.0\u20130.1 (metallic glass looks wrong).\n- Line 133: noise Roughness 0.7 \u2192 ~0.35\u20130.55 to reduce overly harsh/dirty breakup.\n- Line 98\u2013100: moisture Scale/Detail/Roughness are fairly strong; consider lowering Scale (1.35 \u2192 ~0.6\u20131.0) and/or Roughness (0.5 \u2192 ~0.2\u20130.35) if it\u2019s making the surface look muddy rather than clean fractured glass.\n- Line 137: voronoi Scale 16 \u2192 adjust based on desired fracture frequency (increase to ~30\u201360 for finer cracks; decrease to ~8\u201312 for larger shards), and introduce more variation if possible.",
+    "If the intent is *glass shatter* (not explosion): rename/re-scope the target effect, light the shards with a motivated key/rim, add smaller splinters + dust, and consider adding subtle volumetric dust only (no fireball) for realism."
+  ],
+  "vision_assessment": "The render shows a dark, moody architectural scene with a broken-window area and a cluster of reflective fragments. The overall image is clean and readable, with a cool environment and a small warm light source on the right. However, as an \u201cexplosion,\u201d it fails: there is no bright emissive blast core, no strong warm color temperature progression, and no convincing volumetric smoke/dust cloud expanding from the origin. The surrounding environment isn\u2019t lit by an explosion flash, so the event doesn\u2019t feel energetic or physically motivated. The fragment cluster appears largely static with crisp edges and limited debris size variety, which further reads as a still glass-shatter moment rather than a high-energy detonation. Compositionally, the effect occupies a small portion of the frame, so scale and impact are diminished.",
+  "reference_similarity": 0.28,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "iteration": 1,
+  "timestamp": "2026-03-09T02:55:30.333632"
+}

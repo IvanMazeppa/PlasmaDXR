@@ -1,0 +1,15 @@
+{
+  "iteration": 1,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'; Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'; Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_api_fixed.py.\nError: Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'; Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'; Add-on not loaded: \"object_fracture_cell\", cause: No module named 'object_fracture_cell'\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_api_fixed.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "timestamp": "2026-03-10T01:08:03.306857"
+}

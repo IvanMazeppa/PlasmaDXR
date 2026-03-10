@@ -118,6 +118,8 @@ TECHNIQUE_TYPES: Dict[str, List[str]] = {
     "rigid_body": [
         "RigidBodyWorld", "RigidBodyObject", "RigidBodyConstraint",
         "Object", "Camera", "PointLight", "SpotLight", "SunLight", "AreaLight",
+        "ShaderNodeBsdfPrincipled", "ShaderNodeMix", "ShaderNodeOutputMaterial",
+        "ShaderNodeVolumePrincipled",
         "CyclesRenderSettings", "RenderSettings", "Scene",
     ],
     "particle_system": [
@@ -144,6 +146,10 @@ TECHNIQUE_ALIASES: Dict[str, str] = {
     "mantaflow_splash": "mantaflow_liquid",
     "rigid_body_fracture": "rigid_body",
     "rigid_body_destruction": "rigid_body",
+    "cell_fracture_rigid_body": "rigid_body",
+    "cell_fracture_rigid_body_mesh": "rigid_body",
+    "cell_fracture": "rigid_body",
+    "voronoi_fracture": "rigid_body",
 }
 
 
@@ -262,6 +268,49 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
     r"cache_mesh_format\s*=\s*['\"](?:UNI|OPENVDB)['\"]": (
         "cache_mesh_format='UNI'/'OPENVDB' fails for GAS domains (only 'BOBJECT'/'OBJECT'). Remove line.", None
     ),
+    # Blender 5.0: RigidBodyObject has NO linear_velocity or angular_velocity.
+    # Initial velocity must be achieved via keyframed displacement while kinematic.
+    r'\.linear_velocity\s*=': (
+        "RigidBodyObject.linear_velocity does NOT exist in Blender 5.0. "
+        "Use keyframed displacement while kinematic for initial velocity.", None
+    ),
+    r'\.angular_velocity\s*=': (
+        "RigidBodyObject.angular_velocity does NOT exist in Blender 5.0. "
+        "Use keyframed rotation while kinematic for initial angular velocity.", None
+    ),
+    # Blender 5.0: RigidBodyWorld.steps_per_second does NOT exist.
+    # Correct attribute is 'substeps_per_frame' (on RigidBodyWorld).
+    r'\.steps_per_second\b': (
+        "RigidBodyWorld.steps_per_second does NOT exist in Blender 5.0. "
+        "Use 'substeps_per_frame' instead.", "substeps_per_frame"
+    ),
+    # Blender 5.0: ShaderNodeTexBrick uses 'Color1'/'Color2' (no space), not 'Color 1'/'Color 2'
+    r"""\[['"]Color 1['"]\]""": (
+        "ShaderNodeTexBrick uses 'Color1' (no space) in Blender 5.0", None
+    ),
+    r"""\[['"]Color 2['"]\]""": (
+        "ShaderNodeTexBrick uses 'Color2' (no space) in Blender 5.0", None
+    ),
+    # Cell Fracture addon: wrong module name object_fracture_cell → object_cell_fracture
+    r"object_fracture_cell": (
+        "Wrong Cell Fracture module name. Use 'object_cell_fracture' not 'object_fracture_cell'.",
+        "object_cell_fracture"
+    ),
+    # Blender 5.0 extensions: bpy.ops.preferences.addon_enable is unreliable for extensions
+    # Use addon_utils.enable() instead
+    r'bpy\.ops\.preferences\.addon_enable\s*\(\s*module\s*=': (
+        "Use addon_utils.enable() not bpy.ops.preferences.addon_enable() for Blender 5.0 extensions.",
+        None
+    ),
+    # Blender 5.0: Action.fcurves was removed in the layered action system.
+    # FCurves are now on ActionChannelbag, not directly on Action.
+    # .action.fcurves → .action.layers[0].strips[0].channelbag(slot).fcurves
+    # or iterate via anim_data.action.slots / .layers
+    r'\.action\.fcurves\b': (
+        "Action.fcurves does NOT exist in Blender 5.0 (layered action system). "
+        "Remove or rewrite using Action.layers[0].strips[0].channelbag(slot).fcurves.",
+        None
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -276,6 +325,11 @@ HARDCODED_FIXES: Dict[str, str] = {
     "ShaderNodeSeparateRGB": "ShaderNodeSeparateColor",
     "BLENDER_EEVEE_NEXT": "BLENDER_EEVEE",
     "forcefield_add": "effector_add",
+    "steps_per_second": "substeps_per_frame",
+    "Color 1": "Color1",
+    "Color 2": "Color2",
+    # Cell Fracture addon: module name is object_cell_fracture, NOT object_fracture_cell
+    "object_fracture_cell": "object_cell_fracture",
 }
 
 
@@ -394,7 +448,8 @@ def _load_cached_truth_pack(technique: str) -> Optional[Dict[str, Any]]:
 
     # Find cache file matching technique
     # Include blender version in cache key for safety
-    cache_files = list(TRUTH_PACK_CACHE_DIR.glob(f"*_{technique}.json"))
+    safe_technique = re.sub(r'[^\w\-]', '_', technique)[:80]
+    cache_files = list(TRUTH_PACK_CACHE_DIR.glob(f"*_{safe_technique}.json"))
     if not cache_files:
         return None
 
@@ -425,7 +480,9 @@ def _cache_truth_pack(technique: str, truth_pack: Dict[str, Any]) -> None:
             blender_version = f"{v[0]}_{v[1]}_{v[2]}" if isinstance(v, list) else str(v)
             break
 
-    cache_file = TRUTH_PACK_CACHE_DIR / f"{blender_version}_{technique}.json"
+    # Sanitize technique name for filesystem (remove parens, slashes, etc.)
+    safe_technique = re.sub(r'[^\w\-]', '_', technique)[:80]
+    cache_file = TRUTH_PACK_CACHE_DIR / f"{blender_version}_{safe_technique}.json"
     cache_file.write_text(json.dumps(truth_pack, indent=2))
     print(f"[TruthPack] Cached to: {cache_file}", file=sys.stderr)
 
@@ -504,9 +561,12 @@ def validate_script_against_truth_pack(
                         suggestion=suggestion,
                     ))
 
-    # Check for known hallucination patterns
+    # Check for known hallucination patterns (skip comment lines and REMOVED markers)
     for pattern, (message, _fix) in KNOWN_HALLUCINATIONS.items():
         for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            if stripped.startswith('#') or '# REMOVED:' in line:
+                continue
             if re.search(pattern, line):
                 errors.append(ValidationError(
                     line=i,
@@ -601,6 +661,64 @@ def auto_fix_script(
                     r'\.(inputs|outputs)\.get\(\s*(\d+)\s*(?:,\s*[^)]+)?\)',
                     _fix_collection_get, fixed
                 )
+                continue
+            # Special case: strip .action.fcurves usage (removed in Blender 5.0
+            # layered action system). Comment out the entire function that uses it
+            # since there's no simple drop-in replacement.
+            if "action.fcurves" in (error.message or "").lower() or "fcurves" in (error.attribute or ""):
+                lines = fixed.split("\n")
+                new_lines = []
+                _skip_block_indent = -1
+                for line in lines:
+                    stripped = line.lstrip()
+                    cur_indent = len(line) - len(stripped)
+                    # If we're skipping a block, continue until indent decreases
+                    if _skip_block_indent >= 0:
+                        if stripped and cur_indent > _skip_block_indent:
+                            new_lines.append(f"{' ' * cur_indent}# {stripped}")
+                            continue
+                        else:
+                            _skip_block_indent = -1
+                    if re.search(r'\.action\.fcurves\b', line) and not stripped.startswith('#') and '# REMOVED:' not in line:
+                        indent = len(line) - len(line.lstrip())
+                        new_lines.append(
+                            f"{' ' * indent}pass  # REMOVED: action.fcurves not in Blender 5.0"
+                        )
+                        _skip_block_indent = indent
+                        fixes_applied.append(
+                            "Replaced .action.fcurves block with pass (not in Blender 5.0)"
+                        )
+                    else:
+                        new_lines.append(line)
+                fixed = "\n".join(new_lines)
+                continue
+            # Special case: strip .linear_velocity / .angular_velocity assignments
+            # (don't exist in Blender 5.0, no drop-in replacement)
+            _velocity_strips = {
+                "linear_velocity": r'\.linear_velocity\s*=',
+                "angular_velocity": r'\.angular_velocity\s*=',
+            }
+            _matched_vel = False
+            for _vel_name, _vel_pat in _velocity_strips.items():
+                if _vel_name in (error.attribute or "") or _vel_name in (error.message or ""):
+                    lines = fixed.split("\n")
+                    new_lines = []
+                    for line in lines:
+                        if re.search(_vel_pat, line):
+                            indent = len(line) - len(line.lstrip())
+                            new_lines.append(
+                                f"{' ' * indent}# REMOVED: {_vel_name} does not exist in "
+                                f"Blender 5.0 — use keyframed displacement instead"
+                            )
+                            fixes_applied.append(
+                                f"Commented out .{_vel_name} assignment (not in Blender 5.0)"
+                            )
+                        else:
+                            new_lines.append(line)
+                    fixed = "\n".join(new_lines)
+                    _matched_vel = True
+                    break
+            if _matched_vel:
                 continue
             # Apply hardcoded fixes for known hallucinations
             for wrong, correct in HARDCODED_FIXES.items():

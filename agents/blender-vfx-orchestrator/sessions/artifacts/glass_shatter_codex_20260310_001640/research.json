@@ -1,0 +1,82 @@
+{
+  "recommended_approach": "Combined Hero Destruction: impact-centered Voronoi pre-fracture of the glass pane, assign each shard as an ACTIVE rigid body, connect neighboring shards with breakable FIXED rigid body constraints for progressive fracture propagation, and drive the brick with a kinematic-to-active rigid body handoff at impact; optionally add particle-based secondary glass chips for fine debris.",
+  "key_parameters": {
+    "fracture_generation": {
+      "technique": "impact-centered Voronoi pre-fracture",
+      "num_points": 40,
+      "seed": 42
+    },
+    "rigid_body_world": {
+      "substeps_per_frame": 10,
+      "solver_iterations": 20
+    },
+    "shard_rigid_body": {
+      "type": "ACTIVE",
+      "collision_shape": "CONVEX_HULL",
+      "mass": "0.05 + random.uniform(0, 0.15)",
+      "friction": 0.4,
+      "restitution": 0.3,
+      "linear_damping": 0.04,
+      "angular_damping": 0.1,
+      "collision_margin": 0.001
+    },
+    "constraint_network": {
+      "type": "FIXED",
+      "use_breaking": true,
+      "breaking_threshold": "8.0 + dist * 35.0"
+    },
+    "projectile": {
+      "type": "ACTIVE",
+      "mass": 2.5,
+      "collision_shape": "BOX",
+      "kinematic": "True during approach, False at impact"
+    },
+    "secondary_debris_particles": {
+      "count": 200,
+      "frame_start": "impact_frame",
+      "frame_end": "impact_frame + 3",
+      "lifetime": 40,
+      "physics_type": "NEWTON",
+      "mass": 0.005,
+      "normal_factor": 8.0,
+      "factor_random": 3.0,
+      "tangent_factor": 2.0,
+      "damping": 0.3,
+      "particle_size": 0.003,
+      "size_random": 0.5,
+      "render_type": "OBJECT"
+    }
+  },
+  "api_modules": [
+    "bpy.ops.rigidbody.object_add",
+    "bpy.ops.rigidbody.constraint_add",
+    "bpy.ops.object.empty_add",
+    "bpy.types.RigidBodyObject",
+    "bpy.types.RigidBodyConstraint",
+    "bpy.types.ParticleSettings",
+    "bpy.context.scene.rigidbody_world"
+  ],
+  "warnings": [
+    "Only mesh objects can be part of a rigid body simulation.",
+    "Use substeps_per_frame, not steps_per_second; the pattern notes steps_per_second was removed in Blender 5.0.",
+    "If you skip the breakable constraint network, shards tend to release all at once instead of propagating from the impact point.",
+    "Particle-search results returned no valid API doc_refs, so the particle debris setup is grounded mainly by technique/pattern results rather than exact API reference pages.",
+    "Doc searches for exact rigid-body API pages were somewhat noisy; rely on the confirmed operators/types surfaced in related_apis and code patterns."
+  ],
+  "alternative_approaches": [
+    "Basic pre-fractured rigid body shards without breakable constraints (simpler than the recommended constraint-based method, but less realistic).",
+    "Hybrid approach: main rigid body shards plus a particle-system layer for secondary glass chips and fine debris.",
+    "Manual Voronoi-inspired cutting-plane fracture generation, then convert the resulting pieces into rigid bodies."
+  ],
+  "doc_refs": [
+    "physics/rigid_body/index.html",
+    "blender_manual_html/physics/rigid_body/index.html",
+    "physics/rigid_body/introduction.html",
+    "blender_manual_html/physics/index.html",
+    "techniques/destruction/overview",
+    "techniques/destruction/constraint_breaking",
+    "techniques/destruction/combined_hero",
+    "techniques/destruction/particle_debris"
+  ],
+  "timestamp": "2026-03-10T00:18:33.783141"
+}

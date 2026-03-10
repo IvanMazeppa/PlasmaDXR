@@ -1,0 +1,30 @@
+{
+  "overall_score": 32.0,
+  "passed": false,
+  "primary_issue": "Wrong effect read for the requested type: it does not look like an explosion (no volumetric fireball/smoke plume, temperature color gradient, or believable blast structure; instead it reads as clipped emissive geometry with a few shards in an interior scene).",
+  "issues": [
+    "Effect-type mismatch: the frame reads like a glass/shard scene with an overexposed emissive patch, not an explosion/fireball.",
+    "Severe highlight clipping/overexposure in the core (pure white with hard transitions), which kills fire detail and looks non-physical.",
+    "Missing volumetrics: no convincing smoke envelope, scattering, self-shadowing, or multi-scale billowing forms typical of explosions.",
+    "Lack of temperature-driven color behavior: absent warm fire gradient (white/yellow/orange/red) and hot-to-cool falloff.",
+    "Debris/particulate richness is far too low: few, relatively blocky shards; no fine dust/ash/embers; no motion cues (single-frame reads static).",
+    "Poor scene integration for an explosion: little evidence that the blast is lighting the environment (warm bounce/rim, contact shadowing, light bleed).",
+    "Compositing/tonemapping shortcomings: harsh clipped highlights and no controlled glow/bloom; subtle banding/contouring risk if graded further.",
+    "Reference comparison (auto-selected explosion reference): very low similarity\u2014reference has dense volumetric fire+smoke, rich structure, and particulate detail; this render does not."
+  ],
+  "suggestions": [
+    "(Most important) Switch to an actual explosion workflow: simulate/render a volumetric fire+smoke element (pyro/VDB) and drive emission from temperature/heat, not from flat emissive geometry.",
+    "Adopt HDR + proper tonemapping: render to 16/32-bit EXR and use Filmic/ACES so the core stays bright without clipping; add bloom/glare in comp rather than letting the beauty pass blow out.",
+    "Build a two-layer volume: (1) short-lived luminous flame volume (high emission, lower absorption), (2) longer-lived darker smoke volume (higher absorption, more scattering) with internal self-shadowing.",
+    "Add multi-scale turbulence: combine low-frequency large lobes + higher-frequency detail noise so the silhouette becomes \u201ccauliflower/mushroom cloud\u201d rather than sharp/rectilinear shapes.",
+    "Add secondary particles: embers/sparks (additive, short lifetime) + fine dust/ash (longer lifetime) + a range of debris sizes; enable motion blur for fast fragments in animation renders.",
+    "Improve scene lighting response: ensure the explosion actually lights nearby objects (warm fill/rim, spec hits on surfaces) and that smoke/volume casts shadows onto the environment.",
+    "If you must iterate within the current script/material (glass/shatter look):\n- Line 341 (Metallic 0.6): reduce toward 0.0\u20130.1 for glass-like shards; high metallic reads wrong for debris.\n- Line 446 (Base Color): push closer to neutral/grey and rely on transmission/refraction rather than bright diffuse tint.\n- Line 209 (Bump Distance 0.1): reduce (e.g., 0.01\u20130.03) to avoid chunky surface breakup on shards.\n- Lines 105\u2013106 (BG Color/Strength): keep background darker but slightly raise environment contribution only if you need scene readability; avoid using BG to \u201cfake\u201d explosion brightness.\n- Noise scales (187\u2013195, 242\u2013243, 264, 366): use them for subtle roughness/imperfection variation, not for large-scale \u2018explosion\u2019 structure (explosion structure should come from volumetrics/sim).",
+    "For quality control, compare against an explosion reference each iteration (the auto-picked reference scored ~20/100 similarity here); aim for visible smoke volume, warm core gradient, and layered detail before tuning debris/shading."
+  ],
+  "vision_assessment": "The image appears to be an interior scene (floor and surrounding objects) with scattered shard-like geometry and a very bright central region that is clipped to near-pure white. The bright area lacks a smooth intensity falloff and lacks the characteristic warm fire colors; it reads like an emissive patch/light source rather than combustion. There is no convincing volumetric smoke or fireball volume\u2014no billowing plume shapes, no scattering, and no self-shadowed density. Debris presence is limited (mostly larger shards), with little to no fine particulate (dust/embers) that would sell an explosion. Overall, it does not match the requested \u201cexplosion\u201d effect and falls well below the quality threshold.",
+  "reference_similarity": 20.0,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "iteration": 1,
+  "timestamp": "2026-03-09T02:34:24.492817"
+}

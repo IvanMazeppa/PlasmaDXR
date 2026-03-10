@@ -1,0 +1,68 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_pattern_api_fixed_errfix.py",
+  "technique_used": "constraint_breaking_voronoi_rigidbody (api-corrected) (pattern:pat_b0c2ca38f601) (api-corrected)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260309_222453/cache",
+  "score": 24.0,
+  "passed": false,
+  "primary_issue": "The shatter event is not readable or energetic (no clear radial fracture or outward shard burst), and the hero action (large window + brick impact) is obscured by composition and darkness.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex_iter2_pattern_api_fixed_errfix",
+    "frame_range": [
+      1,
+      72
+    ],
+    "render_frame": 42,
+    "render_engine": "BLENDER_EEVEE",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "shard_grid": {
+      "x_breaks": 7,
+      "z_breaks": 7,
+      "extra_debris": 4
+    },
+    "glass_thickness": 0.024,
+    "debris_thickness": 0.018,
+    "impact_point": [
+      0.08,
+      1.26
+    ],
+    "impactor_radius": 0.09,
+    "camera_lens": 65.0,
+    "lights": [
+      {
+        "name": "KeyArea",
+        "type": "AREA",
+        "energy": 68.0
+      },
+      {
+        "name": "WarmRim",
+        "type": "AREA",
+        "energy": 28.0
+      },
+      {
+        "name": "GlassFill",
+        "type": "POINT",
+        "energy": 18.0
+      },
+      {
+        "name": "BackdropAccent",
+        "type": "SPOT",
+        "energy": 22.0
+      }
+    ],
+    "materials": [
+      "WoodDark",
+      "Gunmetal",
+      "StudioBlack",
+      "BackdropPaper",
+      "RubberGrip",
+      "ShatteredGlass"
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-09T22:44:44.009141"
+}

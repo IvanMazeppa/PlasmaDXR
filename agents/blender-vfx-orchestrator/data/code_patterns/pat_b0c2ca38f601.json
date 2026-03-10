@@ -1,0 +1,38 @@
+{
+  "pattern_id": "pat_b0c2ca38f601",
+  "name": "constraint_breaking_glass_shatter",
+  "issue_category": "glass_shards_all_fall_at_once_instead_of_shatterin",
+  "code_snippet": "# Connect adjacent shards with FIXED constraints that break on impact\n# Variable threshold: weaker near impact point for radial crack propagation\nimpact_point = Vector((0, 0, 1.5))\nfor i, (shard_a, shard_b) in enumerate(adjacent_pairs):\n    midpoint = (shard_a.location + shard_b.location) / 2\n    bpy.ops.object.empty_add(type='PLAIN_AXES', location=midpoint)\n    empty = bpy.context.active_object\n    empty.name = f\"RBC_{i:03d}\"\n    bpy.ops.rigidbody.constraint_add()\n    rbc = empty.rigid_body_constraint\n    rbc.type = 'FIXED'\n    rbc.object1 = shard_a\n    rbc.object2 = shard_b\n    rbc.use_breaking = True\n    dist = (midpoint - impact_point).length\n    rbc.breaking_threshold = 8.0 + dist * 35.0  # Weaker near impact",
+  "effect_types": [
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
+  ],
+  "context_before": "Prefractured rigid bodies all separate simultaneously \u2014 looks like pre-broken object collapsing",
+  "context_after": "FIXED constraints with use_breaking=True and distance-based threshold create realistic radial crack propagation from impact point",
+  "parameters_affected": [
+    "breaking_threshold",
+    "object1",
+    "object2",
+    "use_breaking"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.object.empty_add",
+    "bpy.context.active_object",
+    "bpy.ops.rigidbody.constraint_add"
+  ],
+  "average_improvement": 40.0,
+  "usage_count": 2,
+  "success_count": 2,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_destruction_v1",
+    "seed_destruction_v1"
+  ],
+  "created_at": "2026-03-09T22:08:47.474283",
+  "updated_at": "2026-03-10T00:52:57.663286",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-09T21:57:15.126252",
+  "effect_type": "shatter",
+  "observation": "Glass fragments remain clustered near the window/frame and do not read as an explosive outward burst from a center impact; the projectile/brick impact energy is not apparent.",
+  "expected_behavior": "After a fast, heavy brick hits the center of the pane, shards should erupt outward with varied velocities and trajectories, with the brick continuing through and trailing fragments; remaining pane should show clear cracking and partial collapse.",
+  "actual_behavior": "Shatter appears localized and under-energetic, with limited shard spread and unclear impact staging (brick not clearly visible/centered).",
+  "suspected_parameters": {
+    "impact_impulse": "too low",
+    "shard_initial_velocity": "too low",
+    "fracture_count": "too low",
+    "constraint_strength": "too high",
+    "collision_margin": "too large",
+    "motion_blur": "disabled/low"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_paramfix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

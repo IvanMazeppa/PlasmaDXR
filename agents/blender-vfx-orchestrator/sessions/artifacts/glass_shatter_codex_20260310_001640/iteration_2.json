@@ -1,0 +1,46 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_iter2_pattern_errfix.py",
+  "technique_used": "constraint_based_rigid_body",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260310_001640/cache",
+  "score": 26.0,
+  "passed": false,
+  "primary_issue": "The shatter event has almost no readable impact: the brick/impact moment is unclear and there is little-to-no outward shard eruption or secondary collapse, so the core action described in the scene doesn\u2019t land.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex_iter2_pattern_errfix",
+    "render_engine": "BLENDER_EEVEE",
+    "frame_range": [
+      1,
+      32
+    ],
+    "render_frame": 22,
+    "gravity_enabled": false,
+    "shard_grid": {
+      "cols": 5,
+      "rows": 4
+    },
+    "shard_thickness": 0.012,
+    "impact_hole_cells": [
+      [
+        2,
+        1
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "impactor_rigidbody_type": "PASSIVE",
+    "constraint_type": "FIXED",
+    "lights": [
+      "AREA key",
+      "AREA fill",
+      "POINT rim",
+      "POINT accent"
+    ],
+    "output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex_iter2_pattern_errfix"
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-10T00:40:15.414056"
+}

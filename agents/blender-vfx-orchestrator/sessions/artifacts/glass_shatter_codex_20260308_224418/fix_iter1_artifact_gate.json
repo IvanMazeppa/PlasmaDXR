@@ -1,0 +1,16 @@
+{
+  "iteration": 1,
+  "phase": "artifact_gate",
+  "strategy": "next_iteration_structural_fix",
+  "instructions": [
+    "Apply structural script updates based on gate diagnostics.",
+    "Regenerate/modify script before next execute attempt.",
+    "Re-validate cache and render artifacts after re-run."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex.py",
+  "script_output_path": null,
+  "notes": [
+    "diagnosis_artifact=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260308_224418/diagnosis_iter1_artifact_gate.json"
+  ],
+  "timestamp": "2026-03-08T22:53:52.618197"
+}

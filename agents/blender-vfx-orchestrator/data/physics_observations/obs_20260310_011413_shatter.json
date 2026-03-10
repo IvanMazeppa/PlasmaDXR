@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-10T01:14:13.352938",
+  "effect_type": "shatter",
+  "observation": "Glass impact lacks outward explosive shard motion; break reads as faint cracks with minimal debris.",
+  "expected_behavior": "High-speed brick impact should generate dense radial cracking plus many shards ejecting outward with visible velocity, spin, and a debris trail behind the brick.",
+  "actual_behavior": "Brick is barely readable; glass appears mostly intact with thin/faint crack lines and little-to-no visible shard ejection or secondary collapse.",
+  "suspected_parameters": {
+    "shard_count": "too_low",
+    "shard_initial_velocity": "too_low",
+    "brick_speed": "too_low_or_not_animated",
+    "motion_blur": "missing",
+    "camera_framing": "too_wide/impact_too_small",
+    "lighting_on_glass": "insufficient_specular_rim"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_api_fixed.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

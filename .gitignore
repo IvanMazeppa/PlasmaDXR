@@ -1991,3 +1991,14 @@ agents/blender-vfx-orchestrator/rewritten_manual/render/lights/light_object.md
 agents/blender-vfx-orchestrator/rewritten_manual/render/lights/world.md
 agents/blender-vfx-orchestrator/rewritten_manual/render/shader_nodes/shader/volume_absorption.md
 agents/blender-vfx-orchestrator/rewritten_manual/render/shader_nodes/shader/volume_scatter.md
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260307_232016_summary.json
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260307_232016.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260308_213054_summary.json
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260308_213054.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260308_224416_summary.json
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260308_224416.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260309_013638.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260309_020647.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260309_022121.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260309_024231.jsonl
+agents/blender-vfx-orchestrator/traces/glass_shatter_codex_20260309_025702.jsonl

@@ -30,6 +30,10 @@ class EffectType(str, Enum):
     EXPLOSION = "explosion"
     FIRE = "fire"
     SMOKE = "smoke"
+    # Destruction / rigid body effects
+    DESTRUCTION = "destruction"
+    SHATTER = "shatter"
+    RIGID_BODY = "rigid_body"
     # Celestial effects
     NEBULA = "nebula"
     SUN = "sun"

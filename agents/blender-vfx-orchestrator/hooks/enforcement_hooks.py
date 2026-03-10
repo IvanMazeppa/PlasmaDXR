@@ -322,8 +322,8 @@ class EnforcementHooks(RunHooks):
                     max_allowed=self.config.max_exempt_tool_calls
                 )
 
-        # Layer 3: Consecutive call limit (applies to ALL tools)
-        if self._consecutive_same_tool > self.config.max_consecutive_same_tool:
+        # Layer 3: Consecutive call limit (exempt tools skip this check)
+        if not is_exempt and self._consecutive_same_tool > self.config.max_consecutive_same_tool:
             self._log(
                 f"CONSECUTIVE LOOP: '{tool_name}' called {self._consecutive_same_tool} times "
                 f"in a row (limit: {self.config.max_consecutive_same_tool})",
@@ -636,14 +636,20 @@ def create_research_hooks() -> EnforcementHooks:
     domain, flow, mesh, particles, materials, environment, etc.
     """
     config = EnforcementConfig(
-        max_same_tool_calls=6,  # Allow parallel batches (SDK fires on_tool_start per call)
+        max_same_tool_calls=8,  # Bumped: multi-pass research_mode needs more calls
         max_consecutive_same_tool=5,  # Parallel calls look consecutive to hooks — allow batches
-        max_exempt_tool_calls=8,
-        max_turns=4,
-        hard_turn_limit=6,
+        max_exempt_tool_calls=12,  # Bumped: doc search tools are the whole point of research
+        max_turns=6,  # Bumped from 4 to match research agent max_turns
+        hard_turn_limit=8,
         require_doc_query_before=[],  # Research agents ARE the doc queries
         raise_on_loop=True,
         raise_on_doc_missing=False,
+        exempt_from_loop_detection=[
+            "blender_doc_search_bundle",  # Research agent's primary tool
+            "semantic_search_blender_docs",
+            "search_code_patterns",
+            "list_patterns_by_effect",
+        ],
     )
     return EnforcementHooks(config)
 

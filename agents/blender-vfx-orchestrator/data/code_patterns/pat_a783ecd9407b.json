@@ -1,0 +1,41 @@
+{
+  "pattern_id": "pat_a783ecd9407b",
+  "name": "rigid_body_world_glass_settings",
+  "issue_category": "rigid_body_simulation_is_unstable__shards_jitter__",
+  "code_snippet": "# Rigid body world settings tuned for glass destruction\nif not scene.rigidbody_world:\n    bpy.ops.rigidbody.world_add()\nrbw = scene.rigidbody_world\nrbw.substeps_per_frame = 10    # Higher = better collision detection for fast shards\nrbw.solver_iterations = 20     # Higher = more stable constraint solving\n# NOTE: use substeps_per_frame NOT steps_per_second (removed in Blender 5.0)\n\n# Per-shard settings for glass\nfor shard in glass_shards:\n    rb = shard.rigid_body\n    rb.collision_shape = 'CONVEX_HULL'  # Good balance speed vs accuracy\n    rb.mass = 0.05 + random.uniform(0, 0.15)  # Variable mass\n    rb.friction = 0.4\n    rb.restitution = 0.3    # Some bounce (glass is somewhat elastic)\n    rb.linear_damping = 0.04\n    rb.angular_damping = 0.1\n    rb.collision_margin = 0.001",
+  "effect_types": [
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
+  ],
+  "context_before": "Default rigid body settings cause shards to pass through each other or jitter uncontrollably",
+  "context_after": "substeps_per_frame=10 and solver_iterations=20 with CONVEX_HULL collision gives stable glass shard simulation",
+  "parameters_affected": [
+    "friction",
+    "solver_iterations",
+    "collision_margin",
+    "mass",
+    "angular_damping",
+    "linear_damping",
+    "collision_shape",
+    "substeps_per_frame",
+    "restitution"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.rigidbody.world_add"
+  ],
+  "average_improvement": 25.0,
+  "usage_count": 2,
+  "success_count": 2,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_destruction_v1",
+    "seed_destruction_v1"
+  ],
+  "created_at": "2026-03-09T22:08:47.476871",
+  "updated_at": "2026-03-10T00:52:57.664725",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

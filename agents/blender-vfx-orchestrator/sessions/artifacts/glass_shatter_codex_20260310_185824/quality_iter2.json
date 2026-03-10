@@ -1,0 +1,29 @@
+{
+  "overall_score": 30.0,
+  "passed": false,
+  "primary_issue": "The core action is not readable: there is no convincing, high-energy \u201cglass explodes outward\u201d shatter with a clearly identifiable brick punching through the center of a large pane.",
+  "issues": [
+    "Brick/projectile is tiny/indistinct and does not clearly read as a heavy red clay brick flying in from the left and passing through the window.",
+    "Shatter event is extremely subtle: no strong radial burst, no dense fracture field, and no visible cloud of ejecting shards; remaining glass does not convincingly crack/collapse in-frame.",
+    "Glass material reads too dark/opaque and lacks crisp specular glints; shards (if present) are not catching light in a cinematic way.",
+    "Composition makes the effect too small: window is undersized in frame, leaving a large, empty wall area that reduces impact.",
+    "Environment and props feel like low-detail primitives; wall/frame/props lack the grime, wear, and complexity expected in a derelict industrial warehouse.",
+    "Frame does not read as rusted steel (too clean/flat; missing corrosion, edge wear, and industrial thickness/detail).",
+    "Lighting is broad and simple; it doesn\u2019t create the gritty nighttime mood nor does it rim-light/highlight shards for readability.",
+    "CG-clean look (flat shading/low surface breakup) hurts realism."
+  ],
+  "suggestions": [
+    "Make the shatter readable first (scale/framing): move the camera closer and/or enlarge the window so the impact point and shards dominate the shot (biggest gain).",
+    "Glass shading tweaks (likely critical): lower glass roughness substantially (Script line 371: bsdf Roughness 0.72 \u2192 try 0.05\u20130.15) so the pane/shards can produce sharp highlights; also reduce bump so the surface doesn\u2019t turn into frosted noise (line 363: bump Strength 0.12 \u2192 0.02\u20130.06; line 364: Distance 0.02 \u2192 0.005\u20130.01).",
+    "Increase fracture/crack density/energy (procedural pattern): push higher-frequency breakup by increasing texture frequency (line 345: wave Scale 18 \u2192 35\u201360; line 351: noise Scale 6 \u2192 12\u201325; line 352: noise Detail 8 \u2192 10\u201314). Then tune distortion down if it turns to mush (line 346: wave Distortion 8 \u2192 3\u20136).",
+    "Improve shard readability via lighting: add a motivated rim/key specifically to rake across the glass plane and shards (even if you keep the practical wall lamp). If limited to world settings, modestly increase environment strength to help reflections (line 105: Strength 0.12 \u2192 0.2\u20130.4) while keeping the background dark (line 104 stays dark-blue).",
+    "Material realism pass: add roughness variation + grunge to concrete and frame; frame should be darker metal with rust streaking, not flat trim.",
+    "Projectile clarity: scale up the brick, give it unmistakable red clay albedo + chipped edges; ensure its silhouette is clear at the impact point (and add motion blur in the final shot if you render animation).",
+    "Add secondary debris: micro-fragments + dust puff at impact to sell speed/violence; also show remaining edge glass partially attached and collapsing after impact (matches the brief)."
+  ],
+  "vision_assessment": "The image reads as a simple warehouse-wall setup with a small dark window, a warm wall-mounted light, and a few generic props (barrel/boxes). The requested cinematic \u201cbrick punches through and glass explodes outward\u201d moment is not convincingly present: the projectile is not clearly identifiable as a brick, and the shatter is faint/sparse with no strong outward burst of shards or sparkling highlights. Materials (concrete/frame/props) look flat and clean rather than aged, rusty, and gritty, and the lighting does not create the dramatic nighttime industrial mood or emphasize glass shard speculars.",
+  "reference_similarity": 34.0,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "iteration": 2,
+  "timestamp": "2026-03-10T19:25:45.925446"
+}

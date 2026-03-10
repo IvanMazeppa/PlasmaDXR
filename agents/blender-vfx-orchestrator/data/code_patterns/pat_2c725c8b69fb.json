@@ -1,0 +1,35 @@
+{
+  "pattern_id": "pat_2c725c8b69fb",
+  "name": "kinematic_to_active_projectile",
+  "issue_category": "projectile_doesn_t_hit_glass_properly__either_flie",
+  "code_snippet": "# Projectile: kinematic during approach, active at impact\n# Blender preserves velocity at transition point\nbpy.ops.rigidbody.object_add(type='ACTIVE')\nrb = projectile.rigid_body\nrb.mass = 2.5\nrb.collision_shape = 'BOX'\nrb.kinematic = True\n\n# Keyframe approach trajectory\nprojectile.location = start_pos\nprojectile.keyframe_insert(data_path=\"location\", frame=1)\nrb.keyframe_insert(data_path=\"kinematic\", frame=1)\n\nprojectile.location = near_glass_pos  # Just before contact\nprojectile.keyframe_insert(data_path=\"location\", frame=impact_frame - 1)\n\n# Switch to active physics at impact\nrb.kinematic = False\nrb.keyframe_insert(data_path=\"kinematic\", frame=impact_frame)",
+  "effect_types": [
+    "shatter",
+    "destruction",
+    "rigid_body",
+    "explosion"
+  ],
+  "context_before": "Rigid body projectile either affected by gravity during approach or passes through glass",
+  "context_after": "Kinematic\u2192active transition at impact frame gives controlled approach with realistic physics transfer",
+  "parameters_affected": [
+    "kinematic",
+    "collision_shape",
+    "mass"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.rigidbody.object_add"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 2,
+  "success_count": 2,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_destruction_v1",
+    "seed_destruction_v1"
+  ],
+  "created_at": "2026-03-09T22:08:47.476236",
+  "updated_at": "2026-03-10T00:52:57.663941",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}
