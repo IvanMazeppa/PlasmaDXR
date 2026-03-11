@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-03-11T03:09:10.884710",
+  "effect_type": "shatter",
+  "observation": "Glass impact appears to produce only faint cracks/limited breakup; no convincing outward shard spray or trailing fragments with the brick.",
+  "expected_behavior": "A fast, heavy brick striking center of a large pane should cause a dense radial fracture and an energetic outward ejection of many shards, with visible separation in depth and fragments trailing behind the brick.",
+  "actual_behavior": "Impact event is barely readable; shards/debris are minimal or not visible, and the brick is not clearly seen punching through with a fragment trail.",
+  "suspected_parameters": {
+    "fracture_shard_count": "too low",
+    "impact_impulse/velocity": "too low",
+    "initial_shard_velocity": "too low",
+    "angular_velocity_variance": "too low",
+    "glass_material_visibility": "too transparent / insufficient specular highlights due to lighting"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_script_iter2_codefix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

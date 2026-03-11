@@ -1,0 +1,24 @@
+{
+  "session_id": "glass_shatter_codex_20260311_202642",
+  "iteration": 1,
+  "overall_score": 34.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Re-compose so the window/impact occupies ~40\u201360% of frame; remove/relocate the large dark foreground bars/occluders that steal focus.",
+    "Make the brick unmistakable: increase apparent size/readability, ensure it crosses the pane center from the left; add strong directional motion blur (and shard motion blur) to sell speed.",
+    "Increase fracture complexity and shard count: denser radial cracks + more small fragments + broader outward spread; ensure visible thickness and bright specular edge catches.",
+    "Material tuning (glass): reduce tint/murk so glass reads cleaner and edges pop. Try lowering absorption density (Line 290: 0.12 \u2192 ~0.04\u20130.07) and keep IOR plausible (Line 285: 1.52 OK).",
+    "Fracture/shard granularity: increase Voronoi detail for smaller pieces (Line 327: voro Scale 8.0 \u2192 ~14\u201320) to avoid big flat chunks (assuming this drives fracture cell size).",
+    "Improve gritty warehouse feel via texture breakup: increase procedural texture frequency/variation (Line 155: noise_a Scale 6.0 \u2192 ~10\u201314; Line 161: noise_b Scale 25.0 \u2192 ~35\u201360; adjust roughness variation accordingly) and add obvious rust/grime layers on the frame/wall.",
+    "Add motivated cinematic lighting: increase environment/background contribution and shape it so shards get crisp highlights. Try raising background strength (Line 75: 0.12 \u2192 ~0.3\u20130.8) and then re-balance exposure/contrast so the scene isn\u2019t uniformly dim.",
+    "Make the \u2018remaining glass collapses\u2019 read: detach/sag sections near the impact and lower edge; add secondary dust/tiny debris to reinforce impact energy (kept subtle)."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 690.109837389,
+  "utility_score": 0.42000000000000004,
+  "timestamp": "2026-03-11T20:39:43.898486"
+}

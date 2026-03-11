@@ -1,0 +1,51 @@
+{
+  "recommended_approach": "Mantaflow Liquid (FLIP) Domain + continuous LIQUID Inflow Flow object + Collision Effector wine-glass container + Liquid Mesh export, with optional Liquid Particles for extra splash droplets.",
+  "key_parameters": {
+    "Domain Type": "LIQUID",
+    "Resolution Divisions": 96,
+    "Mesh": true,
+    "use_plane_init": true,
+    "Sampling Substeps": 6,
+    "Cache Type": "ALL",
+    "Frame Start": 1,
+    "Frame End": 60,
+    "Render Frame": 40,
+    "Inflow Velocity": "~1.0-1.5 m/s downward",
+    "Is Planar": true,
+    "Surface Emission": "low / resolution-dependent; tune only as needed",
+    "Surface Thickness": "increase on the glass effector if thin-wall leakage appears",
+    "Cache Step": 1
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.Mesh"
+  ],
+  "warnings": [
+    "Flow objects must be contained within the Domain bounding box to affect the simulation.",
+    "The Domain must have a material assigned for rendering.",
+    "Surface Emission is dependent on domain resolution, so changing resolution requires retuning emission behavior.",
+    "Thin wine-glass walls may need extra Surface Thickness on the effector to avoid leaks.",
+    "Planar or non-manifold emitter/collider geometry should be marked appropriately (Is Planar / use_plane_init) for more accurate results.",
+    "Liquid particle export adds detail for splash droplets but also increases bake complexity/time.",
+    "No API doc_refs were surfaced by doc search beyond bpy.types.FluidDomainSettings, so flow/effector operator references may need manual verification in-script."
+  ],
+  "alternative_approaches": [
+    "Mantaflow Liquid + Liquid Particles (Spray/Foam/Bubbles) when the base liquid mesh does not produce enough airborne droplets at impact.",
+    "Mantaflow Liquid + Guides to steer or stabilize the incoming pour while preserving physically plausible motion.",
+    "Base Mantaflow liquid sim for the fill/surface, with a separate secondary pass for over-rim drips if the main sim does not reliably produce elegant exterior trails."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "blender_manual_html/physics/fluid/introduction.html#workflow-",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#liquid-",
+    "physics/fluid/type/flow.html",
+    "blender_manual_html/physics/fluid/type/flow.html#settings-",
+    "physics/fluid/type/effector.html",
+    "blender_manual_html/physics/fluid/type/effector.html#settings-",
+    "physics/fluid/type/domain/liquid/particles.html",
+    "blender_manual_html/physics/fluid/type/domain/liquid/mesh.html",
+    "physics/fluid/type/domain/guides.html",
+    "baking.md"
+  ],
+  "timestamp": "2026-03-11T03:34:45.263005"
+}

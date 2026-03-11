@@ -712,6 +712,10 @@ class SessionState(BaseModel):
         default=None,
         description="Currently active technique"
     )
+    technique_contract: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Active TechniqueContract (serialized). Binding constraints for script generation."
+    )
 
     # Phase 1.3: Pattern tracking
     extracted_patterns: List[Dict[str, Any]] = Field(

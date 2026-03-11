@@ -1393,11 +1393,17 @@ def _inject_cell_fracture_addon_enable(content: str) -> tuple[str, bool]:
     """
     Ensure Cell Fracture addon is correctly enabled if the script uses it.
 
-    Handles three cases:
+    Blender 5.0 uses the extension system: module name is 'bl_ext.blender_org.cell_fracture',
+    NOT the legacy 'object_cell_fracture'.
+
+    Handles four cases:
     1. Script uses cell fracture but has no enable call → inject correct one
-    2. Script has wrong module name (object_fracture_cell) → fix to object_cell_fracture
-    3. Script uses bpy.ops.preferences.addon_enable → fix to addon_utils.enable
+    2. Script has wrong module name (object_fracture_cell) → fix to bl_ext.blender_org.cell_fracture
+    3. Script has legacy module name (object_cell_fracture) → fix to bl_ext.blender_org.cell_fracture
+    4. Script uses bpy.ops.preferences.addon_enable → fix to addon_utils.enable
     """
+    CORRECT_MODULE = "bl_ext.blender_org.cell_fracture"
+
     # Check if script uses cell fracture operations
     uses_cell_fracture = bool(re.search(
         r'add_fracture_cell_objects',
@@ -1408,18 +1414,23 @@ def _inject_cell_fracture_addon_enable(content: str) -> tuple[str, bool]:
 
     fixed = False
 
-    # Fix 1: Wrong module name — object_fracture_cell → object_cell_fracture
+    # Fix 1: Wrong module name — object_fracture_cell → correct extension name
     if 'object_fracture_cell' in content:
-        content = content.replace('object_fracture_cell', 'object_cell_fracture')
+        content = content.replace('object_fracture_cell', CORRECT_MODULE)
         fixed = True
 
-    # Fix 2: Wrong API — bpy.ops.preferences.addon_enable → addon_utils.enable
+    # Fix 2: Legacy module name — object_cell_fracture → correct extension name
+    if 'object_cell_fracture' in content:
+        content = content.replace('object_cell_fracture', CORRECT_MODULE)
+        fixed = True
+
+    # Fix 3: Wrong API — bpy.ops.preferences.addon_enable → addon_utils.enable
     wrong_api_pattern = re.compile(
-        r'bpy\.ops\.preferences\.addon_enable\s*\(\s*module\s*=\s*[\'"]object_cell_fracture[\'"]\s*\)',
+        r'bpy\.ops\.preferences\.addon_enable\s*\(\s*module\s*=\s*[\'"]' + re.escape(CORRECT_MODULE) + r'[\'"]\s*\)',
     )
     if wrong_api_pattern.search(content):
         content = wrong_api_pattern.sub(
-            "addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)",
+            f"addon_utils.enable('{CORRECT_MODULE}', default_set=True, persistent=True)",
             content,
         )
         # Ensure addon_utils is imported
@@ -1429,16 +1440,16 @@ def _inject_cell_fracture_addon_enable(content: str) -> tuple[str, bool]:
                 content = content[:import_match.end()] + "\nimport addon_utils" + content[import_match.end():]
         fixed = True
 
-    # Fix 3: No enable call at all → inject one
+    # Fix 4: No enable call at all → inject one
     has_enable = bool(re.search(
-        r'addon_utils\.enable\s*\(\s*[\'"]object_cell_fracture[\'"]',
+        re.escape(CORRECT_MODULE),
         content
     ))
     if not has_enable:
         enable_snippet = (
-            "\n# API Fixer: Enable Cell Fracture addon (not enabled by default in headless)\n"
+            "\n# API Fixer: Enable Cell Fracture extension (Blender 5.0 extension system)\n"
             "import addon_utils\n"
-            "addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)\n"
+            f"addon_utils.enable('{CORRECT_MODULE}', default_set=True, persistent=True)\n"
         )
         import_match = re.search(r'^import bpy\b.*$', content, re.MULTILINE)
         if import_match:

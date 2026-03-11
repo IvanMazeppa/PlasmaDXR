@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-11T03:42:57.918745",
+  "effect_type": "water",
+  "observation": "Pour stream looks physically wrong: a narrow rigid vertical column with a detached droplet far above the glass, and impact/splash reads chunky rather than thin-sheet breakup; glass not clearly filling.",
+  "expected_behavior": "A continuous vigorous wine stream from just above the top of frame, striking a rising liquid surface inside the glass, producing fine secondary droplets and occasional overflow over the rim.",
+  "actual_behavior": "Stream appears disconnected/unnaturally uniform, with an isolated droplet above; splash is ribbon/chunk-like with limited secondary droplets; fill level not clearly past halfway.",
+  "suspected_parameters": {
+    "time_step_or_substeps": "too low causing poor continuity/breakup",
+    "emitter_velocity_scale": "too high/unstable",
+    "emitter_radius": "too small leading to needle-like column",
+    "surface_tension": "too high producing thick ribbons",
+    "viscosity": "off for wine",
+    "secondary_particles": "insufficient"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wine_pour_codex/wine_pour_codex.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wine_pour_codex.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

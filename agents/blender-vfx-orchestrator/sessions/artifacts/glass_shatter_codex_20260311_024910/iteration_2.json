@@ -1,0 +1,47 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_codex_script_iter2_codefix.py",
+  "technique_used": "cell_fracture_checked_with_procedural_fallback_rigid_body",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_codex/glass_shatter_codex.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_codex_20260311_024910/cache",
+  "score": 26.0,
+  "passed": false,
+  "primary_issue": "The core action is not readable: the brick impact and the explosive outward shard spray are largely missing/too subtle, and the environment reads like a clean blockout instead of a gritty derelict warehouse.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_codex_script_iter2_codefix",
+    "frame_start": 1,
+    "frame_end": 60,
+    "render_frame": 12,
+    "renderer": "CYCLES_GPU",
+    "samples": 256,
+    "window_size_m": {
+      "width": 2.0,
+      "height": 1.5,
+      "thickness": 0.006
+    },
+    "brick_mass_kg": 2.5,
+    "impact_frame": 5,
+    "cell_fracture_modules_attempted": [
+      "object_fracture_cell",
+      "object_cell_fracture"
+    ],
+    "fallback_technique": "prefracture_without_constraints",
+    "fallback_shard_count": 54,
+    "camera": {
+      "location": [
+        0.0,
+        -4.0,
+        1.3
+      ],
+      "lens_mm": 50.0
+    },
+    "lights": [
+      "MoonKey",
+      "MoonFill",
+      "SodiumRim",
+      "AccentPoint"
+    ]
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-11T03:10:34.802957"
+}

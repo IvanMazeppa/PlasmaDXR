@@ -280,9 +280,10 @@ For ANY glass shattering, destruction, or fracture effect — you MUST use the C
 to create shard geometry. Do NOT manually create shards with loops, Boolean cuts, or bmesh operations.
 
 ```python
-# Step 1: ALWAYS enable addon first (required in headless mode)
+# Step 1: ALWAYS enable extension first (required in headless mode)
+# Blender 5.0 uses the extension system, NOT legacy addon names
 import addon_utils
-addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)
+addon_utils.enable('bl_ext.blender_org.cell_fracture', default_set=True, persistent=True)
 
 # Step 2: Select the object to fracture
 bpy.context.view_layer.objects.active = glass_obj
@@ -303,10 +304,10 @@ bpy.ops.object.add_fracture_cell_objects(
 shards = [o for o in bpy.data.objects if o.name.startswith("GlassPane_cell")]
 ```
 
-**WRONG module name:** `object_fracture_cell` — this DOES NOT EXIST
-**CORRECT module name:** `object_cell_fracture`
+**WRONG module name:** `object_fracture_cell` or `object_cell_fracture` — these are LEGACY names that DO NOT WORK in Blender 5.0
+**CORRECT module name:** `bl_ext.blender_org.cell_fracture` (Blender 5.0 extension system)
 **WRONG API:** `bpy.ops.preferences.addon_enable(module=...)` — unreliable for extensions
-**CORRECT API:** `addon_utils.enable('object_cell_fracture', default_set=True, persistent=True)`
+**CORRECT API:** `addon_utils.enable('bl_ext.blender_org.cell_fracture', default_set=True, persistent=True)`
 
 ## REQUIRED SCRIPT ELEMENTS
 ALWAYS include in your generated scripts:

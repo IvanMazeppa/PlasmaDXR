@@ -8,6 +8,7 @@ orchestrator and phase modules.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -123,6 +124,347 @@ class QualityDecision(BaseModel):
     next_action: str = Field(description="Next action: 'complete', 'iterate', 'switch_technique', 'request_guidance'")
     escape_level: int = Field(ge=0, le=4, description="Current escape velocity level (0-4)")
     reasoning: str = Field(description="Explanation of the quality decision")
+
+
+# =============================================================================
+# TECHNIQUE CONTRACT (Binding generation constraint)
+# =============================================================================
+
+
+class PhysicsSystem(str, Enum):
+    """Blender physics systems available for VFX generation."""
+    MANTAFLOW_GAS = "mantaflow_gas"
+    MANTAFLOW_LIQUID = "mantaflow_liquid"
+    RIGID_BODY = "rigid_body"
+    PARTICLE_SYSTEM = "particle_system"
+    CLOTH = "cloth"
+    GEOMETRY_NODES = "geometry_nodes"
+    SHADER_ONLY = "shader_only"
+
+
+class RequiredOperator(BaseModel):
+    """A Blender operator that MUST be called in the generated script."""
+    operator: str = Field(description="Full operator path, e.g. 'bpy.ops.object.add_fracture_cell_objects'")
+    purpose: str = Field(description="What this operator does in the workflow")
+    context_requirements: Optional[str] = Field(
+        default=None,
+        description="Context setup needed before calling (e.g. 'object must be selected and active')"
+    )
+
+
+class RequiredAddon(BaseModel):
+    """A Blender addon/extension that must be enabled before script execution."""
+    module_name: str = Field(description="Addon module name for addon_utils.enable(), e.g. 'bl_ext.blender_org.cell_fracture'")
+    enable_code: str = Field(description="Exact Python code to enable the addon")
+
+
+class HeadlessConstraint(BaseModel):
+    """A constraint for headless Blender execution."""
+    description: str = Field(description="What must be avoided or handled differently")
+    workaround: str = Field(description="How to handle this in headless mode")
+
+
+class TechniqueContract(BaseModel):
+    """Binding contract for script generation.
+
+    This replaces advisory prose with structured constraints that the Script
+    Writer MUST follow. The contract is produced by Phase 0.5 (technique
+    selection) and consumed by Phase 1 (script generation).
+
+    The Script Writer has creative freedom WITHIN the contract (scene
+    composition, materials, lighting, camera) but CANNOT substitute a
+    different technique, skip required operators, or ignore headless
+    constraints.
+    """
+    technique_name: str = Field(
+        description="Canonical technique identifier (e.g. 'cell_fracture_rigid_body', 'mantaflow_fire')"
+    )
+    physics_systems: List[PhysicsSystem] = Field(
+        description="Which Blender physics systems this technique uses"
+    )
+    required_operators: List[RequiredOperator] = Field(
+        default_factory=list,
+        description="Operators the script MUST call (e.g. Cell Fracture, bake_all)"
+    )
+    required_addons: List[RequiredAddon] = Field(
+        default_factory=list,
+        description="Addons that must be enabled before execution"
+    )
+    headless_constraints: List[HeadlessConstraint] = Field(
+        default_factory=list,
+        description="Things that don't work in headless mode and their workarounds"
+    )
+    key_parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Starting parameter values for the technique"
+    )
+    code_scaffolding: Optional[str] = Field(
+        default=None,
+        description="Required code snippet that MUST appear in the script (e.g. addon enable boilerplate)"
+    )
+    forbidden_patterns: List[str] = Field(
+        default_factory=list,
+        description="Patterns the script must NOT use (e.g. 'manual mesh cutting' when Cell Fracture is required)"
+    )
+    reasoning: str = Field(
+        default="",
+        description="Why this technique was selected (for logging/debugging)"
+    )
+    alternative_techniques: List[str] = Field(
+        default_factory=list,
+        description="Fallback techniques if this one fails"
+    )
+
+    def to_script_constraints(self) -> str:
+        """Render the contract as structured constraints for the Script Writer prompt.
+
+        This produces a dense, LLM-optimized constraint block — NOT advisory prose.
+        The format is designed so the Script Writer cannot misinterpret or ignore it.
+        """
+        lines = [
+            "## TECHNIQUE CONTRACT (BINDING — DO NOT DEVIATE)",
+            f"Technique: {self.technique_name}",
+            f"Physics: {', '.join(p.value for p in self.physics_systems)}",
+        ]
+
+        if self.required_addons:
+            lines.append("\n### REQUIRED ADDONS (must appear at top of script)")
+            for addon in self.required_addons:
+                lines.append(f"- {addon.module_name}: {addon.enable_code}")
+
+        if self.required_operators:
+            lines.append("\n### REQUIRED OPERATORS (script MUST call these)")
+            for op in self.required_operators:
+                lines.append(f"- {op.operator} — {op.purpose}")
+                if op.context_requirements:
+                    lines.append(f"  Context: {op.context_requirements}")
+
+        if self.headless_constraints:
+            lines.append("\n### HEADLESS CONSTRAINTS (will crash if violated)")
+            for hc in self.headless_constraints:
+                lines.append(f"- AVOID: {hc.description}")
+                lines.append(f"  USE: {hc.workaround}")
+
+        if self.forbidden_patterns:
+            lines.append("\n### FORBIDDEN (do NOT use these)")
+            for fp in self.forbidden_patterns:
+                lines.append(f"- {fp}")
+
+        if self.code_scaffolding:
+            lines.append(f"\n### REQUIRED CODE (include verbatim)")
+            lines.append(f"```python\n{self.code_scaffolding}\n```")
+
+        if self.key_parameters:
+            lines.append(f"\n### STARTING PARAMETERS")
+            for k, v in self.key_parameters.items():
+                lines.append(f"- {k}: {v}")
+
+        return "\n".join(lines)
+
+    def check_adherence(self, script_content: str) -> tuple[bool, List[str]]:
+        """Check if a generated script adheres to this contract.
+
+        Returns (passed, violations) where violations is a list of
+        specific contract violations found in the script.
+        """
+        violations = []
+
+        # Check required addons
+        for addon in self.required_addons:
+            if addon.module_name not in script_content:
+                violations.append(
+                    f"MISSING ADDON: '{addon.module_name}' not found in script. "
+                    f"Required code: {addon.enable_code}"
+                )
+
+        # Check required operators
+        for op in self.required_operators:
+            # Extract the operator call (e.g. 'add_fracture_cell_objects' from
+            # 'bpy.ops.object.add_fracture_cell_objects')
+            op_parts = op.operator.split(".")
+            op_call = op_parts[-1] if op_parts else op.operator
+            if op_call not in script_content:
+                violations.append(
+                    f"MISSING OPERATOR: '{op.operator}' not called. "
+                    f"Purpose: {op.purpose}"
+                )
+
+        # Check forbidden patterns
+        for pattern in self.forbidden_patterns:
+            pattern_lower = pattern.lower()
+            # Check for common implementations of forbidden patterns
+            if pattern_lower in script_content.lower():
+                violations.append(
+                    f"FORBIDDEN PATTERN: '{pattern}' found in script"
+                )
+
+        passed = len(violations) == 0
+        return passed, violations
+
+
+# =============================================================================
+# CAPABILITY PACK REGISTRY (known technique adapters)
+# =============================================================================
+
+
+# Registry of known technique contracts that can be selected by the pipeline.
+# This replaces the "teaching via prompt injection" approach with verified
+# structured adapters. New techniques are added here, not in dynamic_instructions.
+CAPABILITY_PACKS: Dict[str, "TechniqueContract"] = {}
+
+
+def register_capability_pack(name: str, contract: "TechniqueContract") -> None:
+    """Register a technique contract as a known capability pack."""
+    CAPABILITY_PACKS[name] = contract
+
+
+def get_capability_pack(name: str) -> Optional["TechniqueContract"]:
+    """Look up a registered capability pack by name."""
+    return CAPABILITY_PACKS.get(name)
+
+
+def list_capability_packs() -> List[str]:
+    """List all registered capability pack names."""
+    return list(CAPABILITY_PACKS.keys())
+
+
+def _register_builtin_packs() -> None:
+    """Register built-in capability packs for known techniques."""
+
+    # --- Cell Fracture + Rigid Body (destruction/shatter) ---
+    register_capability_pack("cell_fracture_rigid_body", TechniqueContract(
+        technique_name="cell_fracture_rigid_body",
+        physics_systems=[PhysicsSystem.RIGID_BODY],
+        required_addons=[
+            RequiredAddon(
+                module_name="bl_ext.blender_org.cell_fracture",
+                enable_code="import addon_utils; addon_utils.enable('bl_ext.blender_org.cell_fracture', default_set=True, persistent=True)",
+            ),
+        ],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.add_fracture_cell_objects",
+                purpose="Fracture the target mesh into cell-shaped pieces",
+                context_requirements="Target object must be selected and active in OBJECT mode",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="bpy.ops.anim.keyframe_insert_by_name requires animation context",
+                workaround="Use obj.keyframe_insert(data_path='rigid_body.enabled', frame=N) instead",
+            ),
+            HeadlessConstraint(
+                description="bpy.ops.rigidbody.bake_to_keyframes requires specific context override",
+                workaround="Use bpy.ops.ptcache.bake_all(bake=True) for rigid body simulation, or iterate frames manually",
+            ),
+        ],
+        key_parameters={
+            "cell_fracture_source": "{'PARTICLE_OWN'}",
+            "cell_fracture_source_limit": 100,
+            "cell_fracture_noise": 0.05,
+            "rigid_body_steps_per_second": 120,
+            "rigid_body_solver_iterations": 20,
+        },
+        code_scaffolding="""import addon_utils
+addon_utils.enable('bl_ext.blender_org.cell_fracture', default_set=True, persistent=True)""",
+        forbidden_patterns=[
+            "manual mesh cutting with bmesh",
+            "manual Voronoi tessellation",
+            "custom fracture_mesh function",
+            "fracture_glass() helper function",
+        ],
+        reasoning="Cell Fracture addon produces realistic fracture patterns; manual mesh cutting produces inferior results",
+        alternative_techniques=["voronoi_fracture_geometry_nodes", "simple_rigid_body"],
+    ))
+
+    # --- Mantaflow Gas (fire/smoke/explosion) ---
+    register_capability_pack("mantaflow_fire", TechniqueContract(
+        technique_name="mantaflow_fire",
+        physics_systems=[PhysicsSystem.MANTAFLOW_GAS],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.quick_smoke",
+                purpose="Set up Mantaflow domain and flow objects quickly",
+                context_requirements="Emitter object must be selected",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Bake requires active domain object",
+                workaround="bpy.context.view_layer.objects.active = domain_obj; bpy.ops.fluid.bake_all()",
+            ),
+        ],
+        key_parameters={
+            "domain_type": "GAS",
+            "resolution_max": 128,
+            "use_noise": True,
+            "noise_strength": 1.0,
+            "cache_type": "ALL",
+        },
+        reasoning="Mantaflow gas simulation is the standard approach for fire/smoke effects",
+        alternative_techniques=["shader_based_fire", "mantaflow_high_res_fire"],
+    ))
+
+    # --- Mantaflow Liquid (water/pour/splash) ---
+    register_capability_pack("mantaflow_liquid", TechniqueContract(
+        technique_name="mantaflow_liquid",
+        physics_systems=[PhysicsSystem.MANTAFLOW_LIQUID],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.quick_liquid",
+                purpose="Set up Mantaflow liquid domain and flow",
+                context_requirements="Emitter object must be selected",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Liquid needs use_plane_init=True for non-empty bakes",
+                workaround="Set flow.use_plane_init = True on all liquid flow objects",
+            ),
+            HeadlessConstraint(
+                description="cache_type REPLAY doesn't produce full bake",
+                workaround="Use cache_type = 'ALL' and bpy.ops.fluid.bake_all()",
+            ),
+        ],
+        key_parameters={
+            "domain_type": "LIQUID",
+            "resolution_max": 128,
+            "use_mesh": True,
+            "use_plane_init": True,
+            "cache_type": "ALL",
+        },
+        reasoning="Mantaflow liquid simulation for water/liquid effects",
+        alternative_techniques=["mantaflow_high_res_liquid", "shader_based_water"],
+    ))
+
+    # --- Simple Rigid Body (no Cell Fracture — falling/stacking objects) ---
+    register_capability_pack("simple_rigid_body", TechniqueContract(
+        technique_name="simple_rigid_body",
+        physics_systems=[PhysicsSystem.RIGID_BODY],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.rigidbody.object_add",
+                purpose="Add rigid body physics to objects",
+                context_requirements="Object must be selected and active",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Rigid body world may not exist by default",
+                workaround="Check bpy.context.scene.rigidbody_world; if None, add via bpy.ops.rigidbody.world_add()",
+            ),
+        ],
+        key_parameters={
+            "substeps_per_frame": 10,
+            "solver_iterations": 10,
+        },
+        reasoning="Simple rigid body for scenes without fracturing (falling objects, dominos, etc.)",
+        alternative_techniques=["cell_fracture_rigid_body"],
+    ))
+
+
+# Auto-register on import
+_register_builtin_packs()
 
 
 # =============================================================================

@@ -291,10 +291,15 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
     r"""\[['"]Color 2['"]\]""": (
         "ShaderNodeTexBrick uses 'Color2' (no space) in Blender 5.0", None
     ),
-    # Cell Fracture addon: wrong module name object_fracture_cell → object_cell_fracture
+    # Cell Fracture addon: legacy module names → Blender 5.0 extension name
     r"object_fracture_cell": (
-        "Wrong Cell Fracture module name. Use 'object_cell_fracture' not 'object_fracture_cell'.",
-        "object_cell_fracture"
+        "Wrong Cell Fracture module name. Use 'bl_ext.blender_org.cell_fracture' (Blender 5.0 extension system).",
+        "bl_ext.blender_org.cell_fracture"
+    ),
+    # Cell Fracture addon: object_cell_fracture is the legacy addon name, not valid in Blender 5.0
+    r"addon_utils\.enable\s*\(\s*['\"]object_cell_fracture['\"]": (
+        "Legacy Cell Fracture module name. In Blender 5.0, use 'bl_ext.blender_org.cell_fracture'.",
+        None  # Handled by HARDCODED_FIXES
     ),
     # Blender 5.0 extensions: bpy.ops.preferences.addon_enable is unreliable for extensions
     # Use addon_utils.enable() instead
@@ -328,8 +333,9 @@ HARDCODED_FIXES: Dict[str, str] = {
     "steps_per_second": "substeps_per_frame",
     "Color 1": "Color1",
     "Color 2": "Color2",
-    # Cell Fracture addon: module name is object_cell_fracture, NOT object_fracture_cell
-    "object_fracture_cell": "object_cell_fracture",
+    # Cell Fracture addon: both legacy names map to Blender 5.0 extension name
+    "object_fracture_cell": "bl_ext.blender_org.cell_fracture",
+    "object_cell_fracture": "bl_ext.blender_org.cell_fracture",
 }
 
 

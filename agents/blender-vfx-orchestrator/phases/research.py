@@ -20,7 +20,14 @@ from agents.exceptions import OutputGuardrailTripwireTriggered
 
 from hooks import EnforcementHooks, LoopDetectedError
 from hooks.enforcement_hooks import create_research_hooks
-from models.pipeline_models import ResearchOutput, TechniqueDecision
+from models.pipeline_models import (
+    ResearchOutput,
+    TechniqueContract,
+    TechniqueDecision,
+    get_capability_pack,
+    list_capability_packs,
+    PhysicsSystem,
+)
 from tools.truth_pack import (
     build_truth_pack,
     truth_pack_to_api_spec,
@@ -307,6 +314,22 @@ Select the optimal technique and provide starting parameters."""
             print(f"[Pipeline] WARN: Technique Coordinator failed: {e}", file=sys.stderr)
             selected_technique = None
 
+        # ====== PHASE 0.55: BUILD TECHNIQUE CONTRACT ======
+        technique_contract = _build_technique_contract(selected_technique, research_output)
+        if technique_contract:
+            session.technique_contract = technique_contract.model_dump()
+            print(f"[Pipeline] PHASE 0.55: TechniqueContract built", file=sys.stderr)
+            print(f"[Pipeline]   Technique: {technique_contract.technique_name}", file=sys.stderr)
+            print(f"[Pipeline]   Physics: {[p.value for p in technique_contract.physics_systems]}", file=sys.stderr)
+            print(f"[Pipeline]   Required operators: {len(technique_contract.required_operators)}", file=sys.stderr)
+            print(f"[Pipeline]   Required addons: {len(technique_contract.required_addons)}", file=sys.stderr)
+            print(f"[Pipeline]   Headless constraints: {len(technique_contract.headless_constraints)}", file=sys.stderr)
+            print(f"[Pipeline]   Forbidden patterns: {len(technique_contract.forbidden_patterns)}", file=sys.stderr)
+            if technique_contract.code_scaffolding:
+                print(f"[Pipeline]   Code scaffolding: {len(technique_contract.code_scaffolding)} chars", file=sys.stderr)
+        else:
+            print(f"[Pipeline] PHASE 0.55: No capability pack for '{session.current_technique}' — using advisory mode", file=sys.stderr)
+
     else:
         # ====== RESUME: Skip Phase 0 and 0.5 ======
         print("[Pipeline] RESUME: Skipping Phase 0/0.5 (already stored in session)", file=sys.stderr)
@@ -339,3 +362,106 @@ Select the optimal technique and provide starting parameters."""
         # Don't block pipeline — Script Writer can still generate scripts
 
     return research_text, selected_technique
+
+
+def _build_technique_contract(
+    decision: Optional[TechniqueDecision],
+    research: Optional[ResearchOutput],
+) -> Optional[TechniqueContract]:
+    """Build a TechniqueContract from a TechniqueDecision.
+
+    First checks the capability pack registry for a known technique adapter.
+    If found, merges the decision's parameters with the pack's constraints.
+    If not found, returns None (advisory mode — no binding contract).
+
+    Args:
+        decision: TechniqueDecision from Phase 0.5 coordinator
+        research: ResearchOutput from Phase 0 (for additional context)
+
+    Returns:
+        TechniqueContract if a capability pack matches, else None.
+    """
+    if not decision:
+        return None
+
+    technique = decision.selected_technique
+    available_packs = list_capability_packs()
+
+    # Try exact match first
+    pack = get_capability_pack(technique)
+
+    # Try fuzzy match: look for pack names contained in the technique name
+    if not pack:
+        for pack_name in available_packs:
+            if pack_name in technique or technique in pack_name:
+                pack = get_capability_pack(pack_name)
+                print(
+                    f"[TechniqueContract] Fuzzy match: '{technique}' → pack '{pack_name}'",
+                    file=sys.stderr,
+                )
+                break
+
+    # Try keyword matching for common patterns
+    if not pack:
+        technique_lower = technique.lower()
+        keyword_map = {
+            "cell_fracture": "cell_fracture_rigid_body",
+            "fracture": "cell_fracture_rigid_body",
+            "shatter": "cell_fracture_rigid_body",
+            "destruction": "cell_fracture_rigid_body",
+            "glass": "cell_fracture_rigid_body",
+            "rigid_body": "simple_rigid_body",
+            "mantaflow_fire": "mantaflow_fire",
+            "fire": "mantaflow_fire",
+            "smoke": "mantaflow_fire",
+            "explosion": "mantaflow_fire",
+            "mantaflow_liquid": "mantaflow_liquid",
+            "liquid": "mantaflow_liquid",
+            "water": "mantaflow_liquid",
+            "pour": "mantaflow_liquid",
+        }
+        for keyword, pack_name in keyword_map.items():
+            if keyword in technique_lower:
+                pack = get_capability_pack(pack_name)
+                if pack:
+                    print(
+                        f"[TechniqueContract] Keyword match: '{technique}' "
+                        f"contains '{keyword}' → pack '{pack_name}'",
+                        file=sys.stderr,
+                    )
+                    break
+
+    if not pack:
+        print(
+            f"[TechniqueContract] No capability pack for '{technique}'. "
+            f"Available: {available_packs}",
+            file=sys.stderr,
+        )
+        return None
+
+    # Merge decision parameters into the pack (decision params override pack defaults)
+    merged_params = dict(pack.key_parameters)
+    if decision.key_parameters:
+        merged_params.update(decision.key_parameters)
+
+    # Merge alternatives
+    merged_alts = list(pack.alternative_techniques)
+    if decision.alternative_techniques:
+        for alt in decision.alternative_techniques:
+            if alt not in merged_alts:
+                merged_alts.append(alt)
+
+    # Build contract from pack + decision
+    contract = TechniqueContract(
+        technique_name=pack.technique_name,
+        physics_systems=pack.physics_systems,
+        required_operators=pack.required_operators,
+        required_addons=pack.required_addons,
+        headless_constraints=pack.headless_constraints,
+        key_parameters=merged_params,
+        code_scaffolding=pack.code_scaffolding,
+        forbidden_patterns=pack.forbidden_patterns,
+        reasoning=decision.reasoning,
+        alternative_techniques=merged_alts,
+    )
+    return contract

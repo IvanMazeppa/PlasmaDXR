@@ -127,6 +127,7 @@ from models.pipeline_models import (
     ExecutionOutput,
     QualityOutput,
     LearningOutput,
+    TechniqueContract,
     TechniqueDecision,
     ModificationDecision,
     QualityDecision,
@@ -1322,10 +1323,25 @@ STOP after synthesizing. Return structured output only.""",
                         # handle API validation at $0 (see parameter_bounds, truth_pack).
                         print(f"[Pipeline] Script Writer with truth pack validation", file=sys.stderr)
 
-                        # Build script prompt with Coordinator's technique selection
+                        # Build script prompt — use TechniqueContract if available (binding),
+                        # fall back to advisory prose from TechniqueDecision if not.
                         technique_guidance = ""
                         starting_params = {}
-                        if selected_technique:
+                        active_contract: Optional[TechniqueContract] = None
+
+                        if session.technique_contract:
+                            # BINDING CONTRACT from capability pack registry
+                            try:
+                                active_contract = TechniqueContract(**session.technique_contract)
+                                technique_guidance = active_contract.to_script_constraints()
+                                starting_params = active_contract.key_parameters
+                                print(f"[Pipeline] Using TechniqueContract (BINDING): {active_contract.technique_name}", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Failed to load TechniqueContract: {e}", file=sys.stderr)
+                                active_contract = None
+
+                        if not active_contract and selected_technique:
+                            # ADVISORY prose (legacy path — no capability pack matched)
                             technique_guidance = f"""
 ## COORDINATOR SELECTED TECHNIQUE
 Technique: {selected_technique.selected_technique}
@@ -1334,6 +1350,7 @@ Starting Parameters: {json.dumps(selected_technique.key_parameters, indent=2) if
 
 YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selected this as optimal."""
                             starting_params = selected_technique.key_parameters or {}
+                            print(f"[Pipeline] Using advisory technique guidance (no contract): {selected_technique.selected_technique}", file=sys.stderr)
 
                         script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
 {technique_guidance}
@@ -1925,6 +1942,32 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                             session.techniques_tried.append(script.technique_used)
                             print(f"[Pipeline] New technique: {script.technique_used} (total tried: {len(session.techniques_tried)})", file=sys.stderr)
                         session.current_technique = script.technique_used
+
+                        # ====== CONTRACT ADHERENCE CHECK ======
+                        # If a TechniqueContract is active, verify the script actually
+                        # follows it. This catches the core F1/F2 failure: script writer
+                        # ignoring technique selection and defaulting to training priors.
+                        if session.technique_contract and script.script_path:
+                            try:
+                                contract = TechniqueContract(**session.technique_contract)
+                                script_content = Path(script.script_path).read_text()
+                                adhered, violations = contract.check_adherence(script_content)
+                                if adhered:
+                                    print(f"[Pipeline] CONTRACT ADHERENCE: PASSED", file=sys.stderr)
+                                else:
+                                    print(f"[Pipeline] CONTRACT ADHERENCE: FAILED ({len(violations)} violations)", file=sys.stderr)
+                                    for v in violations:
+                                        print(f"[Pipeline]   VIOLATION: {v}", file=sys.stderr)
+                                    # Add violations to script validation errors so downstream
+                                    # phases are aware, but don't block execution — the script
+                                    # may still produce a usable render.
+                                    if not script.validation_errors:
+                                        script.validation_errors = []
+                                    script.validation_errors.extend(
+                                        [f"CONTRACT: {v}" for v in violations]
+                                    )
+                            except Exception as e:
+                                print(f"[Pipeline] WARN: Contract adherence check failed: {e}", file=sys.stderr)
 
                         print(f"[Pipeline] Script: {script.script_path} ({script.technique_used})", file=sys.stderr)
                     else:
