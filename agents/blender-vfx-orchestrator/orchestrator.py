@@ -71,6 +71,8 @@ from tools.deterministic_quality_checks import run_deterministic_checks
 from utils.hitl_handler import HITLHandler, CheckpointDecision
 # Phase 2B-8: Artifact read tools for agents
 from tools.artifact_tools import read_artifact, list_session_artifacts
+# Wave 2: Section-level patching tool for Script Writer
+from tools.script_generator_tools import patch_script_section
 # Phase 2B-2: Per-agent context trimming ($0, deterministic)
 from utils.context_filter import vfx_context_filter
 from agents.agent_output import AgentOutputSchema
@@ -919,7 +921,7 @@ STOP after synthesizing. Return structured output only.""",
             model=script_model,
             model_settings=script_settings,
             output_type=AgentOutputSchema(ScriptOutput, strict_json_schema=False),
-            tools=base_script_writer_standalone.tools,
+            tools=base_script_writer_standalone.tools + [patch_script_section],
             # Phase 3: Guardrails for Script Writer
             # - Input: Ensure research context provided, valid effect type
             # - Output: Ensure ScriptOutput has required fields
@@ -1202,6 +1204,9 @@ STOP after synthesizing. Return structured output only.""",
                     # Track per-iteration cost and time for utility scoring
                     iteration_start_time = time.monotonic()
                     budget_spent_start = self._budget_tracker.get_spent()
+
+                    # Wave 2: Reset per-iteration patch budget
+                    session.patch_count_iteration = 0
 
                     # Phase 2: Initialize self-learning variables for this iteration
                     # These will be populated in Phase 0.95 for iteration 2+
@@ -1717,12 +1722,90 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         print(f"[Pipeline] Technique switch failed: {e}, falling back to Script Writer", file=sys.stderr)
                                         # Fall through to existing Script Writer path
 
-                                # MODIFY CODE: Script Writer rewrites with truth pack validation
+                                # MODIFY CODE: Section patching if possible, full rewrite as fallback
                                 if mod_decision.action == 'modify_code' and mod_decision.code_change_description and previous_script and previous_script.script_path:
-                                    print(f"[Pipeline] MODIFY CODE → Script Writer rewrite", file=sys.stderr)
-                                    print(f"[Pipeline] Changes requested: {mod_decision.code_change_description[:120]}", file=sys.stderr)
+                                    from utils.script_sections import validate_section_structure
 
-                                    code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
+                                    # Check if script has sections and patch budget allows
+                                    try:
+                                        script_source = Path(previous_script.script_path).read_text()
+                                        missing, found = validate_section_structure(script_source)
+                                        has_sections = len(found) >= 5
+                                    except Exception:
+                                        has_sections = False
+
+                                    can_patch = (
+                                        has_sections
+                                        and session.patch_count_iteration < 2
+                                        and session.patch_count_session < 4
+                                    )
+
+                                    if can_patch:
+                                        print(f"[Pipeline] SECTION PATCH → targeting specific section(s)", file=sys.stderr)
+                                        print(f"[Pipeline] Patch budget: iter={session.patch_count_iteration}/2, session={session.patch_count_session}/4", file=sys.stderr)
+                                        print(f"[Pipeline] Available sections: {found}", file=sys.stderr)
+
+                                        patch_prompt = f"""FIX this script by patching ONLY the section(s) that need changes.
+
+## Current Script
+Path: {previous_script.script_path}
+Sections available: {', '.join(found)}
+
+## What Must Change (from Coordinator)
+{mod_decision.code_change_description}
+
+## Quality Feedback
+Score: {previous_score:.1f}
+Primary Issue: {quality.primary_issue if quality else 'Unknown'}
+
+## Effect Type: {request.effect_type.value}
+## Description: {request.description}
+
+## Instructions
+1. Read the current script to understand all sections
+2. Identify which section(s) need changes (usually 1-2)
+3. For EACH section that needs changes:
+   a. Write the COMPLETE new function definition
+   b. Use patch_script_section to replace ONLY that section
+4. Do NOT rewrite the entire script — only patch what's broken
+5. Keep all other sections exactly as they are
+
+Output name: {request.asset_name}_iter{iteration}_patch"""
+
+                                        try:
+                                            patch_hooks = create_error_recovery_hooks()
+                                            patch_result = await self._run_agent(
+                                                self._script_agent_standalone,
+                                                patch_prompt,
+                                                context=context,
+                                                session=iter_session,
+                                                hooks=patch_hooks,
+                                                max_turns=6,
+                                                run_config=self._build_run_config(
+                                                    session=session,
+                                                    request=request,
+                                                    iteration=iteration,
+                                                    phase="section_patch",
+                                                ),
+                                            )
+                                            patch_output = patch_result.final_output
+                                            if patch_output and patch_output.script_path:
+                                                print(f"[Pipeline] Section patch SUCCESS: {patch_output.script_path}", file=sys.stderr)
+                                                script = patch_output
+                                                direct_modification_success = True
+                                                session.patch_count_iteration += 1
+                                                session.patch_count_session += 1
+                                            else:
+                                                print(f"[Pipeline] Section patch produced no output, falling back to full rewrite", file=sys.stderr)
+                                        except Exception as e:
+                                            print(f"[Pipeline] Section patch failed: {e}, falling back to full rewrite", file=sys.stderr)
+
+                                    if not direct_modification_success:
+                                        # FALLBACK: Full rewrite (existing behavior)
+                                        print(f"[Pipeline] FULL REWRITE → Script Writer rewrite", file=sys.stderr)
+                                        print(f"[Pipeline] Changes requested: {mod_decision.code_change_description[:120]}", file=sys.stderr)
+
+                                        code_fix_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
 
 ## Current Script
 Path: {previous_script.script_path}
@@ -1750,31 +1833,31 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
 5. Use write_script to output the complete fixed script
 6. Name the output: {request.asset_name}_script_iter{iteration}_codefix"""
 
-                                    try:
-                                        code_fix_hooks = create_error_recovery_hooks()
-                                        code_fix_result = await self._run_agent(
-                                            self._script_agent_standalone,
-                                            code_fix_prompt,
-                                            context=context,
-                                            session=iter_session,  # Phase 2B-1
-                                            hooks=code_fix_hooks,
-                                            max_turns=8,
-                                            run_config=self._build_run_config(
-                                                session=session,
-                                                request=request,
-                                                iteration=iteration,
-                                                phase="code_fix",
-                                            ),
-                                        )
-                                        code_fix_output = code_fix_result.final_output
-                                        if code_fix_output and code_fix_output.script_path:
-                                            print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
-                                            script = code_fix_output
-                                            direct_modification_success = True
-                                        else:
-                                            print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
-                                    except Exception as e:
-                                        print(f"[Pipeline] Code fix failed: {e}, falling back", file=sys.stderr)
+                                        try:
+                                            code_fix_hooks = create_error_recovery_hooks()
+                                            code_fix_result = await self._run_agent(
+                                                self._script_agent_standalone,
+                                                code_fix_prompt,
+                                                context=context,
+                                                session=iter_session,
+                                                hooks=code_fix_hooks,
+                                                max_turns=8,
+                                                run_config=self._build_run_config(
+                                                    session=session,
+                                                    request=request,
+                                                    iteration=iteration,
+                                                    phase="code_fix",
+                                                ),
+                                            )
+                                            code_fix_output = code_fix_result.final_output
+                                            if code_fix_output and code_fix_output.script_path:
+                                                print(f"[Pipeline] Code fix SUCCESS: {code_fix_output.script_path}", file=sys.stderr)
+                                                script = code_fix_output
+                                                direct_modification_success = True
+                                            else:
+                                                print(f"[Pipeline] Code fix produced no script_path, falling back", file=sys.stderr)
+                                        except Exception as e:
+                                            print(f"[Pipeline] Code fix failed: {e}, falling back", file=sys.stderr)
 
                                 # If Coordinator provides parameter changes, try direct modification
                                 if mod_decision.action == 'modify_params' and mod_decision.parameter_changes and previous_script and previous_script.script_path:
