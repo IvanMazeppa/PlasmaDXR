@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-12T01:32:47.567679",
+  "effect_type": "cloth",
+  "observation": "The sheet appears nearly flat and static on the line, with little evidence of strong gust-driven deformation.",
+  "expected_behavior": "A large bed sheet should billow outward into sail-like shapes, show taut tension near attachment points, and exhibit visible ripples/collapse phases consistent with wind.",
+  "actual_behavior": "The cloth reads as a narrow, mostly planar hanging panel with minimal curvature, little tension variation, and no obvious wind energy. The line also appears too rigid with little sag.",
+  "suspected_parameters": {
+    "wind_strength": "too low",
+    "wind_turbulence": "too low or absent",
+    "cloth_substeps": "insufficient",
+    "cloth_resolution": "too low",
+    "bending_stiffness": "too high",
+    "pin_constraints": "over-constraining top edge",
+    "clothesline_tension": "too high"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/clothesline_sheet_wind_v1_errfix/clothesline_sheet_wind_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/clothesline_sheet_wind_iter2_paramfix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

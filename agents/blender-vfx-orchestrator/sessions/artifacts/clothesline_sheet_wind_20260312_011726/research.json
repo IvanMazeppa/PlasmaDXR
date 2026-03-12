@@ -1,0 +1,48 @@
+{
+  "recommended_approach": "Flag-style Cloth Modifier setup: a subdivided sheet mesh using Cloth, a pinned top-edge vertex group at the two clothespin grip zones, collision objects for the sagging clothesline and pins, and a Wind force field from camera-left with baked point cache.",
+  "key_parameters": {
+    "Mesh Setup": "Use a grid/plane-style cloth mesh; docs examples describe cloth/flag setups as a grid with a pinned edge.",
+    "Quality Steps": "5-8",
+    "Mass": "0.15-0.25 kg/m\u00b2",
+    "Air Damping": 1.0,
+    "Tension Stiffness": 15,
+    "Pin Group": "Top edge vertex group, weighted strongest where the two clothespins grip the sheet.",
+    "Collision Objects": [
+      "Clothesline",
+      "Clothespins"
+    ],
+    "Wind": "Use a Wind force field from camera-left; animate strength to create gusts that billow, snap taut, then collapse.",
+    "Cache Start": 1,
+    "Cache End": 120,
+    "Bake": "Bake the cloth cache for the shot range; docs note Start/End changes require clearing bake first.",
+    "Post-Sim Smoothing": "If the cloth looks blocky, add a Subdivision Surface after simulation as suggested in the cloth examples."
+  },
+  "api_modules": [
+    "bpy.types.ClothModifier",
+    "bpy.types.PointCache",
+    "bpy.ops.ptcache.bake_all",
+    "bpy.types.Object.modifiers",
+    "bpy.types.FieldSettings",
+    "bpy.types.CollisionSettings"
+  ],
+  "warnings": [
+    "Do not let the cloth initially intersect or penetrate deflection/collision objects; the cloth workflow docs warn this causes unstable simulation.",
+    "If you change cache Start or End, clear the existing bake before rebaking.",
+    "For a cleaner render surface, smooth or subdivide after simulation if the cloth appears faceted/blocky.",
+    "If using the armature-based alternative, the cloth examples note the armature should be in bind pose before simulation/pose changes."
+  ],
+  "alternative_approaches": [
+    "Simulation Nodes for a more custom stateful motion setup if standard Cloth needs extra procedural control.",
+    "Cloth on Armature / Animated Vertex Groups for a more art-directed version where pinned areas or support motion are explicitly animated.",
+    "Using Cloth for Soft Bodies if you want a less fabric-specific deforming-sheet treatment rather than a pure hanging-cloth workflow."
+  ],
+  "doc_refs": [
+    "Blender 5.0 Manual > Physics > Cloth \u2014 physics/cloth/index.html",
+    "Blender 5.0 Manual > Physics > Cloth > Introduction / Workflow \u2014 physics/cloth/introduction.html",
+    "Blender 5.0 Manual > Physics > Cloth > Settings > Cache \u2014 physics/cloth/settings/cache.html",
+    "Blender 5.0 Manual > Physics > Cloth > Examples (flag-style pinned edge, smoothing, cloth on armature)",
+    "Blender 5.0 Manual > Physics > Simulation Nodes \u2014 physics/simulation_nodes.html",
+    "Blender Python Reference 5.0 > Object Modifier Type Items \u2014 blender_python_reference_5_0/bpy_types_enum_items/object_modifier_type_items.html"
+  ],
+  "timestamp": "2026-03-12T01:18:53.813734"
+}

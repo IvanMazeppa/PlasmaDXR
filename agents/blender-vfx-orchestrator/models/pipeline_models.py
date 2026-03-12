@@ -462,6 +462,104 @@ addon_utils.enable('bl_ext.blender_org.cell_fracture', default_set=True, persist
         alternative_techniques=["cell_fracture_rigid_body"],
     ))
 
+    # --- Particles Core (rain, snow, sparks, dust, embers) ---
+    register_capability_pack("particles_core", TechniqueContract(
+        technique_name="particles_core",
+        physics_systems=[PhysicsSystem.PARTICLE_SYSTEM],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.particle_system_add",
+                purpose="Add a particle system to the emitter object",
+                context_requirements="Emitter object must be selected and active",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Particle cache must be baked before rendering",
+                workaround="Use bpy.ops.ptcache.bake_all(bake=True) after configuring particle settings",
+            ),
+            HeadlessConstraint(
+                description="Particle instance objects need to exist before bake",
+                workaround="Create instance geometry first, assign to particle settings.instance_object before baking",
+            ),
+        ],
+        key_parameters={
+            "particle_count": 1000,
+            "frame_start": 1,
+            "frame_end": 120,
+            "lifetime": 50,
+            "physics_type": "NEWTON",
+            "emit_from": "FACE",
+        },
+        reasoning="Blender particle system for effects like rain, snow, sparks, dust, embers, confetti",
+        alternative_techniques=["geometry_nodes_particles", "mantaflow_fire"],
+    ))
+
+    # --- Cloth / Soft Body (fabric, curtains, flags, soft deformation) ---
+    register_capability_pack("cloth_softbody", TechniqueContract(
+        technique_name="cloth_softbody",
+        physics_systems=[PhysicsSystem.CLOTH],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.modifier_add",
+                purpose="Add CLOTH modifier to the target mesh",
+                context_requirements="Target mesh must be selected and active; call with type='CLOTH'",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Cloth cache must be baked before rendering",
+                workaround="Use bpy.ops.ptcache.bake_all(bake=True) after configuring cloth settings",
+            ),
+            HeadlessConstraint(
+                description="Collision objects need COLLISION modifier for cloth interaction",
+                workaround="Add bpy.ops.object.modifier_add(type='COLLISION') to all collision objects before baking",
+            ),
+        ],
+        key_parameters={
+            "quality": 5,
+            "mass": 0.3,
+            "air_damping": 1.0,
+            "tension_stiffness": 15.0,
+            "compression_stiffness": 15.0,
+            "bending_stiffness": 0.5,
+        },
+        reasoning="Cloth simulation for fabric, curtains, flags, banners, tablecloths, soft body deformation",
+        alternative_techniques=["softbody_modifier", "geometry_nodes_deformation"],
+    ))
+
+    # --- Geometry Nodes Environment (procedural landscapes, scatter, foliage) ---
+    register_capability_pack("geometry_nodes_environment", TechniqueContract(
+        technique_name="geometry_nodes_environment",
+        physics_systems=[PhysicsSystem.GEOMETRY_NODES],
+        required_operators=[
+            RequiredOperator(
+                operator="bpy.ops.object.modifier_add",
+                purpose="Add NODES modifier (Geometry Nodes) to the target mesh",
+                context_requirements="Target mesh must be selected; call with type='NODES'",
+            ),
+        ],
+        headless_constraints=[
+            HeadlessConstraint(
+                description="Geometry Nodes modifiers must be applied or evaluated before render in some cases",
+                workaround="Ensure the node tree is assigned: modifier.node_group = bpy.data.node_groups['GroupName']",
+            ),
+        ],
+        key_parameters={
+            "scatter_density": 10.0,
+            "seed": 42,
+            "scale_min": 0.8,
+            "scale_max": 1.2,
+        },
+        code_scaffolding="""# Create geometry nodes modifier
+mod = obj.modifiers.new(name="GeometryNodes", type='NODES')
+# Create or assign a node group
+node_group = bpy.data.node_groups.new(name="EnvironmentSetup", type='GeometryNodeTree')
+mod.node_group = node_group""",
+        reasoning="Geometry Nodes for procedural environments: terrain, foliage scatter, rocks, procedural cities, abstract shapes",
+        alternative_techniques=["manual_mesh_placement", "particle_system_scatter"],
+    ))
+
 
 # Auto-register on import
 _register_builtin_packs()

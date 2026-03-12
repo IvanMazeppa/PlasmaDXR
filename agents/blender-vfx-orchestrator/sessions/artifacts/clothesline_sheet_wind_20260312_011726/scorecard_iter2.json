@@ -1,0 +1,28 @@
+{
+  "session_id": "clothesline_sheet_wind_20260312_011726",
+  "iteration": 2,
+  "overall_score": 28.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase wind force/turbulence and relax over-constraint in the cloth sim so the sheet can billow outward; the most important fix is in the simulation setup rather than the listed material parameters.",
+    "Add slight line sag and let the sheet weight influence it; current deformation suggests line tension is too high.",
+    "Push the camera closer and frame the sheet as the hero subject so the cloth motion dominates the image.",
+    "Brighten the environment: Line 140 world_bg Strength 0.7 is too low for the requested sunny outdoor look; try roughly 1.2-1.8 and add a proper sky/outdoor background instead of black.",
+    "Improve transmitted-light feel of the fabric: keep translucency active and tune Line 368 translucent Color toward a warmer cotton off-white rather than a neutral CG white.",
+    "The fabric reads too smooth and synthetic; increase macro fold definition while refining micro detail. Try Line 369 bump Strength from 0.03 to about 0.05-0.08, but reduce Line 370 bump Distance from 0.01 to about 0.003-0.006 for finer cloth surface relief.",
+    "The procedural texture likely feels too busy/fake for cotton. Try lowering Line 352 noise Detail from 14.0 to around 6-8 and Line 353 noise Roughness from 0.65 to around 0.45-0.55.",
+    "For broader, more natural cloth variation, reduce Line 351 noise Scale from 22.0 to about 10-16 and Line 350 mapping Scale from (18,18,18) to roughly (8-12,8-12,8-12).",
+    "If the wave texture contributes visible striping rather than fabric breakup, reduce Line 271 wave Scale from 35.0 to around 15-22 and Line 272 Distortion from 1.0 to around 0.3-0.6.",
+    "The sheet color is slightly cool/synthetic. Shift Line 423 Base Color from (0.83, 0.91, 1.0, 1.0) toward a warmer cotton white, approximately (0.92-0.96, 0.91-0.95, 0.88-0.93, 1.0).",
+    "Make the two clothespins larger and more silhouetted so they read immediately.",
+    "Increase render samples and use denoising carefully to clean grain on the fence and ground without erasing cloth detail."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 75.08886990300016,
+  "utility_score": 0.5774259417474998,
+  "timestamp": "2026-03-12T01:33:15.192468"
+}

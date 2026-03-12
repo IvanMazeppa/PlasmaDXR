@@ -419,6 +419,9 @@ def validate_execution_artifacts(
         "rigid_body", "rigid body", "rigidbody",
         "cell_fracture", "voronoi_fracture",
         "prefracture", "constraint", "fracture",
+        "cloth", "fabric", "flag", "softbody", "soft_body",
+        "particle", "rain", "snow", "spark", "dust",
+        "geometry_node", "environment", "scatter", "terrain",
     ]
     # Check effect type
     if effect_type:

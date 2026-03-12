@@ -125,6 +125,20 @@ TECHNIQUE_TYPES: Dict[str, List[str]] = {
     "particle_system": [
         "ParticleSettings", "ParticleSystem",
         "Object", "Camera", "PointLight", "SpotLight", "SunLight", "AreaLight",
+        "ShaderNodeBsdfPrincipled", "ShaderNodeMix", "ShaderNodeOutputMaterial",
+        "CyclesRenderSettings", "RenderSettings", "Scene",
+    ],
+    "cloth": [
+        "ClothSettings", "ClothCollisionSettings", "ClothModifier",
+        "CollisionSettings",
+        "Object", "Camera", "PointLight", "SpotLight", "SunLight", "AreaLight",
+        "ShaderNodeBsdfPrincipled", "ShaderNodeMix", "ShaderNodeOutputMaterial",
+        "CyclesRenderSettings", "RenderSettings", "Scene",
+    ],
+    "geometry_nodes": [
+        "Object", "Camera", "PointLight", "SpotLight", "SunLight", "AreaLight",
+        "ShaderNodeBsdfPrincipled", "ShaderNodeMix", "ShaderNodeOutputMaterial",
+        "ShaderNodeTexNoise", "ShaderNodeTexVoronoi",
         "CyclesRenderSettings", "RenderSettings", "Scene",
     ],
     # Common types included in ALL techniques
@@ -150,6 +164,25 @@ TECHNIQUE_ALIASES: Dict[str, str] = {
     "cell_fracture_rigid_body_mesh": "rigid_body",
     "cell_fracture": "rigid_body",
     "voronoi_fracture": "rigid_body",
+    # Cloth / soft body
+    "cloth_softbody": "cloth",
+    "cloth_simulation": "cloth",
+    "cloth_wind": "cloth",
+    "fabric": "cloth",
+    "flag": "cloth",
+    "curtain": "cloth",
+    "softbody": "cloth",
+    # Particles
+    "particles_core": "particle_system",
+    "particle_emitter": "particle_system",
+    "rain_particle": "particle_system",
+    "snow_particle": "particle_system",
+    "spark_particle": "particle_system",
+    # Geometry nodes
+    "geometry_nodes_environment": "geometry_nodes",
+    "geometry_nodes_scatter": "geometry_nodes",
+    "procedural_environment": "geometry_nodes",
+    "procedural_terrain": "geometry_nodes",
 }
 
 
@@ -164,6 +197,11 @@ SETTINGS_MAP: Dict[str, str] = {
     "rigid_body": "RigidBodyObject",
     "rigid_body_world": "RigidBodyWorld",
     "particle_systems": "ParticleSystem",
+    "particle_settings": "ParticleSettings",
+    "cloth": "ClothSettings",
+    "cloth_settings": "ClothSettings",
+    "collision_settings": "ClothCollisionSettings",
+    "collision": "CollisionSettings",
     "cycles": "CyclesRenderSettings",
     "render": "RenderSettings",
     "scene": "Scene",
@@ -176,6 +214,9 @@ VARIABLE_PATTERNS: Dict[str, str] = {
     "fset": "FluidFlowSettings",
     "fsettings": "FluidFlowSettings",
     "eset": "FluidEffectorSettings",
+    "cloth_settings": "ClothSettings",
+    "cloth_mod": "ClothModifier",
+    "collision_settings": "ClothCollisionSettings",
     "settings": "FluidDomainSettings",  # Ambiguous, but domain is most common
 }
 
@@ -365,9 +406,30 @@ async def build_truth_pack(
     """
     blender = blender_exe or BLENDER_EXE
 
-    # Resolve technique aliases
-    resolved = TECHNIQUE_ALIASES.get(technique, technique)
-    types_needed = TECHNIQUE_TYPES.get(resolved, TECHNIQUE_TYPES.get("mantaflow_gas"))
+    # Resolve technique aliases — try exact match first, then substring
+    resolved = TECHNIQUE_ALIASES.get(technique, None)
+    if resolved is None:
+        # Substring match: check if any alias key appears in the technique name
+        # or the technique name appears in any alias key
+        tech_lower = technique.lower()
+        for alias_key, alias_val in TECHNIQUE_ALIASES.items():
+            if alias_key in tech_lower or tech_lower in alias_key:
+                resolved = alias_val
+                break
+        if resolved is None:
+            resolved = technique
+    types_needed = TECHNIQUE_TYPES.get(resolved)
+    if types_needed is None:
+        # Fall back to common types only — do NOT silently use mantaflow_gas
+        # which would cause cloth/particle attributes to be validated against
+        # FluidDomainSettings and then "fixed" (clobbered).
+        print(
+            f"[TruthPack] WARNING: No type mapping for technique '{resolved}' "
+            f"(original: '{technique}'). Using _common types only. "
+            f"Available: {list(TECHNIQUE_TYPES.keys())}",
+            file=sys.stderr,
+        )
+        types_needed = TECHNIQUE_TYPES.get("_common", [])
 
     # Check cache
     if use_cache:

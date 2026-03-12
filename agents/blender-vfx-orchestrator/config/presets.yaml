@@ -88,6 +88,11 @@ presets:
         model: gpt-5.4
         reasoning_effort: high
         max_output_tokens: 4000
+      # Vision analysis benefits from gpt-5.4's better image understanding
+      quality_analyst:
+        model: gpt-5.4
+        reasoning_effort: high
+        max_output_tokens: 10000
 
   # Full quality - best results, higher cost
   production:

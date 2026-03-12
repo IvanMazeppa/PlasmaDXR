@@ -1,0 +1,70 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_ctxfilter_v2.py",
+  "technique_used": "cell_fracture_rigid_body",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_ctxfilter_v2_20260312_001350/cache",
+  "score": 18.0,
+  "passed": false,
+  "primary_issue": "The render does not convincingly show a brick breaking through a visible glass pane; the core shatter event is essentially missing.",
+  "parameter_changes": {
+    "asset_name": "glass_shatter_ctxfilter_v2",
+    "frame_range": [
+      1,
+      50
+    ],
+    "render_frame": 30,
+    "cell_fracture": {
+      "source": "PARTICLE_OWN",
+      "source_limit": 100,
+      "source_noise": 0.05,
+      "margin": 0.0005
+    },
+    "rigid_body_world": {
+      "steps_per_second": 120,
+      "solver_iterations": 20,
+      "cache_frame_start": 1,
+      "cache_frame_end": 50
+    },
+    "shards": {
+      "collision_shape": "CONVEX_HULL",
+      "mass_per_shard": 0.02,
+      "friction": 0.25,
+      "restitution": 0.05,
+      "collision_margin": 0.001
+    },
+    "constraints": {
+      "type": "FIXED",
+      "use_breaking": true,
+      "base_breaking_threshold": 6.0,
+      "breaking_random_variation": 0.15,
+      "neighbor_distance": 0.19,
+      "max_neighbors_per_shard": 4,
+      "frame_anchor_thresholds": [
+        8.6,
+        9.2
+      ]
+    },
+    "projectile_brick": {
+      "collision_shape": "MESH",
+      "mass": 3.0,
+      "kinematic": true,
+      "impact_keyframes": [
+        1,
+        18,
+        22,
+        38
+      ]
+    },
+    "render": {
+      "engine": "CYCLES",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T00:24:25.866869"
+}

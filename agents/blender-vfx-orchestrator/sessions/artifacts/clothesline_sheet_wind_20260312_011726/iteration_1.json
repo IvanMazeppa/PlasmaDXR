@@ -1,0 +1,47 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/clothesline_sheet_wind_v1_errfix.py",
+  "technique_used": "cloth_softbody",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/clothesline_sheet_wind_v1_errfix/clothesline_sheet_wind_v1_errfix.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/clothesline_sheet_wind_20260312_011726/cache",
+  "score": 24.0,
+  "passed": false,
+  "primary_issue": "The sheet does not show the requested strong wind interaction; it hangs stiffly instead of billowing into dramatic sail-like forms, with no convincing gust response or line sag.",
+  "parameter_changes": {
+    "asset_name": "clothesline_sheet_wind_v1_errfix",
+    "frame_start": 1,
+    "frame_end": 110,
+    "final_render_frame": 92,
+    "cloth_quality": 8,
+    "cloth_mass": 0.32,
+    "cloth_air_damping": 1.0,
+    "pin_group": "PinTop",
+    "sheet_scale": [
+      1.2,
+      1.45,
+      1.0
+    ],
+    "rope_height": 2.05,
+    "wind_strength_keyframes": {
+      "1": 0.0,
+      "24": 520.0,
+      "60": 760.0,
+      "88": 430.0,
+      "110": 620.0
+    },
+    "render_resolution": [
+      1920,
+      1080
+    ],
+    "camera_lens": 58.0,
+    "lights": [
+      "SUN",
+      "AREA",
+      "AREA",
+      "SPOT"
+    ],
+    "structural_fix": "Removed invalid ClothSettings.highres_sampling usage and rebuilt the cloth setup with a proper Cloth modifier, pinned top edge, collision rope, and wind effector."
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T01:32:04.361528"
+}

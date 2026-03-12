@@ -1,0 +1,28 @@
+{
+  "session_id": "glass_shatter_ctxfilter_v2_20260312_001350",
+  "iteration": 3,
+  "overall_score": 18.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Highest priority: rework scene construction so an actual window pane and a properly proportioned brick are unmistakably visible; this is not fixable through minor shading tweaks alone.",
+    "Add true glass readability with physically based shading and stronger specular edge definition; if the pane is procedural, increase contrast/readability of breakup patterns rather than relying on subtle surfaces alone.",
+    "Use a real fracture layout: radial cracks from the impact point, a broken-out central hole, irregular shard sizes, and detached fragments traveling along the brick trajectory.",
+    "Introduce motion cues such as motion blur on the brick and some shards, plus smaller high-velocity debris around the impact zone.",
+    "Push the camera closer or tighten the crop so the impact event occupies most of the frame instead of being lost in empty space.",
+    "Improve frame coherence: the current brown bars should read as a single believable window structure instead of floating patterned elements.",
+    "If Line 252 (vor.inputs['Scale'] = 55.0) is driving crack/breakup detail, test a lower value to avoid overly fine abstract patterning and get larger, more readable break structure.",
+    "If Lines 171-172 (wave Scale 4.5, Distortion 1.0) influence surface breakup, reduce distortion and retune scale so patterns stop reading as decorative striping and start supporting fracture directionality.",
+    "If Lines 210-217 are driving the brick appearance, replace the current brick-texture treatment with more realistic brick proportions/material response; at minimum, reduce the stylized procedural look so the projectile reads as masonry rather than a cube.",
+    "Use the background more strategically: Line 100 (bg Strength 2.5) may be flattening contrast; lowering it or introducing stronger directional lighting would help glass edges and shard silhouettes stand out.",
+    "Increase microdetail and sharpness; the render currently has a slightly soft/denoised look that weakens edge definition on the few important forms present.",
+    "If geometry/simulation controls are not currently exposed, expose fracture/shard-count/velocity parameters in the script, because the current modifiable set appears too material-focused to solve the core shatter failure."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 171.75072874300167,
+  "utility_score": 0.44687439271416524,
+  "timestamp": "2026-03-12T00:30:53.314151"
+}

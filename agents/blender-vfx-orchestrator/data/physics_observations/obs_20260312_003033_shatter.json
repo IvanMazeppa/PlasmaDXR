@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-12T00:30:33.187939",
+  "effect_type": "shatter",
+  "observation": "Requested impact/shatter behavior is not visible. The render appears largely static, with no clear glass fracture propagation or fragment scattering.",
+  "expected_behavior": "A brick should be visibly passing through or contacting a glass pane, with radial cracking, broken-out sections, and scattered shards showing plausible impact direction and energy.",
+  "actual_behavior": "The image shows simple bar-like structures and a small cube-like object; glass is not clearly readable, fracture patterns are absent, and there is no convincing shard distribution or impact motion.",
+  "suspected_parameters": {
+    "line_171_wave_scale": 4.5,
+    "line_172_wave_distortion": 1.0,
+    "line_210_tex_scale": 4.0,
+    "line_211_brick_width": 0.6,
+    "line_212_row_height": 0.22,
+    "line_252_voronoi_scale": 55.0,
+    "note": "Current modifiable parameters appear to be mostly procedural texture/material controls, which may be producing abstract surface patterns instead of readable glass fracture/shard behavior."
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_ctxfilter_v2_iter3_paramfix.py",
+  "iteration": 3,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

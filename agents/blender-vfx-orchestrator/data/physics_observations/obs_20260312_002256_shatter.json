@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-03-12T00:22:56.142380",
+  "effect_type": "shatter",
+  "observation": "The render lacks any visible fracture propagation or shard ejection despite the scene calling for a brick impact through a glass pane.",
+  "expected_behavior": "A brick impact should create a clear glass pane with a localized impact point, visible crack network, and fragments scattering outward with directionality from the impact.",
+  "actual_behavior": "The image reads as a static arrangement of simple blocky geometry in a frame, with no convincing glass pane, no crack pattern, and no realistic fragment motion or debris field.",
+  "suspected_parameters": {
+    "line_169_wave_scale": 8.0,
+    "line_170_wave_distortion": 4.0,
+    "line_206_tex_scale": 8.0,
+    "line_246_voronoi_scale": 55.0
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_ctxfilter_v2.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

@@ -1,0 +1,36 @@
+{
+  "overall_score": 18.0,
+  "passed": false,
+  "primary_issue": "The render fails the core brief: it does not clearly show a brick smashing through a glass window, and there is no convincing glass fracture or fragment scatter.",
+  "issues": [
+    "Critical prompt mismatch: the scene reads as an abstract arrangement of brown bars and a small cube, not a brick impacting a window pane.",
+    "No readable glass pane is present; reflections, refraction, edge highlights, and pane thickness are missing or too weak to identify glass.",
+    "No convincing shatter event is visible: there are no radial cracks, breakout hole, shard clusters, secondary splinters, or debris.",
+    "The 'brick' lacks correct proportions and material cues; it appears closer to a small cube than a masonry brick.",
+    "The image feels static, with almost no sense of impact force, directionality, or motion.",
+    "Composition is weak for the requested effect: the action is too small in frame and surrounded by large empty areas.",
+    "Several brown elements show stripe/moire-like patterning and look disconnected from a believable window/frame assembly.",
+    "Lighting is technically clean but too flat and soft to reveal glass edges or create dramatic impact readability.",
+    "Overall detail level is low/blockout-like, which prevents realism and scale believability.",
+    "Compared with a suitable glass-shatter reference, the render is far below target in realism, fracture structure, storytelling, and material quality."
+  ],
+  "suggestions": [
+    "Highest priority: rework scene construction so an actual window pane and a properly proportioned brick are unmistakably visible; this is not fixable through minor shading tweaks alone.",
+    "Add true glass readability with physically based shading and stronger specular edge definition; if the pane is procedural, increase contrast/readability of breakup patterns rather than relying on subtle surfaces alone.",
+    "Use a real fracture layout: radial cracks from the impact point, a broken-out central hole, irregular shard sizes, and detached fragments traveling along the brick trajectory.",
+    "Introduce motion cues such as motion blur on the brick and some shards, plus smaller high-velocity debris around the impact zone.",
+    "Push the camera closer or tighten the crop so the impact event occupies most of the frame instead of being lost in empty space.",
+    "Improve frame coherence: the current brown bars should read as a single believable window structure instead of floating patterned elements.",
+    "If Line 252 (vor.inputs['Scale'] = 55.0) is driving crack/breakup detail, test a lower value to avoid overly fine abstract patterning and get larger, more readable break structure.",
+    "If Lines 171-172 (wave Scale 4.5, Distortion 1.0) influence surface breakup, reduce distortion and retune scale so patterns stop reading as decorative striping and start supporting fracture directionality.",
+    "If Lines 210-217 are driving the brick appearance, replace the current brick-texture treatment with more realistic brick proportions/material response; at minimum, reduce the stylized procedural look so the projectile reads as masonry rather than a cube.",
+    "Use the background more strategically: Line 100 (bg Strength 2.5) may be flattening contrast; lowering it or introducing stronger directional lighting would help glass edges and shard silhouettes stand out.",
+    "Increase microdetail and sharpness; the render currently has a slightly soft/denoised look that weakens edge definition on the few important forms present.",
+    "If geometry/simulation controls are not currently exposed, expose fracture/shard-count/velocity parameters in the script, because the current modifiable set appears too material-focused to solve the core shatter failure."
+  ],
+  "vision_assessment": "Strictly judged, this is a failed shatter render. The image is clean enough at a basic rendering level, but it does not convincingly depict the requested scene of a brick smashing through a glass window pane. The central object does not read as a brick, the window/glass is not clearly identifiable, and there is no visible fracture propagation, breakout hole, or shard scatter. The scene instead resembles a simple abstract blockout with patterned brown bars and a floating cube-like object. Lighting is soft and orderly, but too flat to reveal glass behavior or create a dramatic impact moment. Material definition is insufficient, the composition underemphasizes the supposed action, and the overall realism is far below production quality. A physics anomaly was observed and recorded because the expected impact/shatter behavior is essentially absent in the final image.",
+  "reference_similarity": 18.0,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "iteration": 3,
+  "timestamp": "2026-03-12T00:30:53.308554"
+}

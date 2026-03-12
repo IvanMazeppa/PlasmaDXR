@@ -1,0 +1,50 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_ctxfilter_v2_iter3_paramfix.py",
+  "technique_used": "cell_fracture_rigid_body (param-modified) (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/glass_shatter_ctxfilter_v2_20260312_001350/cache",
+  "score": 18.0,
+  "passed": false,
+  "primary_issue": "The render fails the core brief: it does not clearly show a brick smashing through a glass window, and there is no convincing glass fracture or fragment scatter.",
+  "parameter_changes": {
+    "bg.inputs['Strength'].default_value": 2.5,
+    "bg.inputs['Color'].default_value": [
+      0.12,
+      0.13,
+      0.16,
+      1.0
+    ],
+    "emission.inputs['Strength'].default_value": 5.0,
+    "wave.inputs['Scale'].default_value": 4.5,
+    "wave.inputs['Distortion'].default_value": 1.0,
+    "vor.inputs['Scale'].default_value": 25.0,
+    "noise.inputs['Roughness'].default_value": 0.42,
+    "tex.inputs['Scale'].default_value": 4.0,
+    "tex.inputs['Brick Width'].default_value": 0.6,
+    "tex.inputs['Row Height'].default_value": 0.22,
+    "tex.inputs['Mortar Size'].default_value": 0.025,
+    "tex.inputs['Bias'].default_value": 0.1,
+    "tex.inputs['Color1'].default_value": [
+      0.45,
+      0.17,
+      0.11,
+      1.0
+    ],
+    "tex.inputs['Color2'].default_value": [
+      0.28,
+      0.11,
+      0.08,
+      1.0
+    ],
+    "tex.inputs['Mortar'].default_value": [
+      0.18,
+      0.18,
+      0.18,
+      1.0
+    ],
+    "bump.inputs['Strength'].default_value": 0.015
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T00:33:09.328891"
+}

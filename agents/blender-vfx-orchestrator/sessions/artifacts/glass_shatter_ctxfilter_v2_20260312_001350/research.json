@@ -1,0 +1,27 @@
+{
+  "recommended_approach": "Constraint-Based Glass Shattering: pre-fracture the window into rigid-body shards, then connect adjacent shards with breakable FIXED rigid body constraints so the brick impact progressively releases fragments instead of dropping the whole pane at once.",
+  "key_parameters": {
+    "type": "FIXED",
+    "use_breaking": true,
+    "breaking_threshold": "Set to the shard-link force level you want the brick impact to exceed; this controls when connected glass pieces separate."
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyObject"
+  ],
+  "warnings": [
+    "Do not default to the simplest destruction setup; choose the technique based on scene realism needs.",
+    "Basic pre-fracture alone can make all shards fall at once instead of producing progressive shatter.",
+    "Projectile setup can fail so the brick does not hit the pane correctly.",
+    "Rigid body settings can become unstable, causing shard jitter.",
+    "A pure rigid-body breakup can look too clean without smaller secondary debris."
+  ],
+  "alternative_approaches": [
+    "Cell Fracture + Rigid Body prefracture workflow.",
+    "Rigid-body glass shards plus particle debris for smaller glass chips and secondary fragments."
+  ],
+  "doc_refs": [
+    "techniques/destruction/overview",
+    "techniques/destruction/constraint_breaking"
+  ],
+  "timestamp": "2026-03-12T00:14:58.040940"
+}

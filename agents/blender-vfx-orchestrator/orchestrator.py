@@ -71,6 +71,8 @@ from tools.deterministic_quality_checks import run_deterministic_checks
 from utils.hitl_handler import HITLHandler, CheckpointDecision
 # Phase 2B-8: Artifact read tools for agents
 from tools.artifact_tools import read_artifact, list_session_artifacts
+# Phase 2B-2: Per-agent context trimming ($0, deterministic)
+from utils.context_filter import vfx_context_filter
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -457,6 +459,7 @@ class BlenderVFXOrchestrator:
                 workflow_name="blender-vfx-orchestrator",
                 group_id=session.session_id,
                 trace_metadata=trace_meta,
+                call_model_input_filter=vfx_context_filter,
             )
         except TypeError:
             # Older/newer SDK signature; return default config if possible.
@@ -858,32 +861,25 @@ Note: Learning Agent is also analyzing in parallel - make your decision based on
             instructions="""ROLE: Blender documentation research specialist.
 INPUTS: effect_type, description.
 TOOLS: blender_doc_search_bundle, search_code_patterns, list_patterns_by_effect.
-TURNS: MAX 8.
 
-<research_mode>
-Before calling any tool, state in one sentence what you expect to find and why.
+CRITICAL: You have exactly 3 turns. Do NOT exceed them.
 
-PASS 1 — PLAN: Identify 2-3 sub-questions from the description:
-  - What physics system fits this effect? (rigid body, Mantaflow, particles, cloth, geometry nodes)
-  - What techniques exist for this specific visual result?
-  - What API modules are needed?
+TURN 1 — RETRIEVE ALL AT ONCE:
+Call ALL of these tools in parallel (one function call each):
+  1. blender_doc_search_bundle(effect_type=<type>, description=<desc>, domain=<physics_system>)
+     Set domain to the specific physics system (e.g. "rigid_body", "mantaflow", "particles").
+  2. blender_doc_search_bundle(effect_type=<type>, description=<desc>, domain=<physics_system>)
+     Use a DIFFERENT query focus (alternative techniques, API modules, known pitfalls).
+  3. list_patterns_by_effect(effect_type=<type>)
+  4. search_code_patterns(issue="", effect_type=<type>)
 
-PASS 2 — RETRIEVE: Call tools to answer each sub-question.
-  T1: blender_doc_search_bundle(effect_type, description, domain=<physics_system>)
-       Set domain to the specific physics system (e.g. "rigid_body", "mantaflow", "particles")
-       — do NOT leave domain empty, it causes irrelevant results.
-  T2: list_patterns_by_effect(effect_type) OR search_code_patterns(issue="", effect_type=effect_type)
+TURN 2 — ONE OPTIONAL FOLLOW-UP:
+If Turn 1 results were empty or irrelevant for a specific sub-question, make ONE targeted follow-up call.
+If Turn 1 results were sufficient, skip directly to Turn 3.
 
-PASS 3 — SYNTHESIZE: Combine findings into ResearchOutput.
-</research_mode>
-
-<empty_result_recovery>
-If blender_doc_search_bundle returns irrelevant results (wrong physics type, wrong domain):
-1. Retry with a more specific domain parameter (e.g. domain="rigid_body" instead of empty)
-2. Retry with alternative search terms from the description
-3. If still empty, note in warnings and proceed with best available info
-Do NOT give up after one failed search.
-</empty_result_recovery>
+TURN 3 — SYNTHESIZE:
+Combine ALL findings into ResearchOutput. Use whatever you have — do NOT search again.
+If some fields are sparse, fill them with best-effort data from available results.
 
 <output_contract>
 ResearchOutput fields — ALL REQUIRED unless marked optional:
@@ -2708,7 +2704,7 @@ DO NOT suggest: {', '.join(session_mgr.techniques_tried)}"""
                                 context=context,
                                 session=iter_session,  # Phase 2B-1: Stateless iterations
                                 hooks=switch_research_hooks,
-                                max_turns=8,  # Match main research phase turn budget
+                                max_turns=4,  # Bounded 3-stage: retrieve → follow-up → synthesize
                                 run_config=self._build_run_config(
                                     session=session,
                                     request=request,

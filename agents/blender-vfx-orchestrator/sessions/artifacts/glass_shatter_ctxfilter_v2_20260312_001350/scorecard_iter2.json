@@ -1,0 +1,24 @@
+{
+  "session_id": "glass_shatter_ctxfilter_v2_20260312_001350",
+  "iteration": 2,
+  "overall_score": 26.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase shot readability first: make the pane and impact zone much more obvious. If exposed in the scene setup, raise environment visibility slightly by increasing background strength at line 100 above 1.0 and consider a brighter/lighter background color at line 99 so glass edges can catch highlights.",
+    "Reduce the synthetic procedural look in the surrounding frame by lowering wave texture aggressiveness: line 170 (wave Scale) from 8.0 toward ~3.0-5.0 and line 171 (wave Distortion) from 4.0 toward ~0.5-1.5.",
+    "Reduce noisy micro-patterning in the breakup/detail shader by lowering line 249 (voronoi Scale) from 55.0 toward ~15.0-30.0 so surfaces read less like procedural striping and more like solid materials.",
+    "Improve the brick material so it reads as an actual brick: line 208 (brick tex Scale) from 8.0 toward ~3.0-5.0, line 209 (Brick Width) from 0.48 toward ~0.55-0.65, line 210 (Row Height) from 0.28 toward ~0.18-0.24, and line 211 (Mortar Size) from 0.06 down toward ~0.015-0.03.",
+    "Refine brick color balance for realism: line 213 (Color1) and line 214 (Color2) should be pushed slightly more natural/desaturated clay-red, while line 215 (Mortar) should be less prominent so the brick does not read as stylized texture.",
+    "Increase surface realism by adjusting line 134 (noise Roughness) from 0.55 toward ~0.35-0.5 if it is contributing to flat muddy breakup; aim for cleaner material separation and more believable highlight response.",
+    "The major missing element is fracture behavior, which likely is not fully controllable from the exposed parameters listed. Add or strengthen a true shatter setup: a visible impact hole, radial cracks, varied shard sizes, and outward shard trajectories with gravity falloff.",
+    "For the final beauty frame, tighten the camera around the impact area and add motion cues such as brick/debris motion blur so the event reads as an active smash rather than a static placement."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 169.51861302899852,
+  "utility_score": 0.4887344891425013,
+  "timestamp": "2026-03-12T00:27:02.453449"
+}

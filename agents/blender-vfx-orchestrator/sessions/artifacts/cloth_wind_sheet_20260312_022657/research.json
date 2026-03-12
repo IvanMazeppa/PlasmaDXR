@@ -1,0 +1,37 @@
+{
+  "recommended_approach": "Cloth with Wind + Property Weights pinning on a subdivided sheet",
+  "key_parameters": {
+    "subdivisions": "about 8 for a floppy, flexible fabric result",
+    "self-collision": true,
+    "collisions": "enabled on the cloth object",
+    "collision distance": "keep small; increase only if clipping occurs",
+    "cache name": "set a unique cache name to avoid cache filename collisions",
+    "external cache": false
+  },
+  "api_modules": [],
+  "warnings": [
+    "Low subdivision gives stiff, blocky cloth; higher subdivision produces a floppier result.",
+    "Cloth collision settings are an accuracy-vs-speed tradeoff.",
+    "Enable self-collision if the sheet is self-penetrating during strong flapping.",
+    "If Cache Name is left unspecified, disk cache filenames can collide between systems.",
+    "External cache files require exact name and index matching."
+  ],
+  "alternative_approaches": [
+    "Cloth with Animated Vertex Groups",
+    "Cloth on Armature",
+    "Using Simulation to Shape/Sculpt a Mesh"
+  ],
+  "doc_refs": [
+    "physics/cloth/index.html",
+    "physics/cloth/introduction.html",
+    "physics/cloth/examples.html",
+    "physics/cloth/settings/collisions.html",
+    "blender_manual_html/physics/cloth/index.html",
+    "blender_manual_html/physics/cloth/settings/index.html",
+    "Cloth > Settings > Property Weights",
+    "Cloth > Settings > Field Weights",
+    "Cloth > Examples > Cloth with Wind",
+    "Baking (cache naming / external cache note)"
+  ],
+  "timestamp": "2026-03-12T02:28:22.517384"
+}

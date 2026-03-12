@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-03-12T00:26:40.762481",
+  "effect_type": "shatter",
+  "observation": "Impact event lacks physically believable glass breakage and debris dispersion; the brick appears suspended rather than actively smashing through the pane.",
+  "expected_behavior": "A brick should create a clear impact hole, radial fracture network, and shards scattering outward with varied sizes and trajectories, with the projectile reading as forcefully moving through the window.",
+  "actual_behavior": "The image shows minimal readable shatter, sparse fragments mostly near the bottom, no strong radial break pattern, and the brick/cube reads as static or floating.",
+  "suspected_parameters": {
+    "line_170_wave_scale": 8.0,
+    "line_171_wave_distortion": 4.0,
+    "line_249_voronoi_scale": 55.0,
+    "note": "Current exposed parameters appear to influence procedural patterning/material breakup more than true physics; fracture pattern may be too weak/synthetic and not producing a readable impact event."
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/glass_shatter_ctxfilter_v2/glass_shatter_ctxfilter_v2.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/glass_shatter_ctxfilter_v2_iter2_paramfix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

@@ -1,0 +1,28 @@
+{
+  "session_id": "glass_shatter_ctxfilter_v2_20260312_001350",
+  "iteration": 1,
+  "overall_score": 18.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Core fix: Add an actual glass pane and fracture/shard simulation. This render cannot pass with texture tweaks alone; the main failure is missing geometry/physics, not just shading.",
+    "If Line 246 (vor.inputs['Scale'] = 55.0) is driving breakup/crack pattern, increase it substantially to roughly 120-200 to create finer shard segmentation instead of broad chunky regions.",
+    "If Lines 169-170 (wave Scale = 8.0, Distortion = 4.0) influence crack shapes, increase Scale to about 20-40 and reduce Distortion to about 0.5-1.5 so patterns read more like sharper fracture lines and less like soft waviness.",
+    "Refine the brick read: if Lines 206-213 control the brick material, reduce Brick Width from 0.48 to about 0.28-0.34, reduce Row Height from 0.28 to about 0.12-0.16, and reduce Mortar Size from 0.06 to about 0.015-0.03 for more believable brick proportions.",
+    "For a more realistic brick surface, lower Line 210 (Bias = 0.15) toward 0.0-0.05 and adjust Line 211/212 colors toward more natural red-brown variation; the current material reads synthetic.",
+    "Increase Line 134 (noise Roughness = 0.55) to around 0.7-0.85 if it affects the brick surface, to add rougher chipped clay variation.",
+    "Improve glass readability with stronger reflections: raise Line 100 (bg Strength = 0.16) moderately to around 0.3-0.6 or add a stronger rim/key source so pane edges and shards catch highlights.",
+    "Keep Line 99 background dark, but consider a slightly brighter/cooler environment or visible scene behind the window so glass reflections/refractions have context instead of disappearing into black.",
+    "Move the brick so it is clearly intersecting or just exiting the pane plane, and add directional shard scatter aligned to the brick trajectory.",
+    "Add variation in shard size: larger retained pieces near the frame, smaller splinters at the impact point, plus a few fast secondary fragments and dust motes.",
+    "Tighten the camera framing around the impact area; too much empty dark space makes the event feel small and unfinished.",
+    "Increase render quality/sampling to remove background banding and improve reflection/refraction fidelity."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 531.0645231199996,
+  "utility_score": 0.33999999999999997,
+  "timestamp": "2026-03-12T00:23:24.504673"
+}

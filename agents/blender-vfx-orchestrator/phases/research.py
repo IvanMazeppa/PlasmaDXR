@@ -90,7 +90,7 @@ Find at least one alternative technique beyond the obvious first choice."""
             context=context,
             session=sdk_session,
             hooks=research_hooks,
-            max_turns=8,
+            max_turns=4,  # Bounded 3-stage: retrieve → follow-up → synthesize
             run_config=run_config,
         )
         elapsed = _time.perf_counter() - preflight_start
@@ -115,7 +115,7 @@ Return a concise bullet list with doc_refs."""
         context=context,
         session=sdk_session,
         hooks=research_hooks,
-        max_turns=8,
+        max_turns=4,  # Bounded 3-stage: retrieve → follow-up → synthesize
         run_config=run_config,
     )
     docs_task = orch._run_agent(
@@ -404,23 +404,54 @@ def _build_technique_contract(
     # Try keyword matching for common patterns
     if not pack:
         technique_lower = technique.lower()
-        keyword_map = {
-            "cell_fracture": "cell_fracture_rigid_body",
-            "fracture": "cell_fracture_rigid_body",
-            "shatter": "cell_fracture_rigid_body",
-            "destruction": "cell_fracture_rigid_body",
-            "glass": "cell_fracture_rigid_body",
-            "rigid_body": "simple_rigid_body",
-            "mantaflow_fire": "mantaflow_fire",
-            "fire": "mantaflow_fire",
-            "smoke": "mantaflow_fire",
-            "explosion": "mantaflow_fire",
-            "mantaflow_liquid": "mantaflow_liquid",
-            "liquid": "mantaflow_liquid",
-            "water": "mantaflow_liquid",
-            "pour": "mantaflow_liquid",
-        }
-        for keyword, pack_name in keyword_map.items():
+        # Ordered list — longer/more-specific keywords first to avoid
+        # substring collisions (e.g. "rain" inside "terrain").
+        keyword_list = [
+            # Geometry nodes environment (check before "particle" — "procedural" is unique)
+            ("geometry_node", "geometry_nodes_environment"),
+            ("scatter", "geometry_nodes_environment"),
+            ("procedural", "geometry_nodes_environment"),
+            ("terrain", "geometry_nodes_environment"),
+            ("foliage", "geometry_nodes_environment"),
+            ("landscape", "geometry_nodes_environment"),
+            # Destruction / fracture
+            ("cell_fracture", "cell_fracture_rigid_body"),
+            ("fracture", "cell_fracture_rigid_body"),
+            ("shatter", "cell_fracture_rigid_body"),
+            ("destruction", "cell_fracture_rigid_body"),
+            ("glass", "cell_fracture_rigid_body"),
+            # Simple rigid body
+            ("rigid_body", "simple_rigid_body"),
+            # Fire / smoke / explosion
+            ("mantaflow_fire", "mantaflow_fire"),
+            ("fire", "mantaflow_fire"),
+            ("smoke", "mantaflow_fire"),
+            ("explosion", "mantaflow_fire"),
+            # Liquid / water
+            ("mantaflow_liquid", "mantaflow_liquid"),
+            ("liquid", "mantaflow_liquid"),
+            ("water", "mantaflow_liquid"),
+            ("pour", "mantaflow_liquid"),
+            ("splash", "mantaflow_liquid"),
+            # Particles (after "terrain" to avoid "rain" matching inside "terrain")
+            ("particle", "particles_core"),
+            ("rain", "particles_core"),
+            ("snow", "particles_core"),
+            ("spark", "particles_core"),
+            ("ember", "particles_core"),
+            ("dust", "particles_core"),
+            ("confetti", "particles_core"),
+            # Cloth / soft body
+            ("cloth", "cloth_softbody"),
+            ("fabric", "cloth_softbody"),
+            ("curtain", "cloth_softbody"),
+            ("flag", "cloth_softbody"),
+            ("banner", "cloth_softbody"),
+            ("drape", "cloth_softbody"),
+            ("softbody", "cloth_softbody"),
+            ("soft_body", "cloth_softbody"),
+        ]
+        for keyword, pack_name in keyword_list:
             if keyword in technique_lower:
                 pack = get_capability_pack(pack_name)
                 if pack:

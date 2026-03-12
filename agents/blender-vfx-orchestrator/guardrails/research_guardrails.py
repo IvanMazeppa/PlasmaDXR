@@ -22,6 +22,14 @@ _DOC_REF_PATTERNS = (
     re.compile(r"^blender_manual_html/[^\s#]+#[^\s]+$"),
     re.compile(r"^blender_python_reference_5_0/[^\s#]+#[^\s]+$"),
     re.compile(r"^bpy\.(?:types|ops)\.[^\s#]+\.html(?:#[^\s]+)?$"),
+    # Manual paths without prefix (returned by rewritten vector store):
+    # e.g. "physics/cloth/index.html", "physics/cloth/examples.html"
+    re.compile(r"^physics/[^\s]+\.html$"),
+)
+# Manual ref patterns for physics pages — sufficient grounding even without API refs.
+_MANUAL_PHYSICS_PATTERNS = (
+    re.compile(r"physics/(?:cloth|rigid_body|soft_body|fluid|particles|force_field)/"),
+    re.compile(r"blender_manual_html/physics/"),
 )
 _API_DOC_REF_PATTERNS = (
     re.compile(r"^blender_python_reference_5_0/bpy\.(?:types|ops)\.[^\s#]+#[^\s]+$"),
@@ -47,6 +55,9 @@ def _normalize_doc_ref(ref: str) -> str:
             token = f"blender_python_reference_5_0/{token}#attributes"
         else:
             token = f"blender_python_reference_5_0/{token}"
+        return token
+    # Bare manual path: physics/cloth/index.html → accept as-is (matched by _DOC_REF_PATTERNS)
+    if re.match(r"^physics/[^\s]+\.html", token):
         return token
     return token
 
@@ -145,13 +156,20 @@ async def validate_research_output(
                 file=sys.stderr
             )
         api_refs = [ref for ref in normalized_refs if _is_api_doc_ref(ref)]
+        # Accept manual physics doc refs as sufficient grounding — the vector store
+        # has sparse API coverage for cloth, particles, geometry nodes etc.
+        has_manual_physics_grounding = any(
+            any(pat.search(ref) for pat in _MANUAL_PHYSICS_PATTERNS)
+            for ref in normalized_refs
+        )
         # Accept api_modules as sufficient API grounding when doc_refs
         # don't contain direct API references.
-        has_api_grounding = bool(api_refs) or has_api_modules_grounding
+        has_api_grounding = bool(api_refs) or has_api_modules_grounding or has_manual_physics_grounding
         if not has_api_grounding:
             errors.append(
                 "No API grounding found: doc_refs must include at least one API reference "
-                "(bpy.types.* or bpy.ops.*) or api_modules must contain valid API paths"
+                "(bpy.types.* or bpy.ops.*), api_modules must contain valid API paths, "
+                "or doc_refs must include relevant physics manual pages"
             )
 
     if errors:

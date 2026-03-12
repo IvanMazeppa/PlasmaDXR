@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-12T01:30:30.407393",
+  "effect_type": "cloth",
+  "observation": "Requested wind-driven cloth dynamics are not visible in the final render. The sheet appears mostly static and hanging rather than reacting to strong gusts.",
+  "expected_behavior": "A large bed sheet should billow outward into sail-like shapes, snap taut in gusts, show secondary ripples and folds, and slightly pull down the clothesline under load.",
+  "actual_behavior": "The sheet hangs stiffly with minimal deformation, little to no gust-driven curvature or rippling, and the clothesline appears mostly straight without noticeable sag.",
+  "suspected_parameters": {
+    "wind_strength": "too low or absent",
+    "wind_turbulence": "too low",
+    "cloth_bending_stiffness": "too high",
+    "cloth_damping": "too high",
+    "solver_substeps": "possibly too low for rich folds",
+    "line_tension": "too high or not simulated"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/clothesline_sheet_wind_v1_errfix/clothesline_sheet_wind_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/clothesline_sheet_wind_v1.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

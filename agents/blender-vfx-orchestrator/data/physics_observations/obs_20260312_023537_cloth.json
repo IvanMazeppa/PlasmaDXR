@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-03-12T02:35:37.995262",
+  "effect_type": "cloth",
+  "observation": "The sheet does not exhibit the dramatic wind-driven billowing implied by the scene description; in the still frame it appears as a crumpled, low-energy cloth mass near the line.",
+  "expected_behavior": "A large bed sheet pinned on a clothesline in strong gusting wind should show broad inflated billows, tension lines radiating from attachment points, readable rippling waves, and a silhouette consistent with forceful airflow.",
+  "actual_behavior": "The cloth silhouette is compact and lumpy, with weak large-scale inflation and little visible tension structure near the attachment area. The pose reads closer to mild sagging/crumpling than violent flapping.",
+  "suspected_parameters": {
+    "wind_strength": "unknown/not provided",
+    "wind_turbulence": "unknown/not provided",
+    "cloth_substeps": "unknown/not provided",
+    "cloth_mesh_resolution": "appears low",
+    "pin_constraint_stiffness": "possibly weak or unclear",
+    "related_visual_params": {
+      "line_329_mix_shader_fac": 0.22,
+      "line_320_translucent_color": [
+        0.98,
+        0.98,
+        0.98,
+        1.0
+      ],
+      "line_368_bump_strength": 0.15
+    }
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/cloth_wind_sheet.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

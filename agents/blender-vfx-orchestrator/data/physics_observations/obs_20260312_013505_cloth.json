@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-12T01:35:05.045909",
+  "effect_type": "cloth",
+  "observation": "The hanging sheet appears largely static and flat instead of being visibly driven by strong wind gusts.",
+  "expected_behavior": "A large bed sheet on a windy clothesline should billow outward into sail-like shapes, show tension between the clothespins, and form secondary ripples and collapses consistent with gusty wind.",
+  "actual_behavior": "The cloth hangs with limited deformation, weak fold complexity, and little evidence of wind force or dynamic tension. The clothesline also shows minimal sag.",
+  "suspected_parameters": {
+    "wind_strength": "possibly too low",
+    "gust_variation": "possibly absent or too weak",
+    "cloth_subdivisions": "possibly too low for secondary folds",
+    "bending_stiffness": "possibly too high",
+    "pin_constraint_distribution": "may be over-constraining the cloth top edge",
+    "line_tension": "possibly too high reducing sag"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/clothesline_sheet_wind_v1_errfix/clothesline_sheet_wind_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/clothesline_sheet_wind_iter3_paramfix.py",
+  "iteration": 3,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

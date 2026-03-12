@@ -36,6 +36,14 @@ class TestCapabilityPackRegistry:
         assert "mantaflow_fire" in packs
         assert "mantaflow_liquid" in packs
         assert "simple_rigid_body" in packs
+        assert "particles_core" in packs
+        assert "cloth_softbody" in packs
+        assert "geometry_nodes_environment" in packs
+
+    def test_mvp_pack_count(self):
+        """The MVP target is 7 packs (Wave 1 exit criteria)."""
+        packs = list_capability_packs()
+        assert len(packs) >= 7, f"MVP requires 7+ packs, got {len(packs)}: {packs}"
 
     def test_get_cell_fracture_pack(self):
         pack = get_capability_pack("cell_fracture_rigid_body")
@@ -54,6 +62,30 @@ class TestCapabilityPackRegistry:
         assert pack is not None
         assert PhysicsSystem.MANTAFLOW_GAS in pack.physics_systems
         assert pack.key_parameters.get("domain_type") == "GAS"
+
+    def test_get_particles_core_pack(self):
+        pack = get_capability_pack("particles_core")
+        assert pack is not None
+        assert PhysicsSystem.PARTICLE_SYSTEM in pack.physics_systems
+        assert any("particle_system_add" in op.operator for op in pack.required_operators)
+        assert len(pack.headless_constraints) >= 1
+        assert pack.key_parameters.get("physics_type") == "NEWTON"
+
+    def test_get_cloth_softbody_pack(self):
+        pack = get_capability_pack("cloth_softbody")
+        assert pack is not None
+        assert PhysicsSystem.CLOTH in pack.physics_systems
+        assert any("modifier_add" in op.operator for op in pack.required_operators)
+        assert len(pack.headless_constraints) >= 2
+        assert "quality" in pack.key_parameters
+
+    def test_get_geometry_nodes_environment_pack(self):
+        pack = get_capability_pack("geometry_nodes_environment")
+        assert pack is not None
+        assert PhysicsSystem.GEOMETRY_NODES in pack.physics_systems
+        assert any("modifier_add" in op.operator for op in pack.required_operators)
+        assert pack.code_scaffolding is not None
+        assert "GeometryNodeTree" in pack.code_scaffolding
 
     def test_get_nonexistent_pack(self):
         pack = get_capability_pack("nonexistent_technique")
@@ -287,6 +319,66 @@ class TestBuildTechniqueContract:
         contract = _build_technique_contract(decision, None)
         assert contract is not None
         assert contract.technique_name == "mantaflow_liquid"
+
+    def test_keyword_match_particles_rain(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="rain_particle_system",
+            reasoning="Rain effect",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "particles_core"
+
+    def test_keyword_match_particles_sparks(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="sparks_from_welding",
+            reasoning="Welding sparks",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "particles_core"
+
+    def test_keyword_match_cloth(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="cloth_simulation_curtain",
+            reasoning="Curtain blowing in wind",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "cloth_softbody"
+
+    def test_keyword_match_flag(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="waving_flag_in_wind",
+            reasoning="Flag simulation",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "cloth_softbody"
+
+    def test_keyword_match_geometry_nodes(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="geometry_nodes_scatter_rocks",
+            reasoning="Procedural environment",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "geometry_nodes_environment"
+
+    def test_keyword_match_terrain(self):
+        from phases.research import _build_technique_contract
+        decision = TechniqueDecision(
+            selected_technique="procedural_terrain_generation",
+            reasoning="Landscape",
+        )
+        contract = _build_technique_contract(decision, None)
+        assert contract is not None
+        assert contract.technique_name == "geometry_nodes_environment"
 
     def test_no_match_returns_none(self):
         from phases.research import _build_technique_contract

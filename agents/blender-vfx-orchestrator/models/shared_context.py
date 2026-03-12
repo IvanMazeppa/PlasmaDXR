@@ -45,6 +45,18 @@ class EffectType(str, Enum):
     OCEAN = "ocean"
     WATERFALL = "waterfall"
     RAIN = "rain"
+    # Cloth / soft body effects
+    CLOTH = "cloth"
+    FLAG = "flag"
+    FABRIC = "fabric"
+    # Particle effects
+    PARTICLES = "particles"
+    SPARKS = "sparks"
+    SNOW = "snow"
+    DUST = "dust"
+    # Geometry nodes / procedural
+    ENVIRONMENT = "environment"
+    PROCEDURAL = "procedural"
 
 
 class SessionStatus(str, Enum):

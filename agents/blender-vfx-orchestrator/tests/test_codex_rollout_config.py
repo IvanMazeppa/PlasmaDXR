@@ -41,8 +41,12 @@ class TestCodexRolloutPreset(unittest.TestCase):
     def test_codex_upgrade_keeps_non_target_agent_on_global_default(self):
         """Agents not in codex_upgrade override block keep global override model."""
         mgr = AgentConfigManager.load_preset("codex_upgrade", self.config_path)
+        # quality_analyst is now upgraded to gpt-5.4 in codex_upgrade preset
         settings = mgr.get_agent_settings("quality_analyst")
-        self.assertEqual(settings.model, "gpt-5.2")
+        self.assertEqual(settings.model, "gpt-5.4")
+        # technique_coordinator stays on default (not in override block)
+        settings = mgr.get_agent_settings("technique_coordinator")
+        self.assertEqual(settings.model, "gpt-5-mini")
 
     def test_non_rollout_preset_keeps_script_writer_on_gpt_5_2(self):
         """Existing presets should remain unchanged."""
