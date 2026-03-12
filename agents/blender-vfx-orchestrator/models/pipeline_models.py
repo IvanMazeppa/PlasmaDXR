@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from utils.script_sections import CANONICAL_SECTIONS  # noqa: F401 — re-export
+
 
 # =============================================================================
 # AGENT OUTPUT MODELS
@@ -57,6 +59,7 @@ class ScriptOutput(BaseModel):
     parameters_set: Dict[str, Any] = Field(default_factory=dict, description="Key parameters configured")
     validation_passed: bool = Field(default=True, description="Whether script validation passed")
     validation_errors: List[Any] = Field(default_factory=list, description="Any validation errors (strings or structured dicts)")
+    sections_found: List[str] = Field(default_factory=list, description="Canonical section names found in the script")
 
 
 class ExecutionOutput(BaseModel):

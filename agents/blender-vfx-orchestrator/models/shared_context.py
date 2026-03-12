@@ -750,6 +750,16 @@ class SessionState(BaseModel):
         description="Current autonomy level (0=guided, 1=supervised, 2=semi-auto, 3=autonomous, 4=full)"
     )
 
+    # Wave 2: Section patch budget tracking
+    patch_count_iteration: int = Field(
+        default=0,
+        description="Number of section patches attempted in current iteration (max 2)"
+    )
+    patch_count_session: int = Field(
+        default=0,
+        description="Total section patches attempted in session (max 4)"
+    )
+
     # Final outputs
     final_render_path: Optional[str] = Field(
         default=None,
