@@ -1367,6 +1367,19 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
 - Frames: {request.frame_start}-{request.frame_end}
 {f"- Starting Parameters: {json.dumps(starting_params, indent=2)}" if starting_params else ""}
 
+## SCRIPT STRUCTURE (Required)
+Organize your code into these canonical functions:
+- setup_scene(): Scene cleanup, render settings, world/sky background
+- create_geometry(): All mesh and curve creation
+- setup_materials(): Material and shader node definitions
+- setup_physics(): Physics modifiers, force fields, constraints, bake settings
+- setup_lighting(): Lights, HDRI, environment lighting
+- setup_camera(): Camera placement, lens, depth of field
+- bake_and_render(): Point cache bake, render call, .blend save
+
+Put imports, constants, and small helper functions BEFORE these sections.
+End with sequential calls: setup_scene(); create_geometry(); ... bake_and_render()
+
 Generate a complete, validated script using the selected technique. Return the script_path in your output."""
 
                         # Run Script Writer for iteration 1 with enforcement hooks
