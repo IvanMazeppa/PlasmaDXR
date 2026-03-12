@@ -1419,6 +1419,10 @@ Description:
         if "import bpy" not in code:
             issues.append("Warning: Missing 'import bpy'")
 
+        # Detect canonical sections for Wave 2 patching
+        from utils.script_sections import list_sections
+        sections_info = list_sections(code)
+
         return json.dumps({
             "success": True,
             "script_path": str(output_path),
@@ -1426,6 +1430,8 @@ Description:
             "effect_type": effect_type,
             "code_length": len(code),
             "issues": issues,
+            "sections_found": len(sections_info),
+            "sections": [s["name"] for s in sections_info],
             "message": f"Script written to {output_path}"
         }, indent=2)
 

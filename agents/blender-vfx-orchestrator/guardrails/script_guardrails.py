@@ -13,6 +13,7 @@ SDK Pattern Reference:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -374,6 +375,44 @@ async def validate_script_output(
         tripwire_triggered=False,
         output_info={"status": "passed"}
     )
+
+
+# =============================================================================
+# Section Naming Check (Wave 2)
+# =============================================================================
+
+def _check_section_naming(tool_output: str) -> tuple[bool, dict]:
+    """Check if write_script output contains canonical section structure.
+
+    Returns (tripwire_triggered, info_dict). Currently warning-only (never triggers).
+    """
+    from utils.script_sections import CANONICAL_SECTIONS
+
+    try:
+        data = json.loads(tool_output) if isinstance(tool_output, str) else tool_output
+    except (json.JSONDecodeError, TypeError):
+        return False, {"status": "could_not_parse"}
+
+    if not data.get("success"):
+        return False, {"status": "script_write_failed"}
+
+    sections_found = data.get("sections", [])
+    missing = [s for s in CANONICAL_SECTIONS if s not in sections_found]
+
+    if len(missing) == 0:
+        return False, {"status": "all_sections_present", "count": len(sections_found)}
+
+    # Warning only — log but don't tripwire
+    info = {
+        "warning": f"Script missing {len(missing)}/{len(CANONICAL_SECTIONS)} canonical sections",
+        "missing_sections": missing,
+        "found_sections": sections_found,
+    }
+    print(
+        f"[Guardrail] section_naming WARN: {info['warning']} — {missing}",
+        file=sys.stderr,
+    )
+    return False, info
 
 
 # =============================================================================

@@ -300,5 +300,49 @@ class TestAttachToolGuardrails(unittest.TestCase):
         self.assertTrue(len(execute_blender_script.tool_input_guardrails) > 0)
 
 
+class TestSectionNamingGuardrail(unittest.TestCase):
+    """Test the section naming check on write_script output."""
+
+    def _make_output(self, sections, success=True):
+        return json.dumps({
+            "success": success,
+            "script_path": "/tmp/test.py",
+            "sections_found": len(sections),
+            "sections": sections,
+        })
+
+    def test_fully_sectioned_passes(self):
+        from guardrails.script_guardrails import _check_section_naming
+        output = self._make_output([
+            "setup_scene", "create_geometry", "setup_materials",
+            "setup_physics", "setup_lighting", "setup_camera",
+            "bake_and_render",
+        ])
+        triggered, info = _check_section_naming(output)
+        self.assertFalse(triggered)
+
+    def test_unsectioned_warns(self):
+        from guardrails.script_guardrails import _check_section_naming
+        output = self._make_output([])
+        triggered, info = _check_section_naming(output)
+        # Warning only, not tripwire
+        self.assertFalse(triggered)
+        self.assertIn("warning", info)
+
+    def test_partial_warns_with_missing(self):
+        from guardrails.script_guardrails import _check_section_naming
+        output = self._make_output(["setup_scene", "setup_physics", "bake_and_render"])
+        triggered, info = _check_section_naming(output)
+        self.assertFalse(triggered)
+        self.assertIn("missing_sections", info)
+
+    def test_failed_write_skips_check(self):
+        from guardrails.script_guardrails import _check_section_naming
+        output = self._make_output([], success=False)
+        triggered, info = _check_section_naming(output)
+        self.assertFalse(triggered)
+        self.assertEqual(info["status"], "script_write_failed")
+
+
 if __name__ == "__main__":
     unittest.main()
