@@ -1490,6 +1490,122 @@ sun = bpy.context.active_object
 
 
 # =============================================================================
+# Section-level patching (Wave 2)
+# =============================================================================
+
+def _patch_script_section_impl(
+    script_path: str,
+    section_name: str,
+    new_code: str,
+    output_name: Optional[str] = None,
+) -> str:
+    """Replace a single canonical section in a script, preserving everything else.
+
+    Args:
+        script_path: Path to the script to patch
+        section_name: Canonical section name (e.g., "setup_lighting")
+        new_code: New function definition (must include `def` line)
+        output_name: Optional output filename (default: adds "_patch_{section}" suffix)
+
+    Returns:
+        JSON with: success, script_path, section_patched, error
+    """
+    from utils.script_sections import (
+        CANONICAL_SECTIONS,
+        replace_section,
+        list_sections,
+    )
+
+    # Validate section name
+    if section_name not in CANONICAL_SECTIONS:
+        return json.dumps({
+            "success": False,
+            "error": f"'{section_name}' is not a canonical section. "
+                     f"Valid: {CANONICAL_SECTIONS}",
+        })
+
+    # Read source script
+    try:
+        source = Path(script_path).read_text()
+    except FileNotFoundError:
+        return json.dumps({
+            "success": False,
+            "error": f"Script not found: {script_path}",
+        })
+
+    # Replace section
+    try:
+        patched = replace_section(source, section_name, new_code)
+    except KeyError as e:
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+        })
+
+    # Validate patched script compiles
+    try:
+        compile(patched, script_path, "exec")
+    except SyntaxError as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Patched script has syntax error: {e}",
+        })
+
+    # Write output
+    if output_name:
+        out_path = OUTPUT_DIR / f"{output_name}.py"
+    else:
+        stem = Path(script_path).stem
+        out_path = OUTPUT_DIR / f"{stem}_patch_{section_name}.py"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(patched)
+
+    # Report sections in patched script
+    sections_info = list_sections(patched)
+
+    return json.dumps({
+        "success": True,
+        "script_path": str(out_path),
+        "section_patched": section_name,
+        "sections_found": len(sections_info),
+        "sections": [s["name"] for s in sections_info],
+    })
+
+
+@function_tool
+async def patch_script_section(
+    script_path: str,
+    section_name: str,
+    new_code: str,
+    output_name: Optional[str] = None,
+) -> str:
+    """Patch a SINGLE section of a Blender script, preserving all other sections.
+
+    USE THIS instead of write_script when you only need to change one aspect
+    of an existing script (e.g., fix lighting without touching physics setup).
+
+    Canonical sections: setup_scene, create_geometry, setup_materials,
+    setup_physics, setup_lighting, setup_camera, bake_and_render.
+
+    Args:
+        script_path: Path to the existing script to patch
+        section_name: Which section to replace (must be a canonical name)
+        new_code: Complete new function definition including `def` line
+        output_name: Optional output filename (default: adds patch suffix)
+
+    Returns:
+        JSON with patched script path and section info
+    """
+    return _patch_script_section_impl(
+        script_path=script_path,
+        section_name=section_name,
+        new_code=new_code,
+        output_name=output_name,
+    )
+
+
+# =============================================================================
 # DEPRECATED: Template-based generation (kept for backwards compatibility)
 # =============================================================================
 
