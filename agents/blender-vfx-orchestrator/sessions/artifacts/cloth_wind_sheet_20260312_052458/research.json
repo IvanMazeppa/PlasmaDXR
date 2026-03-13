@@ -1,0 +1,37 @@
+{
+  "recommended_approach": "Blender Cloth with a Wind force field, using a Pin Group for the two clothespin attachment areas and enabling cloth collisions/self-collision for a wind-driven sheet-on-clothesline setup.",
+  "key_parameters": {
+    "Pin Group": "Create a vertex group for the two pinned regions where the sheet is held on the line/clothespins.",
+    "Stiffness": "Set high for the pinned vertices so the attachment points hold their target positions strongly.",
+    "Sewing": false,
+    "Collisions": true,
+    "Self Collision": true,
+    "subdivision_surface_modifier": true
+  },
+  "api_modules": [],
+  "warnings": [
+    "The cloth object must have collisions enabled to participate in collisions.",
+    "Enable self-collision to help prevent self-penetration in strong billowing motion.",
+    "Collision settings trade accuracy against speed; clipping/tearing issues typically require more careful collision setup.",
+    "If the simulated cloth looks blocky, smooth it after simulation with a Subdivision Surface modifier or mesh smoothing workflow.",
+    "If using armature-based pinning/control, set the armature to its bind pose before simulation/pose changes."
+  ],
+  "alternative_approaches": [
+    "Cloth on Armature or Cloth with Animated Vertex Groups for more art-directed gust timing while still using Cloth.",
+    "Soft Body as a simpler deformable-motion fallback if full fabric behavior is not required or Cloth becomes unstable."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/cloth/index.html",
+    "physics/cloth/index.html",
+    "blender_manual_html/physics/cloth/settings/index.html",
+    "physics/cloth/settings/shape.html",
+    "blender_manual_html/physics/cloth/settings/shape.html",
+    "physics/cloth/settings/collisions.html",
+    "physics/soft_body/introduction.html",
+    "Cloth with Wind",
+    "Cloth on Armature",
+    "Cloth with Animated Vertex Groups",
+    "Using Cloth for Soft Bodies"
+  ],
+  "timestamp": "2026-03-12T05:25:59.923883"
+}

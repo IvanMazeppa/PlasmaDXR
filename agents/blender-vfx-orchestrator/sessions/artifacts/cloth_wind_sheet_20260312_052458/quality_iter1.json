@@ -1,0 +1,34 @@
+{
+  "overall_score": 34.0,
+  "passed": false,
+  "primary_issue": "The render does not convincingly match the requested bright outdoor backyard cloth-in-wind scene; it reads as a placeholder test setup with weak cloth dynamics and unrealistic materials/environment.",
+  "issues": [
+    "Critical: The environment does not match the requested backyard setting; it looks like a minimal studio/test scene with placeholder geometry instead of a believable outdoor space.",
+    "Critical: The bedsheet is not clearly pinned at two points with readable wooden clothespins.",
+    "High: The cloth pose does not sell strong gusting wind or violent flapping; it looks like a broad sideways pull with limited secondary ripples or snapping energy.",
+    "High: Fabric detail is too smooth and mushy; there are not enough crisp folds, wrinkle layers, or tension gradients near the top edge and attachments.",
+    "High: Lighting is flat and washed out, so the image lacks the warm, directional sunny-afternoon look described in the prompt.",
+    "Medium: The posts do not read as weathered wood; they appear more like plain cylinders with little material definition.",
+    "Medium: The sky/background is too simple and lacks the requested blue sky with a few wispy clouds.",
+    "Medium: Visible grain/noise remains on the sheet, especially in bright areas.",
+    "Medium: The lower cloth area feels physically implausible relative to the ground, suggesting dragging or clipping risk.",
+    "Medium: Composition leaves too much empty space and includes distracting background elements that weaken the focal effect."
+  ],
+  "suggestions": [
+    "Line 160: Reduce world background strength from 0.8 to roughly 0.2-0.4 to avoid the washed-out look, then rely more on a dedicated sun key light from above-right for stronger shadow direction.",
+    "Lines 396-397: Tune the cloth shader away from flat overbright white; try Base Color around 0.92-0.95 instead of 0.97 and Roughness around 0.55-0.65 instead of 0.72 so cotton keeps softness but gains better form definition.",
+    "Lines 346-347: Shift the mixed cloth colors toward a cleaner warm white and reduce the gray-green cast so the sheet reads as sunlit cotton rather than dull placeholder fabric.",
+    "Lines 406-407: Make weave detail more readable by lowering weave_noise Scale from 160 to about 100-120 and increasing Detail from 3 to about 5-6.",
+    "Lines 410-411: For broader surface breakup, lower soft_noise Scale from 7 to about 3-5 and consider Detail around 4-5; current surface detail is too uniform.",
+    "If Lines 369-370 drive visible cloth surface patterning, try lowering wave Scale from 40 to about 18-25 and raising Distortion from 1.4 to about 2.0-3.0 for more readable fabric variation.",
+    "Line 460: If this BSDF controls posts or clothespins, Metallic should not be 1.0; set it near 0.0 because the current value likely makes hard-surface materials look synthetic.",
+    "Line 481: If this Base Color belongs to posts/clothespins, replace the near-gray color with a warmer wood tone so those objects read as weathered wood instead of plain cylinders.",
+    "Main issue is simulation, not just shading: expose and increase wind strength variation/turbulence, improve cloth substeps/collision quality, and strengthen pin constraints so the sheet develops sharper billows, layered ripples, and snap-like tension near attachment points.",
+    "Add clear visible wooden clothespins and a more believable backyard context; shader tweaks alone will not raise this to pass quality."
+  ],
+  "vision_assessment": "The image is recognizable as a sheet on a line between two posts, but it looks like a rough blockout rather than a finished render. The scene lacks a convincing backyard environment, and the posts read as simple cylinders instead of weathered wood. The sheet has one broad sweeping silhouette, which gives a minimal sense of wind, but it does not show the dramatic gusting, fluttering, and snapping behavior requested. Surface detail on the fabric is too soft and undifferentiated, so it does not feel like stressed cotton in motion. Lighting is overly flat and bright, which reduces shadow shape, material readability, and sunny outdoor realism. There is also visible render noise and little evidence of clearly readable clothespins. Overall, this is a failed match to the requested scene and remains well below production quality.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+  "iteration": 1,
+  "timestamp": "2026-03-12T05:34:30.991684"
+}

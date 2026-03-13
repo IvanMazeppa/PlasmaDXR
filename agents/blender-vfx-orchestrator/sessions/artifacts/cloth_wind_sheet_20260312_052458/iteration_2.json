@@ -1,0 +1,33 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/cloth_wind_sheet_iter2_paramfix.py",
+  "technique_used": "cloth_softbody (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/cloth_wind_sheet_20260312_052458/cache",
+  "score": 41.0,
+  "passed": false,
+  "primary_issue": "The image reads as an unfinished CG test scene rather than a convincing bright, windy backyard shot; the cloth pose does not sell the requested strong gusting wind, and the environment/material realism is too weak.",
+  "parameter_changes": {
+    "settings.quality": 16,
+    "settings.mass": 0.2,
+    "settings.air_damping": 0.25,
+    "settings.tension_stiffness": 8.0,
+    "settings.compression_stiffness": 8.0,
+    "settings.bending_stiffness": 0.25,
+    "settings.tension_damping": 1.2,
+    "settings.compression_damping": 1.2,
+    "settings.bending_damping": 0.25,
+    "settings.pin_stiffness": 1.0,
+    "world_background.inputs['Strength'].default_value": 1.8,
+    "bsdf.inputs['Metallic'].default_value": 0.0,
+    "bsdf.inputs['Roughness'].default_value": 0.7,
+    "bump.inputs['Strength'].default_value": 0.35,
+    "weave_noise.inputs['Scale'].default_value": 220.0,
+    "weave_noise.inputs['Detail'].default_value": 4.0,
+    "soft_noise.inputs['Scale'].default_value": 10.0,
+    "soft_noise.inputs['Detail'].default_value": 7.0,
+    "mix_shader.inputs[0].default_value": 0.35
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T05:39:03.988583"
+}

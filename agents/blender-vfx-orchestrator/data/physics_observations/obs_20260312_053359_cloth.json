@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-03-12T05:33:59.617458",
+  "effect_type": "cloth",
+  "observation": "Cloth pose suggests only a broad lateral pull with limited secondary rippling, not the strong gusting/violent flapping described in the scene request.",
+  "expected_behavior": "A large bedsheet in strong gusting wind should show pronounced billowing, layered ripples, sharper fold tension near attachment points, and evidence of snapping/flutter energy.",
+  "actual_behavior": "The sheet appears relatively smooth and uniformly pulled to one side, with weak high-frequency wrinkle structure and limited visible tension variation.",
+  "suspected_parameters": {
+    "likely_missing_or_underpowered": {
+      "wind_strength": "too low or too steady",
+      "wind_turbulence": "insufficient",
+      "cloth_substeps": "possibly too low",
+      "bend_stiffness": "possibly too high",
+      "attachment_tension": "unclear"
+    },
+    "visible_script_params_with_possible_visual_contribution": {
+      "line_369_wave_scale": 40.0,
+      "line_370_wave_distortion": 1.4,
+      "line_406_weave_noise_scale": 160.0,
+      "line_410_soft_noise_scale": 7.0
+    }
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/cloth_wind_sheet.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

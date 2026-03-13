@@ -1,0 +1,26 @@
+{
+  "session_id": "cloth_wind_sheet_20260312_052458",
+  "iteration": 2,
+  "overall_score": 41.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Line 160: reduce world background strength from 1.8 to roughly 1.0-1.3 to recover contrast in the white sheet; then drive sunlight more directionally from upper-right so the fabric keeps shape instead of washing out.",
+    "Lines 397 and 398: darken the sheet slightly from pure near-white and tune roughness for cotton response; try Base Color around (0.92, 0.92, 0.91, 1.0) and Roughness around 0.78-0.85 so the sheet feels less plastic and retains shading.",
+    "Line 404: keep translucency subtle and warm; if the fabric is glowing too evenly, reduce translucency intensity or slightly warm only the backscatter so the cloth stays readable in daylight.",
+    "Lines 407-412: refine the cloth microdetail shader so it reads as woven cotton rather than generic procedural noise; try weave_noise Scale around 120-160, Detail 5-6, and soft_noise Scale around 14-18 with Detail reduced to 4-5.",
+    "Lines 370-371: if these wave settings influence surface breakup, make them less broad and synthetic; test Scale around 24-32 and Distortion around 0.8-1.1 for more natural textile variation.",
+    "Lines 347-348 and 482: if these colors drive posts/rope or nearby assets, shift them away from gray-white into warmer, darker weathered wood tones so the support structure stops looking like placeholder geometry.",
+    "Line 524: if this noise affects wood/post weathering, increase variation to add age and grain detail; a higher scale range around 10-18 may help break up the overly clean surfaces.",
+    "Outside the listed material params, increase wind strength/gust amplitude, add more turbulence, and reduce cloth damping so the pose shows sharper flutter, stronger tension radiating from the pinned points, and more violent flapping.",
+    "Make the clothespins larger and more readable, with clear wooden color and contact pressure at the attachment points.",
+    "Improve scene dressing and composition: add believable ground/yard context, a more natural sky, and crop the camera tighter around the clothesline so the sheet becomes the clear focal point."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 149.5915334359961,
+  "utility_score": 0.5803403888033365,
+  "timestamp": "2026-03-12T05:37:47.347909"
+}

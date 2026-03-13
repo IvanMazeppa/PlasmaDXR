@@ -1,0 +1,4234 @@
+{
+  "Object": {
+    "type_name": "Object",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "MESH",
+          "CURVE",
+          "SURFACE",
+          "META",
+          "FONT",
+          "CURVES",
+          "POINTCLOUD",
+          "VOLUME",
+          "GREASEPENCIL",
+          "ARMATURE",
+          "LATTICE",
+          "EMPTY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "CAMERA",
+          "SPEAKER"
+        ],
+        "default": "EMPTY"
+      },
+      "mode": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "OBJECT",
+          "EDIT",
+          "POSE",
+          "SCULPT",
+          "VERTEX_PAINT",
+          "WEIGHT_PAINT",
+          "TEXTURE_PAINT",
+          "PARTICLE_EDIT",
+          "EDIT_GPENCIL",
+          "SCULPT_GREASE_PENCIL",
+          "PAINT_GREASE_PENCIL",
+          "WEIGHT_GREASE_PENCIL",
+          "VERTEX_GREASE_PENCIL",
+          "SCULPT_CURVES"
+        ],
+        "default": "OBJECT"
+      },
+      "bound_box": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "parent": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "parent_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "OBJECT",
+          "ARMATURE",
+          "LATTICE",
+          "VERTEX",
+          "VERTEX_3",
+          "BONE"
+        ],
+        "default": "OBJECT"
+      },
+      "parent_vertices": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "parent_bone": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "use_parent_final_indices": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_camera_lock_parent": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "track_axis": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "POS_X",
+          "POS_Y",
+          "POS_Z",
+          "NEG_X",
+          "NEG_Y",
+          "NEG_Z"
+        ],
+        "default": "POS_X"
+      },
+      "up_axis": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "X",
+          "Y",
+          "Z"
+        ],
+        "default": "X"
+      },
+      "material_slots": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "active_material": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "active_material_index": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "location": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "rotation_quaternion": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "rotation_axis_angle": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "rotation_euler": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "rotation_mode": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "QUATERNION",
+          "XYZ",
+          "XZY",
+          "YXZ",
+          "YZX",
+          "ZXY",
+          "ZYX",
+          "AXIS_ANGLE"
+        ],
+        "default": "XYZ"
+      },
+      "scale": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "dimensions": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "delta_location": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "delta_rotation_euler": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "delta_rotation_quaternion": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "delta_scale": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "lock_location": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "lock_rotation": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "lock_rotation_w": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "lock_rotations_4d": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "lock_scale": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "matrix_world": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "matrix_local": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "matrix_basis": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "matrix_parent_inverse": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "modifiers": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "shader_effects": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "constraints": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "vertex_groups": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "empty_display_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "PLAIN_AXES",
+          "ARROWS",
+          "SINGLE_ARROW",
+          "CIRCLE",
+          "CUBE",
+          "SPHERE",
+          "CONE",
+          "IMAGE"
+        ],
+        "default": "PLAIN_AXES"
+      },
+      "empty_display_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999747378752e-05,
+          1000.0
+        ],
+        "default": 1.0
+      },
+      "empty_image_offset": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "image_user": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "empty_image_depth": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "DEFAULT",
+          "FRONT",
+          "BACK"
+        ],
+        "default": "DEFAULT"
+      },
+      "show_empty_image_perspective": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "show_empty_image_orthographic": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "show_empty_image_only_axis_aligned": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_empty_image_alpha": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "empty_image_side": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "DOUBLE_SIDED",
+          "FRONT",
+          "BACK"
+        ],
+        "default": "DOUBLE_SIDED"
+      },
+      "add_rest_position_attribute": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "pass_index": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          32767
+        ],
+        "default": 0
+      },
+      "color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "field": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "collision": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "soft_body": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "particle_systems": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "rigid_body": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "rigid_body_constraint": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_simulation_cache": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "hide_viewport": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_select": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_render": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_probe_volume": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_probe_sphere": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_probe_plane": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "hide_surface_pick": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_instancer_for_render": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "show_instancer_for_viewport": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_camera": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_diffuse": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_glossy": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_transmission": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_volume_scatter": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "visible_shadow": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "is_holdout": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_shadow_catcher": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "instance_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "NONE",
+          "VERTS",
+          "FACES",
+          "COLLECTION"
+        ],
+        "default": "NONE"
+      },
+      "use_instance_vertices_rotation": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_instance_faces_scale": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "instance_faces_scale": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0010000000474974513,
+          10000.0
+        ],
+        "default": 1.0
+      },
+      "instance_collection": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "is_instancer": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "display_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "BOUNDS",
+          "WIRE",
+          "SOLID",
+          "TEXTURED"
+        ],
+        "default": "TEXTURED"
+      },
+      "show_bounds": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "display_bounds_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "BOX",
+          "SPHERE",
+          "CYLINDER",
+          "CONE",
+          "CAPSULE"
+        ],
+        "default": "BOX"
+      },
+      "show_name": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_axis": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_texture_space": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_wire": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_all_edges": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_grease_pencil_lights": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "show_transparent": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_in_front": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "pose": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "show_only_shape_key": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_shape_key_edit_mode": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "active_shape_key": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "active_shape_key_index": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -32768,
+          32767
+        ],
+        "default": 0
+      },
+      "use_dynamic_topology_sculpting": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_from_instancer": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_from_set": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "display": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "lineart": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_mesh_mirror_x": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_mesh_mirror_y": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_mesh_mirror_z": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "lightgroup": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "light_linking": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "shadow_terminator_normal_offset": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shadow_terminator_geometry_offset": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.10000000149011612
+      },
+      "shadow_terminator_shading_offset": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "animation_visualization": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "motion_path": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "selection_sets": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "active_selection_set": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      }
+    }
+  },
+  "Camera": {
+    "type_name": "Camera",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "PERSP",
+          "ORTHO",
+          "PANO",
+          "CUSTOM"
+        ],
+        "default": "PERSP"
+      },
+      "sensor_fit": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "AUTO",
+          "HORIZONTAL",
+          "VERTICAL"
+        ],
+        "default": "AUTO"
+      },
+      "passepartout_alpha": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.5
+      },
+      "angle_x": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.006405358202755451,
+          3.016749143600464
+        ],
+        "default": 0.0
+      },
+      "angle_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.006405358202755451,
+          3.016749143600464
+        ],
+        "default": 0.0
+      },
+      "angle": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.006405358202755451,
+          3.016749143600464
+        ],
+        "default": 0.691150426864624
+      },
+      "clip_start": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 0.10000000149011612
+      },
+      "clip_end": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 1000.0
+      },
+      "lens": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          1.0,
+          3.4028234663852886e+38
+        ],
+        "default": 50.0
+      },
+      "sensor_width": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          1.0,
+          3.4028234663852886e+38
+        ],
+        "default": 36.0
+      },
+      "sensor_height": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          1.0,
+          3.4028234663852886e+38
+        ],
+        "default": 24.0
+      },
+      "ortho_scale": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 6.0
+      },
+      "display_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.009999999776482582,
+          1000.0
+        ],
+        "default": 1.0
+      },
+      "shift_x": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shift_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "stereo": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "show_limits": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_mist": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_passepartout": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "show_safe_areas": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_safe_center": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_name": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_sensor": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_background_images": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "lens_unit": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "MILLIMETERS",
+          "FOV"
+        ],
+        "default": "MILLIMETERS"
+      },
+      "composition_guide_color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "show_composition_center": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_center_diagonal": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_thirds": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_golden": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_golden_tria_a": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_golden_tria_b": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_harmony_tri_a": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_composition_harmony_tri_b": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "panorama_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "EQUIRECTANGULAR",
+          "EQUIANGULAR_CUBEMAP_FACE",
+          "MIRRORBALL",
+          "FISHEYE_EQUIDISTANT",
+          "FISHEYE_EQUISOLID",
+          "FISHEYE_LENS_POLYNOMIAL",
+          "CENTRAL_CYLINDRICAL"
+        ],
+        "default": "FISHEYE_EQUISOLID"
+      },
+      "fisheye_fov": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.1745000034570694,
+          31.415925979614258
+        ],
+        "default": 3.1415927410125732
+      },
+      "fisheye_lens": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.009999999776482582,
+          100.0
+        ],
+        "default": 10.5
+      },
+      "latitude_min": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -1.5707963705062866,
+          1.5707963705062866
+        ],
+        "default": -1.5707963705062866
+      },
+      "latitude_max": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -1.5707963705062866,
+          1.5707963705062866
+        ],
+        "default": 1.5707963705062866
+      },
+      "longitude_min": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -3.1415927410125732
+      },
+      "longitude_max": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 3.1415927410125732
+      },
+      "fisheye_polynomial_k0": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -1.1735100088117179e-05
+      },
+      "fisheye_polynomial_k1": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -0.019988736137747765
+      },
+      "fisheye_polynomial_k2": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -3.3525000162626384e-06
+      },
+      "fisheye_polynomial_k3": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 3.099300101894187e-06
+      },
+      "fisheye_polynomial_k4": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -2.6100000383166844e-08
+      },
+      "central_cylindrical_range_u_min": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -3.1415927410125732
+      },
+      "central_cylindrical_range_u_max": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 3.1415927410125732
+      },
+      "central_cylindrical_range_v_min": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": -1.0
+      },
+      "central_cylindrical_range_v_max": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "central_cylindrical_radius": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999747378752e-06,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "custom_filepath": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "custom_shader": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "custom_mode": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "INTERNAL",
+          "EXTERNAL"
+        ],
+        "default": "INTERNAL"
+      },
+      "custom_bytecode": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "custom_bytecode_hash": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "dof": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "background_images": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles_custom": {
+        "type": "POINTER",
+        "is_readonly": true
+      }
+    }
+  },
+  "PointLight": {
+    "type_name": "PointLight",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "POINT",
+          "SUN",
+          "SPOT",
+          "AREA"
+        ],
+        "default": "POINT"
+      },
+      "use_temperature": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "temperature": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          800.0,
+          20000.0
+        ],
+        "default": 6500.0
+      },
+      "temperature_color": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "specular_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "diffuse_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "transmission_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "volume_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "use_custom_distance": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "cutoff_distance": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 40.0
+      },
+      "use_shadow": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "exposure": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -32.0,
+          32.0
+        ],
+        "default": 0.0
+      },
+      "normalize": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "node_tree": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_nodes": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_soft_falloff": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "energy": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 10.0
+      },
+      "shadow_buffer_clip_start": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 0.05000000074505806
+      },
+      "shadow_soft_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shadow_filter_radius": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "shadow_maximum_resolution": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0010000000474974513
+      },
+      "use_shadow_jitter": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "shadow_jitter_overblur": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          100.0
+        ],
+        "default": 10.0
+      },
+      "use_absolute_resolution": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      }
+    }
+  },
+  "SpotLight": {
+    "type_name": "SpotLight",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "POINT",
+          "SUN",
+          "SPOT",
+          "AREA"
+        ],
+        "default": "POINT"
+      },
+      "use_temperature": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "temperature": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          800.0,
+          20000.0
+        ],
+        "default": 6500.0
+      },
+      "temperature_color": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "specular_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "diffuse_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "transmission_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "volume_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "use_custom_distance": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "cutoff_distance": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 40.0
+      },
+      "use_shadow": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "exposure": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -32.0,
+          32.0
+        ],
+        "default": 0.0
+      },
+      "normalize": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "node_tree": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_nodes": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "energy": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 10.0
+      },
+      "shadow_buffer_clip_start": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 0.05000000074505806
+      },
+      "shadow_soft_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shadow_filter_radius": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "shadow_maximum_resolution": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0010000000474974513
+      },
+      "use_shadow_jitter": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "shadow_jitter_overblur": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          100.0
+        ],
+        "default": 10.0
+      },
+      "use_absolute_resolution": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_square": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "spot_blend": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.15000000596046448
+      },
+      "spot_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.01745329238474369,
+          3.1415927410125732
+        ],
+        "default": 0.7853981852531433
+      },
+      "show_cone": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_soft_falloff": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      }
+    }
+  },
+  "SunLight": {
+    "type_name": "SunLight",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "POINT",
+          "SUN",
+          "SPOT",
+          "AREA"
+        ],
+        "default": "POINT"
+      },
+      "use_temperature": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "temperature": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          800.0,
+          20000.0
+        ],
+        "default": 6500.0
+      },
+      "temperature_color": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "specular_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "diffuse_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "transmission_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "volume_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "use_custom_distance": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "cutoff_distance": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 40.0
+      },
+      "use_shadow": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "exposure": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -32.0,
+          32.0
+        ],
+        "default": 0.0
+      },
+      "normalize": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "node_tree": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_nodes": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "angle": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.1415927410125732
+        ],
+        "default": 0.009180432185530663
+      },
+      "energy": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 10.0
+      },
+      "shadow_buffer_clip_start": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 0.05000000074505806
+      },
+      "shadow_soft_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shadow_filter_radius": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "shadow_maximum_resolution": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0010000000474974513
+      },
+      "use_shadow_jitter": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "shadow_jitter_overblur": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          100.0
+        ],
+        "default": 10.0
+      },
+      "shadow_cascade_max_distance": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 200.0
+      },
+      "shadow_cascade_count": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          4
+        ],
+        "default": 4
+      },
+      "shadow_cascade_exponent": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.800000011920929
+      },
+      "shadow_cascade_fade": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.10000000149011612
+      }
+    }
+  },
+  "AreaLight": {
+    "type_name": "AreaLight",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "POINT",
+          "SUN",
+          "SPOT",
+          "AREA"
+        ],
+        "default": "POINT"
+      },
+      "use_temperature": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "color": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "temperature": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          800.0,
+          20000.0
+        ],
+        "default": 6500.0
+      },
+      "temperature_color": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "specular_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "diffuse_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "transmission_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "volume_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "use_custom_distance": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "cutoff_distance": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 40.0
+      },
+      "use_shadow": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "exposure": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -32.0,
+          32.0
+        ],
+        "default": 0.0
+      },
+      "normalize": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "node_tree": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_nodes": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "energy": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 10.0
+      },
+      "shadow_buffer_clip_start": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999974752427e-07,
+          3.4028234663852886e+38
+        ],
+        "default": 0.05000000074505806
+      },
+      "shadow_soft_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "shadow_filter_radius": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "shadow_maximum_resolution": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0010000000474974513
+      },
+      "use_shadow_jitter": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "shadow_jitter_overblur": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          100.0
+        ],
+        "default": 10.0
+      },
+      "use_absolute_resolution": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "shape": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "SQUARE",
+          "RECTANGLE",
+          "DISK",
+          "ELLIPSE"
+        ],
+        "default": "SQUARE"
+      },
+      "size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.25
+      },
+      "size_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.25
+      },
+      "spread": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.1415927410125732
+        ],
+        "default": 3.1415927410125732
+      }
+    }
+  },
+  "CyclesRenderSettings": {
+    "error": "Type 'CyclesRenderSettings' not found in bpy.types"
+  },
+  "RenderSettings": {
+    "type_name": "RenderSettings",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "image_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "resolution_x": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          4,
+          65536
+        ],
+        "default": 1920
+      },
+      "resolution_y": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          4,
+          65536
+        ],
+        "default": 1080
+      },
+      "resolution_percentage": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          32767
+        ],
+        "default": 100
+      },
+      "preview_pixel_size": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "AUTO",
+          "1",
+          "2",
+          "4",
+          "8"
+        ],
+        "default": "AUTO"
+      },
+      "pixel_aspect_x": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          1.0,
+          200.0
+        ],
+        "default": 1.0
+      },
+      "pixel_aspect_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          1.0,
+          200.0
+        ],
+        "default": 1.0
+      },
+      "ppm_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999747378752e-06,
+          1000000.0
+        ],
+        "default": 72.0
+      },
+      "ppm_base": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999747378752e-06,
+          1000000.0
+        ],
+        "default": 0.02539999969303608
+      },
+      "ffmpeg": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "fps": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          32767
+        ],
+        "default": 24
+      },
+      "fps_base": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          9.999999747378752e-06,
+          1000000.0
+        ],
+        "default": 1.0
+      },
+      "frame_map_old": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          900
+        ],
+        "default": 100
+      },
+      "frame_map_new": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          900
+        ],
+        "default": 100
+      },
+      "dither_intensity": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "filter_size": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          500.0
+        ],
+        "default": 1.5
+      },
+      "film_transparent": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_freestyle": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "threads": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          1,
+          1024
+        ],
+        "default": 1
+      },
+      "threads_mode": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "AUTO",
+          "FIXED"
+        ],
+        "default": "AUTO"
+      },
+      "use_motion_blur": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "motion_blur_shutter": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 0.5
+      },
+      "motion_blur_position": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "START",
+          "CENTER",
+          "END"
+        ],
+        "default": "CENTER"
+      },
+      "motion_blur_shutter_curve": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "hair_type": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "STRAND",
+          "STRIP",
+          "CYLINDER"
+        ],
+        "default": "STRAND"
+      },
+      "hair_subdiv": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          3
+        ],
+        "default": 0
+      },
+      "use_high_quality_normals": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_border": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "border_min_x": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "border_min_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "border_max_x": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 1.0
+      },
+      "border_max_y": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 1.0
+      },
+      "use_crop_to_border": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_placeholder": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_overwrite": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_compositing": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_sequencer": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_file_extension": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "file_extension": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "is_movie_format": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "use_lock_interface": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "filepath": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "use_render_cache": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_time": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_date": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_frame": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_frame_range": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_camera": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_lens": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_scene": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_note": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_marker": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_filename": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_sequencer_strip": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_render_time": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "stamp_note_text": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "use_stamp": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_stamp_labels": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "metadata_input": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "SCENE",
+          "STRIPS"
+        ],
+        "default": "SCENE"
+      },
+      "use_stamp_memory": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_hostname": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "stamp_font_size": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          8,
+          64
+        ],
+        "default": 12
+      },
+      "stamp_foreground": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "stamp_background": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "sequencer_gl_preview": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "WIREFRAME",
+          "SOLID",
+          "MATERIAL",
+          "RENDERED"
+        ],
+        "default": "SOLID"
+      },
+      "use_sequencer_override_scene_strip": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_single_layer": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "views": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "stereo_views": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "use_multiview": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "views_format": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "STEREO_3D",
+          "MULTIVIEW"
+        ],
+        "default": "STEREO_3D"
+      },
+      "engine": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "BLENDER_EEVEE"
+        ],
+        "default": "BLENDER_EEVEE"
+      },
+      "has_multiple_engines": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "use_spherical_stereo": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "use_simplify": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "simplify_subdivision": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          32767
+        ],
+        "default": 6
+      },
+      "simplify_child_particles": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 1.0
+      },
+      "simplify_subdivision_render": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          32767
+        ],
+        "default": 0
+      },
+      "simplify_child_particles_render": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "simplify_volumes": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 1.0
+      },
+      "use_simplify_normals": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "simplify_gpencil": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "simplify_gpencil_onplay": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "simplify_gpencil_antialiasing": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "simplify_gpencil_view_fill": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "simplify_gpencil_modifier": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "simplify_gpencil_shader_fx": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "simplify_gpencil_tint": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_persistent_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "line_thickness_mode": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "ABSOLUTE",
+          "RELATIVE"
+        ],
+        "default": "ABSOLUTE"
+      },
+      "line_thickness": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          10000.0
+        ],
+        "default": 1.0
+      },
+      "bake": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "compositor_device": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "CPU",
+          "GPU"
+        ],
+        "default": "CPU"
+      },
+      "compositor_precision": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "AUTO",
+          "FULL"
+        ],
+        "default": "AUTO"
+      },
+      "compositor_denoise_device": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "AUTO",
+          "CPU",
+          "GPU"
+        ],
+        "default": "AUTO"
+      },
+      "compositor_denoise_preview_quality": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "HIGH",
+          "BALANCED",
+          "FAST"
+        ],
+        "default": "BALANCED"
+      },
+      "compositor_denoise_final_quality": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "HIGH",
+          "BALANCED",
+          "FAST"
+        ],
+        "default": "HIGH"
+      }
+    }
+  },
+  "Scene": {
+    "type_name": "Scene",
+    "blender_version": [
+      5,
+      0,
+      1
+    ],
+    "properties": {
+      "name": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "name_full": {
+        "type": "STRING",
+        "is_readonly": true,
+        "default": ""
+      },
+      "id_type": {
+        "type": "ENUM",
+        "is_readonly": true,
+        "items": [
+          "ACTION",
+          "ARMATURE",
+          "BRUSH",
+          "CACHEFILE",
+          "CAMERA",
+          "COLLECTION",
+          "CURVE",
+          "CURVES",
+          "FONT",
+          "GREASEPENCIL",
+          "GREASEPENCIL_V3",
+          "IMAGE",
+          "KEY",
+          "LATTICE",
+          "LIBRARY",
+          "LIGHT",
+          "LIGHT_PROBE",
+          "LINESTYLE",
+          "MASK",
+          "MATERIAL",
+          "MESH",
+          "META",
+          "MOVIECLIP",
+          "NODETREE",
+          "OBJECT",
+          "PAINTCURVE",
+          "PALETTE",
+          "PARTICLE",
+          "POINTCLOUD",
+          "SCENE",
+          "SCREEN",
+          "SOUND",
+          "SPEAKER",
+          "TEXT",
+          "TEXTURE",
+          "VOLUME",
+          "WINDOWMANAGER",
+          "WORKSPACE",
+          "WORLD"
+        ],
+        "default": "ACTION"
+      },
+      "session_uid": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "is_evaluated": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "original": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "users": {
+        "type": "INT",
+        "is_readonly": true,
+        "range": [
+          0,
+          2147483647
+        ],
+        "default": 0
+      },
+      "use_fake_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_extra_user": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_embedded_data": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_linked_packed": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_missing": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "is_runtime_data": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_editable": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "tag": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "is_library_indirect": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "library_weak_reference": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "asset_data": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "override_library": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "preview": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "camera": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "background_set": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "world": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "objects": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "frame_current": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -1048574,
+          1048574
+        ],
+        "default": 1
+      },
+      "frame_subframe": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          1.0
+        ],
+        "default": 0.0
+      },
+      "frame_float": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -1048574.0,
+          1048574.0
+        ],
+        "default": 0.0
+      },
+      "frame_start": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          1048574
+        ],
+        "default": 1
+      },
+      "frame_end": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          1048574
+        ],
+        "default": 250
+      },
+      "frame_step": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          0,
+          1048574
+        ],
+        "default": 1
+      },
+      "time_jump_unit": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "FRAME",
+          "SECOND"
+        ],
+        "default": "SECOND"
+      },
+      "time_jump_delta": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.10000000149011612,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "frame_current_final": {
+        "type": "FLOAT",
+        "is_readonly": true,
+        "range": [
+          -1048574.0,
+          1048574.0
+        ],
+        "default": 0.0
+      },
+      "lock_frame_selection_to_range": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_preview_range": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "frame_preview_start": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "frame_preview_end": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 0
+      },
+      "show_subframe": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "show_keys_from_selected_only": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "use_stamp_note": {
+        "type": "STRING",
+        "is_readonly": false,
+        "default": ""
+      },
+      "animation_data": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "is_nla_tweakmode": {
+        "type": "BOOLEAN",
+        "is_readonly": true,
+        "default": false
+      },
+      "use_custom_simulation_range": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "simulation_frame_start": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 1
+      },
+      "simulation_frame_end": {
+        "type": "INT",
+        "is_readonly": false,
+        "range": [
+          -2147483648,
+          2147483647
+        ],
+        "default": 250
+      },
+      "sync_mode": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "NONE",
+          "FRAME_DROP",
+          "AUDIO_SYNC"
+        ],
+        "default": "AUDIO_SYNC"
+      },
+      "compositing_node_group": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "use_nodes": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "sequence_editor": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "keying_sets": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "keying_sets_all": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "rigidbody_world": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "tool_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "unit_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "gravity": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          -3.4028234663852886e+38,
+          3.4028234663852886e+38
+        ],
+        "default": 0.0
+      },
+      "use_gravity": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": true
+      },
+      "render": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "safe_areas": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "timeline_markers": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "transform_orientation_slots": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "cursor": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "use_audio": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "use_audio_scrub": {
+        "type": "BOOLEAN",
+        "is_readonly": false,
+        "default": false
+      },
+      "audio_doppler_speed": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.009999999776482582,
+          3.4028234663852886e+38
+        ],
+        "default": 343.29998779296875
+      },
+      "audio_doppler_factor": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          3.4028234663852886e+38
+        ],
+        "default": 1.0
+      },
+      "audio_distance_model": {
+        "type": "ENUM",
+        "is_readonly": false,
+        "items": [
+          "NONE",
+          "INVERSE",
+          "INVERSE_CLAMPED",
+          "LINEAR",
+          "LINEAR_CLAMPED",
+          "EXPONENT",
+          "EXPONENT_CLAMPED"
+        ],
+        "default": "INVERSE_CLAMPED"
+      },
+      "audio_volume": {
+        "type": "FLOAT",
+        "is_readonly": false,
+        "range": [
+          0.0,
+          100.0
+        ],
+        "default": 1.0
+      },
+      "annotation": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "active_clip": {
+        "type": "POINTER",
+        "is_readonly": false
+      },
+      "view_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "display_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "sequencer_colorspace_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "view_layers": {
+        "type": "COLLECTION",
+        "is_readonly": true
+      },
+      "collection": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "display": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "eevee": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "grease_pencil_settings": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "hydra": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles": {
+        "type": "POINTER",
+        "is_readonly": true
+      },
+      "cycles_curves": {
+        "type": "POINTER",
+        "is_readonly": true
+      }
+    }
+  }
+}

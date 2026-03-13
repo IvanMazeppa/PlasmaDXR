@@ -157,7 +157,7 @@ def setup_scene():
 
     world_background = world_nodes.new('ShaderNodeBackground')
     world_background.location = (80, 0)
-    world_background.inputs['Strength'].default_value = 0.8
+    world_background.inputs['Strength'].default_value = 1.8
 
     sky = world_nodes.new('ShaderNodeTexSky')
     sky.location = (-140, 0)
@@ -314,12 +314,12 @@ def setup_materials():
     ramp.color_ramp.elements[1].color = (0.33, 0.54, 0.17, 1.0)
     bump = nodes.new('ShaderNodeBump')
     bump.location = (-120, -90)
-    bump.inputs['Strength'].default_value = 0.18
+    bump.inputs['Strength'].default_value = 0.35
     links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
     links.new(noise.outputs['Fac'], bump.inputs['Height'])
     links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
     links.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
-    bsdf.inputs['Roughness'].default_value = 0.96
+    bsdf.inputs['Roughness'].default_value = 0.7
     links.new(bsdf.outputs['BSDF'], output.inputs['Surface'])
     MATERIALS['grass'] = grass_mat
 
@@ -340,6 +340,7 @@ def setup_materials():
     noise.inputs['Scale'].default_value = 12.0
     noise.inputs['Detail'].default_value = 8.0
     mix = nodes.new('ShaderNodeMix')
+    mix.data_type = 'RGBA'  # MixRGB was always color mode
     mix.data_type = 'RGBA'  # MixRGB was always color mode
     mix.location = (-110, 40)
     mix.blend_type = 'MULTIPLY'
@@ -390,7 +391,7 @@ def setup_materials():
     output.location = (720, 0)
     mix_shader = nodes.new('ShaderNodeMixShader')
     mix_shader.location = (500, 0)
-    mix_shader.inputs[0].default_value = 0.14
+    mix_shader.inputs[0].default_value = 0.35
     principled = nodes.new('ShaderNodeBsdfPrincipled')
     principled.location = (200, 120)
     principled.inputs['Base Color'].default_value = (0.97, 0.97, 0.96, 1.0)
@@ -403,12 +404,12 @@ def setup_materials():
     translucency.inputs['Color'].default_value = (1.0, 0.99, 0.98, 1.0)
     weave_noise = nodes.new('ShaderNodeTexNoise')
     weave_noise.location = (-360, 110)
-    weave_noise.inputs['Scale'].default_value = 160.0
-    weave_noise.inputs['Detail'].default_value = 3.0
+    weave_noise.inputs['Scale'].default_value = 220.0
+    weave_noise.inputs['Detail'].default_value = 4.0
     soft_noise = nodes.new('ShaderNodeTexNoise')
     soft_noise.location = (-360, -80)
-    soft_noise.inputs['Scale'].default_value = 7.0
-    soft_noise.inputs['Detail'].default_value = 6.0
+    soft_noise.inputs['Scale'].default_value = 10.0
+    soft_noise.inputs['Detail'].default_value = 7.0
     bump = nodes.new('ShaderNodeBump')
     bump.location = (-100, -60)
     bump.inputs['Strength'].default_value = 0.025
@@ -457,7 +458,7 @@ def setup_materials():
     bsdf = nodes.new('ShaderNodeBsdfPrincipled')
     bsdf.location = (120, 0)
     bsdf.inputs['Base Color'].default_value = (0.62, 0.63, 0.66, 1.0)
-    bsdf.inputs['Metallic'].default_value = 1.0
+    bsdf.inputs['Metallic'].default_value = 0.0
     bsdf.inputs['Roughness'].default_value = 0.22
     links.new(bsdf.outputs['BSDF'], output.inputs['Surface'])
     MATERIALS['metal'] = metal_mat

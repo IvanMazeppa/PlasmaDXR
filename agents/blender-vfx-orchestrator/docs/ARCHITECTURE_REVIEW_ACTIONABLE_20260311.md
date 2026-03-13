@@ -46,19 +46,42 @@ The architecture review has crossed an important threshold: the first successful
 
 ## 4. PROPOSED ROADMAP
 
-1. Wave 1 - Exploit the Contract Architecture Now. Content: keep `TechniqueContract` as the binding core, expand the registry from 4 packs to the 7-pack MVP, harden research into bounded retrieval/synthesis, add `call_model_input_filter`, and roll GPT-5.4 out for code-critical agents immediately. Dependencies: `TechniqueContract`, adherence checking, and the current registry are already in place. Exit criteria: Cell Fracture remains stable, MVP pack registry exists, research no longer burns turns conversationally, and execution failure drops materially from the current ~45% baseline.
+### Wave 1 - Exploit the Contract Architecture Now ✅ (2026-03-12)
 
-2. Wave 2 - Make Recovery Cheap, Precise, and Maintainable. Content: enforce named script sections, implement section-level patching with `AdvancedSQLiteSession` branch caps, extract stabilized modules out of the orchestrator as they mature, and calibrate the evaluator on known-good assets such as the wine-pour baseline. Dependencies: Wave 1 must stabilize the active contract, pack, and context boundaries first. Exit criteria: new runs are patchable by section name, repair follows the 2-branch-per-iteration policy, evaluator drift is understood, and the monolith is shrinking continuously rather than growing.
+Content: keep `TechniqueContract` as the binding core, expand the registry from 4 packs to the 7-pack MVP, harden research into bounded retrieval/synthesis, add `call_model_input_filter`, and roll GPT-5.4 out for code-critical agents immediately. Dependencies: `TechniqueContract`, adherence checking, and the current registry are already in place. Exit criteria: Cell Fracture remains stable, MVP pack registry exists, research no longer burns turns conversationally, and execution failure drops materially from the current ~45% baseline.
 
-3. Wave 3 - Raise the Quality Ceiling After Reliability Improves. Content: add deterministic scene assembly for tabletop/contact and container scenes first, then room interiors; move learning from prompt accumulation to evidence-backed deltas against contracts and packs; consider addon automation only if pack count or deployment demands it. Dependencies: Wave 2 should reduce execution failure to below 20% so geometry quality becomes a high-ROI target. Exit criteria: contact-gap failures are meaningfully reduced on targeted scene families, learning is writing to structured artifacts, and the architecture supports wrapped-to-taught graduation with evidence rather than opinion.
+**Completed items:**
+- [x] 7-pack MVP registry: `cell_fracture_rigid_body`, `mantaflow_fire`, `mantaflow_liquid`, `simple_rigid_body`, `particles_core`, `cloth_softbody`, `geometry_nodes_environment` — 33 tests pass
+- [x] `call_model_input_filter` implemented: turn-based context filtering per agent, handles reasoning model item groups (GPT-5.4/o3 safe) — 29 tests pass
+- [x] GPT-5.4 rollout for code-critical agents via `codex_upgrade` preset: Script Writer, Research, Modification Coordinator, Quality Analyst
+- [x] Research guardrail updated: accepts manual physics doc refs as sufficient grounding (cloth/particles/geometry_nodes have sparse API coverage in vector store)
+- [x] Truth pack type resolution: added `cloth`, `geometry_nodes`, `particle_system` entries to `TECHNIQUE_TYPES`, 15+ aliases, substring alias matching for LLM-generated technique names
+- [x] `EffectType` enum expanded: CLOTH, FLAG, FABRIC, PARTICLES, SPARKS, SNOW, DUST, ENVIRONMENT, PROCEDURAL
+- [x] Artifact gates updated: skip Mantaflow cache check for cloth/particle/geometry_nodes techniques
+- [x] Keyword routing fixed: ordered list (not dict) prevents substring collisions (e.g., "rain" in "terrain")
+- [x] Contract adherence checking proven across glass shatter (Cell Fracture) and cloth simulation
+
+**Remaining (deferred to future work):**
+- [ ] Research bounded retrieval/synthesis (plan→retrieve→synthesize flow) — functional but still conversational
+- [ ] Execution failure rate measurement post-Wave-1
+
+### Wave 2 - Make Recovery Cheap, Precise, and Maintainable 🔄 (In Progress)
+
+Content: enforce named script sections, implement section-level patching with `AdvancedSQLiteSession` branch caps, extract stabilized modules out of the orchestrator as they mature, and calibrate the evaluator on known-good assets such as the wine-pour baseline. Dependencies: Wave 1 must stabilize the active contract, pack, and context boundaries first. Exit criteria: new runs are patchable by section name, repair follows the 2-branch-per-iteration policy, evaluator drift is understood, and the monolith is shrinking continuously rather than growing.
+
+**Implementation plan:** `docs/superpowers/plans/2026-03-12-script-section-patching.md`
+
+### Wave 3 - Raise the Quality Ceiling After Reliability Improves
+
+Content: add deterministic scene assembly for tabletop/contact and container scenes first, then room interiors; move learning from prompt accumulation to evidence-backed deltas against contracts and packs; consider addon automation only if pack count or deployment demands it. Dependencies: Wave 2 should reduce execution failure to below 20% so geometry quality becomes a high-ROI target. Exit criteria: contact-gap failures are meaningfully reduced on targeted scene families, learning is writing to structured artifacts, and the architecture supports wrapped-to-taught graduation with evidence rather than opinion.
 
 ## 5. SDK FEATURES TO LEVERAGE
 
-1. `call_model_input_filter`: still the highest-leverage SDK feature. It should be implemented in Wave 1, not deferred.
+1. `call_model_input_filter`: ✅ Implemented (Wave 1). Turn-based per-agent context filtering in `utils/context_filter.py`.
 
 2. `AdvancedSQLiteSession`: use it for bounded repair branching only after scripts have named sections. The branch budget should be fixed at 2 per iteration and 4 per session.
 
-3. `tool_input_guardrails` and `tool_output_guardrails`: use them to enforce capability-pack availability, contract adherence, and section naming before a script ever reaches recovery.
+3. `tool_input_guardrails` and `tool_output_guardrails`: ✅ Partially implemented. Truth pack input guardrail on `execute_blender_script`, critical failure output guardrail on `evaluate_render`/`analyze_with_vision`, script length output guardrail on `generate_script`. Section naming guardrail planned for Wave 2.
 
 4. `tool_use_behavior="stop_on_first_tool"`: apply it to helper retrieval/diagnostic flows so they do one bounded thing and stop.
 
@@ -66,7 +89,7 @@ The architecture review has crossed an important threshold: the first successful
 
 6. `is_enabled` and GPT-5.4 `allowed_tools`: gate packs and tools by addon availability, runtime state, and current phase.
 
-7. GPT-5.4 rollout now: use it where the new architecture benefits most from stronger instruction following and coding. Do not wait for a perfect future architecture before taking that gain.
+7. GPT-5.4 rollout now: ✅ Implemented (Wave 1). `codex_upgrade` preset assigns gpt-5.4 to Script Writer, Research, Modification Coordinator, Quality Analyst.
 
 8. `needs_approval` and `run_streamed`: keep them for high-value supervision points and visibility, but they are secondary to the contract, pack, and context changes.
 

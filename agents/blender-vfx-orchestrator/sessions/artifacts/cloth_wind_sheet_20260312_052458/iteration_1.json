@@ -1,0 +1,67 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/cloth_wind_sheet.py",
+  "technique_used": "cloth_softbody",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/cloth_wind_sheet_20260312_052458/cache",
+  "score": 34.0,
+  "passed": false,
+  "primary_issue": "The render does not convincingly match the requested bright outdoor backyard cloth-in-wind scene; it reads as a placeholder test setup with weak cloth dynamics and unrealistic materials/environment.",
+  "parameter_changes": {
+    "asset_name": "cloth_wind_sheet",
+    "simulation_frames": [
+      1,
+      60
+    ],
+    "render_frame": 30,
+    "renderer": "Cycles GPU",
+    "samples": 256,
+    "cloth": {
+      "quality": 5,
+      "mass": 0.3,
+      "air_damping": 1.0,
+      "tension_stiffness": 15.0,
+      "compression_stiffness": 15.0,
+      "bending_stiffness": 0.5,
+      "tension_damping": 2.0,
+      "compression_damping": 2.0,
+      "bending_damping": 0.5,
+      "pin_vertex_group": "cloth_pin_group",
+      "pin_stiffness": 0.9
+    },
+    "collision": {
+      "enabled": true,
+      "self_collision": true,
+      "object_distance": 0.01,
+      "self_distance": 0.01,
+      "collision_quality": 5
+    },
+    "wind": {
+      "animated_strength_frames": {
+        "1": 200.0,
+        "10": 900.0,
+        "20": 1350.0,
+        "30": 1425.0,
+        "40": 1150.0,
+        "60": 850.0
+      },
+      "noise": 0.35,
+      "flow": 1.0
+    },
+    "geometry": {
+      "sheet_size_m": [
+        2.0,
+        2.0
+      ],
+      "sheet_subdivision_cuts": 39,
+      "post_spacing_m": 3.0,
+      "post_height_m": 1.9
+    },
+    "output": {
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/cloth_wind_sheet/cloth_wind_sheet.blend"
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T05:35:22.747569"
+}

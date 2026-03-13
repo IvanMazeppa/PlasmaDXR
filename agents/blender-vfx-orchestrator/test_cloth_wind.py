@@ -91,7 +91,7 @@ Research documentation, patterns, and APIs to find the best approach for realist
 async def main():
     print("=" * 70)
     print("CLOTH WIND TEST — Cloth Physics Simulation")
-    print("1 iteration, codex_upgrade preset, tracing enabled")
+    print("2 iterations, codex_upgrade preset, tracing enabled")
     print(f"Trace log: {log_file}")
     print("=" * 70)
     print()
@@ -104,7 +104,7 @@ async def main():
         frame_start=1,
         frame_end=60,
         quality_threshold=60.0,
-        max_iterations=1,
+        max_iterations=2,
         semantic_query="white sheet blowing in strong wind on a clothes line outdoors cloth simulation",
     )
 
