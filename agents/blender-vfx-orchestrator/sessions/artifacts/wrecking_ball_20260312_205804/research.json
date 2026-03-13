@@ -1,0 +1,47 @@
+{
+  "recommended_approach": "Cell Fracture add-on + Rigid Body World, using a pre-fractured wall held for impact and a heavy Active rigid-body wrecking ball, with supplemental particle-style debris/dust for the fine breakup.",
+  "key_parameters": {
+    "Physics Domain": "Rigid Body",
+    "Rigid Body World > Cache > Start": 1,
+    "Rigid Body World > Cache > End": 60,
+    "Wrecking Ball > Type": "Active",
+    "Wall Fragments > Type": "Active",
+    "Ground / intact structural support > Type": "Passive",
+    "Wrecking Ball > Collision Shape": "Sphere",
+    "Brick Fragments > Collision Shape": "Convex Hull",
+    "Ground > Collision Shape": "Mesh or Box",
+    "Animated / kinematic handling": "Use for the impact object if the swing is keyframed before handoff to simulation",
+    "Mass relationship": "Wrecking ball substantially heavier than brick fragments",
+    "Deactivation": "Enable for fragments so debris can settle after the burst",
+    "Timing": {
+      "Impact Frame": 8,
+      "Peak Destruction Frame": 15,
+      "Debris Settle Range": "20-50"
+    }
+  },
+  "api_modules": [
+    "bpy.types.RigidBodyObject"
+  ],
+  "warnings": [
+    "Do NOT default to the simplest destruction approach; choose the technique based on scene requirements and realism/complexity tradeoffs.",
+    "Always use Cell Fracture to generate shard geometry; do NOT rely on manual subdivision/basic splitting as the primary fracture method.",
+    "Watch for the failure mode where all fragments fall at once instead of breaking progressively on impact.",
+    "Rigid-body destruction can become unstable; fragment jitter/instability is a known issue pattern.",
+    "Pure rigid-body breakup can look too clean; add a secondary debris/dust layer for small chips and air fill.",
+    "Impact-object motion may need animated/kinematic handling so the wrecking ball hits the wall correctly before fully dynamic motion takes over."
+  ],
+  "alternative_approaches": [
+    "Manual mesh cutting / basic pre-split wall sections + Rigid Body (less preferred than Cell Fracture, but viable as a fallback).",
+    "Large rigid-body chunks for the wall plus particle debris for the small chips/dust layer."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/index.html",
+    "blender_manual_html/physics/rigid_body/index.html",
+    "blender_manual_html/physics/rigid_body/properties/index.html",
+    "blender_manual_html/physics/rigid_body/properties/settings.html",
+    "blender_manual_html/physics/rigid_body/constraints/introduction.html#common-options-",
+    "techniques/destruction/overview",
+    "techniques/destruction/cell_fracture"
+  ],
+  "timestamp": "2026-03-12T21:00:05.626282"
+}

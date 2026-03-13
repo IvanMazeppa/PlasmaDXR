@@ -1,0 +1,28 @@
+{
+  "session_id": "wrecking_ball_20260312_205804",
+  "iteration": 1,
+  "overall_score": 8.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix the shot blocking first: the wrecking ball, wall, impact point, and breach must all be clearly visible in one frame.",
+    "Line 257 (`settings.render_type = NONE`): renderable debris/dust is currently disabled; switch to a visible render mode or instanced geometry so airborne breakup actually appears.",
+    "Line 254 (`settings.physics_type = NO`): enable physical motion for debris/dust instead of non-physical particles, or replace with a proper rigid-body + volumetric dust setup.",
+    "Lines 248-250 (`count = 300`, `frame_start = 1`, `frame_end = 1`): increase emission count and spread emission across several frames so dust and secondary debris persist around impact instead of appearing nonexistent.",
+    "Line 251 (`lifetime = 60`): keep or increase lifetime only if particles become visible; right now lifetime does not help because the particles are not rendered/readable.",
+    "Lines 319-320 (brick colors): push the wall material toward clearer red-brown brick with stronger value separation from mortar so the wall reads as brick immediately.",
+    "Lines 118-119 (world background color/strength): rebalance the environment so the scene stays overcast but the frame is not swallowed by a dull gray slab; improve contrast and spatial readability.",
+    "Increase fracture detail and variation: use more irregular chunk sizes, broken edge detail, and directional scatter from the impact zone.",
+    "Add a localized dust volume at the breach with denser dust near impact and lighter suspended particulate spreading into the room.",
+    "If not already animated correctly, add motion blur to the ball and fastest debris to sell weight and speed.",
+    "Rework camera placement to a true medium interior shot with visible wall thickness, interior context, and exterior light through the hole.",
+    "Eliminate banding by improving shading/material gradients, sampling, and output quality settings."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 734.3408484169995,
+  "utility_score": 0.29,
+  "timestamp": "2026-03-12T21:12:14.147584"
+}

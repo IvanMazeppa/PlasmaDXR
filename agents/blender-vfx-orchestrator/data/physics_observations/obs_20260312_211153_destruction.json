@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-03-12T21:11:53.466744",
+  "effect_type": "destruction",
+  "observation": "Requested impact-driven dust/debris event is not visible in the final frame. The image shows a mostly flat gray surface with no readable brick fracture spray or airborne debris around a breach.",
+  "expected_behavior": "A wrecking ball impact into a brick wall should create a clear breach, scattered brick fragments, and visible suspended dust/debris around the impact zone.",
+  "actual_behavior": "No convincing impact event is readable. Dust and secondary debris are effectively absent, and the frame is dominated by a featureless gray plane instead of fractured wall geometry.",
+  "suspected_parameters": {
+    "line_247": "settings.type = EMITTER",
+    "line_248": "settings.count = 300",
+    "line_249": "settings.frame_start = 1",
+    "line_250": "settings.frame_end = 1",
+    "line_251": "settings.lifetime = 60",
+    "line_254": "settings.physics_type = NO",
+    "line_257": "settings.render_type = NONE",
+    "hypothesis": "Dust/debris particle system may be disabled visually and physically, preventing readable airborne breakup around the impact."
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wrecking_ball_cell_fracture_v1.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

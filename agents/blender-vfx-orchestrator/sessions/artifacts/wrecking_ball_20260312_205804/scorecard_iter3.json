@@ -1,0 +1,26 @@
+{
+  "session_id": "wrecking_ball_20260312_205804",
+  "iteration": 3,
+  "overall_score": 12.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix the primary visibility problem first: reframe or reposition the camera so the ball, impact point, and breach are clearly visible in the same shot.",
+    "If the particle system is intended to show secondary debris, Line 257 (`settings.render_type = NONE`) is likely suppressing visible output; switch to a visible render mode or instance debris geometry.",
+    "If the particle system is meant to add motion, Line 254 (`settings.physics_type = NO`) and Line 255 (`settings.normal_factor = 0.0`) leave particles with no physical launch; enable suitable physics or add initial velocity so debris actually travels outward from the impact.",
+    "Increase secondary debris density beyond Line 248 (`settings.count = 300`) if this system drives dust/chips; 300 is unlikely to sell a dense demolition burst.",
+    "The wall material needs to actually read as brick in render: verify the brick shader is applied to the fracture object, not overridden by a gray placeholder. Keep Line 319-320 brick colors only if they are visibly reaching the wall surface.",
+    "Model or simulate a real breach with broken silhouettes, varied fragment sizes, and surrounding cracks rather than a mostly intact panel.",
+    "Add volumetric dust and fine particulate debris around the opening so the air feels filled with demolition residue.",
+    "Improve environment context beyond the black void so the interior demolition location reads as a real building.",
+    "Use soft overcast lighting with enough exposure and contrast to preserve material readability without strong shadows.",
+    "Raise render quality/sampling or address shading issues causing wall banding."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 69.21505131600134,
+  "utility_score": 0.5023207905699989,
+  "timestamp": "2026-03-12T21:16:12.736401"
+}

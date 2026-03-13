@@ -1,0 +1,31 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wrecking_ball_iter3_paramfix.py",
+  "technique_used": "cell_fracture_rigid_body (param-modified) (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/wrecking_ball_20260312_205804/cache",
+  "score": 12.0,
+  "passed": false,
+  "primary_issue": "The render fails to depict the requested wrecking-ball wall impact: there is no clearly visible wrecking ball strike, breach, brick shatter, or airborne debris.",
+  "parameter_changes": {
+    "settings.frame_end": 120,
+    "settings.lifetime": 120,
+    "settings.count": 4000,
+    "settings.physics_type": "NEWTON",
+    "settings.normal_factor": 3.0,
+    "settings.factor_random": 0.5,
+    "settings.render_type": "HALO",
+    "volume.inputs['Density'].default_value": 2.0,
+    "density_mult.inputs[1].default_value": 5.0,
+    "volume.inputs['Color'].default_value": [
+      0.9,
+      0.45,
+      0.2,
+      1.0
+    ],
+    "volume.inputs['Anisotropy'].default_value": 0.6,
+    "noise.inputs['Scale'].default_value": 2.5
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T21:17:12.931139"
+}

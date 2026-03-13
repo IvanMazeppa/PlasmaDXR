@@ -37,7 +37,7 @@ suggest outdated APIs, model names, and patterns. This document is the
 
 ---
 
-## OpenAI Agents SDK (v0.10.5)
+## OpenAI Agents SDK (v0.12.0)
 
 ### CURRENT PATTERNS
 ```python
@@ -96,7 +96,7 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 
 **Documentation:** https://github.com/openai/openai-agents-python/tree/main/docs
 
-**SDK Notes (v0.10.5):**
+**SDK Notes (v0.12.0):**
 - `agent.as_tool(max_turns=...)` is supported natively. Returns `FunctionTool` (narrowed from `Tool` in v0.9.0).
 - Guardrails are created via decorators (`@input_guardrail`, `@output_guardrail`).
 - Tool guardrails apply only to `@function_tool` tools; use RunHooks for cross-tool enforcement.
@@ -105,6 +105,11 @@ transfer_to_agent(other_agent)  # NO! Use agent.as_tool()
 - Parallel function tool failures are isolated (no cascade) (v0.10.4+).
 - `McpError` returns as structured result instead of crashing agent runs (v0.10.5+).
 - Trace reattachment fixed for resumed runs — no duplicate trace starts (v0.10.2+).
+- `ComputerTool` GA with gpt-5.4 support — GUI/browser automation (v0.11.0+).
+- Tool Search with namespaces for Responses API (v0.11.0+).
+- `SQLiteSession` satisfies `Session` protocol (v0.11.0+).
+- Opt-in retry policies via `ModelSettings` for model API calls (v0.12.0+).
+- **HITL (v0.12.0):** `@function_tool(needs_approval=True)` enables native tool-level approvals. `RunResult.interruptions` returns `ToolApprovalItem` list; `RunResult.to_state()` serializes to `RunState`; `RunState.approve()/reject()` resumes. MCP also has `require_approval`/`on_approval_request` on `HostedMCPTool`. Use **hybrid** HITL: pipeline-level Python checkpoints for session decisions + native `needs_approval` for tool-level approvals.
 
 ---
 

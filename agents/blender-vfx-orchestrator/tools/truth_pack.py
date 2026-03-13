@@ -357,6 +357,15 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
         "Remove or rewrite using Action.layers[0].strips[0].channelbag(slot).fcurves.",
         None
     ),
+    # Blender 5.0: ShaderNodeMix renamed input 'Fac' → 'Factor'.
+    # NOTE: ColorRamp and texture node outputs still use 'Fac' — only Mix nodes changed.
+    # This pattern matches any .inputs["Fac"] or .inputs['Fac'] usage since ShaderNodeMix
+    # is the most common case; the auto-fixer handles it carefully.
+    r"""\.inputs\[['"]Fac['"]\]""": (
+        "ShaderNodeMix renamed 'Fac' to 'Factor' in Blender 5.0. "
+        "Note: ColorRamp/ValToRGB still uses 'Fac' — only ShaderNodeMix changed.",
+        None  # Context-dependent — auto-fixer handles selectively
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -787,6 +796,33 @@ def auto_fix_script(
                     _matched_vel = True
                     break
             if _matched_vel:
+                continue
+            # Special case: ShaderNodeMix input 'Fac' → 'Factor' (context-dependent).
+            # Only replace when the line variable name hints at a Mix node, NOT for
+            # ColorRamp (.inputs['Fac'] is correct there) or texture outputs.
+            if "inputs" in (error.attribute or "") and "Fac" in (error.message or ""):
+                lines = fixed.split("\n")
+                new_lines = []
+                for line in lines:
+                    # Only fix .inputs["Fac"] on lines referencing mix-like variables
+                    if re.search(r"""\.inputs\[['"]Fac['"]\]""", line):
+                        var_before = line.split(".inputs")[0].strip().lower()
+                        # Heuristic: if the variable name contains "mix" or "shader_mix"
+                        # or doesn't contain "ramp"/"color_ramp"/"val_to_rgb", fix it.
+                        is_mix = "mix" in var_before
+                        is_ramp = any(k in var_before for k in ("ramp", "val_to_rgb", "color_ramp"))
+                        if is_mix or not is_ramp:
+                            line = re.sub(
+                                r"""\.inputs\[(['"])Fac\1\]""",
+                                r".inputs[\1Factor\1]",
+                                line,
+                            )
+                            fixes_applied.append(
+                                "Replaced .inputs['Fac'] with .inputs['Factor'] "
+                                "(ShaderNodeMix rename in Blender 5.0)"
+                            )
+                    new_lines.append(line)
+                fixed = "\n".join(new_lines)
                 continue
             # Apply hardcoded fixes for known hallucinations
             for wrong, correct in HARDCODED_FIXES.items():

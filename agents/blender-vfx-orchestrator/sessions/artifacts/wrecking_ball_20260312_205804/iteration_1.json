@@ -1,0 +1,59 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wrecking_ball_cell_fracture_v1_errfix.py",
+  "technique_used": "cell_fracture_rigid_body",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/wrecking_ball_20260312_205804/cache",
+  "score": 8.0,
+  "passed": false,
+  "primary_issue": "The core destruction event is missing: there is no readable wrecking ball impact, no clear brick wall breach, and no convincing debris or dust.",
+  "parameter_changes": {
+    "asset_name": "wrecking_ball_cell_fracture_v1_errfix",
+    "effect_type": "destruction",
+    "structural_fix": "Rewrote the full script to avoid invalid node socket lookup by key 'Fac' and rebuilt materials with safe socket access/indexing.",
+    "cell_fracture": {
+      "extension": "bl_ext.blender_org.cell_fracture",
+      "source_limit": 60,
+      "source_noise": 0.05,
+      "margin": 0.0005,
+      "use_data_match": true,
+      "use_island_split": true
+    },
+    "rigid_body": {
+      "world_substeps_per_frame": 12,
+      "world_solver_iterations": 25,
+      "ball_mass": 120.0,
+      "ball_shape": "SPHERE",
+      "shard_shape": "MESH",
+      "shard_mass": 0.08,
+      "ball_kinematic": true
+    },
+    "animation": {
+      "frame_start": 1,
+      "frame_end": 48,
+      "render_frame": 18,
+      "ball_keyframes": [
+        1,
+        10,
+        18,
+        26
+      ]
+    },
+    "render": {
+      "engine": "CYCLES",
+      "resolution_x": 1920,
+      "resolution_y": 1080,
+      "output_dir": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix",
+      "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+      "blend_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.blend"
+    },
+    "lighting": {
+      "key_energy": 320.0,
+      "fill_energy": 95.0,
+      "rim_energy": 175.0,
+      "practical_energy": 75.0
+    }
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-12T21:12:59.950998"
+}

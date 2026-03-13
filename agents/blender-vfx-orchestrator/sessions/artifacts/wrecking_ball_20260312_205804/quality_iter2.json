@@ -1,0 +1,37 @@
+{
+  "overall_score": 12.0,
+  "passed": false,
+  "primary_issue": "The render fails to depict the requested demolition event: there is no clearly readable wrecking ball impact, no convincing brick wall fracture, and no visible debris or dust breakup.",
+  "issues": [
+    "Critical: The key action is missing. The image does not clearly show a wrecking ball swinging into and punching through a brick wall.",
+    "Critical: The wall does not read as red-brown brick; it appears mostly smooth and gray, contradicting the scene brief.",
+    "Critical: There is no convincing breach, fracture pattern, or shattered masonry at the impact area.",
+    "High: No readable debris field is present\u2014no large brick chunks, no medium fragments, and no fine dust pushing into the air or toward camera.",
+    "High: The composition is weak; most of the frame is occupied by a flat, unreadable wall surface while the likely impact object on the right is cropped and visually minor.",
+    "High: The scene feels static and inert rather than a forceful demolition moment.",
+    "High: Geometry and materials look too primitive/CG-like, especially on the right side of frame.",
+    "Medium: Large wall areas are flat and under-detailed, with minimal material variation or age/wear.",
+    "Medium: Visible banding/gradient stepping appears across the gray wall.",
+    "Medium: Lighting is soft but too empty to define materials, depth, or impact energy.",
+    "High: The camera framing does not strongly communicate 'inside the building facing the impact' as requested."
+  ],
+  "suggestions": [
+    "Line 254: Change settings.physics_type from NO to a physics-driven mode so emitted debris can move ballistically instead of reading as absent/static.",
+    "Line 257: Change settings.render_type from NONE if this particle system is intended to represent visible debris or dust; currently it strongly suggests the breakup is not being rendered at all.",
+    "Line 248: Increase settings.count substantially (try 1500-5000, depending on whether this system is for dust/debris) so the impact produces a readable fragment field instead of an empty frame.",
+    "Line 255: Raise settings.normal_factor above 0.0 (start around 1.5-4.0) to push fragments outward from the impact surface.",
+    "Line 256: Raise settings.factor_random above 0.0 (start around 0.4-1.0) so debris distribution is irregular and explosive rather than uniform.",
+    "Line 251: Revisit settings.lifetime = 60; if fragments are meant to stay in frame during the impact moment, tune lifetime to preserve visible breakup without instantly disappearing.",
+    "Lines 249-250: Confirm frame_start/frame_end = 1 is correct for the chosen render frame; if this is supposed to be the impact moment, emission timing may need to span additional frames so dust/debris are actually present when rendered.",
+    "Lines 319-320: Push brick colors toward more believable weathered brick/mortar separation; the wall currently does not read as brick. Add stronger contrast between base brick and secondary brick tones.",
+    "Lines 118-119: The current background is extremely dark for an overcast midday demolition scene. Shift the world color toward a brighter gray-blue overcast sky and raise strength enough to read forms more clearly.",
+    "Modeling/composition fix: Make the wrecking ball fully visible entering from frame left with a readable chain silhouette, and place the breach near center-left or center so the action dominates the shot.",
+    "Simulation fix: Build a clear punched-through hole with irregular fractured brick edges, displaced masonry, and layered debris sizes: large chunks, medium fragments, and fine dust.",
+    "Shading/detail fix: Replace the smooth wall look with visible brick courses, mortar lines, chipped edges, grime, and roughness variation so the old building material reads immediately."
+  ],
+  "vision_assessment": "Strictly judged, this render is far below the requested quality bar. Visually it reads as a mostly flat gray wall with limited structural detail and a partially visible object at the right edge, rather than a dramatic wrecking-ball demolition shot. The core story beat\u2014heavy steel ball swinging in from the left, smashing through a brick wall, sending fragments toward camera, and filling the breach with dust\u2014is not communicated. There is no clear impact point, no readable punched-through hole, no convincing brick material, and no debris volume carrying force through the frame. The muted palette and soft lighting are loosely compatible with an overcast industrial look, but they are not enough to rescue the image because the scene lacks the required action, material identity, and destruction detail. Overall this looks more like an incomplete setup or wrong frame than a successful destruction render.",
+  "reference_similarity": null,
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "iteration": 2,
+  "timestamp": "2026-03-12T21:14:05.656252"
+}

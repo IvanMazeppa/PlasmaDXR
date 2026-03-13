@@ -1,0 +1,28 @@
+{
+  "session_id": "wrecking_ball_20260312_205804",
+  "iteration": 2,
+  "overall_score": 12.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Line 254: Change settings.physics_type from NO to a physics-driven mode so emitted debris can move ballistically instead of reading as absent/static.",
+    "Line 257: Change settings.render_type from NONE if this particle system is intended to represent visible debris or dust; currently it strongly suggests the breakup is not being rendered at all.",
+    "Line 248: Increase settings.count substantially (try 1500-5000, depending on whether this system is for dust/debris) so the impact produces a readable fragment field instead of an empty frame.",
+    "Line 255: Raise settings.normal_factor above 0.0 (start around 1.5-4.0) to push fragments outward from the impact surface.",
+    "Line 256: Raise settings.factor_random above 0.0 (start around 0.4-1.0) so debris distribution is irregular and explosive rather than uniform.",
+    "Line 251: Revisit settings.lifetime = 60; if fragments are meant to stay in frame during the impact moment, tune lifetime to preserve visible breakup without instantly disappearing.",
+    "Lines 249-250: Confirm frame_start/frame_end = 1 is correct for the chosen render frame; if this is supposed to be the impact moment, emission timing may need to span additional frames so dust/debris are actually present when rendered.",
+    "Lines 319-320: Push brick colors toward more believable weathered brick/mortar separation; the wall currently does not read as brick. Add stronger contrast between base brick and secondary brick tones.",
+    "Lines 118-119: The current background is extremely dark for an overcast midday demolition scene. Shift the world color toward a brighter gray-blue overcast sky and raise strength enough to read forms more clearly.",
+    "Modeling/composition fix: Make the wrecking ball fully visible entering from frame left with a readable chain silhouette, and place the breach near center-left or center so the action dominates the shot.",
+    "Simulation fix: Build a clear punched-through hole with irregular fractured brick edges, displaced masonry, and layered debris sizes: large chunks, medium fragments, and fine dust.",
+    "Shading/detail fix: Replace the smooth wall look with visible brick courses, mortar lines, chipped edges, grime, and roughness variation so the old building material reads immediately."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 68.59836923600051,
+  "utility_score": 0.5028346923033329,
+  "timestamp": "2026-03-12T21:14:05.661806"
+}

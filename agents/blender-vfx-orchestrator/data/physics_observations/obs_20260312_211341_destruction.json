@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-12T21:13:41.604594",
+  "effect_type": "destruction",
+  "observation": "The render does not show a readable impact event, fracture field, or debris spray. The scene appears largely static, with the wall reading as mostly intact/featureless and no convincing brick scatter or dust volume.",
+  "expected_behavior": "A wrecking ball impact should create a clear punched-through breach with fractured brick edges, flying masonry fragments, and airborne dust concentrated around the impact zone.",
+  "actual_behavior": "No clear breach, no visible brick fragmentation toward camera, and little to no dust/debris motion are apparent in the rendered frame.",
+  "suspected_parameters": {
+    "line_247_settings_type": "EMITTER",
+    "line_248_settings_count": 300,
+    "line_251_settings_lifetime": 60,
+    "line_254_settings_physics_type": "NO",
+    "line_255_settings_normal_factor": 0.0,
+    "line_256_settings_factor_random": 0.0,
+    "line_257_settings_render_type": "NONE"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wrecking_ball_iter2_paramfix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

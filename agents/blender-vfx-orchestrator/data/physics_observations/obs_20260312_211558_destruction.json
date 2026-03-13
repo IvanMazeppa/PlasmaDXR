@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-03-12T21:15:58.288634",
+  "effect_type": "destruction",
+  "observation": "Destruction event is not visually occurring in the frame: no visible brick shatter, breach, dust plume, or debris traveling from the impact zone.",
+  "expected_behavior": "A wrecking ball impact should produce a clearly readable hole in the brick wall, with bricks/fragments scattering outward and dust suspended around the breach.",
+  "actual_behavior": "The image is dominated by a largely intact flat gray wall with no readable impact event. Any secondary debris system appears absent or invisible.",
+  "suspected_parameters": {
+    "line_254_physics_type": "NO",
+    "line_255_normal_factor": 0.0,
+    "line_257_render_type": "NONE",
+    "line_248_count": 300,
+    "line_319_brick_color1": [
+      0.43,
+      0.19,
+      0.11,
+      1.0
+    ],
+    "line_320_brick_color2": [
+      0.28,
+      0.12,
+      0.08,
+      1.0
+    ]
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/wrecking_ball_cell_fracture_v1_errfix/wrecking_ball_cell_fracture_v1_errfix.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/wrecking_ball_iter3_paramfix.py",
+  "iteration": 3,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}
