@@ -47,34 +47,19 @@ class ExecutionPhaseResult:
     previous_score: float = 0.0
 
 
-def _discover_render(
-    exec_output_dir: str,
-    run_dir: Optional[str],
-) -> Optional[str]:
-    """Scan disk for render files in output dir, siblings, and subdirs.
+def _discover_render_current_run(run_dir: Optional[str]) -> Optional[str]:
+    """Find render files produced by the current execution only.
 
-    Returns path to most recent render file, or None.
+    Searches ONLY the current execution's run_dir — never the shared
+    per-asset output directory.  This prevents stale renders from
+    previous iterations being mistaken for current output.
     """
-    discover_dirs = [exec_output_dir]
-    # Search sibling dirs matching asset name (e.g. wine_pour_v1/)
-    parent = os.path.dirname(exec_output_dir)
-    base = os.path.basename(exec_output_dir)
-    if os.path.isdir(parent):
-        for sibling in sorted(Path(parent).iterdir(), reverse=True):
-            if sibling.is_dir() and sibling.name.startswith(base) and str(sibling) != exec_output_dir:
-                discover_dirs.append(str(sibling))
-    if os.path.isdir(exec_output_dir):
-        for subdir in sorted(Path(exec_output_dir).iterdir(), reverse=True):
-            if subdir.is_dir():
-                discover_dirs.append(str(subdir))
-    if run_dir:
-        discover_dirs.append(run_dir)
-
-    for dir_path in discover_dirs:
-        for ext in ("*.png", "*.exr"):
-            found = sorted(_glob.glob(os.path.join(dir_path, ext)))
-            if found:
-                return found[-1]
+    if not run_dir or not os.path.isdir(run_dir):
+        return None
+    for ext in ("*.png", "*.exr"):
+        found = sorted(_glob.glob(os.path.join(run_dir, "**", ext), recursive=True))
+        if found:
+            return found[-1]
     return None
 
 
@@ -109,27 +94,28 @@ def _parse_exec_result(exec_json_str: str) -> ExecutionOutput:
 
 
 def _apply_render_discovery(execution: ExecutionOutput, exec_output_dir: str, label: str = "") -> None:
-    """Apply fallback render discovery and partial-success override in-place."""
-    if execution.render_path:
+    """Apply render discovery scoped to the current run only.
+
+    Never promotes a failed execution to success — stale renders from
+    previous iterations must not corrupt the feedback loop.
+    """
+    current_render = _discover_render_current_run(execution.run_dir)
+    prefix = f"[Pipeline] {label} " if label else "[Pipeline] "
+
+    if execution.success:
+        # Successful run missing render_path — check run_dir
+        if not execution.render_path and current_render:
+            execution.render_path = current_render
+            print(f"{prefix}Render discovered in run_dir: {current_render}", file=sys.stderr)
         return
 
-    found = _discover_render(exec_output_dir, execution.run_dir)
-    if found:
-        execution.render_path = found
-        prefix = f"[Pipeline] {label} " if label else "[Pipeline] "
-        print(f"{prefix}Render discovered via fallback: {execution.render_path}", file=sys.stderr)
-
-    if execution.render_path and not execution.success:
+    # Failed execution — store as diagnostic only, never promote to success
+    if current_render:
+        execution.partial_render_path = current_render
         print(
-            f"[Pipeline] DIAGNOSTIC: exit_code!=0 but render exists at "
-            f"{execution.render_path}. Keeping success=False to preserve "
-            f"learning signal. Render will still be used for evaluation.",
+            f"{prefix}DIAGNOSTIC: Failed execution produced partial render at "
+            f"{current_render}. Keeping success=False — will not evaluate stale render.",
             file=sys.stderr,
-        )
-        execution.success = True
-        execution.error_message = (
-            f"[PARTIAL] Script exited non-zero but produced render. "
-            f"Original error: {execution.error_message or 'unknown'}"
         )
 
 

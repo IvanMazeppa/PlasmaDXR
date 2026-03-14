@@ -65,7 +65,8 @@ class ScriptOutput(BaseModel):
 class ExecutionOutput(BaseModel):
     """Output from Executor - render path and execution status."""
     success: bool = Field(description="Whether Blender execution succeeded")
-    render_path: Optional[str] = Field(default=None, description="Path to rendered output")
+    render_path: Optional[str] = Field(default=None, description="Path to rendered output (current iteration only)")
+    partial_render_path: Optional[str] = Field(default=None, description="Render from failed execution (diagnostic only, not for scoring)")
     vdb_path: Optional[str] = Field(default=None, description="Path to VDB volume data")
     run_dir: Optional[str] = Field(default=None, description="Executor output directory containing cache and logs")
     error_message: Optional[str] = Field(default=None, description="Error message if failed")
