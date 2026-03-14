@@ -1,0 +1,24 @@
+{
+  "session_id": "ireland_flag_20260314_021918",
+  "iteration": 2,
+  "overall_score": 42.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase apparent cloth deformation by pushing the large-scale fold pattern: try lowering Line 369 wave Scale from 220.0 to about 120-160 so folds read larger, and raise Line 370 Distortion from 1.5 to about 2.5-3.5 for less uniform bending.",
+    "Add richer secondary cloth breakup: increase Line 371 wave Detail from 2.0 to 4.0-6.0, and rebalance the noise by lowering Line 374 noise Scale from 95.0 to about 40-70 while keeping finer turbulence with Line 375 Detail around 8.0-12.0.",
+    "Make surface relief contribute more to fabric readability: raise Line 382 bump Strength from 0.018 to about 0.035-0.06, but avoid overdoing it into embossed plastic.",
+    "Improve material realism by reducing the plasticky smoothness: increase Line 275 Roughness from 0.45 to around 0.55-0.7 and lower Line 317 emission Strength from 0.9 to 0.0-0.2 unless a stylized self-lit look is intended.",
+    "Use a more believable overcast sky setup: lower Line 108 background Strength from 0.65 to roughly 0.35-0.5 and slightly cool/desaturate Line 107 background Color so the scene feels less flat and washed.",
+    "Refine stripe color calibration under cloudy light: adjust Line 366 mix_all B toward a deeper Irish green, and reduce the oversaturated orange bias in Line 359 mix_green_white A so the tricolor reads more natural.",
+    "Correct the geometry/rigging outside these listed shader parameters: the hoist edge must be on the green-stripe side, attached continuously to the flagpole with visible rope/toggle details; this is currently a major scene-accuracy failure.",
+    "Pose the flag farther out from the pole with stronger silhouette variation; the current near-planar form lacks the dramatic billow required by the prompt."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 93.22369082000023,
+  "utility_score": 0.6323135909833331,
+  "timestamp": "2026-03-14T02:31:17.846056"
+}

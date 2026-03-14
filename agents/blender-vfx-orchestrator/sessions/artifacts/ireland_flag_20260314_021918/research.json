@@ -1,0 +1,43 @@
+{
+  "recommended_approach": "Cloth with Wind on a subdivided 2D flag mesh, using a pinned hoist-edge vertex group along the pole side",
+  "key_parameters": {
+    "mesh_type": "2D grid / flag plane",
+    "subdivisions": 8,
+    "pinned_edge": "hoist (left) edge / pole edge",
+    "quality_steps": 12,
+    "wind_strength": 8,
+    "wind_direction": [
+      -1,
+      0,
+      0.1
+    ],
+    "turbulence": 2,
+    "cache_frame_start": 1,
+    "cache_frame_end": 60,
+    "render_frame": 40,
+    "renderer": "Cycles GPU",
+    "samples": 256,
+    "post_sim_smoothing": "Subdivision Surface after simulation"
+  },
+  "api_modules": [],
+  "warnings": [
+    "Low subdivision gives stiff, blocky cloth; the cloth examples recommend subdividing several times (about 8) for floppy fabric.",
+    "Use a mesh-based 2D cloth object for fabric; the cloth introduction describes cloth as commonly simulated on a 2D mesh.",
+    "For flag setups, pin the pole edge; the examples explicitly describe defining the flag as a grid and pinning the pole edge.",
+    "Use smoothing/subdivision after the simulation if the cloth surface looks blocky.",
+    "The API lookup did not return usable cloth-specific bpy.types/bpy.ops references in this search pass."
+  ],
+  "alternative_approaches": [
+    "Cloth with Animated Vertex Groups for extra art direction over the hoist area or timing.",
+    "Cloth on Armature if you need directed large-scale shaping before or during the simulation.",
+    "Using Simulation to Shape/Sculpt a Mesh to pre-form a dramatic extended pose, then apply the Cloth modifier."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/cloth/index.html",
+    "physics/cloth/index.html",
+    "physics/cloth/introduction.html",
+    "physics/cloth/examples.html",
+    "blender_manual_html/physics/cloth/examples.html#using-simulation-to-shape-sculpt-a-mesh-"
+  ],
+  "timestamp": "2026-03-14T02:20:34.082643"
+}

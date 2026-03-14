@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-14T02:33:45.361753",
+  "effect_type": "flag",
+  "observation": "Flag cloth does not exhibit the strong wind-driven deformation described in the brief.",
+  "expected_behavior": "With a steady strong breeze from screen-left, the flag should billow outward in deep rolling waves with sharper flutter and snapping toward the trailing edge while remaining fully attached along the hoist side.",
+  "actual_behavior": "The rendered flag appears mostly flat with only mild curvature, limited wave amplitude, and no convincing trailing-edge flutter or snap. Motion cues are weak even in the still frame.",
+  "suspected_parameters": {
+    "line_371_wave_scale": 220.0,
+    "line_372_wave_distortion": 1.5,
+    "line_373_wave_detail": 2.0,
+    "line_376_noise_scale": 95.0,
+    "line_377_noise_detail": 10.0,
+    "line_378_noise_roughness": 0.4,
+    "line_384_bump_strength": 0.018
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/ireland_flag/ireland_flag.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/ireland_flag_iter3_paramfix.py",
+  "iteration": 3,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

@@ -1,10 +1,3 @@
-# GPT-5.4 Architecture Review Prompt
-
-Use with: `gpt-5.4`, reasoning effort: `xhigh`, verbosity: `high`
-
----
-
-## The Prompt
 
 ```
 <system>

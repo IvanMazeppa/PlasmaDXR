@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-03-14T02:28:26.023747",
+  "effect_type": "flag",
+  "observation": "Flag cloth appears too rigid and under-driven by wind for the requested strong-breeze setup.",
+  "expected_behavior": "A large Irish flag should show deep rolling billows from screen-left wind, with stronger curvature through the body and sharper flutter/snaps at the trailing edge.",
+  "actual_behavior": "The render shows only mild bending with limited fold structure, little trailing-edge flutter, and an overall flat rectangular-sheet appearance.",
+  "suspected_parameters": {
+    "possible_causes": [
+      "cloth stiffness too high",
+      "wind force too low",
+      "insufficient turbulence/gust variation",
+      "over-constrained hoist attachment",
+      "cloth subdivision too low"
+    ],
+    "script_notes": "Provided modifiable lines mostly affect material/background; likely simulation controls are elsewhere."
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/ireland_flag/ireland_flag.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/ireland_flag_cloth_v1.py",
+  "iteration": 0,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

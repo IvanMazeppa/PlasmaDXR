@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-03-14T02:31:00.432916",
+  "effect_type": "flag",
+  "observation": "Flag shape appears only mildly curved and lacks the deep rolling waves and trailing-edge snap expected from a strong left-to-right breeze. Hoist-side mounting/orientation also appears visually inconsistent with the requested setup.",
+  "expected_behavior": "A large Irish flag should billow outward with pronounced cloth deformation under steady strong wind, showing tension near the hoist edge, larger traveling folds across the body, and sharper flutter/compression near the fly edge.",
+  "actual_behavior": "The render shows a relatively smooth, weakly deformed flag surface that reads closer to a gently bent sheet than wind-driven cloth. The attachment orientation is unclear and the silhouette lacks strong aerodynamic motion.",
+  "suspected_parameters": {
+    "line_369_wave_scale": 220.0,
+    "line_370_wave_distortion": 1.5,
+    "line_371_wave_detail": 2.0,
+    "line_374_noise_scale": 95.0,
+    "line_375_noise_detail": 10.0,
+    "line_376_noise_roughness": 0.55,
+    "line_382_bump_strength": 0.018
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/ireland_flag/ireland_flag.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/ireland_flag_iter2_paramfix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

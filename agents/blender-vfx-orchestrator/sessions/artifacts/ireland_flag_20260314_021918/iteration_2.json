@@ -1,0 +1,43 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/ireland_flag_iter2_paramfix.py",
+  "technique_used": "cloth_softbody (param-modified)",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/ireland_flag/ireland_flag.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/ireland_flag_20260314_021918/cache",
+  "score": 42.0,
+  "passed": false,
+  "primary_issue": "The flag does not read as a strongly wind-driven Irish flag; its deformation is too weak and the hoist-side attachment/orientation appears incorrect for the requested scene.",
+  "parameter_changes": {
+    "settings.quality": 18,
+    "settings.mass": 0.012,
+    "settings.air_damping": 0.012,
+    "settings.tension_stiffness": 8.0,
+    "settings.compression_stiffness": 8.0,
+    "settings.shear_stiffness": 6.0,
+    "settings.bending_stiffness": 0.9,
+    "settings.distance_min": 0.012,
+    "settings.self_distance_min": 0.005,
+    "mix_green_white.inputs['A'].default_value": [
+      1.0,
+      0.52,
+      0.22,
+      1.0
+    ],
+    "mix_green_white.inputs['B'].default_value": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mix_all.inputs['B'].default_value": [
+      0.086,
+      0.608,
+      0.384,
+      1.0
+    ],
+    "translucency_amount.inputs[1].default_value": 0.12,
+    "bump.inputs['Strength'].default_value": 0.04
+  },
+  "escape_level": 0,
+  "timestamp": "2026-03-14T02:32:25.546174"
+}
