@@ -1,0 +1,42 @@
+{
+  "pattern_id": "pat_3fa2ebc986e8",
+  "name": "terrain_displace_subdivision",
+  "issue_category": "terrain_is_flat_plane_or_uses_manually_placed_vert",
+  "code_snippet": "# Terrain from subdivided plane + cloud texture displacement\nimport bpy\n\nbpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, 0))\nterrain = bpy.context.active_object\nterrain.name = \"Terrain\"\n\n# High subdivision for displacement detail (SIMPLE = no smoothing)\nsubsurf = terrain.modifiers.new(\"Subdivision\", type='SUBSURF')\nsubsurf.levels = 6\nsubsurf.render_levels = 6\nsubsurf.subdivision_type = 'SIMPLE'\n\n# Large-scale terrain features\ntex_large = bpy.data.textures.new(\"TerrainLarge\", type='CLOUDS')\ntex_large.noise_scale = 2.0\ntex_large.noise_depth = 6\n\ndisp_large = terrain.modifiers.new(\"LargeFeatures\", type='DISPLACE')\ndisp_large.texture = tex_large\ndisp_large.strength = 3.0\ndisp_large.mid_level = 0.0\n\n# Fine surface detail\ntex_fine = bpy.data.textures.new(\"TerrainFine\", type='MUSGRAVE')\ntex_fine.noise_scale = 0.5\n\ndisp_fine = terrain.modifiers.new(\"FineDetail\", type='DISPLACE')\ndisp_fine.texture = tex_fine\ndisp_fine.strength = 0.3\ndisp_fine.mid_level = 0.5\n\nbpy.ops.object.shade_smooth()",
+  "effect_types": [
+    "modeling",
+    "scene_setup",
+    "geometry",
+    "hard_surface"
+  ],
+  "context_before": "Flat plane with no variation \u2014 terrain looks artificial and boring",
+  "context_after": "Two-layer displacement (large clouds + fine musgrave) on subdivided plane creates realistic multi-scale terrain with hills, valleys, and surface roughness",
+  "parameters_affected": [
+    "render_levels",
+    "texture",
+    "strength",
+    "mid_level",
+    "levels",
+    "noise_depth",
+    "subdivision_type",
+    "noise_scale"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.object.shade_smooth",
+    "bpy.data.textures",
+    "bpy.ops.mesh.primitive_plane_add"
+  ],
+  "average_improvement": 40.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_modifiers_v1"
+  ],
+  "created_at": "2026-03-15T02:26:39.717484",
+  "updated_at": "2026-03-15T02:26:39.717804",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

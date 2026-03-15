@@ -1,0 +1,50 @@
+{
+  "pattern_id": "pat_4620520f8162",
+  "name": "campfire_multi_flow_with_dissolve",
+  "issue_category": "campfire_smoke_accumulates_and_fills_the_entire_do",
+  "code_snippet": "# Campfire domain with dissolve and separate flame/smoke flows\nbpy.ops.mesh.primitive_cube_add(size=3.0, location=(0, 0, 1.5))\ndomain = bpy.context.active_object\nmod = domain.modifiers.new(\"Fluid\", type='FLUID')\nmod.fluid_type = 'DOMAIN'\nds = mod.domain_settings\nds.domain_type = 'GAS'\nds.resolution_max = 80\nds.use_dissolve_smoke = True          # NOT use_dissolve\nds.dissolve_speed = 40                # Frames to fully dissolve\nds.alpha = 1.0                        # Density buoyancy\nds.beta = 0.5                         # Heat buoyancy\nds.vorticity = 0.3                    # Swirl\nds.cache_type = 'ALL'\nds.cache_particle_format = 'UNI'     # NOT OPENVDB for GAS\nds.cache_mesh_format = 'BOBJECT'     # NOT UNI for GAS\n\n# Flame source \u2014 high fuel/temp\nflame_flow = flame_obj.modifiers[\"Fluid\"].flow_settings\nflame_flow.flow_type = 'BOTH'\nflame_flow.fuel_amount = 1.5\nflame_flow.temperature = 2.0\nflame_flow.density = 0.8\n\n# Smoke source \u2014 lower density, dark color\nsmoke_flow = smoke_obj.modifiers[\"Fluid\"].flow_settings\nsmoke_flow.flow_type = 'SMOKE'\nsmoke_flow.density = 0.5\nsmoke_flow.temperature = 0.3\nsmoke_flow.smoke_color = (0.15, 0.12, 0.1)",
+  "effect_types": [
+    "fire",
+    "smoke",
+    "explosion",
+    "water",
+    "fog",
+    "nebula"
+  ],
+  "context_before": "Single flow source produces uniform fire+smoke; smoke fills domain and obscures the scene",
+  "context_after": "Separate flame/smoke flows with use_dissolve_smoke=True and dissolve_speed=40 gives natural campfire behavior",
+  "parameters_affected": [
+    "fluid_type",
+    "flow_type",
+    "domain_type",
+    "resolution_max",
+    "use_dissolve_smoke",
+    "smoke_color",
+    "dissolve_speed",
+    "alpha",
+    "vorticity",
+    "cache_type",
+    "beta",
+    "cache_particle_format",
+    "fuel_amount",
+    "temperature",
+    "density",
+    "cache_mesh_format"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.mesh.primitive_cube_add"
+  ],
+  "average_improvement": 35.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mantaflow_adv_v1"
+  ],
+  "created_at": "2026-03-15T02:03:10.278055",
+  "updated_at": "2026-03-15T02:03:10.278427",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

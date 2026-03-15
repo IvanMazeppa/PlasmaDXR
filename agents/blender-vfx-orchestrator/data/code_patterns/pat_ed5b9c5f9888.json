@@ -1,0 +1,49 @@
+{
+  "pattern_id": "pat_ed5b9c5f9888",
+  "name": "flag_with_wind_complete",
+  "issue_category": "flag_cloth_simulation_hangs_limp_with_no_motion__n",
+  "code_snippet": "# Complete flag with wind setup\n# 1. Create subdivided plane for flag mesh\nbpy.ops.mesh.primitive_plane_add(size=2.0, location=(0, 0, 2.0))\nflag = bpy.context.active_object\nflag.name = \"Flag\"\nbpy.ops.object.mode_set(mode='EDIT')\nbpy.ops.mesh.subdivide(number_cuts=6)\nbpy.ops.object.mode_set(mode='OBJECT')\nflag.scale = (1.5, 1.0, 1.0)\nbpy.ops.object.transform_apply(scale=True)\n\n# 2. Pin left edge (flagpole attachment)\nvg = flag.vertex_groups.new(name=\"PinGroup\")\nbpy.ops.object.mode_set(mode='EDIT')\nbm = bmesh.from_edit_mesh(flag.data)\nbm.verts.ensure_lookup_table()\nmin_x = min(v.co.x for v in bm.verts)\npin_indices = [v.index for v in bm.verts if abs(v.co.x - min_x) < 0.01]\nbpy.ops.object.mode_set(mode='OBJECT')\nvg.add(pin_indices, 1.0, 'REPLACE')\n\n# 3. Cloth modifier\ncloth_mod = flag.modifiers.new(\"Cloth\", type='CLOTH')\ncs = cloth_mod.settings\ncs.quality = 8\ncs.mass = 0.3\ncs.tension_stiffness = 15.0\ncs.compression_stiffness = 15.0\ncs.bending_stiffness = 0.5\ncs.air_damping = 1.0\ncs.use_pin_cloth = True\ncs.vertex_group_mass = \"PinGroup\"\ncs.pin_stiffness = 1.0\n\n# 4. Wind force field \u2014 essential for flapping\nbpy.ops.object.effector_add(type='WIND', location=(3, 0, 2))\nwind = bpy.context.active_object\nwind.rotation_euler = (0, 0, 3.14159)\nwind.field.strength = 25.0\nwind.field.noise = 5.0    # Critical for realistic flutter",
+  "effect_types": [
+    "cloth",
+    "fabric",
+    "flag",
+    "curtain",
+    "draping"
+  ],
+  "context_before": "Flag cloth hangs limp under gravity with no wind \u2014 looks dead, no motion",
+  "context_after": "Wind force field with noise=5 creates natural flapping; pinned edge stays attached to pole",
+  "parameters_affected": [
+    "strength",
+    "compression_stiffness",
+    "use_pin_cloth",
+    "mass",
+    "tension_stiffness",
+    "bending_stiffness",
+    "air_damping",
+    "pin_stiffness",
+    "rotation_euler",
+    "noise",
+    "quality",
+    "vertex_group_mass"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.object.effector_add",
+    "bpy.ops.mesh.subdivide",
+    "bpy.context.active_object",
+    "bpy.ops.object.transform_apply",
+    "bpy.ops.mesh.primitive_plane_add",
+    "bpy.ops.object.mode_set"
+  ],
+  "average_improvement": 45.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_cloth_v1"
+  ],
+  "created_at": "2026-03-15T02:02:43.844331",
+  "updated_at": "2026-03-15T02:02:43.844968",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

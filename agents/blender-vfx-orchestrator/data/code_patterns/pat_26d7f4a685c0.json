@@ -1,0 +1,37 @@
+{
+  "pattern_id": "pat_26d7f4a685c0",
+  "name": "colored_smoke_multi_source",
+  "issue_category": "colored_smoke_from_multiple_emitters_all_renders_a",
+  "code_snippet": "# Colored smoke requires use_color_ramp on domain + smoke_color on flows\nds = domain.modifiers[\"Fluid\"].domain_settings\nds.domain_type = 'GAS'\nds.use_color_ramp = True              # REQUIRED for colored smoke display\n\n# Red source\nred_fs = red_obj.modifiers[\"Fluid\"].flow_settings\nred_fs.flow_type = 'SMOKE'\nred_fs.flow_behavior = 'INFLOW'\nred_fs.smoke_color = (1.0, 0.1, 0.05)\nred_fs.density = 1.0\n\n# Blue source\nblue_fs = blue_obj.modifiers[\"Fluid\"].flow_settings\nblue_fs.flow_type = 'SMOKE'\nblue_fs.flow_behavior = 'INFLOW'\nblue_fs.smoke_color = (0.05, 0.2, 1.0)\nblue_fs.density = 1.0",
+  "effect_types": [
+    "fire",
+    "smoke",
+    "explosion",
+    "water",
+    "fog",
+    "nebula"
+  ],
+  "context_before": "Multiple colored smoke emitters all produce identical grey smoke \u2014 colors not visible",
+  "context_after": "Enable use_color_ramp on domain settings and set smoke_color on each flow object for distinct colored plumes",
+  "parameters_affected": [
+    "use_color_ramp",
+    "flow_type",
+    "flow_behavior",
+    "domain_type",
+    "smoke_color",
+    "density"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mantaflow_adv_v1"
+  ],
+  "created_at": "2026-03-15T02:03:10.279420",
+  "updated_at": "2026-03-15T02:03:10.279705",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

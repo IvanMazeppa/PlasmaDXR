@@ -1,0 +1,40 @@
+{
+  "pattern_id": "pat_e40f067422dd",
+  "name": "force_field_wind_turbulence_combo",
+  "issue_category": "particles_move_in_straight_lines_or_pure_gravity_a",
+  "code_snippet": "# Combined force fields for atmospheric particle motion\n# IMPORTANT: use effector_add, NOT forcefield_add\n\n# Wind \u2014 main directional push\nbpy.ops.object.effector_add(type='WIND', location=(5, 0, 3))\nwind = bpy.context.active_object\nwind.field.strength = 4.0\nwind.field.noise = 2.0              # Gusty variation\nwind.rotation_euler = (1.57, 0, 0)  # Direction\n\n# Turbulence \u2014 chaotic swirling\nbpy.ops.object.effector_add(type='TURBULENCE', location=(0, 0, 2))\nturb = bpy.context.active_object\nturb.field.strength = 2.5\nturb.field.size = 1.5               # Swirl scale\n\n# Drag \u2014 prevents infinite acceleration, creates terminal velocity\nbpy.ops.object.effector_add(type='DRAG', location=(0, 0, 2))\ndrag = bpy.context.active_object\ndrag.field.linear_drag = 0.15\ndrag.field.quadratic_drag = 0.05",
+  "effect_types": [
+    "particles",
+    "emitter",
+    "debris",
+    "rain",
+    "sparks",
+    "confetti"
+  ],
+  "context_before": "Particles follow pure gravity or single-direction wind \u2014 motion looks mechanical and predictable",
+  "context_after": "Wind + Turbulence + Drag combo creates natural atmospheric motion with gusts, swirls, and terminal velocity",
+  "parameters_affected": [
+    "rotation_euler",
+    "noise",
+    "linear_drag",
+    "size",
+    "quadratic_drag",
+    "strength"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.object.effector_add",
+    "bpy.context.active_object"
+  ],
+  "average_improvement": 40.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_particles_v1"
+  ],
+  "created_at": "2026-03-15T02:03:31.375407",
+  "updated_at": "2026-03-15T02:03:31.375708",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

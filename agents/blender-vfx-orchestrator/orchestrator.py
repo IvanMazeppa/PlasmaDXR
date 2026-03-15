@@ -702,6 +702,10 @@ Refine the deterministic suggestions above using the ACTUAL identifiers you find
 - Recommend: 'iterate' | 'switch_technique' | 'complete'"""
 
         ctx = session_mgr.get_context_for_agents()
+        # Inject deterministic stuck-state into context
+        ctx["escape_level"] = session.stuck_state.escape_level.value
+        ctx["plateau_count"] = session.stuck_state.plateau_count
+        ctx["consecutive_same_issue"] = session.stuck_state.same_issue_count
         # Quality Gate prompt WITHOUT Learning Agent recommendation (independent decision)
         gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
 
@@ -714,7 +718,7 @@ Scorecard: {scorecard_artifact_path}
 Quality: {quality_artifact_path}
 
 ## Context
-Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
+Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Plateau: {ctx.get('plateau_count', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
 
 Decide: Is quality gate PASSED? What is the next action?
 Note: Learning Agent is also analyzing in parallel - make your decision based on metrics."""
@@ -1491,21 +1495,15 @@ Generate a complete, validated script using the selected technique. Return the s
                         if not direct_modification_success and quality:
                             from phases.repair_routing import choose_repair_intent as _choose_ri
 
-                            _escape_val = 0
-                            try:
-                                _escape_val = session.stuck_state.escape_level.value
-                            except (AttributeError, TypeError):
-                                _escape_val = getattr(session.stuck_state, "escape_level", 0)
-                                if hasattr(_escape_val, "value"):
-                                    _escape_val = _escape_val.value
-
+                            # Phase 1 wiring fix: use deterministic stuck-state
+                            # values computed by record_iteration(), not LLM outputs.
                             repair_intent = _choose_ri(
                                 quality=quality,
                                 code_grounded_feedback=code_grounded_feedback or "",
-                                plateau_count=getattr(session.stuck_state, "plateau_count", 0),
-                                same_issue_count=getattr(session_mgr.issue_tracker, "consecutive_same_issue", 0),
+                                plateau_count=session.stuck_state.plateau_count,
+                                same_issue_count=session.stuck_state.same_issue_count,
                                 iteration=iteration,
-                                escape_level=int(_escape_val),
+                                escape_level=int(session.stuck_state.escape_level.value),
                             )
                             print(
                                 f"[Pipeline] REPAIR INTENT: mode={repair_intent.mode}, "
@@ -2680,7 +2678,10 @@ Provide detailed feedback for improvement."""
                         passed=quality.passed,
                         score=quality.overall_score,
                     )
-                    session.iterations.append(iter_result)
+                    # Phase 1 wiring fix: use record_iteration() to activate
+                    # StuckDetectionState.update_from_iteration() — computes
+                    # plateau_count, same_issue_count, escape_level deterministically.
+                    session.record_iteration(iter_result)
 
                     # ====== PHASE 3.9: PIPELINE MONITOR (After Evaluation) ======
                     eval_alerts = self._pipeline_monitor.check_after_evaluation(
@@ -2899,6 +2900,10 @@ Refine the deterministic suggestions above using the ACTUAL identifiers you find
                         # Sequential path - run Quality Gate now (with Learning recommendation)
                         print(f"[Pipeline] PHASE 5: Quality Gate (Sequential)", file=sys.stderr)
                         ctx = session_mgr.get_context_for_agents()
+                        # Inject deterministic stuck-state into context
+                        ctx["escape_level"] = session.stuck_state.escape_level.value
+                        ctx["plateau_count"] = session.stuck_state.plateau_count
+                        ctx["consecutive_same_issue"] = session.stuck_state.same_issue_count
 
                         # Artifact-First: Compact prompt with artifact references
                         gate_prompt = f"""Interpret quality evaluation results for iteration {iteration}.
@@ -2912,7 +2917,7 @@ Scorecard: {scorecard_artifact_path}
 Quality: {quality_artifact_path}
 
 ## Context
-Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
+Iteration: {iteration}/{request.max_iterations} | Same Issue: {ctx.get('consecutive_same_issue', 0)}x | Plateau: {ctx.get('plateau_count', 0)}x | Best: {session.best_score:.1f} | Escape: {ctx.get('escape_level', 0)}
 
 ## Learning Agent Recommendation
 Action: {learning.next_action if learning else 'unknown'} | Reasoning: {learning.suggested_modifications[0][:60] if learning and learning.suggested_modifications else 'None'}...
@@ -2942,11 +2947,17 @@ Decide: Is quality gate PASSED? What is the next action?"""
                             # Fall back to simple quality check
                             gate_decision = None
 
-                    # Sync escape_level to session IMMEDIATELY after Coordinator returns (both paths)
-                    # This ensures downstream logic has access to the current escape level
+                    # Phase 1 wiring fix: deterministic stuck-state is authoritative.
+                    # Quality Gate escape_level is advisory — log but don't override.
                     if gate_decision:
-                        session.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
-                        context.stuck_state.escape_level = EscapeLevel(gate_decision.escape_level)
+                        gate_el = gate_decision.escape_level
+                        det_el = session.stuck_state.escape_level.value
+                        if gate_el != det_el:
+                            print(
+                                f"[Pipeline] Quality Gate suggests escape_level={gate_el}, "
+                                f"deterministic stuck-state has {det_el} — keeping deterministic",
+                                file=sys.stderr,
+                            )
 
                     # Determine if passed based on Coordinator or simple check
                     if gate_decision:

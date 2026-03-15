@@ -1,0 +1,48 @@
+{
+  "pattern_id": "pat_f72d1ca1fda8",
+  "name": "rigid_body_particle_debris_combo",
+  "issue_category": "scene_only_has_large_rigid_body_objects_but_lacks_",
+  "code_snippet": "# Add particle debris emitters alongside rigid body simulation\n# Ground needs BOTH rigid_body (for RB collisions) AND collision modifier (for particles)\nbpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, 0))\nground = bpy.context.active_object\nground.name = \"Ground\"\nbpy.ops.rigidbody.object_add(type='PASSIVE')\nground.rigid_body.collision_shape = 'MESH'\nground.modifiers.new(\"Collision\", type='COLLISION')\nground.modifiers[\"Collision\"].settings.damping = 0.6\n\n# Spark emitter at impact zone\nbpy.ops.mesh.primitive_plane_add(size=4, location=(0, 0, 0.05))\nemitter = bpy.context.active_object\nemitter.name = \"SparkEmitter\"\nemitter.hide_render = True\nps_mod = emitter.modifiers.new(\"Sparks\", type='PARTICLE_SYSTEM')\ns = ps_mod.particle_system.settings\ns.count = 500\ns.frame_start = impact_frame\ns.frame_end = impact_frame + 10\ns.lifetime = 15\ns.physics_type = 'NEWTON'\ns.mass = 0.001\ns.normal_factor = 12.0\ns.factor_random = 5.0\ns.damping = 0.05\ns.render_type = 'HALO'\n\n# Bake everything together\nbpy.ops.ptcache.bake_all(bake=True)",
+  "effect_types": [
+    "mixed_physics",
+    "explosion",
+    "destruction",
+    "storm",
+    "water",
+    "cloth"
+  ],
+  "context_before": "Rigid body scene with only large objects \u2014 no secondary debris, sparks, or dust",
+  "context_after": "Particle emitters at impact zones add sparks and dust. Ground has both rigid_body and collision modifier for dual-system interaction.",
+  "parameters_affected": [
+    "lifetime",
+    "frame_start",
+    "damping",
+    "factor_random",
+    "render_type",
+    "mass",
+    "normal_factor",
+    "physics_type",
+    "frame_end",
+    "hide_render",
+    "collision_shape",
+    "count"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.ptcache.bake_all",
+    "bpy.ops.rigidbody.object_add",
+    "bpy.context.active_object",
+    "bpy.ops.mesh.primitive_plane_add"
+  ],
+  "average_improvement": 35.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mixed_physics_v1"
+  ],
+  "created_at": "2026-03-15T02:06:12.734443",
+  "updated_at": "2026-03-15T02:06:12.734969",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

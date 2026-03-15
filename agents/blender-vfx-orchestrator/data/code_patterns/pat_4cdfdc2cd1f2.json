@@ -1,0 +1,41 @@
+{
+  "pattern_id": "pat_4cdfdc2cd1f2",
+  "name": "circular_array_empty_offset",
+  "issue_category": "circular_arrangement_of_objects__candles__columns_",
+  "code_snippet": "# Circular array using Empty rotation offset\nimport bpy, math\n\n# Create element at radius distance from center\nbpy.ops.mesh.primitive_cube_add(size=1, location=(0.5, 0, 0.1))\nelement = bpy.context.active_object\nelement.scale = (0.03, 0.03, 0.1)\nbpy.ops.object.transform_apply(scale=True)\n\n# Create rotation empty at center\nbpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 0))\nrot_empty = bpy.context.active_object\nrot_empty.name = \"ArrayRotator\"\n\nnum_copies = 12\nrot_empty.rotation_euler.z = math.radians(360.0 / num_copies)\n\n# Array with object offset (NOT relative offset)\nbpy.context.view_layer.objects.active = element\narray = element.modifiers.new(\"CircularArray\", type='ARRAY')\narray.count = num_copies\narray.use_relative_offset = False   # MUST disable relative offset\narray.use_object_offset = True\narray.offset_object = rot_empty",
+  "effect_types": [
+    "modeling",
+    "scene_setup",
+    "geometry",
+    "hard_surface"
+  ],
+  "context_before": "Manually positioning objects in a circle using sin/cos leads to off-by-one errors and non-uniform spacing",
+  "context_after": "Array modifier with Empty rotation offset guarantees perfect circular spacing; changing count auto-adjusts angle",
+  "parameters_affected": [
+    "active",
+    "use_object_offset",
+    "offset_object",
+    "z",
+    "count",
+    "use_relative_offset"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.object.empty_add",
+    "bpy.ops.object.transform_apply",
+    "bpy.ops.mesh.primitive_cube_add",
+    "bpy.context.view_layer"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_modifiers_v1"
+  ],
+  "created_at": "2026-03-15T02:26:39.716581",
+  "updated_at": "2026-03-15T02:26:39.716995",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

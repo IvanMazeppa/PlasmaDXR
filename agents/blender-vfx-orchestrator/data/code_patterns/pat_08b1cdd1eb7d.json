@@ -1,0 +1,45 @@
+{
+  "pattern_id": "pat_08b1cdd1eb7d",
+  "name": "spark_emitter_with_gravity",
+  "issue_category": "spark_particles_look_too_uniform___all_same_speed_",
+  "code_snippet": "# Spark emitter: high velocity, short lifetime, randomized\nps_mod = emitter.modifiers.new(\"Sparks\", type='PARTICLE_SYSTEM')\nsettings = ps_mod.particle_system.settings\nsettings.count = 2000\nsettings.frame_start = 1\nsettings.frame_end = 100\nsettings.lifetime = 15\nsettings.lifetime_random = 0.5       # Varied lifetimes break uniformity\nsettings.physics_type = 'NEWTON'\nsettings.mass = 0.001\nsettings.normal_factor = 6.0        # Strong upward burst\nsettings.tangent_factor = 3.0       # Horizontal spread\nsettings.factor_random = 2.0        # Speed variation\nsettings.damping = 0.02\nsettings.particle_size = 0.002\nsettings.render_type = 'HALO'\nsettings.effector_weights.gravity = 1.0  # Arcing trajectories",
+  "effect_types": [
+    "particles",
+    "emitter",
+    "debris",
+    "rain",
+    "sparks",
+    "confetti"
+  ],
+  "context_before": "Default emitter creates uniform spray \u2014 all particles same speed and lifetime, looks mechanical",
+  "context_after": "High factor_random (2.0) + lifetime_random (0.5) + tangent_factor (3.0) creates natural spark scatter with varying arcs",
+  "parameters_affected": [
+    "damping",
+    "physics_type",
+    "normal_factor",
+    "tangent_factor",
+    "factor_random",
+    "count",
+    "mass",
+    "particle_size",
+    "gravity",
+    "frame_start",
+    "lifetime_random",
+    "render_type",
+    "lifetime",
+    "frame_end"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 35.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_particles_v1"
+  ],
+  "created_at": "2026-03-15T02:03:31.373966",
+  "updated_at": "2026-03-15T02:03:31.374366",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

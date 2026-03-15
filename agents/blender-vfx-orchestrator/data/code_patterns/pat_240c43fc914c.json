@@ -1,0 +1,40 @@
+{
+  "pattern_id": "pat_240c43fc914c",
+  "name": "hard_surface_bevel_subdivision",
+  "issue_category": "hard_surface_objects__tables__shelves__frames__loo",
+  "code_snippet": "# Hard surface with Bevel + Subdivision for realistic edges\nimport bpy\n\nbpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.75))\nobj = bpy.context.active_object\nobj.scale = (0.8, 0.5, 0.03)\nbpy.ops.object.transform_apply(scale=True)  # MUST apply scale before modifiers\n\n# Bevel \u2014 round edges to catch specular highlights\nbevel = obj.modifiers.new(\"Bevel\", type='BEVEL')\nbevel.width = 0.005            # 5mm bevel\nbevel.segments = 3             # Smooth curve\nbevel.limit_method = 'ANGLE'   # Only bevel sharp edges\nbevel.angle_limit = 1.0472     # 60 degrees\n\n# Subdivision \u2014 final smoothing\nsubsurf = obj.modifiers.new(\"Subdivision\", type='SUBSURF')\nsubsurf.levels = 1\nsubsurf.render_levels = 2\n\nbpy.ops.object.shade_smooth()",
+  "effect_types": [
+    "modeling",
+    "scene_setup",
+    "geometry",
+    "hard_surface"
+  ],
+  "context_before": "Cube-based objects have perfectly sharp edges that never exist in reality \u2014 no specular highlights along edges",
+  "context_after": "Bevel modifier with angle limit rounds only sharp edges; even 5mm bevel dramatically improves realism by catching light at edges",
+  "parameters_affected": [
+    "render_levels",
+    "segments",
+    "width",
+    "levels",
+    "limit_method",
+    "angle_limit"
+  ],
+  "blender_apis_used": [
+    "bpy.context.active_object",
+    "bpy.ops.mesh.primitive_cube_add",
+    "bpy.ops.object.shade_smooth",
+    "bpy.ops.object.transform_apply"
+  ],
+  "average_improvement": 35.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_modifiers_v1"
+  ],
+  "created_at": "2026-03-15T02:26:39.715953",
+  "updated_at": "2026-03-15T02:26:39.716214",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

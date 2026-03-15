@@ -1,0 +1,43 @@
+{
+  "pattern_id": "pat_915ac06a76b9",
+  "name": "cloth_collision_setup",
+  "issue_category": "cloth_passes_through_objects_or_collision_detectio",
+  "code_snippet": "# Proper collision setup for cloth interaction\n# Step 1: Add Collision modifier to obstacle (NOT Rigid Body)\nobstacle = bpy.data.objects[\"Obstacle\"]\nbpy.context.view_layer.objects.active = obstacle\nobstacle.select_set(True)\ncol_mod = obstacle.modifiers.new(\"Collision\", type='COLLISION')\ncol = col_mod.settings\ncol.thickness_outer = 0.02    # Collision shell outward\ncol.thickness_inner = 0.01    # Collision shell inward\ncol.damping = 0.5             # Energy absorption\ncol.friction = 0.5            # Surface friction\n\n# Step 2: Tune cloth collision settings\ncloth_mod = cloth_obj.modifiers[\"Cloth\"]\ncc = cloth_mod.collision_settings\ncc.collision_quality = 5       # Higher = better detection (1-20)\ncc.distance_min = 0.015        # Min distance from collision surface\ncc.use_self_collision = True   # Prevent self-intersection\ncc.self_distance_min = 0.015\ncc.self_friction = 5.0\n\n# NOTE: Collision modifier is for cloth/softbody/fluid interaction\n# Rigid Body is for rigid body physics \u2014 different system entirely",
+  "effect_types": [
+    "cloth",
+    "fabric",
+    "flag",
+    "curtain",
+    "draping"
+  ],
+  "context_before": "Cloth passes through objects \u2014 using Rigid Body instead of Collision modifier, or collision_quality too low",
+  "context_after": "Collision modifier on obstacle with thickness_outer=0.02, cloth collision_quality=5, distance_min=0.015 gives reliable interaction",
+  "parameters_affected": [
+    "damping",
+    "distance_min",
+    "self_friction",
+    "active",
+    "thickness_inner",
+    "use_self_collision",
+    "collision_quality",
+    "self_distance_min",
+    "friction",
+    "thickness_outer"
+  ],
+  "blender_apis_used": [
+    "bpy.data.objects",
+    "bpy.context.view_layer"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_cloth_v1"
+  ],
+  "created_at": "2026-03-15T02:02:43.846575",
+  "updated_at": "2026-03-15T02:02:43.846844",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

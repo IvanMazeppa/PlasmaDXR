@@ -333,6 +333,10 @@ class SessionManager:
             "techniques_tried": self.techniques_tried,
             "params_that_helped": {k: v[-1] for k, v in self.params_that_helped.items()} if self.params_that_helped else {},
             "params_that_hurt": {k: v[-1] for k, v in self.params_that_hurt.items()} if self.params_that_hurt else {},
+            # Phase 1 wiring fix: expose deterministic stuck-state to agent prompts
+            # so Quality Gate and other agents see real escape/plateau values.
+            "escape_level": 0,  # Default; orchestrator overwrites from session.stuck_state
+            "plateau_count": 0,
         }
 
     def get_iteration_history_json(self) -> str:

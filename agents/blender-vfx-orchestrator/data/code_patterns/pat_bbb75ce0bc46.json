@@ -1,0 +1,44 @@
+{
+  "pattern_id": "pat_bbb75ce0bc46",
+  "name": "rain_with_collision",
+  "issue_category": "rain_particles_pass_through_ground_or_bounce_unrea",
+  "code_snippet": "# Rain with proper ground collision\n# Emitter high above scene\nbpy.ops.mesh.primitive_plane_add(size=20.0, location=(0, 0, 15))\nemitter = bpy.context.active_object\nemitter.hide_render = True\n\nps_mod = emitter.modifiers.new(\"Rain\", type='PARTICLE_SYSTEM')\nsettings = ps_mod.particle_system.settings\nsettings.count = 5000\nsettings.lifetime = 60\nsettings.object_align_factor = (0, 0, -12.0)  # Fast downward\nsettings.physics_type = 'NEWTON'\nsettings.damping = 0.0\nsettings.render_type = 'HALO'\n\n# Ground with collision \u2014 high damping so rain splats\nground = bpy.data.objects[\"Ground\"]\nground.modifiers.new(\"Collision\", type='COLLISION')\ncol = ground.modifiers[\"Collision\"]\ncol.settings.damping = 0.8          # Rain doesn't bounce\ncol.settings.friction = 0.5\ncol.settings.stickiness = 0.2",
+  "effect_types": [
+    "particles",
+    "emitter",
+    "debris",
+    "rain",
+    "sparks",
+    "confetti"
+  ],
+  "context_before": "Rain passes through ground plane \u2014 missing Collision modifier, or damping too low causing bouncing",
+  "context_after": "Collision modifier on ground with damping=0.8 and stickiness=0.2 makes rain splat and settle realistically",
+  "parameters_affected": [
+    "stickiness",
+    "damping",
+    "physics_type",
+    "count",
+    "hide_render",
+    "friction",
+    "object_align_factor",
+    "render_type",
+    "lifetime"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.mesh.primitive_plane_add",
+    "bpy.data.objects",
+    "bpy.context.active_object"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_particles_v1"
+  ],
+  "created_at": "2026-03-15T02:03:31.374806",
+  "updated_at": "2026-03-15T02:03:31.375067",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

@@ -1,0 +1,36 @@
+{
+  "pattern_id": "pat_c94d85ef1bcb",
+  "name": "cloth_pinning_vertex_group",
+  "issue_category": "cloth_simulation_pins_all_vertices_or_no_vertices_",
+  "code_snippet": "# Correct vertex group pinning for cloth\nimport bmesh\n\n# Create vertex group on cloth object\nvg = cloth_obj.vertex_groups.new(name=\"PinGroup\")\n\n# Select vertices to pin (example: top edge)\nbpy.ops.object.mode_set(mode='EDIT')\nbm = bmesh.from_edit_mesh(cloth_obj.data)\nbm.verts.ensure_lookup_table()\n\n# Find edge vertices by position\nmax_z = max(v.co.z for v in bm.verts)\npin_indices = [v.index for v in bm.verts if abs(v.co.z - max_z) < 0.01]\n\nbpy.ops.object.mode_set(mode='OBJECT')\n\n# Assign weight 1.0 to pinned vertices\nvg.add(pin_indices, 1.0, 'REPLACE')\n\n# Configure cloth to use pin group\ncloth_mod = cloth_obj.modifiers.new(\"Cloth\", type='CLOTH')\ncs = cloth_mod.settings\ncs.use_pin_cloth = True\ncs.vertex_group_mass = \"PinGroup\"  # Must match vertex group name exactly\ncs.pin_stiffness = 1.0             # 1.0 = fully rigid pin",
+  "effect_types": [
+    "cloth",
+    "fabric",
+    "flag",
+    "curtain",
+    "draping"
+  ],
+  "context_before": "Pinning fails \u2014 either all verts pinned (cloth frozen) or none pinned (cloth falls)",
+  "context_after": "Correct workflow: create vertex group, find verts by position, assign weight, set vertex_group_mass to group name",
+  "parameters_affected": [
+    "use_pin_cloth",
+    "0",
+    "pin_stiffness",
+    "vertex_group_mass"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.object.mode_set"
+  ],
+  "average_improvement": 35.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_cloth_v1"
+  ],
+  "created_at": "2026-03-15T02:02:43.846013",
+  "updated_at": "2026-03-15T02:02:43.846254",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

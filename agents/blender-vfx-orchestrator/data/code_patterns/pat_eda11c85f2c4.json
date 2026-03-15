@@ -1,0 +1,43 @@
+{
+  "pattern_id": "pat_eda11c85f2c4",
+  "name": "openvdb_export_gas_domain",
+  "issue_category": "openvdb_export_fails_with_runtime_error_or_produce",
+  "code_snippet": "# Correct OpenVDB export settings for GAS domain in Blender 5.0\nds = domain.modifiers[\"Fluid\"].domain_settings\nds.domain_type = 'GAS'\n\n# Data format\nds.cache_data_format = 'OPENVDB'\nds.openvdb_data_depth = '32'          # or '16' \u2014 NEVER 'NONE' (runtime error)\nds.openvdb_cache_compress_type = 'ZIP'  # ZIP or NONE \u2014 BLOSC removed in 5.0\n\n# GAS-specific particle/mesh formats (different from LIQUID)\nds.cache_particle_format = 'UNI'     # OPENVDB not valid for GAS particles\nds.cache_mesh_format = 'BOBJECT'     # UNI not valid for GAS mesh\n\nds.cache_type = 'ALL'                # Required for full bake\n\n# Set cache dir before baking\nimport os\nds.cache_directory = os.environ.get('BLENDER_CACHE_DIR', '/tmp/blender_cache')\n\n# Bake (domain must be active object in OBJECT mode)\nbpy.context.view_layer.objects.active = domain\nbpy.ops.fluid.bake_all()",
+  "effect_types": [
+    "fire",
+    "smoke",
+    "explosion",
+    "water",
+    "fog",
+    "nebula"
+  ],
+  "context_before": "VDB export crashes or produces empty files due to wrong format settings",
+  "context_after": "openvdb_data_depth must be '32' or '16' (not 'NONE'), compression must be 'ZIP' or 'NONE' (not 'BLOSC'), GAS uses UNI/BOBJECT formats",
+  "parameters_affected": [
+    "openvdb_data_depth",
+    "domain_type",
+    "cache_data_format",
+    "cache_directory",
+    "openvdb_cache_compress_type",
+    "cache_particle_format",
+    "cache_type",
+    "cache_mesh_format",
+    "active"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.fluid.bake_all",
+    "bpy.context.view_layer"
+  ],
+  "average_improvement": 40.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mantaflow_adv_v1"
+  ],
+  "created_at": "2026-03-15T02:03:10.280070",
+  "updated_at": "2026-03-15T02:03:10.280318",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

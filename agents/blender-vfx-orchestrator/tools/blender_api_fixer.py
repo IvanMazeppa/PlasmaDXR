@@ -1950,31 +1950,17 @@ def validate_and_fix_script(script_path: str) -> Dict:
         fixes_applied.append("Injected Cell Fracture addon enable (required for headless Blender)")
 
     # Post-fix: Python syntax validation (catches errors introduced by fixers)
-    # Loop to handle cascading indentation errors (fix one → new error on next line → repeat)
-    for _syntax_pass in range(10):  # max 10 passes
-        try:
-            compile(content, str(path), 'exec')
-            break  # All good
-        except SyntaxError as e:
-            if 'unexpected indent' in str(e.msg) and e.lineno:
-                lines = content.split('\n')
-                idx = e.lineno - 1  # 0-indexed
-                if 0 <= idx < len(lines):
-                    stripped = lines[idx].lstrip()
-                    # Find indent of previous non-blank line
-                    prev_indent = 0
-                    for j in range(idx - 1, -1, -1):
-                        if lines[j].strip():
-                            prev_indent = len(lines[j]) - len(lines[j].lstrip())
-                            break
-                    lines[idx] = ' ' * prev_indent + stripped
-                    content = '\n'.join(lines)
-                    if _syntax_pass == 0:
-                        fixes_applied.append(f"Fixed indentation error at line {e.lineno}")
-                    continue
-            # Non-indentation error or can't fix — warn and stop
-            fixes_applied.append(f"WARNING: Unfixable syntax error at line {e.lineno}: {e.msg}")
-            break
+    # NOTE: Indentation auto-fix REMOVED — naive line-level heuristic doesn't
+    # understand Python block structure and actively breaks code (e.g., dedenting
+    # lines inside if/for blocks to match unrelated previous lines).  The error
+    # recovery path (Script Writer rewrite) handles syntax errors properly.
+    try:
+        compile(content, str(path), 'exec')
+    except SyntaxError as e:
+        fixes_applied.append(
+            f"WARNING: Syntax error at line {e.lineno}: {e.msg} "
+            f"(will be handled by error recovery)"
+        )
 
     if fixes_applied:
         # Write fixed content back

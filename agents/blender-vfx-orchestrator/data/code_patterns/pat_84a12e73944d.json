@@ -1,0 +1,47 @@
+{
+  "pattern_id": "pat_84a12e73944d",
+  "name": "wine_glass_screw_solidify_subdivision",
+  "issue_category": "wine_glass_or_vase_geometry_looks_faceted_crude_in",
+  "code_snippet": "# Wine glass using Screw + Solidify + Subdivision Surface\nimport bpy, bmesh\n\nmesh = bpy.data.meshes.new(\"WineGlassProfile\")\nobj = bpy.data.objects.new(\"WineGlass\", mesh)\nbpy.context.collection.objects.link(obj)\nbpy.context.view_layer.objects.active = obj\n\nbm = bmesh.new()\n# Profile: (radius, 0, height) \u2014 base to rim\nprofile = [\n    (0.035, 0, 0.0), (0.04, 0, 0.0), (0.04, 0, 0.005),\n    (0.006, 0, 0.015), (0.005, 0, 0.06), (0.005, 0, 0.10),\n    (0.008, 0, 0.11), (0.035, 0, 0.14), (0.038, 0, 0.17),\n    (0.032, 0, 0.19), (0.030, 0, 0.20),\n]\nverts = [bm.verts.new(v) for v in profile]\nbm.verts.ensure_lookup_table()\nfor i in range(len(verts) - 1):\n    bm.edges.new((verts[i], verts[i + 1]))\nbm.to_mesh(mesh)\nbm.free()\n\n# Screw \u2014 revolve profile around Z axis\nscrew = obj.modifiers.new(\"Screw\", type='SCREW')\nscrew.axis = 'Z'\nscrew.steps = 64\nscrew.render_steps = 64\nscrew.use_merge_vertices = True\nscrew.merge_threshold = 0.001\n\n# Solidify \u2014 glass wall thickness\nsolid = obj.modifiers.new(\"Solidify\", type='SOLIDIFY')\nsolid.thickness = 0.002\nsolid.offset = -1.0\nsolid.use_even_thickness = True\n\n# Subdivision \u2014 final smoothing\nsubsurf = obj.modifiers.new(\"Subdivision\", type='SUBSURF')\nsubsurf.levels = 2\nsubsurf.render_levels = 3\nsubsurf.subdivision_type = 'CATMULL_CLARK'\n\nbpy.ops.object.shade_smooth()",
+  "effect_types": [
+    "modeling",
+    "scene_setup",
+    "geometry",
+    "hard_surface"
+  ],
+  "context_before": "Wine glass built from cylinders/cones looks faceted, crude, and obviously CG",
+  "context_after": "Screw modifier revolves a 2D profile into perfect circular cross-sections; Solidify adds uniform glass wall thickness; Subdivision smooths everything",
+  "parameters_affected": [
+    "offset",
+    "render_levels",
+    "active",
+    "use_merge_vertices",
+    "subdivision_type",
+    "axis",
+    "steps",
+    "use_even_thickness",
+    "levels",
+    "merge_threshold",
+    "thickness",
+    "render_steps"
+  ],
+  "blender_apis_used": [
+    "bpy.data.meshes",
+    "bpy.context.collection",
+    "bpy.ops.object.shade_smooth",
+    "bpy.data.objects",
+    "bpy.context.view_layer"
+  ],
+  "average_improvement": 50.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_modifiers_v1"
+  ],
+  "created_at": "2026-03-15T02:26:39.713699",
+  "updated_at": "2026-03-15T02:26:39.715524",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

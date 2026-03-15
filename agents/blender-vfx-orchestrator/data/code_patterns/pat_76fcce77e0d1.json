@@ -1,0 +1,44 @@
+{
+  "pattern_id": "pat_76fcce77e0d1",
+  "name": "cloth_wind_turbulence_setup",
+  "issue_category": "cloth_flag_hangs_limp_or_moves_unnaturally_with_on",
+  "code_snippet": "# Wind + Turbulence for realistic cloth flapping\n# NOTE: use effector_add NOT forcefield_add (removed in Blender 5.0)\n\n# Primary wind direction\nbpy.ops.object.effector_add(type='WIND', location=(5, 0, 3))\nwind = bpy.context.active_object\nwind.name = \"Wind_Main\"\nwind.field.strength = 20.0\nwind.field.flow = 0.5\nwind.field.noise = 3.0\nwind.rotation_euler = (0, 1.5708, 0)  # Point along -X\n\n# Animate gusts\nwind.field.strength = 10.0\nwind.field.keyframe_insert(data_path=\"strength\", frame=1)\nwind.field.strength = 30.0\nwind.field.keyframe_insert(data_path=\"strength\", frame=60)\nwind.field.strength = 12.0\nwind.field.keyframe_insert(data_path=\"strength\", frame=90)\n\n# Turbulence for chaotic variation\nbpy.ops.object.effector_add(type='TURBULENCE', location=(3, 0, 3))\nturb = bpy.context.active_object\nturb.name = \"Turbulence\"\nturb.field.strength = 10.0\nturb.field.size = 2.0\nturb.field.noise = 5.0\n\n# Cloth settings for flag fabric\ncloth_mod = flag.modifiers.new(\"Cloth\", type='CLOTH')\ncs = cloth_mod.settings\ncs.mass = 0.15\ncs.tension_stiffness = 15.0\ncs.bending_stiffness = 0.5\ncs.quality = 8\ncs.vertex_group_mass = \"Pin\"  # Pin left edge",
+  "effect_types": [
+    "mixed_physics",
+    "explosion",
+    "destruction",
+    "storm",
+    "water",
+    "cloth"
+  ],
+  "context_before": "Cloth simulation with only gravity \u2014 flag hangs limp, no wind motion",
+  "context_after": "Wind + Turbulence forces create realistic flapping. Animated wind strength adds gusts. Pin group holds one edge fixed.",
+  "parameters_affected": [
+    "flow",
+    "quality",
+    "size",
+    "vertex_group_mass",
+    "mass",
+    "tension_stiffness",
+    "bending_stiffness",
+    "noise",
+    "strength",
+    "rotation_euler"
+  ],
+  "blender_apis_used": [
+    "bpy.ops.object.effector_add",
+    "bpy.context.active_object"
+  ],
+  "average_improvement": 40.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mixed_physics_v1"
+  ],
+  "created_at": "2026-03-15T02:06:12.735558",
+  "updated_at": "2026-03-15T02:06:12.735875",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

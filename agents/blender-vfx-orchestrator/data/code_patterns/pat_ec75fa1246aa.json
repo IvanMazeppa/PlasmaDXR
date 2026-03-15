@@ -1,0 +1,45 @@
+{
+  "pattern_id": "pat_ec75fa1246aa",
+  "name": "water_pour_liquid_domain",
+  "issue_category": "liquid_simulation_bakes_produce_empty_domain_with_",
+  "code_snippet": "# Liquid domain with REQUIRED use_plane_init and mesh surface\nmod = domain.modifiers.new(\"Fluid\", type='FLUID')\nmod.fluid_type = 'DOMAIN'\nds = mod.domain_settings\nds.domain_type = 'LIQUID'\nds.resolution_max = 96\nds.use_plane_init = True              # CRITICAL \u2014 without this, bakes are empty\nds.use_mesh = True                    # Generate mesh surface from particles\nds.mesh_scale = 1\nds.use_adaptive_timesteps = True      # NOT use_adaptive_time_steps\nds.timesteps_max = 4                  # NOT timesteps_per_frame\nds.cache_type = 'ALL'\nds.simulation_method = 'FLIP'\n\n# Inflow (water stream)\ninflow_mod = inflow.modifiers.new(\"Fluid\", type='FLUID')\ninflow_mod.fluid_type = 'FLOW'\nfs = inflow_mod.flow_settings\nfs.flow_type = 'LIQUID'\nfs.flow_behavior = 'INFLOW'\nfs.use_initial_velocity = True\nfs.velocity_normal = -3.0            # Downward pour",
+  "effect_types": [
+    "fire",
+    "smoke",
+    "explosion",
+    "water",
+    "fog",
+    "nebula"
+  ],
+  "context_before": "Liquid domain bake completes but renders show empty domain \u2014 no water visible",
+  "context_after": "use_plane_init=True is REQUIRED for liquid domains; use_mesh=True generates renderable surface mesh",
+  "parameters_affected": [
+    "simulation_method",
+    "fluid_type",
+    "flow_type",
+    "timesteps_max",
+    "domain_type",
+    "resolution_max",
+    "flow_behavior",
+    "use_mesh",
+    "velocity_normal",
+    "use_plane_init",
+    "cache_type",
+    "mesh_scale",
+    "use_adaptive_timesteps",
+    "use_initial_velocity"
+  ],
+  "blender_apis_used": [],
+  "average_improvement": 50.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mantaflow_adv_v1"
+  ],
+  "created_at": "2026-03-15T02:03:10.278778",
+  "updated_at": "2026-03-15T02:03:10.279026",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}

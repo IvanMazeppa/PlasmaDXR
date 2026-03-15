@@ -1,0 +1,40 @@
+{
+  "pattern_id": "pat_1663a46cdf8a",
+  "name": "multi_physics_bake_coordination",
+  "issue_category": "multi_physics_scene_has_incorrect_simulation_becau",
+  "code_snippet": "# Multi-physics bake order: rigid body first, then fluid, then verify\nimport bpy\n\nscene = bpy.context.scene\n\n# Step 1: Free all existing caches\nbpy.ops.ptcache.free_bake_all()\nfor obj in bpy.data.objects:\n    for mod in obj.modifiers:\n        if mod.type == 'FLUID' and hasattr(mod, 'domain_settings'):\n            if mod.domain_settings:\n                bpy.context.view_layer.objects.active = obj\n                try:\n                    bpy.ops.fluid.free_all()\n                except:\n                    pass\n\n# Step 2: Bake rigid body + particles + cloth (ptcache systems)\nbpy.ops.ptcache.bake_all(bake=True)\n\n# Step 3: Bake fluid domains (reads rigid body effector positions)\nfor obj in bpy.data.objects:\n    for mod in obj.modifiers:\n        if mod.type == 'FLUID' and hasattr(mod, 'domain_settings'):\n            if mod.domain_settings:\n                bpy.context.view_layer.objects.active = obj\n                bpy.ops.fluid.bake_all()\n\n# NOTE: ptcache.bake_all does NOT bake fluid \u2014 separate command required\n# NOTE: Fluid must bake AFTER rigid body if effectors are rigid body objects",
+  "effect_types": [
+    "mixed_physics",
+    "explosion",
+    "destruction",
+    "storm",
+    "water",
+    "cloth"
+  ],
+  "context_before": "Multi-physics scene baked in wrong order \u2014 fluid ignores rigid body obstacles, particles clip through objects",
+  "context_after": "Sequential bake: free all caches, bake ptcache (rigid body + particles + cloth), then bake fluid. Ensures dependency order.",
+  "parameters_affected": [
+    "active"
+  ],
+  "blender_apis_used": [
+    "bpy.context.view_layer",
+    "bpy.context.scene",
+    "bpy.data.objects",
+    "bpy.ops.fluid.bake_all",
+    "bpy.ops.ptcache.bake_all",
+    "bpy.ops.fluid.free_all",
+    "bpy.ops.ptcache.free_bake_all"
+  ],
+  "average_improvement": 30.0,
+  "usage_count": 1,
+  "success_count": 1,
+  "failure_count": 0,
+  "source_experiments": [
+    "seed_mixed_physics_v1"
+  ],
+  "created_at": "2026-03-15T02:06:12.736238",
+  "updated_at": "2026-03-15T02:06:12.736489",
+  "last_used_at": "",
+  "last_reinforced": "",
+  "reinforcement_count": 0
+}
