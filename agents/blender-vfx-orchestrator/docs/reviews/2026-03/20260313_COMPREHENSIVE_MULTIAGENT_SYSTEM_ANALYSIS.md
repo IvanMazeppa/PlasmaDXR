@@ -57,10 +57,10 @@ The problem is that those layers are not fully aligned.
 | `docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md` | Declared runtime truth and doc-grounding policy | Low-Medium | Important because it self-declares authority, but stale on SDK pin and spec-first status. |
 | `docs/DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md` | Declared authority order | Low-Medium | Still useful, but it routes readers toward a stale runtime-truth file. |
 | `docs/AI_OPERATION_MANUAL.md` | Operational invariants, artifact-first philosophy, quality-gate rules | Medium | Good on shape and intent, stale on exact runtime details. |
-| `docs/GPT54_ARCHITECTURE_REVIEW_PROMPT.md` | Historical March 11 problem framing | Medium | Still valuable as a baseline diagnosis. No longer current-state truth. |
-| `docs/HIGH_LEVEL_AUTONOMY_CODE_REVIEW_PROMPT_20260313.md` | Useful lens for next-order review | High | Better than the earlier prompt for current strategic questions. |
-| `docs/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md` | Best implementation-status report | High | Strong status/evidence document. |
-| `docs/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md` | Best current architecture reassessment | High | Most accurate March planning/status synthesis in the repo. |
+| `docs/prompts/GPT54_ARCHITECTURE_REVIEW_PROMPT.md` | Historical March 11 problem framing | Medium | Still valuable as a baseline diagnosis. No longer current-state truth. |
+| `docs/prompts/HIGH_LEVEL_AUTONOMY_CODE_REVIEW_PROMPT_20260313.md` | Useful lens for next-order review | High | Better than the earlier prompt for current strategic questions. |
+| `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md` | Best implementation-status report | High | Strong status/evidence document. |
+| `docs/reviews/2026-03/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md` | Best current architecture reassessment | High | Most accurate March planning/status synthesis in the repo. |
 
 ### Tie-Breaker Rule For This Analysis
 

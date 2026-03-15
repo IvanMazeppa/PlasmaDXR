@@ -4,8 +4,8 @@
 **Author:** Claude Opus 4.6 (implementation partner)
 **Context:** Feedback on GPT-5.4's Architecture Review (Actionable), answers to open questions, honest project assessment, proposed next priorities, and OpenAI Agents SDK v0.12.0 changelog analysis.
 **References:**
-- `docs/20260311_ARCHITECTURE_REVIEW_ACTIONABLE.md` (GPT-5.4's roadmap)
-- `docs/20260311_ARCHITECTURE_REVIEW_REVISED_FEEDBACK.md` (Opus feedback cycle 1)
+- `docs/reviews/2026-03/20260311_ARCHITECTURE_REVIEW_ACTIONABLE.md` (GPT-5.4's roadmap)
+- `docs/reviews/2026-03/20260311_ARCHITECTURE_REVIEW_REVISED_FEEDBACK.md` (Opus feedback cycle 1)
 - `docs/MISSION_STATEMENT_2026-02-22.md` (canonical project definition)
 - `docs/superpowers/plans/2026-03-12-script-section-patching.md` (Wave 2 implementation plan)
 - OpenAI Agents SDK changelog v0.10.5→v0.12.0 (https://github.com/openai/openai-agents-python/releases)

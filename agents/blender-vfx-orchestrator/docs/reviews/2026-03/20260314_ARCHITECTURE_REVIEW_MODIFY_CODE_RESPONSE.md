@@ -3,7 +3,7 @@
 Date: 2026-03-14
 
 This document responds to:
-- `docs/20260314_WAVE2A_POSTMORTEM_AND_MODIFY_CODE_CRISIS.md`
+- `docs/postmortems/2026-03/20260314_WAVE2A_POSTMORTEM_AND_MODIFY_CODE_CRISIS.md`
 - the live runtime code after the Wave 2A stale-render fix
 - the existing Wave 2 review sequence
 

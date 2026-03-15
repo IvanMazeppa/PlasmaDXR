@@ -130,11 +130,13 @@ from models.pipeline_models import (
     ScriptOutput,
     ExecutionOutput,
     QualityOutput,
+    QualityIssue,
     LearningOutput,
     TechniqueContract,
     TechniqueDecision,
     ModificationDecision,
     QualityDecision,
+    RepairIntent,
     compute_sica_utility,
 )
 
@@ -1482,9 +1484,243 @@ Generate a complete, validated script using the selected technique. Return the s
                                 )
                                 # Fall through to existing Coordinator path below
 
+                        # ====== PHASE 1.0: REPAIR INTENT ROUTING ======
+                        # Deterministic routing: decide modify_params vs modify_code
+                        # vs switch_technique BEFORE trying any modification path.
+                        repair_intent: Optional["RepairIntent"] = None
+                        if not direct_modification_success and quality:
+                            from phases.repair_routing import choose_repair_intent as _choose_ri
+
+                            _escape_val = 0
+                            try:
+                                _escape_val = session.stuck_state.escape_level.value
+                            except (AttributeError, TypeError):
+                                _escape_val = getattr(session.stuck_state, "escape_level", 0)
+                                if hasattr(_escape_val, "value"):
+                                    _escape_val = _escape_val.value
+
+                            repair_intent = _choose_ri(
+                                quality=quality,
+                                code_grounded_feedback=code_grounded_feedback or "",
+                                plateau_count=getattr(session.stuck_state, "plateau_count", 0),
+                                same_issue_count=getattr(session_mgr.issue_tracker, "consecutive_same_issue", 0),
+                                iteration=iteration,
+                                escape_level=int(_escape_val),
+                            )
+                            print(
+                                f"[Pipeline] REPAIR INTENT: mode={repair_intent.mode}, "
+                                f"trigger={repair_intent.trigger}, confidence={repair_intent.confidence:.2f}",
+                                file=sys.stderr,
+                            )
+
+                        # --- REPAIR INTENT: modify_code (skip Layer 1 entirely) ---
+                        if (
+                            not direct_modification_success
+                            and repair_intent is not None
+                            and repair_intent.mode == "modify_code"
+                            and previous_script
+                            and previous_script.script_path
+                        ):
+                            # Build code_change_description from quality feedback
+                            _desc_parts = []
+                            if quality and quality.primary_issue:
+                                _desc_parts.append(f"Fix: {quality.primary_issue}")
+                            if quality:
+                                for _si in quality.structured_issues:
+                                    if _si.kind.lower() == "structural":
+                                        _desc_parts.append(f"Structural: {_si.summary}")
+                            if code_grounded_feedback:
+                                _desc_parts.append(f"Code context:\n{code_grounded_feedback[:500]}")
+                            _code_change_description = "\n".join(_desc_parts) if _desc_parts else "Fix structural issues identified by QA"
+
+                            # Attempt section patching first, then full rewrite
+                            from utils.script_sections import validate_section_structure
+
+                            try:
+                                _script_source = Path(previous_script.script_path).read_text()
+                                _missing, _found = validate_section_structure(_script_source)
+                                _has_sections = len(_found) >= 5
+                            except Exception:
+                                _has_sections = False
+
+                            _can_patch = (
+                                _has_sections
+                                and session.patch_count_iteration < 2
+                                and session.patch_count_session < 4
+                            )
+
+                            if _can_patch:
+                                print(f"[Pipeline] REPAIR INTENT → SECTION PATCH (modify_code)", file=sys.stderr)
+                                _patch_prompt = f"""FIX this script by patching ONLY the section(s) that need changes.
+
+## Current Script
+Path: {previous_script.script_path}
+Sections available: {', '.join(_found)}
+
+## What Must Change (from RepairIntent)
+{_code_change_description}
+
+## Quality Feedback
+Score: {previous_score:.1f}
+Primary Issue: {quality.primary_issue if quality else 'Unknown'}
+
+## Effect Type: {request.effect_type.value}
+## Description: {request.description}
+
+## Instructions
+1. Read the current script to understand all sections
+2. Identify which section(s) need changes (usually 1-2)
+3. For EACH section that needs changes:
+   a. Write the COMPLETE new function definition
+   b. Use patch_script_section to replace ONLY that section
+4. Do NOT rewrite the entire script — only patch what's broken
+5. Keep all other sections exactly as they are
+
+Output name: {request.asset_name}_iter{iteration}_ripatch"""
+                                try:
+                                    _ri_patch_hooks = create_error_recovery_hooks()
+                                    _ri_patch_result = await self._run_agent(
+                                        self._script_agent_standalone,
+                                        _patch_prompt,
+                                        context=context,
+                                        session=iter_session,
+                                        hooks=_ri_patch_hooks,
+                                        max_turns=6,
+                                        run_config=self._build_run_config(
+                                            session=session,
+                                            request=request,
+                                            iteration=iteration,
+                                            phase="repair_intent_patch",
+                                        ),
+                                    )
+                                    _ri_patch_out = _ri_patch_result.final_output
+                                    if _ri_patch_out and _ri_patch_out.script_path:
+                                        print(f"[Pipeline] RepairIntent section patch SUCCESS: {_ri_patch_out.script_path}", file=sys.stderr)
+                                        script = _ri_patch_out
+                                        direct_modification_success = True
+                                        session.patch_count_iteration += 1
+                                        session.patch_count_session += 1
+                                    else:
+                                        print(f"[Pipeline] RepairIntent section patch produced no output", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"[Pipeline] RepairIntent section patch failed: {e}", file=sys.stderr)
+
+                            if not direct_modification_success:
+                                # Full rewrite fallback
+                                print(f"[Pipeline] REPAIR INTENT → FULL REWRITE (modify_code)", file=sys.stderr)
+                                _rewrite_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
+
+## Current Script
+Path: {previous_script.script_path}
+Technique: {previous_script.technique_used}
+
+## What Must Change (from RepairIntent)
+{_code_change_description}
+
+## Quality Feedback
+Score: {previous_score:.1f}
+Primary Issue: {quality.primary_issue if quality else 'Unknown'}
+Issues: {', '.join(quality.issues[:5]) if quality and quality.issues else 'None'}
+
+## Effect Type: {request.effect_type.value}
+## Description: {request.description}
+
+## CRITICAL: Doc Query Required
+You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to verify APIs before writing code.
+
+## Instructions
+1. FIRST: Call blender_doc_search_bundle("{request.effect_type.value}") to get verified Blender APIs
+2. Read the current script to understand the existing setup
+3. Make the structural changes described above using ONLY verified APIs from the bundle
+4. Keep everything that's working — only fix what's broken
+5. Use write_script to output the complete fixed script
+6. Name the output: {request.asset_name}_script_iter{iteration}_ricodefix"""
+                                try:
+                                    _ri_rewrite_hooks = create_error_recovery_hooks()
+                                    _ri_rewrite_result = await self._run_agent(
+                                        self._script_agent_standalone,
+                                        _rewrite_prompt,
+                                        context=context,
+                                        session=iter_session,
+                                        hooks=_ri_rewrite_hooks,
+                                        max_turns=8,
+                                        run_config=self._build_run_config(
+                                            session=session,
+                                            request=request,
+                                            iteration=iteration,
+                                            phase="repair_intent_rewrite",
+                                        ),
+                                    )
+                                    _ri_rewrite_out = _ri_rewrite_result.final_output
+                                    if _ri_rewrite_out and _ri_rewrite_out.script_path:
+                                        print(f"[Pipeline] RepairIntent rewrite SUCCESS: {_ri_rewrite_out.script_path}", file=sys.stderr)
+                                        script = _ri_rewrite_out
+                                        direct_modification_success = True
+                                    else:
+                                        print(f"[Pipeline] RepairIntent rewrite produced no output", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"[Pipeline] RepairIntent rewrite failed: {e}", file=sys.stderr)
+
+                        # --- REPAIR INTENT: switch_technique ---
+                        if (
+                            not direct_modification_success
+                            and repair_intent is not None
+                            and repair_intent.mode == "switch_technique"
+                        ):
+                            print(f"[Pipeline] REPAIR INTENT → SWITCH TECHNIQUE", file=sys.stderr)
+                            _untried = [
+                                a for a in session.alternative_approaches
+                                if a not in session_mgr.techniques_tried
+                            ]
+                            _new_technique = _untried[0] if _untried else f"alternative_{len(session_mgr.techniques_tried) + 1}"
+                            print(f"[Pipeline] Switching to technique: {_new_technique}", file=sys.stderr)
+
+                            # Rebuild truth pack for new technique
+                            try:
+                                truth_pack = await build_truth_pack(_new_technique)
+                                context.truth_pack = truth_pack
+                                set_global_truth_pack(truth_pack)
+                                set_guardrail_truth_pack(truth_pack)
+                                context.api_spec = truth_pack_to_api_spec(
+                                    truth_pack, request.effect_type.value, _new_technique
+                                )
+                            except Exception as e:
+                                print(f"[Pipeline] WARNING: Truth pack rebuild failed: {e}", file=sys.stderr)
+
+                            try:
+                                script = await self._run_original_script_writer(
+                                    effect_type=request.effect_type.value,
+                                    technique=_new_technique,
+                                    request=request,
+                                    context=context,
+                                    sdk_session=iter_session,
+                                )
+                                direct_modification_success = True
+                                session_mgr.reset_for_technique_switch(_new_technique)
+                                self._pipeline_monitor.reset()
+                            except Exception as e:
+                                print(f"[Pipeline] RepairIntent technique switch failed: {e}", file=sys.stderr)
+
+                        # --- REPAIR INTENT: request_guidance ---
+                        if (
+                            not direct_modification_success
+                            and repair_intent is not None
+                            and repair_intent.mode == "request_guidance"
+                        ):
+                            print(f"[Pipeline] REPAIR INTENT → REQUEST GUIDANCE (escape level 4+)", file=sys.stderr)
+                            # Set escape level to 4 to trigger HITL checkpoint
+                            try:
+                                from models.shared_context import EscapeLevel
+                                session.stuck_state.escape_level = EscapeLevel(4)
+                            except Exception:
+                                pass
+                            # Fall through to Coordinator which will see escape level 4
+
                         # ====== PHASE 1.0.1: PATTERN APPLICATION (Phase 2 Self-Learning) ======
                         # Apply high-confidence pattern if found in Phase 0.95
-                        if pattern_to_apply and previous_script and previous_script.script_path:
+                        # Only run Layer 1 (param tweaks) when RepairIntent says modify_params or is absent
+                        _layer1_allowed = (repair_intent is None or repair_intent.mode == "modify_params")
+                        if _layer1_allowed and pattern_to_apply and previous_script and previous_script.script_path:
                             print(f"[Pipeline] PHASE 1.0.1: Applying pattern '{pattern_to_apply.name}'", file=sys.stderr)
                             print(f"[Pipeline] Pattern code:\n{pattern_to_apply.code_snippet[:200]}...", file=sys.stderr)
 
@@ -1547,7 +1783,7 @@ Generate a complete, validated script using the selected technique. Return the s
 
                         # Check for concrete parameter modifications from Learning Agent
                         # If provided, apply directly without going through Script Writer interpretation
-                        if not direct_modification_success and learning and learning.parameter_modifications and previous_script and previous_script.script_path:
+                        if _layer1_allowed and not direct_modification_success and learning and learning.parameter_modifications and previous_script and previous_script.script_path:
                             print(f"[Pipeline] Applying {len(learning.parameter_modifications)} parameter modifications directly", file=sys.stderr)
                             print(f"[Pipeline] Modifications: {learning.parameter_modifications}", file=sys.stderr)
 
@@ -1582,7 +1818,7 @@ Generate a complete, validated script using the selected technique. Return the s
                         # ====== DETERMINISTIC FALLBACK (zero LLM cost) ======
                         # If neither pattern application nor Learning Agent provided params,
                         # use keyword matching on quality issues to suggest concrete changes.
-                        if not direct_modification_success and quality and previous_script and previous_script.script_path:
+                        if _layer1_allowed and not direct_modification_success and quality and previous_script and previous_script.script_path:
                             det_suggestions = map_quality_issues_to_params(
                                 issues=quality.issues,
                                 primary_issue=quality.primary_issue,
@@ -1664,6 +1900,10 @@ Issues: {', '.join(quality.issues[:3]) if quality and quality.issues else 'None'
 {', '.join(session.alternative_approaches[:3]) if session.alternative_approaches else 'None'}
 
 {code_grounded_feedback if code_grounded_feedback else ''}
+
+## RepairIntent Hint (deterministic pre-routing)
+{f'Suggested mode: {repair_intent.mode} (trigger: {repair_intent.trigger})' if repair_intent else 'No RepairIntent computed'}
+{f'Note: {repair_intent.mode} was already attempted but failed — choose an alternative.' if repair_intent and direct_modification_success is False else ''}
 
 Decide: modify_params, modify_code, OR switch_technique.
 - modify_params: Provide CONCRETE parameter values for tuning issues. Use the deterministic suggestions above as starting points.

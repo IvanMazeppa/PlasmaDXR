@@ -3,7 +3,7 @@
 Date: 2026-03-13
 
 This document updates the prior architecture reviews using:
-- `docs/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
+- `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
 - the live repo state after the GPT-5.4 rollout
 - the current `openai-agents==0.12.0` runtime surface
 - the implemented section-patching system and current troubleshooting state

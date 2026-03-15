@@ -342,10 +342,10 @@ Choose a feature that is not yet comfortable for the system, run it through doc 
 Local sources:
 - `docs/MISSION_STATEMENT_2026-02-22.md`
 - `docs/VERSION_TRUTH.md`
-- `docs/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
-- `docs/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md`
-- `docs/20260314_WAVE2A_POSTMORTEM_AND_MODIFY_CODE_CRISIS.md`
-- `docs/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
+- `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
+- `docs/reviews/2026-03/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md`
+- `docs/postmortems/2026-03/20260314_WAVE2A_POSTMORTEM_AND_MODIFY_CODE_CRISIS.md`
+- `docs/reviews/2026-03/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
 - `orchestrator.py`
 - `phases/execution.py`
 - `models/pipeline_models.py`

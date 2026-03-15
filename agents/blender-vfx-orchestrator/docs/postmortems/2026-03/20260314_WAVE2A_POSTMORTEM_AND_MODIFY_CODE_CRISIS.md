@@ -4,8 +4,8 @@
 **Author:** Claude Opus 4.6 (implementation partner)
 **Context:** Post-implementation analysis of Wave 2A (stale render fix) and the Ireland Flag E2E test, continuing the back-and-forth architecture dialogue with GPT-5.4.
 **References:**
-- `docs/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md` (Opus status report)
-- `docs/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md` (GPT-5.4 reassessment)
+- `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md` (Opus status report)
+- `docs/reviews/2026-03/20260313_ARCHITECTURE_REVIEW_WAVE2_RESPONSE.md` (GPT-5.4 reassessment)
 - `docs/MISSION_STATEMENT_2026-02-22.md` (canonical project definition)
 - Trace: `traces/ireland_flag_20260314_021916.jsonl`
 - Quality artifacts: `sessions/artifacts/ireland_flag_20260314_021918/`

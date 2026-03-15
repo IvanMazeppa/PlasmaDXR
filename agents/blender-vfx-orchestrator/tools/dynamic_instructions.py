@@ -622,6 +622,16 @@ Return QualityOutput with:
 - issues: All identified problems
 - suggestions: Specific parameter changes to try
 - vision_assessment: Detailed visual description
+- structured_issues: For EACH issue, classify:
+  - kind: "parameter" | "structural" | "technique" | "camera" | "lighting"
+    - parameter: tunable values (density, intensity, color temperature, etc.)
+    - structural: wrong geometry, missing objects, wrong arrangement, scene setup errors
+    - technique: fundamental approach is wrong for the desired effect
+    - camera: framing, angle, FOV issues
+    - lighting: light placement, type, or count issues
+  - repair_mode_hint: "modify_params" | "modify_code" | "switch_technique"
+  - target: section or parameter name (if known)
+  - confidence: 0.0-1.0
 """
 
 

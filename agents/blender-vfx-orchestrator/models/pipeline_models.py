@@ -73,6 +73,15 @@ class ExecutionOutput(BaseModel):
     execution_time_seconds: float = Field(default=0.0, description="Total execution time")
 
 
+class QualityIssue(BaseModel):
+    """Typed quality issue with repair routing hint."""
+    summary: str = Field(description="Concise issue description")
+    kind: str = Field(description="Issue category: parameter, structural, technique, camera, lighting")
+    repair_mode_hint: str = Field(description="Suggested repair: modify_params, modify_code, switch_technique")
+    target: Optional[str] = Field(default=None, description="Target section or parameter")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class QualityOutput(BaseModel):
     """Output from Quality Analyst - evaluation results with feedback."""
     overall_score: float = Field(description="Quality score 0-100")
@@ -82,6 +91,7 @@ class QualityOutput(BaseModel):
     suggestions: List[str] = Field(default_factory=list, description="Specific improvement suggestions")
     vision_assessment: str = Field(default="", description="Detailed visual quality description")
     reference_similarity: Optional[float] = Field(default=None, description="Similarity to reference (if available)")
+    structured_issues: List[QualityIssue] = Field(default_factory=list, description="Typed issues with repair routing hints")
 
 
 class LearningOutput(BaseModel):
@@ -128,6 +138,16 @@ class QualityDecision(BaseModel):
     next_action: str = Field(description="Next action: 'complete', 'iterate', 'switch_technique', 'request_guidance'")
     escape_level: int = Field(ge=0, le=4, description="Current escape velocity level (0-4)")
     reasoning: str = Field(description="Explanation of the quality decision")
+
+
+class RepairIntent(BaseModel):
+    """Deterministic routing decision for repair strategy."""
+    mode: str = Field(description="modify_params | modify_code | switch_technique | request_guidance")
+    trigger: str = Field(description="Why this mode was chosen")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    target_sections: List[str] = Field(default_factory=list)
+    target_params: Dict[str, Any] = Field(default_factory=dict)
+    reasoning: str = Field(default="")
 
 
 # =============================================================================
