@@ -71,6 +71,58 @@ Content: enforce named script sections, implement section-level patching with `A
 
 **Implementation plan:** `docs/superpowers/plans/2026-03-12-script-section-patching.md`
 
+**Wave 2A — Section Patching ✅ (2026-03-12, 6 commits):**
+- [x] AST-based section parser (`utils/script_sections.py`) — 16 unit tests
+- [x] `patch_script_section` tool — 5 unit tests
+- [x] Section naming guardrail (warning-only) — 4 tests, section detection in `write_script`
+- [x] Patch budget tracking in `SessionState` (`sections_found` in `ScriptOutput`)
+- [x] Rewired `modify_code` to use section patching with budget (2/iter, 4/session)
+- [x] Canonical section structure guidance in Script Writer generation prompt
+
+**Wave 2A.1 — Stale Render Reuse Fix ✅ (2026-03-15, P0):**
+- [x] `_discover_render()` replaced with `_discover_render_current_run()` — scoped to `run_dir` only, never scans shared per-asset dir
+- [x] `_apply_render_discovery()` rewritten — never promotes `success=False` to `success=True`
+- [x] `partial_render_path` field on `ExecutionOutput` for diagnostic-only render tracking
+- [x] 12 unit tests covering core bug scenario (stale render in shared dir not used)
+
+**Wave 2A.2 — RepairIntent Deterministic Routing ✅ (2026-03-15):**
+- [x] `QualityIssue` model with typed kind/repair_mode_hint
+- [x] `RepairIntent` model for deterministic routing decisions
+- [x] `phases/repair_routing.py` — `choose_repair_intent()` priority chain: execution_failure → structural keywords → plateau → same_issue → escape_level → default
+- [x] QA prompt updated for `structured_issues` output
+- [x] Orchestrator modification cascade rewired: RepairIntent gates modify_params vs modify_code vs switch_technique
+- [x] 13 unit tests including Ireland Flag scenario (structural issues → modify_code by iter 2)
+
+**Wave 2B — HITL Framework ✅ (2026-03-15):**
+- [x] `utils/hitl_handler.py` — `HITLHandler` with 5 checkpoint types (stall, budget, critical, escalation, quality_plateau)
+- [x] 5 autonomy levels: Guided (0) → Supervised (1) → Semi-autonomous (2) → Autonomous (3) → Full autonomous (4)
+- [x] Interactive mode (CLI input() prompt) and non-interactive mode (saves checkpoint to session, sets PAUSED)
+- [x] Pending checkpoint resume on session reload
+- [x] Config integration: `AgentConfigManager.use_hitl()`, `get_hitl_autonomy_level()`, `is_hitl_interactive()`
+- [x] Wired into orchestrator: Phase 3.95 (post-eval), escape L4 (escalation), session resume (pending)
+- [x] 26 unit tests: checkpoint models, autonomy gating, budget/stall/critical triggers, interactive prompt mocking, config integration
+
+**Wave 2 — Truth Pack Hardening ✅ (cumulative):**
+- [x] `Fac` → `Factor` context-aware auto-fixer (mix nodes fixed, ColorRamp preserved)
+- [x] `use_dissolve` → `use_dissolve_smoke` substring bug fixed (removed from HARDCODED_FIXES, regex handles it)
+- [x] 25+ truth pack patterns total with auto-fix coverage
+
+**Wave 2 — SDK Upgrade ✅ (2026-03-13):**
+- [x] Upgraded from v0.10.5 to v0.12.0
+- [x] `needs_approval` on `@function_tool` confirmed working (hybrid HITL architecture validated)
+- [x] VERSION_TRUTH.md updated with corrected HITL information
+
+**Wave 2 — Remaining Items:**
+| Item | Status | Priority |
+|------|--------|----------|
+| Evaluator calibration | NOT STARTED | P2 |
+| Orchestrator extraction | NOT STARTED | P3 (monolith stable, not growing) |
+| Bounded research retrieval | NOT STARTED | P2 (reclassified from Wave 1, now Wave 2C) |
+| Mantaflow re-baseline | IN PROGRESS | P2 (campfire E2E test running) |
+| Native SDK `needs_approval` on high-impact tools | NOT STARTED | P2 (switch_technique, increase_budget) |
+
+**Test suite:** 438 tests pass, 0 failures (as of 2026-03-15).
+
 ### Wave 3 - Raise the Quality Ceiling After Reliability Improves
 
 Content: add deterministic scene assembly for tabletop/contact and container scenes first, then room interiors; move learning from prompt accumulation to evidence-backed deltas against contracts and packs; consider addon automation only if pack count or deployment demands it. Dependencies: Wave 2 should reduce execution failure to below 20% so geometry quality becomes a high-ROI target. Exit criteria: contact-gap failures are meaningfully reduced on targeted scene families, learning is writing to structured artifacts, and the architecture supports wrapped-to-taught graduation with evidence rather than opinion.
@@ -79,11 +131,11 @@ Content: add deterministic scene assembly for tabletop/contact and container sce
 
 1. `call_model_input_filter`: ✅ Implemented (Wave 1). Turn-based per-agent context filtering in `utils/context_filter.py`.
 
-2. `AdvancedSQLiteSession`: use it for bounded repair branching only after scripts have named sections. The branch budget should be fixed at 2 per iteration and 4 per session.
+2. `AdvancedSQLiteSession`: Deferred. Basic `SQLiteSession` satisfies `Session` protocol in v0.12.0 — use for token tracking. Branch budgets implemented via `SessionState.patch_budget` instead.
 
-3. `tool_input_guardrails` and `tool_output_guardrails`: ✅ Partially implemented. Truth pack input guardrail on `execute_blender_script`, critical failure output guardrail on `evaluate_render`/`analyze_with_vision`, script length output guardrail on `generate_script`. Section naming guardrail planned for Wave 2.
+3. `tool_input_guardrails` and `tool_output_guardrails`: ✅ Implemented. Truth pack input guardrail on `execute_blender_script`, critical failure output guardrail on `evaluate_render`/`analyze_with_vision`, script length output guardrail on `generate_script`, section naming guardrail (warning-only) on `write_script`.
 
-4. `tool_use_behavior="stop_on_first_tool"`: apply it to helper retrieval/diagnostic flows so they do one bounded thing and stop.
+4. `tool_use_behavior="stop_on_first_tool"`: Not yet applied. Planned for Wave 2C bounded research.
 
 5. `parallel_tool_calls`: use it inside the bounded retrieval stage, not in open-ended agent loops.
 
@@ -91,29 +143,31 @@ Content: add deterministic scene assembly for tabletop/contact and container sce
 
 7. GPT-5.4 rollout now: ✅ Implemented (Wave 1). `codex_upgrade` preset assigns gpt-5.4 to Script Writer, Research, Modification Coordinator, Quality Analyst.
 
-8. `needs_approval` and `run_streamed`: keep them for high-value supervision points and visibility, but they are secondary to the contract, pack, and context changes.
+8. `needs_approval`: ✅ Confirmed available on `@function_tool` in SDK v0.12.0 (not MCP-only). Hybrid HITL architecture: pipeline-level `HITLHandler` for session checkpoints + native `needs_approval` for tool-level approvals (switch_technique, increase_budget). Pipeline-level HITL implemented; native SDK approvals planned.
+
+9. Retry policies (v0.12.0): `ModelSettings` retry configuration available. Not yet applied — planned for `codex_upgrade` preset.
 
 ## 6. WHAT TO STOP DOING
 
-1. Stop treating the first contract success as proof that the rest of the system can stay unchanged.
+1. ~~Stop treating the first contract success as proof that the rest of the system can stay unchanged.~~ ✅ Contracts proven across 4 physics types (Cell Fracture, Mantaflow, cloth, destruction).
 
-2. Stop postponing GPT-5.4 for code-critical agents now that the binding contract exists.
+2. ~~Stop postponing GPT-5.4 for code-critical agents now that the binding contract exists.~~ ✅ Rolled out via `codex_upgrade` preset.
 
-3. Stop growing the capability-pack registry without defining an MVP target and completion criteria.
+3. ~~Stop growing the capability-pack registry without defining an MVP target and completion criteria.~~ ✅ 7-pack MVP defined and implemented.
 
-4. Stop using open-ended research conversations when the desired flow is already known and bounded.
+4. Stop using open-ended research conversations when the desired flow is already known and bounded. *(Wave 2C)*
 
-5. Stop recovering from execution failure by rewriting entire scripts.
+5. ~~Stop recovering from execution failure by rewriting entire scripts.~~ ✅ Section patching with patch budget (2/iter, 4/session). RepairIntent routes to modify_code instead of full rewrite.
 
-6. Stop letting modification strategy remain fully free-form when many common corrections are computable.
+6. ~~Stop letting modification strategy remain fully free-form when many common corrections are computable.~~ ✅ RepairIntent deterministic routing replaces free-form Modification Coordinator as first pass.
 
-7. Stop deferring orchestrator extraction to a future cleanup phase.
+7. Stop deferring orchestrator extraction to a future cleanup phase. *(P3, monolith stable)*
 
-8. Stop spending Wave 1 effort on deterministic spatial solving while execution failure is still the dominant bottleneck.
+8. ~~Stop spending Wave 1 effort on deterministic spatial solving while execution failure is still the dominant bottleneck.~~ ✅ Correctly deferred to Wave 3.
 
-9. Stop storing operational truth in overlapping prompts, fixers, guardrails, and validators once the contract/pack path exists.
+9. Stop storing operational truth in overlapping prompts, fixers, guardrails, and validators once the contract/pack path exists. *(Ongoing — truth pack consolidation helps)*
 
-10. Stop assuming combination effects need dedicated packs before pack composition has been tried.
+10. Stop assuming combination effects need dedicated packs before pack composition has been tried. *(Not yet relevant — 0% multi-physics prompts)*
 
 ## 7. OPEN QUESTIONS
 

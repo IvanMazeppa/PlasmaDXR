@@ -372,7 +372,9 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
 HARDCODED_FIXES: Dict[str, str] = {
     "resolution_divisions": "resolution_max",
     "use_adaptive_time_steps": "use_adaptive_timesteps",
-    "use_dissolve": "use_dissolve_smoke",
+    # NOTE: "use_dissolve" removed — substring of "use_dissolve_smoke", caused
+    # triple-replacement bug (use_dissolve_smoke_smoke_smoke). The regex in
+    # KNOWN_HALLUCINATIONS handles this with proper negative lookahead.
     "timesteps_per_frame": "timesteps_max",
     "timesteps_maximum": "timesteps_max",
     "reaction_speed": "burning_rate",

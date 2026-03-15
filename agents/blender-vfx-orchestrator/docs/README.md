@@ -9,12 +9,13 @@ Purpose: first-stop navigation for the Blender VFX Orchestrator docs
 Use these documents as the current source of truth before reading older plans, reviews, or prompts:
 
 1. `CURRENT_STATE.md`
-2. `MISSION_STATEMENT_2026-02-22.md`
-3. `VERSION_TRUTH.md`
-4. `RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
-5. `DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md`
-6. `AI_OPERATION_MANUAL.md`
-7. `SDK_ENFORCEMENT_PROTOCOL.md`
+2. `CURRENT_ROADMAP.md`
+3. `MISSION_STATEMENT_2026-02-22.md`
+4. `VERSION_TRUTH.md`
+5. `RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
+6. `DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md`
+7. `AI_OPERATION_MANUAL.md`
+8. `SDK_ENFORCEMENT_PROTOCOL.md`
 
 ## Directory Layout
 
@@ -60,11 +61,11 @@ The recent architecture-review correspondence has been moved out of the root to:
 
 The most useful current documents in that set are:
 
-- `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS.md`
+- `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS_GPT_54_XHIGH.md`
 - `docs/reviews/2026-03/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
 - `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
 
-Use them as supporting analysis, not as a replacement for `CURRENT_STATE.md`.
+Use them as supporting analysis, not as a replacement for `CURRENT_STATE.md` and `CURRENT_ROADMAP.md`.
 
 ## Writing Rules Going Forward
 

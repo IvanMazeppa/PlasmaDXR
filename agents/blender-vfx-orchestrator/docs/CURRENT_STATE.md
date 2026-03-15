@@ -56,18 +56,20 @@ In order:
 4. Prove `modify_code -> patch section -> execute -> evaluate` on real cases.
 5. Calibrate evaluators and learning evidence before expanding autonomy.
 
+The canonical implementation plan for these priorities now lives in `CURRENT_ROADMAP.md`.
+
 ## Supporting Analysis
 
 Use these as the main supporting March 2026 review documents:
 
-- `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS.md`
+- `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS_GPT_54_XHIGH.md`
 - `docs/reviews/2026-03/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
 - `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
 
 Use these as supplemental external/opposing views, not canonical truth:
 
 - `docs/reviews/2026-03/20260313_COMPREHENSIVE_MULTIAGENT_SYSTEM_ANALYSIS.md`
-- `docs/reviews/2026-03/20260314_DEEP_ANALYSIS_MULTIAGENT_SYSTEM.md`
+- `docs/reviews/2026-03/archive/20260314_DEEP_ANALYSIS_MULTIAGENT_SYSTEM_GEMINI.md`
 
 ## How To Use This File
 

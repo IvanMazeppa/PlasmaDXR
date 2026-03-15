@@ -77,16 +77,21 @@ All items checked off in `20260311_ARCHITECTURE_REVIEW_ACTIONABLE.md`:
 
 **Test suite:** 413 tests pass, 0 failures.
 
-### Wave 2 — Remaining Items
+### Wave 2 — Remaining Items (Updated 2026-03-15)
 
 | Item | Status | Priority |
 |------|--------|----------|
-| Stale render reuse fix | NOT STARTED | **P0 — blocks iteration loop** |
-| `Fac` → `Factor` truth pack pattern | DONE (today) | Fixed |
+| Stale render reuse fix | **DONE** (2026-03-15) | P0 — 12 tests |
+| `Fac` → `Factor` truth pack pattern | **DONE** (2026-03-12) | Fixed |
+| `use_dissolve` substring bug | **DONE** (2026-03-15) | Fixed — removed from HARDCODED_FIXES |
+| RepairIntent deterministic routing | **DONE** (2026-03-15) | P1 — 13 tests |
+| HITL framework | **DONE** (2026-03-15) | P1 — 26 tests |
+| SDK upgrade v0.10.5→v0.12.0 | **DONE** (2026-03-13) | `needs_approval` on function tools confirmed |
 | Evaluator calibration | NOT STARTED | P2 |
 | Orchestrator extraction | NOT STARTED | P3 (monolith stable, not growing) |
-| Bounded research retrieval | NOT STARTED | P2 |
-| HITL framework | Plan written, not started | P1 |
+| Bounded research retrieval | NOT STARTED | P2 (Wave 2C) |
+| Native `needs_approval` on tools | NOT STARTED | P2 (switch_technique, increase_budget) |
+| Mantaflow re-baseline | IN PROGRESS | P2 (campfire E2E test) |
 
 ### Truth Pack Coverage (as of today)
 
@@ -355,7 +360,7 @@ The Mission Statement (Section 14) defines success as:
 
 ```
 Wave 1: Exploit Contract Architecture    ████████████████████ COMPLETE
-Wave 2: Make Recovery Cheap/Precise       ████████████░░░░░░░░ 60% (section patching done, bugs + HITL remain)
+Wave 2: Make Recovery Cheap/Precise       █████████████████░░░ 85% (section patching, stale render fix, HITL, RepairIntent, SDK upgrade DONE. Remaining: evaluator calibration, bounded research, orchestrator extraction)
 Wave 3: Raise the Quality Ceiling         ░░░░░░░░░░░░░░░░░░░░ NOT STARTED (gated on execution reliability)
 ```
 

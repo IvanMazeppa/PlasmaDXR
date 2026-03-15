@@ -17,11 +17,12 @@ alwaysApply: true
 ## Read First (Mandatory)
 1. `agents/blender-vfx-orchestrator/docs/README.md`
 2. `agents/blender-vfx-orchestrator/docs/CURRENT_STATE.md`
-3. `agents/blender-vfx-orchestrator/docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
-4. `agents/blender-vfx-orchestrator/docs/DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md`
-5. `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
-6. `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
-7. `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
+3. `agents/blender-vfx-orchestrator/docs/CURRENT_ROADMAP.md`
+4. `agents/blender-vfx-orchestrator/docs/RUNTIME_TRUTH_AND_DOC_GROUNDING_2026-02-13.md`
+5. `agents/blender-vfx-orchestrator/docs/DOCS_AUTHORITY_AND_FRESHNESS_2026-02-13.md`
+6. `agents/blender-vfx-orchestrator/docs/VERSION_TRUTH.md`
+7. `agents/blender-vfx-orchestrator/docs/AI_OPERATION_MANUAL.md`
+8. `agents/blender-vfx-orchestrator/docs/SDK_ENFORCEMENT_PROTOCOL.md`
 
 ## Ground Truth Rules
 - Blender runtime target is Blender 5.0 only.

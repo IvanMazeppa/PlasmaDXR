@@ -1,0 +1,54 @@
+{
+  "recommended_approach": "Mantaflow GAS Domain + small mesh Flow emitter centered in the ember/log contact area, with Fire enabled, Noise enabled, low smoke, medium vorticity/reaction speed, and quick smoke dissolve; shade the volume with Principled Volume, and treat sparks as a separate lightweight pass if needed.",
+  "key_parameters": {
+    "domain_type": "GAS",
+    "use_noise": true,
+    "resolution_max": 64,
+    "cache_type": "ALL",
+    "frame_start": 1,
+    "frame_end": 90,
+    "reaction_speed": [
+      0.4,
+      0.6
+    ],
+    "vorticity": [
+      0.4,
+      0.6
+    ],
+    "burning_rate": [
+      0.6,
+      0.8
+    ],
+    "use_dissolve_smoke": true,
+    "dissolve_speed": 20,
+    "samples_max": 256,
+    "surface_emission": "resolution-dependent; measured in voxels from the mesh surface",
+    "empty_space": "use to optimize rendering/OpenVDB cache size after framing is locked"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.Mesh",
+    "bpy.ops.mesh",
+    "bpy.types.ShaderNodeTexNoise",
+    "bpy.types.MeshCacheModifier"
+  ],
+  "warnings": [
+    "Flow objects must be contained within the Domain bounding box to affect the simulation.",
+    "When fire emission is used, the Domain auto-creates some smoke; keep smoke-driving settings low for a clean-burning campfire.",
+    "Surface Emission is resolution-dependent, so changing domain resolution changes the effective emission thickness.",
+    "empty_space can improve render/cache efficiency, especially with OpenVDB, but too aggressive a threshold may trim useful low-density volume.",
+    "delete_in_obstacle removes fluid volume intersecting obstacles; be careful if logs/stones are used as effectors near the flame source.",
+    "API grounding was weaker than manual grounding in the search results; fluid-setting scripting should be verified against Blender 5.0 RNA at implementation time."
+  ],
+  "alternative_approaches": [
+    "Shader-only faux campfire using a shaped volume with Principled Volume instead of a baked fluid sim.",
+    "Hybrid setup: Mantaflow only for the core flame/smoke, with sparks handled in a separate non-fluid pass/system."
+  ],
+  "doc_refs": [
+    "physics/fluid/type/flow.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#gas-",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "blender_manual_html/render/shader_nodes/shader/volume_principled.html#inputs-"
+  ],
+  "timestamp": "2026-03-15T00:20:08.296228"
+}

@@ -1,0 +1,53 @@
+{
+  "recommended_approach": "Mantaflow GAS Domain fire/smoke with mesh Flow emitter(s) placed at the ember bed and log-contact area, plus stone/log Effector geometry inside the domain; optionally layer a separate Particle System for sparks/embers.",
+  "key_parameters": {
+    "domain_type": "GAS",
+    "use_noise": true,
+    "reaction_speed": "0.4-0.6",
+    "vorticity": "0.4-0.6",
+    "burning_rate": "0.6-0.8",
+    "smoke_amount": "0.05-0.15",
+    "use_dissolve_smoke": true,
+    "dissolve_speed": 20,
+    "resolution_divisions": 64,
+    "cache_type": "ALL",
+    "start_frame": 1,
+    "end_frame": 90,
+    "renderer": "CYCLES",
+    "device": "GPU",
+    "samples": 256,
+    "delete_in_obstacle": true,
+    "flow_object_inside_domain": true,
+    "domain_material_assigned": true,
+    "render_volume_fields": [
+      "density",
+      "heat",
+      "velocity"
+    ],
+    "empty_space": "use as an optimization control for rendering/cache size after the look is established"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh"
+  ],
+  "warnings": [
+    "Flow objects must be contained within the Domain bounding box to affect the simulation.",
+    "A fluid simulation requires a Domain, and at least one Flow object is required.",
+    "The domain must have a material assigned for rendering.",
+    "When fire emission is used, the domain auto-creates some smoke from burnt fuel, so even a clean-burning campfire may need smoke tuning/dissolve control.",
+    "If delete_in_obstacle is enabled, any fluid volume intersecting obstacle geometry inside the domain is removed.",
+    "empty_space changes what is treated as empty volume, affecting render optimization and OpenVDB cache size."
+  ],
+  "alternative_approaches": [
+    "Layer a Particle System emitter for sparks/embers above the ember bed and cache it over frames 1-90, while keeping Mantaflow for the main flames/smoke."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "physics/fluid/type/flow.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#gas-",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "physics/particles/emitter/cache.html"
+  ],
+  "timestamp": "2026-03-15T00:55:08.687176"
+}
