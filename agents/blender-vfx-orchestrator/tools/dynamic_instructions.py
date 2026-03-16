@@ -622,7 +622,8 @@ Return QualityOutput with:
 - issues: All identified problems
 - suggestions: Specific parameter changes to try
 - vision_assessment: Detailed visual description
-- structured_issues: For EACH issue, classify:
+- structured_issues: **MANDATORY when passed=False.** For EACH issue, emit a QualityIssue:
+  - summary: concise description of the problem
   - kind: "parameter" | "structural" | "technique" | "camera" | "lighting"
     - parameter: tunable values (density, intensity, color temperature, etc.)
     - structural: wrong geometry, missing objects, wrong arrangement, scene setup errors
@@ -630,8 +631,17 @@ Return QualityOutput with:
     - camera: framing, angle, FOV issues
     - lighting: light placement, type, or count issues
   - repair_mode_hint: "modify_params" | "modify_code" | "switch_technique"
-  - target: section or parameter name (if known)
+    - modify_params: issue can be fixed by changing parameter values only
+    - modify_code: issue requires changing script structure, geometry, materials, or scene setup
+    - switch_technique: the fundamental physics approach is wrong
+  - target: section or parameter name if known (e.g. "setup_domain", "flame_smoke", "camera.location")
   - confidence: 0.0-1.0
+
+**CRITICAL:** If passed=False, structured_issues MUST contain at least one entry.
+Every issue in the `issues` list should have a corresponding structured_issues entry.
+The downstream repair router depends on structured_issues to choose between parameter
+tweaks and structural code changes. Without them, the system defaults to parameter
+tuning even when the real problem is structural.
 """
 
 

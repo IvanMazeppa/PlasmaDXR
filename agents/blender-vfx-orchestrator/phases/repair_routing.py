@@ -66,7 +66,8 @@ def _classify_structured_issues(
     sections: List[str] = []
     for issue in issues:
         kind = issue.kind.lower() if issue.kind else ""
-        if kind == "structural":
+        if kind in ("structural", "camera", "lighting"):
+            # camera/lighting issues require code changes (adding/moving objects)
             structural += 1
             if issue.target:
                 sections.append(issue.target)
@@ -87,8 +88,12 @@ def choose_repair_intent(
 
     Priority chain (first match wins):
     1. Execution failure → modify_code
-    2. Structured issues: structural majority → modify_code
-    3. Keyword scan: structural > parametric → modify_code
+    2. Structured issues (authoritative when present):
+       - structural majority → modify_code
+       - technique majority → switch_technique
+       - parametric majority/equal → modify_params
+    3. Keyword scan (fallback when no structured_issues):
+       structural > parametric → modify_code
     4. Plateau (>=2 consecutive stagnant iterations) → modify_code
     5. Same issue repeated >=3 times → switch_technique
     6. Escape level >=4 → request_guidance; >=2 → switch_technique
@@ -112,10 +117,15 @@ def choose_repair_intent(
             reasoning=f"Execution failed: {quality.primary_issue}",
         )
 
-    # --- 2. Structured issues from QA ---
+    # --- 2. Structured issues from QA (authoritative when present) ---
     if quality.structured_issues:
         s_count, p_count, sections = _classify_structured_issues(
             quality.structured_issues
+        )
+        # Count technique-class issues
+        t_count = sum(
+            1 for i in quality.structured_issues
+            if (i.kind or "").lower() == "technique"
         )
         if s_count > p_count:
             return RepairIntent(
@@ -125,8 +135,22 @@ def choose_repair_intent(
                 target_sections=sections,
                 reasoning=f"{s_count} structural vs {p_count} parametric issues",
             )
+        if t_count > 0 and t_count >= s_count and t_count >= p_count:
+            return RepairIntent(
+                mode="switch_technique",
+                trigger="structured_issues_technique",
+                confidence=0.80,
+                reasoning=f"{t_count} technique issues — technique change needed",
+            )
+        # Parametric majority or equal — structured signal says modify_params
+        return RepairIntent(
+            mode="modify_params",
+            trigger="structured_issues_parametric",
+            confidence=0.80,
+            reasoning=f"{p_count} parametric vs {s_count} structural issues",
+        )
 
-    # --- 3. Keyword scan ---
+    # --- 3. Keyword scan (fallback when structured_issues absent) ---
     structural_hits = _count_keyword_hits(all_text, STRUCTURAL_KEYWORDS)
     parametric_hits = _count_keyword_hits(all_text, PARAMETRIC_KEYWORDS)
     if structural_hits > 0 and structural_hits >= parametric_hits:

@@ -240,6 +240,22 @@ async def validate_quality_output(
         )
         # Don't fail, just warn
 
+    # CRITICAL: passed=False MUST include structured_issues for repair routing
+    if passed is False:
+        structured_issues = (
+            getattr(output, "structured_issues", None)
+            if hasattr(output, "structured_issues")
+            else output.get("structured_issues", None)
+            if isinstance(output, dict)
+            else None
+        )
+        if not structured_issues:
+            errors.append(
+                "passed=False but structured_issues is empty. "
+                "The repair router requires typed QualityIssue entries "
+                "(kind + repair_mode_hint) to route fixes correctly."
+            )
+
     # Check vision_assessment is non-empty for thorough evaluation
     if not vision_assessment:
         print(
@@ -360,8 +376,8 @@ if __name__ == "__main__":
         print(f"   Triggered: {result.tripwire_triggered} (expected: False)")
         assert result.tripwire_triggered is False
 
-        # Test valid failed output
-        print("\n7. Testing validate_quality_output (valid fail)...")
+        # Test valid failed output (WITH structured_issues)
+        print("\n7. Testing validate_quality_output (valid fail with structured_issues)...")
         result = await validate_quality_fn(
             ctx, agent,
             {
@@ -369,11 +385,30 @@ if __name__ == "__main__":
                 "passed": False,
                 "primary_issue": "smoke too thin",
                 "issues": ["smoke density low", "lacks brightness"],
-                "vision_assessment": "Smoke is barely visible"
+                "vision_assessment": "Smoke is barely visible",
+                "structured_issues": [
+                    {"summary": "smoke too thin", "kind": "parameter",
+                     "repair_mode_hint": "modify_params", "confidence": 0.8},
+                ],
             }
         )
         print(f"   Triggered: {result.tripwire_triggered} (expected: False)")
         assert result.tripwire_triggered is False
+
+        # Test failed output WITHOUT structured_issues — should trigger
+        print("\n8. Testing validate_quality_output (fail missing structured_issues)...")
+        result = await validate_quality_fn(
+            ctx, agent,
+            {
+                "overall_score": 45,
+                "passed": False,
+                "primary_issue": "smoke too thin",
+                "issues": ["smoke density low"],
+                "vision_assessment": "Smoke is barely visible",
+            }
+        )
+        print(f"   Triggered: {result.tripwire_triggered} (expected: True)")
+        assert result.tripwire_triggered is True
 
         print("\n" + "-" * 60)
         print("All Quality Analyst guardrail tests passed!")

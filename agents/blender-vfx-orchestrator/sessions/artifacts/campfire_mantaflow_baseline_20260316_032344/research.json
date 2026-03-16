@@ -1,0 +1,42 @@
+{
+  "recommended_approach": "Mantaflow GAS Multi-Flow Domain with Dissolve Smoke, layered with a Particle System for occasional sparks",
+  "key_parameters": {
+    "domain_type": "GAS",
+    "use_dissolve_smoke": true,
+    "dissolve_speed": "30 in the Mantaflow dissolve example; the fire-specific campfire pattern also explicitly uses dissolve",
+    "resolution_max": "96 in the returned Mantaflow example; use this as the documented reference point when balancing against lower test resolutions",
+    "use_adaptive_timesteps": true,
+    "timesteps_max": "6 in the returned Mantaflow example (documented as high for fast-moving fire)",
+    "particle_render_type_for_sparks": "HALO",
+    "wind.field.strength": 3.0,
+    "wind.field.noise": 0.5,
+    "turbulence.field.strength": 2.0
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ParticleSettings",
+    "bpy.ops.object.effector_add",
+    "bpy.ops.mesh.primitive_ico_sphere_add"
+  ],
+  "warnings": [
+    "A fluid simulation needs a Domain object, and at least one Flow object is required.",
+    "The domain must have a material assigned for rendering.",
+    "Use bpy.ops.object.effector_add() not bpy.ops.object.forcefield_add(); the latter does not exist in Blender 5.0.",
+    "The fire-specific pattern library includes a campfire case where smoke accumulates and fills the whole domain; using a multi-flow setup with dissolve is the documented fix direction.",
+    "The search results did not return direct API reference pages for every queried fire property, so exact RNA names for some campfire tuning controls should be verified before scripting automation."
+  ],
+  "alternative_approaches": [
+    "Basic single-emitter Mantaflow fire/smoke domain",
+    "Particle System emitter for sparks/embers using bpy.types.ParticleSettings with render_type='HALO'"
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "techniques/mantaflow/advanced_overview",
+    "techniques/particles/overview",
+    "technique_mantaflow_dissolve_effects.md",
+    "technique_multi_flow_effects.md"
+  ],
+  "timestamp": "2026-03-16T03:25:52.318480"
+}

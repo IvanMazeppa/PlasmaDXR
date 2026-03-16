@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from hooks.enforcement_hooks import create_error_recovery_hooks
-from models.pipeline_models import ExecutionOutput, QualityOutput, ScriptOutput
+from models.pipeline_models import ExecutionOutput, QualityIssue, QualityOutput, ScriptOutput
 from tools.blender_executor_tools import _execute_blender_script_impl
 from tools.truth_pack_validator import validate_and_fix_script
 from guardrails.artifact_gates import (
@@ -384,7 +384,13 @@ but append '_errfix' to the output name."""
                 passed=False,
                 primary_issue=f"Execution failed: {error_msg}",
                 issues=[error_msg],
-                suggestions=["Fix script errors and retry"]
+                suggestions=["Fix script errors and retry"],
+                structured_issues=[QualityIssue(
+                    summary=f"Execution failed: {error_msg}",
+                    kind="structural",
+                    repair_mode_hint="modify_code",
+                    confidence=0.95,
+                )],
             )
             current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
             session_mgr.record_result(
@@ -471,6 +477,15 @@ but append '_errfix' to the output name."""
         )
         print(f"[Pipeline] Fix artifact: {gate_fix_artifact}", file=sys.stderr)
 
+        _gate_structured = [
+            QualityIssue(
+                summary=issue,
+                kind="structural",
+                repair_mode_hint="modify_code",
+                confidence=0.9,
+            )
+            for issue in gate_issues
+        ]
         quality = QualityOutput(
             overall_score=0,
             passed=False,
@@ -482,6 +497,7 @@ but append '_errfix' to the output name."""
                 "Ensure render output path is valid",
             ],
             vision_assessment=f"No vision evaluation - artifact gates failed. Cache: {artifact_summary.cache_size_mb:.2f}MB, Renders: {artifact_summary.render_count}",
+            structured_issues=_gate_structured,
         )
 
         current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}

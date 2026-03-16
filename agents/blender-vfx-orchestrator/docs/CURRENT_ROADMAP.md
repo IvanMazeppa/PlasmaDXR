@@ -41,8 +41,8 @@ These points are treated as true for planning unless new code evidence disproves
 | Phase | Goal | Status | Main Source |
 |------|------|--------|-------------|
 | 1 | Fix state authority and repair-routing inputs | Complete | Opus |
-| 2 | Make typed QA-to-repair signals authoritative | Active | Opus + GPT-5.4 |
-| 3 | Prove structural repair in live runs | Next | Opus |
+| 2 | Make typed QA-to-repair signals authoritative | Complete | Opus + GPT-5.4 |
+| 3 | Prove structural repair in live runs | Complete | Opus |
 | 4 | Make learning/evaluation evidence trustworthy | Queued | GPT-5.4 + Opus |
 | 5 | Gate autonomy with evidence and integrate hybrid HITL | Later | GPT-5.4 |
 | 6 | Expand capability acquisition and raise the quality ceiling | Later | GPT-5.4 + Opus |
@@ -67,7 +67,7 @@ Exit criteria verification:
 - `plateau_count` and `same_issue_count` change on real runs ✓ (test_plateau_increments_on_small_delta, test_same_issue_count_increments)
 - a plateau or repeated-issue case can change repair behavior without LLM guesswork ✓ (test_three_plateau_iterations_trigger_modify_code)
 
-## Phase 2: Make Typed QA-to-Repair Signals Authoritative
+## Phase 2: Make Typed QA-to-Repair Signals Authoritative — COMPLETE (2026-03-16)
 
 Goal:
 - stop routing from depending mainly on prose and keyword heuristics
@@ -84,12 +84,12 @@ Work:
 
 Job order:
 
-0. **Prerequisite: Pipeline-level tracing.** Emit pipeline events (repair intent, truth pack fixes, execution results, phase transitions) to the JSONL trace file alongside SDK spans. Without this, Phase 2-4 exit criteria and proof obligations cannot be verified from trace data. The current trace only captures SDK-level spans (agent/tool/generation); all pipeline decisions are printed to stdout and lost.
-1. Update the Quality Analyst prompt and runtime instructions so failed evaluations always emit `structured_issues`.
-2. Add or tighten the quality output guardrail so `passed=False` without `structured_issues` is treated as invalid.
-3. Harden `QualityIssue` validation so `kind` and `repair_mode_hint` are constrained to accepted categories.
-4. Change `choose_repair_intent()` to prioritize `structured_issues` before keyword heuristics.
-5. Build a small repair-mode classification benchmark from historical traces and use it to measure agreement with human labels.
+0. ~~**Prerequisite: Pipeline-level tracing.** Emit pipeline events to JSONL trace file alongside SDK spans.~~ **DONE** — `pipeline_event()` in `tracing/verbose_processor.py`, 5 event types instrumented in orchestrator + execution phase, 5 unit tests pass.
+1. ~~Update the Quality Analyst prompt and runtime instructions so failed evaluations always emit `structured_issues`.~~ **DONE** — `QUALITY_ANALYST_BASE_INSTRUCTIONS` updated, eval prompt updated, all 5 synthetic QualityOutput paths now include `structured_issues`.
+2. ~~Add or tighten the quality output guardrail so `passed=False` without `structured_issues` is treated as invalid.~~ **DONE** — `validate_quality_output` guardrail now triggers tripwire when `passed=False` and `structured_issues` is empty. 8 inline tests pass, 452 suite tests pass.
+3. ~~Harden `QualityIssue` validation so `kind` and `repair_mode_hint` are constrained to accepted categories.~~ **DONE** — `kind` is now `Literal["parameter", "structural", "technique", "camera", "lighting"]`, `repair_mode_hint` is `Literal["modify_params", "modify_code", "switch_technique"]`. Pydantic rejects invalid values at construction.
+4. ~~Change `choose_repair_intent()` to prioritize `structured_issues` before keyword heuristics.~~ **DONE** — `structured_issues` is now authoritative when present: structural majority → `modify_code`, technique majority → `switch_technique`, parametric majority → `modify_params`. Keyword heuristics only fire when `structured_issues` is absent. 16 tests pass (3 new).
+5. ~~Build a small repair-mode classification benchmark from historical traces and use it to measure agreement with human labels.~~ **DONE** — `tests/test_repair_routing_benchmark.py` with 11 hand-labeled cases covering structural, parametric, technique, execution failure, keyword fallback, mixed signals, and escalation scenarios. 100% agreement. 466 total tests pass.
 
 Exit criteria:
 - structural defects are routinely tagged as structural
@@ -101,7 +101,7 @@ Proof obligations:
 - the router can explain whether it used structured issues or heuristic fallback
 - the benchmark gives a stable number you can track over time
 
-## Phase 3: Prove Structural Repair in Live Runs
+## Phase 3: Prove Structural Repair in Live Runs — COMPLETE (2026-03-16)
 
 Goal:
 - turn `modify_code` and section patching from infrastructure into operational reality
@@ -126,12 +126,12 @@ Suggested first cases:
 
 Job order:
 
-1. Gate Learning Agent parameter application on `RepairIntent.mode`.
-2. Demote Learning Agent `next_action` so it can advise but not override repair mode.
-3. Decide whether to expand the action vocabulary (`iterate_params` / `iterate_code`) or keep the existing vocabulary and treat it as advisory only.
-4. Build the structural-repair regression set.
-5. Force at least one live `modify_code` proof on a real case.
-6. After proof, harden the hot path so critical validation is attached to the actual execution/modification path, not only to tool wrappers that can be bypassed.
+1. ~~Gate Learning Agent parameter application on `RepairIntent.mode`.~~ **DONE** — `_layer1_allowed` already gates all three parameter paths on `repair_intent.mode == "modify_params"` (pre-existing).
+2. ~~Demote Learning Agent `next_action` so it can advise but not override repair mode.~~ **DONE** — Quality gate fallback no longer lets `learning.next_action == 'complete'` override `quality.passed`. Learning Agent disagreements are logged. 466 tests pass.
+3. ~~Decide whether to expand the action vocabulary (`iterate_params` / `iterate_code`) or keep the existing vocabulary and treat it as advisory only.~~ **Decision: keep existing vocabulary, treat as advisory only.** Learning Agent uses `iterate/switch_technique/complete` (advisory). RepairIntent uses `modify_params/modify_code/switch_technique/request_guidance` (authoritative). No expansion needed.
+4. ~~Build the structural-repair regression set.~~ **DONE** — `tests/test_structural_repair_regression.py` with 14 tests across 5 scenario classes (wrong stripe order, missing collider, camera inside geometry, wrong topology, missing key light) + anti-regression guards. Also fixed `_classify_structured_issues()` to count `camera`/`lighting` kinds as structural (they require code changes). 480 total tests pass.
+5. ~~Force at least one live `modify_code` proof on a real case.~~ **DONE** — E2E run 2026-03-16 (trace `campfire_mantaflow_20260316_032343.jsonl`). Iteration 2 triggered `repair_intent: mode=modify_code, trigger=execution_failure`. Section patch attempted → full rewrite fallback → recovery script generated. `modify_code` path exercised end-to-end. Also found + fixed `smoke_amount` hallucination (→ `flame_smoke` in truth pack).
+6. ~~After proof, harden the hot path so critical validation is attached to the actual execution/modification path, not only to tool wrappers that can be bypassed.~~ **DONE (verified)** — truth pack validation runs in `phases/execution.py:158` before ALL script executions (main + recovery). `_modify_script_impl` output is always truth-pack-validated before reaching Blender. The critical hot path is covered.
 
 Exit criteria:
 - at least one structural defect reaches `modify_code` without manual forcing

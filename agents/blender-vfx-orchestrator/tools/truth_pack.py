@@ -383,6 +383,7 @@ HARDCODED_FIXES: Dict[str, str] = {
     "BLENDER_EEVEE_NEXT": "BLENDER_EEVEE",
     "forcefield_add": "effector_add",
     "steps_per_second": "substeps_per_frame",
+    "smoke_amount": "flame_smoke",
     "Color 1": "Color1",
     "Color 2": "Color2",
     # Cell Fracture addon: both legacy names map to Blender 5.0 extension name

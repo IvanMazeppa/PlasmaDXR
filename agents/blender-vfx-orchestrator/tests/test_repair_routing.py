@@ -149,6 +149,50 @@ def test_structural_keywords_in_code_grounded_feedback():
     assert intent.mode == "modify_code"
 
 
+def test_structured_issues_parametric_majority():
+    """When structured_issues is parametric-majority, route to modify_params
+    without falling through to keyword heuristics."""
+    q = _make_quality(
+        primary_issue="Missing collider geometry",  # structural keyword in prose
+        structured_issues=[
+            QualityIssue(summary="Smoke too thin", kind="parameter", repair_mode_hint="modify_params", confidence=0.9),
+            QualityIssue(summary="Flame intensity too low", kind="parameter", repair_mode_hint="modify_params", confidence=0.8),
+            QualityIssue(summary="Camera angle odd", kind="camera", repair_mode_hint="modify_code", confidence=0.5),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "modify_params"
+    assert intent.trigger == "structured_issues_parametric"
+
+
+def test_structured_issues_technique_majority():
+    """Technique-class issues should route to switch_technique."""
+    q = _make_quality(
+        structured_issues=[
+            QualityIssue(summary="Approach fundamentally wrong", kind="technique", repair_mode_hint="switch_technique", confidence=0.9),
+            QualityIssue(summary="Slight underexposure", kind="parameter", repair_mode_hint="modify_params", confidence=0.5),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "switch_technique"
+    assert intent.trigger == "structured_issues_technique"
+
+
+def test_structured_issues_beat_keyword_heuristics():
+    """Structured issues should take priority over keyword heuristics.
+    Even if prose contains structural keywords, parametric structured_issues win."""
+    q = _make_quality(
+        primary_issue="Missing geometry, wrong topology, shapes are broken",
+        issues=["wrong order of stripes", "geometry is incorrect"],
+        structured_issues=[
+            QualityIssue(summary="Fire too dim", kind="parameter", repair_mode_hint="modify_params", confidence=0.9),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "modify_params"
+    assert intent.trigger == "structured_issues_parametric"
+
+
 def test_repairintent_model_fields():
     """RepairIntent should serialize cleanly."""
     intent = RepairIntent(

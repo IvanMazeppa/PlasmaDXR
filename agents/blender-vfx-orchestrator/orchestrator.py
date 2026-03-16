@@ -2346,7 +2346,13 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                 passed=False,
                                 primary_issue="Script generation failed - no path",
                                 issues=script.validation_errors,
-                                suggestions=["Fix script generation errors"]
+                                suggestions=["Fix script generation errors"],
+                                structured_issues=[QualityIssue(
+                                    summary="Script generation produced no output file",
+                                    kind="structural",
+                                    repair_mode_hint="modify_code",
+                                    confidence=0.95,
+                                )],
                             )
                             # Record failure so stuck detection sees this iteration
                             current_params = script.parameters_set if hasattr(script, 'parameters_set') and script.parameters_set else {}
@@ -2510,6 +2516,17 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                         print(f"[Pipeline] Tier 1: {det_result}", file=sys.stderr)
                         if not det_result.passed:
                             # Critical failure — short-circuit with score=0
+                            # Emit structured_issues so repair router can classify correctly
+                            _det_structured = [
+                                QualityIssue(
+                                    summary=issue,
+                                    kind="structural",
+                                    repair_mode_hint="modify_code",
+                                    target=None,
+                                    confidence=0.95,
+                                )
+                                for issue in det_result.critical_issues
+                            ]
                             quality = QualityOutput(
                                 overall_score=0,
                                 passed=False,
@@ -2517,6 +2534,7 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                                 issues=det_result.critical_issues,
                                 suggestions=["Fix critical render issue before re-evaluating"],
                                 vision_assessment=f"Skipped (Tier 1 deterministic failure: {', '.join(det_result.critical_issues)})",
+                                structured_issues=_det_structured,
                             )
                             print(f"[Pipeline] Tier 1 CRITICAL FAIL — skipping LLM vision eval (saved ~$0.05)", file=sys.stderr)
 
@@ -2539,7 +2557,16 @@ scene_description parameter with the scene description above. This ensures the v
 model evaluates the render against what was actually requested, not just the effect_type label.
 
 Be a strict judge. Only pass renders that truly meet quality standards.
-Provide detailed feedback for improvement."""
+
+CRITICAL: If passed=False, you MUST populate structured_issues with at least one
+QualityIssue entry per problem. Each entry needs:
+  - summary: what is wrong
+  - kind: "parameter" | "structural" | "technique" | "camera" | "lighting"
+  - repair_mode_hint: "modify_params" | "modify_code" | "switch_technique"
+  - target: section or parameter name if known
+  - confidence: 0.0-1.0
+The repair router uses structured_issues to decide HOW to fix things. Without them,
+structural problems get trapped in parameter-tuning loops."""
 
                         try:
                             eval_result = await self._run_agent(
@@ -2567,7 +2594,13 @@ Provide detailed feedback for improvement."""
                                 issues=[str(e)],
                                 suggestions=["Simplify evaluation criteria"],
                                 vision_assessment="Unable to complete evaluation due to loop",
-                                reference_similarity=None
+                                reference_similarity=None,
+                                structured_issues=[QualityIssue(
+                                    summary=f"Quality evaluation loop: {e}",
+                                    kind="technique",
+                                    repair_mode_hint="modify_code",
+                                    confidence=0.5,
+                                )],
                             )
                         print(f"[Pipeline] Quality hooks stats: {quality_hooks.get_stats()}", file=sys.stderr)
 
@@ -3008,13 +3041,21 @@ Decide: Is quality gate PASSED? What is the next action?"""
                                 file=sys.stderr,
                             )
 
-                    # Determine if passed based on Coordinator or simple check
+                    # Determine if passed based on Coordinator or quality score
+                    # Learning Agent is ADVISORY — it cannot declare quality passed
                     if gate_decision:
                         is_passed = gate_decision.passed
                         next_action = gate_decision.next_action
                     else:
-                        is_passed = quality.passed or (learning and learning.next_action == 'complete')
-                        next_action = learning.next_action if learning else ('complete' if quality.passed else 'iterate')
+                        is_passed = quality.passed
+                        next_action = 'complete' if quality.passed else 'iterate'
+                        # Log if Learning Agent disagrees (advisory only)
+                        if learning and learning.next_action != next_action:
+                            print(
+                                f"[Pipeline] Learning Agent suggests '{learning.next_action}' "
+                                f"but quality gate says '{next_action}' — quality is authoritative",
+                                file=sys.stderr,
+                            )
 
                     if is_passed or next_action == 'complete':
                         print(f"\n[Pipeline] ✓ QUALITY GATE PASSED at iteration {iteration}", file=sys.stderr)

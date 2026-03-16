@@ -1,0 +1,15 @@
+{
+  "iteration": 2,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "Unknown execution error",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/campfire_mantaflow_baseline_script_iter2_ricodefix.py.\nError: Unknown execution error\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/campfire_mantaflow_baseline_script_iter2_ricodefix.py",
+  "render_path": null,
+  "timestamp": "2026-03-16T03:47:45.721917"
+}

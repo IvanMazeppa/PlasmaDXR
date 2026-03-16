@@ -9,7 +9,7 @@ orchestrator and phase modules.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -73,11 +73,15 @@ class ExecutionOutput(BaseModel):
     execution_time_seconds: float = Field(default=0.0, description="Total execution time")
 
 
+IssueKind = Literal["parameter", "structural", "technique", "camera", "lighting"]
+RepairModeHint = Literal["modify_params", "modify_code", "switch_technique"]
+
+
 class QualityIssue(BaseModel):
     """Typed quality issue with repair routing hint."""
     summary: str = Field(description="Concise issue description")
-    kind: str = Field(description="Issue category: parameter, structural, technique, camera, lighting")
-    repair_mode_hint: str = Field(description="Suggested repair: modify_params, modify_code, switch_technique")
+    kind: IssueKind = Field(description="Issue category: parameter, structural, technique, camera, lighting")
+    repair_mode_hint: RepairModeHint = Field(description="Suggested repair: modify_params, modify_code, switch_technique")
     target: Optional[str] = Field(default=None, description="Target section or parameter")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
