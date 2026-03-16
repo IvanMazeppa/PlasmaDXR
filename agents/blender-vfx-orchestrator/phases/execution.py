@@ -154,6 +154,7 @@ async def run_execution_phase(
 
     # Pre-execution truth pack validation (catches hallucinations the API
     # validator and API fixer miss, e.g. Color 1, Action.fcurves)
+    from tracing import pipeline_event
     if context.truth_pack and script.script_path:
         try:
             _, fixes = validate_and_fix_script(
@@ -164,6 +165,12 @@ async def run_execution_phase(
                       file=sys.stderr)
                 for fix in fixes[:5]:
                     print(f"  - {fix}", file=sys.stderr)
+                pipeline_event("truth_pack_fix", {
+                    "script_path": script.script_path,
+                    "fixes_count": len(fixes),
+                    "fixes": fixes[:10],
+                    "iteration": iteration,
+                })
         except Exception as e:
             print(f"[Pipeline] WARNING: Pre-exec truth pack validation failed: {e}",
                   file=sys.stderr)
@@ -189,6 +196,14 @@ async def run_execution_phase(
             f"time={execution.execution_time_seconds:.1f}s",
             file=sys.stderr,
         )
+        pipeline_event("execution_result", {
+            "exit_code": exec_data.get("exit_code"),
+            "success": execution.success,
+            "has_render": execution.render_path is not None,
+            "vdb_count": len(exec_data.get("vdb_files", [])),
+            "execution_time": execution.execution_time_seconds,
+            "iteration": iteration,
+        })
     except Exception as e:
         print(f"[Pipeline] Executor error: {e}", file=sys.stderr)
         execution = ExecutionOutput(

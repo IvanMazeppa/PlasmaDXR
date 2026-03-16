@@ -1,0 +1,45 @@
+{
+  "recommended_approach": "Mantaflow GAS Multi-Flow Domain with Dissolve Smoke for a steady campfire (separate flame/smoke flows, fire enabled, noise enabled)",
+  "key_parameters": {
+    "physics_system": "mantaflow",
+    "domain_type": "GAS",
+    "cache_type": "ALL",
+    "resolution": 64,
+    "frame_start": 1,
+    "frame_end": 90,
+    "use_noise": true,
+    "reaction_speed": 0.5,
+    "burning_rate": 0.7,
+    "vorticity": 0.5,
+    "smoke_amount": 0.1,
+    "use_dissolve_smoke": true,
+    "dissolve_speed": 20,
+    "Surface Emission": "resolution-dependent; keep controlled for a compact campfire source",
+    "Flow": "Multi-Flow Domain (separate flame/smoke behavior)"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.object.effector_add",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [
+    "If Noise is enabled but no noise simulation data exists, the domain can appear empty.",
+    "The domain must have a material assigned for rendering.",
+    "Surface Emission depends on domain resolution; overshooting it can broaden the fire source.",
+    "Campfire smoke can accumulate and fill the whole domain; the pattern library specifically flags this, so dissolve smoke is important.",
+    "API doc grounding for bpy.types.FluidDomainSettings was weak in the search bundle; verify exact RNA names in the current Blender build when scripting."
+  ],
+  "alternative_approaches": [
+    "Basic single-emitter Mantaflow GAS fire/smoke setup.",
+    "Single-flow Mantaflow GAS fire augmented with Wind/Turbulence force fields via bpy.ops.object.effector_add for added motion."
+  ],
+  "doc_refs": [
+    "techniques/mantaflow/advanced_overview",
+    "physics/fluid/introduction.html",
+    "physics/fluid/type/domain/gas/noise.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#gas-",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-"
+  ],
+  "timestamp": "2026-03-15T20:01:24.483716"
+}

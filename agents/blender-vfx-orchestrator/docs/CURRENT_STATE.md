@@ -1,7 +1,7 @@
 # Current State
 
 Status: authoritative
-Last verified: 2026-03-14
+Last verified: 2026-03-16
 Purpose: current high-level state of the Blender VFX Orchestrator after Wave 1 and early Wave 2 work
 
 ## Mission Context
@@ -33,14 +33,12 @@ These may still regress, but they are not the best explanation for the current p
 
 ## Current Primary Blockers
 
-1. Repair routing is still not authoritative enough.
-   Parameter-first fast paths can still become the effective repair policy before structural repair has had a clean chance to act.
+1. ~~Iteration-state authority is still split.~~ **RESOLVED (2026-03-15).** `record_iteration()` is now the sole path. `StuckDetectionState` computes `plateau_count`, `same_issue_count`, and `escape_level` deterministically. Quality Gate no longer overwrites.
 
-2. Iteration-state authority is still split.
-   Session truth, stuck-state, and iteration recording are not yet cleanly unified into one canonical mutation path.
+2. ~~Repair routing receives wrong inputs.~~ **RESOLVED (2026-03-15).** `choose_repair_intent()` now reads deterministic stuck-state values directly.
 
 3. The evaluator-to-repair boundary is still too prose-heavy.
-   The runtime still has to infer whether an issue is structural, parametric, or technique-level.
+   The runtime still has to infer whether an issue is structural, parametric, or technique-level. `QualityIssue` model exists but `structured_issues` is not yet enforced.
 
 4. `modify_code` and section patching are present but need stronger end-to-end proof in live runs.
 
@@ -50,13 +48,13 @@ These may still regress, but they are not the best explanation for the current p
 
 In order:
 
-1. Make repair-mode selection authoritative.
-2. Unify iteration manifests and state mutation.
-3. Add typed repair semantics at the QA boundary.
-4. Prove `modify_code -> patch section -> execute -> evaluate` on real cases.
-5. Calibrate evaluators and learning evidence before expanding autonomy.
+1. ~~Make repair-mode selection authoritative.~~ **DONE.** State authority fixed, repair routing receives correct inputs.
+2. ~~Unify iteration manifests and state mutation.~~ **DONE.** `record_iteration()` is the sole path.
+3. Add typed repair semantics at the QA boundary. (Roadmap Phase 2)
+4. Prove `modify_code -> patch section -> execute -> evaluate` on real cases. (Roadmap Phase 3)
+5. Calibrate evaluators and learning evidence before expanding autonomy. (Roadmap Phase 4-5)
 
-The canonical implementation plan for these priorities now lives in `CURRENT_ROADMAP.md`.
+The canonical implementation plan and ordered job list for these priorities now lives in `CURRENT_ROADMAP.md`.
 
 ## Supporting Analysis
 

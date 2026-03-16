@@ -157,37 +157,72 @@ async def main():
 
         trace_path = Path(log_file)
         if trace_path.exists():
-            content = trace_path.read_text()
+            # Parse pipeline events from JSONL trace
+            import json as _json
+            pipeline_events = []
+            for line in trace_path.read_text().splitlines():
+                try:
+                    entry = _json.loads(line)
+                    if entry.get("event_type") == "pipeline_event":
+                        pipeline_events.append(entry)
+                except _json.JSONDecodeError:
+                    continue
 
-            # GPT-5.4 rollout
-            if "gpt-5.4" in content:
-                print("  [PASS] gpt-5.4 referenced in trace")
+            event_names = {e.get("event") for e in pipeline_events}
+
+            # GPT-5.4 rollout — check orchestrator_init models
+            init_events = [e for e in pipeline_events if e.get("event") == "orchestrator_init"]
+            if init_events:
+                models = init_events[-1].get("models", {})
+                model_values = list(models.values())
+                if any("gpt-5.4" in m for m in model_values):
+                    print(f"  [PASS] gpt-5.4 in use: {', '.join(f'{k}={v}' for k, v in models.items() if 'gpt-5.4' in v)}")
+                else:
+                    print(f"  [WARN] gpt-5.4 NOT found in model assignments: {models}")
             else:
-                print("  [WARN] gpt-5.4 NOT found in trace")
+                print("  [WARN] No orchestrator_init event in trace")
 
-            # Stale render fix: should NOT see the old promotion message
-            if "exit_code!=0 but render exists" in content:
+            # Stale render fix: check execution_result events for false success
+            exec_events = [e for e in pipeline_events if e.get("event") == "execution_result"]
+            stale_renders = [e for e in exec_events if e.get("exit_code") != 0 and e.get("has_render")]
+            if stale_renders:
                 print("  [FAIL] Stale render promotion detected — fix not working!")
             else:
                 print("  [PASS] No stale render promotion (fix working)")
 
             # Repair routing
-            if "REPAIR INTENT" in content:
-                print("  [PASS] RepairIntent routing active")
+            repair_events = [e for e in pipeline_events if e.get("event") == "repair_intent"]
+            if repair_events:
+                modes = [e.get("mode") for e in repair_events]
+                print(f"  [PASS] RepairIntent routing active: {', '.join(modes)}")
             else:
                 print("  [INFO] RepairIntent not triggered (may be normal for iter 1)")
 
-            # HITL
+            # HITL — still use content scan for now since HITL events are not yet instrumented
+            content = trace_path.read_text()
             if "HITL" in content:
                 print("  [PASS] HITL framework active")
             else:
                 print("  [INFO] No HITL checkpoints triggered (may be normal)")
 
             # Truth pack
-            if "truth pack" in content.lower() or "Pre-exec truth pack" in content:
-                print("  [PASS] Truth pack validation active")
+            tp_events = [e for e in pipeline_events if e.get("event") == "truth_pack_fix"]
+            if tp_events:
+                total_fixes = sum(e.get("fixes_count", 0) for e in tp_events)
+                print(f"  [PASS] Truth pack validation active ({total_fixes} fixes across {len(tp_events)} runs)")
             else:
                 print("  [WARN] Truth pack not detected in trace")
+
+            # Iteration results summary
+            iter_events = [e for e in pipeline_events if e.get("event") == "iteration_result"]
+            if iter_events:
+                print()
+                print("  Pipeline Event Summary:")
+                for ie in iter_events:
+                    print(f"    Iter {ie.get('iteration')}: score={ie.get('score', 0):.1f} "
+                          f"passed={ie.get('passed')} "
+                          f"structured_issues={ie.get('structured_issues_count', 0)} "
+                          f"plateau={ie.get('plateau_count', 0)}")
 
         # Score analysis
         print()

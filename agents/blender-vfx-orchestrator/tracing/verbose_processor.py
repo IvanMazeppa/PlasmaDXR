@@ -366,3 +366,36 @@ def disable_verbose_tracing():
         _active_processor.shutdown()
         _active_processor = None
         print(f"[TRACING] Verbose tracing disabled", file=sys.stderr)
+
+
+def pipeline_event(
+    event: str,
+    data: Dict[str, Any] | None = None,
+) -> None:
+    """
+    Emit a pipeline-level event to the active trace JSONL file.
+
+    These events capture pipeline decisions that the SDK TracingProcessor
+    cannot see (repair intent, truth pack fixes, execution results, phase
+    transitions, stuck-state changes). They are written alongside SDK spans
+    so that E2E verification and manifest integrity checks have a single
+    source of truth.
+
+    Args:
+        event: Short event name, e.g. "repair_intent", "truth_pack_fix",
+               "execution_result", "phase_transition", "iteration_start".
+        data: Arbitrary structured data for the event.
+
+    No-op when verbose tracing is not enabled.
+    """
+    if _active_processor is None or _active_processor.log_file is None:
+        return
+
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "event_type": "pipeline_event",
+        "event": event,
+        **(data or {}),
+    }
+    with open(_active_processor.log_file, "a") as f:
+        f.write(json.dumps(record) + "\n")

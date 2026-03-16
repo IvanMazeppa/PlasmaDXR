@@ -1020,6 +1020,22 @@ STOP after synthesizing. Return structured output only.""",
         self._initialized = True
         print(f"[Orchestrator] Initialization complete (5 standalone + 3 coordinators ready)", file=sys.stderr)
 
+        # Emit model assignments to trace for verification
+        from tracing import pipeline_event
+        _model_map = {}
+        for _aname in ["script_writer", "research_agent", "quality_analyst",
+                        "executor", "docs_expert", "technique_selector",
+                        "modification_strategist", "quality_gate"]:
+            try:
+                _settings = self._config.get_agent_settings(_aname)
+                _model_map[_aname] = _settings.model
+            except Exception:
+                pass
+        pipeline_event("orchestrator_init", {
+            "preset": self._config.preset.name,
+            "models": _model_map,
+        })
+
     async def create_asset_pipeline(
         self,
         request: AssetRequest,
@@ -1206,6 +1222,14 @@ STOP after synthesizing. Return structured output only.""",
                     iteration += 1
                     session.current_iteration = iteration
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{effective_max_iterations} ======", file=sys.stderr)
+                    from tracing import pipeline_event
+                    pipeline_event("iteration_start", {
+                        "iteration": iteration,
+                        "max_iterations": effective_max_iterations,
+                        "escape_level": int(session.stuck_state.escape_level.value),
+                        "plateau_count": session.stuck_state.plateau_count,
+                        "same_issue_count": session.stuck_state.same_issue_count,
+                    })
 
                     # Track per-iteration cost and time for utility scoring
                     iteration_start_time = time.monotonic()
@@ -1510,6 +1534,15 @@ Generate a complete, validated script using the selected technique. Return the s
                                 f"trigger={repair_intent.trigger}, confidence={repair_intent.confidence:.2f}",
                                 file=sys.stderr,
                             )
+                            pipeline_event("repair_intent", {
+                                "mode": repair_intent.mode,
+                                "trigger": repair_intent.trigger,
+                                "confidence": repair_intent.confidence,
+                                "iteration": iteration,
+                                "plateau_count": session.stuck_state.plateau_count,
+                                "same_issue_count": session.stuck_state.same_issue_count,
+                                "escape_level": int(session.stuck_state.escape_level.value),
+                            })
 
                         # --- REPAIR INTENT: modify_code (skip Layer 1 entirely) ---
                         if (
@@ -2682,6 +2715,16 @@ Provide detailed feedback for improvement."""
                     # StuckDetectionState.update_from_iteration() — computes
                     # plateau_count, same_issue_count, escape_level deterministically.
                     session.record_iteration(iter_result)
+                    pipeline_event("iteration_result", {
+                        "iteration": iteration,
+                        "passed": quality.passed,
+                        "score": quality.overall_score,
+                        "primary_issue": quality.primary_issue,
+                        "structured_issues_count": len(quality.structured_issues) if quality.structured_issues else 0,
+                        "plateau_count": session.stuck_state.plateau_count,
+                        "same_issue_count": session.stuck_state.same_issue_count,
+                        "escape_level": int(session.stuck_state.escape_level.value),
+                    })
 
                     # ====== PHASE 3.9: PIPELINE MONITOR (After Evaluation) ======
                     eval_alerts = self._pipeline_monitor.check_after_evaluation(
@@ -2941,6 +2984,12 @@ Decide: Is quality gate PASSED? What is the next action?"""
                             gate_decision = gate_result.final_output
                             print(f"[Pipeline] Quality Gate: passed={gate_decision.passed}, next={gate_decision.next_action}", file=sys.stderr)
                             print(f"[Pipeline] Escape Level: {gate_decision.escape_level}, Reasoning: {gate_decision.reasoning[:50]}...", file=sys.stderr)
+                            pipeline_event("quality_gate", {
+                                "passed": gate_decision.passed,
+                                "next_action": gate_decision.next_action,
+                                "escape_level": gate_decision.escape_level,
+                                "iteration": iteration,
+                            })
 
                         except Exception as e:
                             print(f"[Pipeline] WARN: Quality Gate Coordinator failed: {e}", file=sys.stderr)

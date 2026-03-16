@@ -9,10 +9,12 @@ from .verbose_processor import (
     VerboseTraceProcessor,
     enable_verbose_tracing,
     disable_verbose_tracing,
+    pipeline_event,
 )
 
 __all__ = [
     "VerboseTraceProcessor",
     "enable_verbose_tracing",
     "disable_verbose_tracing",
+    "pipeline_event",
 ]
