@@ -75,6 +75,8 @@ from tools.artifact_tools import read_artifact, list_session_artifacts
 from tools.script_generator_tools import patch_script_section
 # Phase 2B-2: Per-agent context trimming ($0, deterministic)
 from utils.context_filter import vfx_context_filter
+# Prompt enhancement: inject look-dev craft hints into scene descriptions
+from utils.prompt_enhancer import enhance_description
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -1383,6 +1385,12 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
                             starting_params = selected_technique.key_parameters or {}
                             print(f"[Pipeline] Using advisory technique guidance (no contract): {selected_technique.selected_technique}", file=sys.stderr)
 
+                        # Enhance description with look-dev craft hints
+                        enhanced_description = enhance_description(
+                            request.description,
+                            effect_type=request.effect_type.value,
+                        )
+
                         script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
 {technique_guidance}
 
@@ -1392,7 +1400,7 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
 ## Parameters
 - Asset Name: {request.asset_name}
 - Effect Type: {request.effect_type.value}
-- Description: {request.description}
+- Description: {enhanced_description}
 - Resolution: {request.resolution}
 - Frames: {request.frame_start}-{request.frame_end}
 {f"- Starting Parameters: {json.dumps(starting_params, indent=2)}" if starting_params else ""}

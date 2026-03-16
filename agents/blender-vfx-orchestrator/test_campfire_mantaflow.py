@@ -112,7 +112,7 @@ async def main():
         frame_start=1,
         frame_end=90,
         quality_threshold=60.0,
-        max_iterations=3,
+        max_iterations=1,
         semantic_query="campfire fire flames embers smoke stones night mantaflow gas domain warm glow",
     )
 

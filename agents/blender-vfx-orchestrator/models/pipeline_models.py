@@ -73,14 +73,20 @@ class ExecutionOutput(BaseModel):
     execution_time_seconds: float = Field(default=0.0, description="Total execution time")
 
 
-IssueKind = Literal["parameter", "structural", "technique", "camera", "lighting"]
+IssueKind = Literal[
+    "parameter", "structural", "technique", "camera", "lighting",
+    "materials", "environment", "composition",
+]
 RepairModeHint = Literal["modify_params", "modify_code", "switch_technique"]
 
 
 class QualityIssue(BaseModel):
     """Typed quality issue with repair routing hint."""
     summary: str = Field(description="Concise issue description")
-    kind: IssueKind = Field(description="Issue category: parameter, structural, technique, camera, lighting")
+    kind: IssueKind = Field(
+        description="Issue category: parameter, structural, technique, camera, lighting, "
+        "materials, environment, composition"
+    )
     repair_mode_hint: RepairModeHint = Field(description="Suggested repair: modify_params, modify_code, switch_technique")
     target: Optional[str] = Field(default=None, description="Target section or parameter")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)

@@ -1,0 +1,48 @@
+{
+  "recommended_approach": "Mantaflow Multi-Flow GAS Domain",
+  "key_parameters": {
+    "domain_type": "GAS",
+    "flow_setup": "Use separate flow objects for the campfire; `flow_type` = `FIRE` / `SMOKE` / `BOTH` as needed, with `flow_behavior` = `GEOMETRY`",
+    "use_noise": true,
+    "resolution_max": 64,
+    "cache_type": "ALL",
+    "cache_frame_end": 90,
+    "reaction_speed": "0.4-0.6",
+    "burning_rate": "0.6-0.8",
+    "smoke_amount": "0.05-0.15",
+    "vorticity": "0.4-0.6",
+    "use_dissolve_smoke": true,
+    "dissolve_speed": "20-25",
+    "use_dissolve_smoke_log": false,
+    "WIND.field.strength": 3.0,
+    "WIND.field.noise": 0.5,
+    "TURBULENCE.field.strength": 2.0
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.object.effector_add",
+    "bpy.data.objects",
+    "bpy.context.active_object"
+  ],
+  "warnings": [
+    "Assign a material to the domain; the fluid introduction docs note the domain must have a material assigned for rendering.",
+    "Smoke can accumulate and fill the domain in a campfire setup; use `use_dissolve_smoke` with a moderate `dissolve_speed`.",
+    "Use `bpy.ops.object.effector_add()` for wind/turbulence; the docs explicitly warn that `bpy.ops.object.forcefield_add()` does not exist in Blender 5.0.",
+    "For campfire control, independent flow objects are preferred over a single combined source when tuning flame and smoke separately."
+  ],
+  "alternative_approaches": [
+    "Basic single-emitter fire/smoke in one Mantaflow GAS domain.",
+    "Emitter Particle System for sparks/embers (`settings.type = 'EMITTER'`; render guide includes `HALO` for point sparks and `OBJECT` for instanced ember meshes)."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "techniques/mantaflow/advanced_overview",
+    "techniques/mantaflow/multi_flow_effects",
+    "techniques/mantaflow/dissolve_effects",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "techniques/particles/emitter_effects",
+    "Particle Technique Overview \u2014 Decision Guide: Particles vs Mantaflow vs Geometry Nodes"
+  ],
+  "timestamp": "2026-03-16T05:07:30.213071"
+}

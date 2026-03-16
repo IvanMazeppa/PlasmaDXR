@@ -337,6 +337,27 @@ bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
 
 **IMPORTANT**: Replace "explosion_v1" with the actual asset name from the request.
 
+## LOOK-DEV FLOOR (MANDATORY DEFAULTS)
+These settings MUST be in every script unless the prompt explicitly overrides them:
+
+```python
+# In setup_scene():
+scene.view_settings.view_transform = 'AgX'  # NOT Filmic — AgX handles HDR fire/emissives
+scene.view_settings.look = 'None'           # Neutral starting point
+
+# In setup_camera() — always set depth of field:
+camera.data.dof.use_dof = True
+camera.data.dof.focus_distance = <distance_to_subject>
+camera.data.dof.aperture_fstop = 2.8  # Shallow DOF by default
+
+# In setup_lighting() — world shader MUST have gradient or environment texture:
+# WRONG: world.color = (0.05, 0.05, 0.1)  # flat color = dead background
+# RIGHT: Use gradient texture or environment texture node
+```
+
+**AgX vs Filmic:** AgX preserves color detail in bright emissives (fire, sparks, sun). Filmic
+clips HDR values to white. Use AgX unless the prompt says otherwise.
+
 ## BANNED: ABSTRACTION LAYERS FOR BLENDER API
 DO NOT write helper functions that introspect Blender's RNA properties to find attributes
 dynamically (e.g. `set_enum_by_predicate`, `find_pointer_by_rna_identifier`, `set_int_by_keywords`).

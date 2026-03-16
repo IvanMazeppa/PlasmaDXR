@@ -66,8 +66,8 @@ def _classify_structured_issues(
     sections: List[str] = []
     for issue in issues:
         kind = issue.kind.lower() if issue.kind else ""
-        if kind in ("structural", "camera", "lighting"):
-            # camera/lighting issues require code changes (adding/moving objects)
+        if kind in ("structural", "camera", "lighting", "materials", "environment", "composition"):
+            # These all require code changes (adding/moving objects, shader edits, scene setup)
             structural += 1
             if issue.target:
                 sections.append(issue.target)
