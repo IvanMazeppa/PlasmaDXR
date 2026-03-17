@@ -1,7 +1,7 @@
 # Current State
 
 Status: authoritative
-Last verified: 2026-03-16
+Last verified: 2026-03-17
 Purpose: current high-level state of the Blender VFX Orchestrator after Wave 1 and early Wave 2 work
 
 ## Mission Context
@@ -37,12 +37,16 @@ These may still regress, but they are not the best explanation for the current p
 
 2. ~~Repair routing receives wrong inputs.~~ **RESOLVED (2026-03-15).** `choose_repair_intent()` now reads deterministic stuck-state values directly.
 
-3. The evaluator-to-repair boundary is still too prose-heavy.
-   The runtime still has to infer whether an issue is structural, parametric, or technique-level. `QualityIssue` model exists but `structured_issues` is not yet enforced.
+3. ~~The evaluator-to-repair boundary is still too prose-heavy.~~ **RESOLVED (2026-03-16).** `structured_issues` are enforced when `passed=False`, `QualityIssue.kind` / `repair_mode_hint` are constrained, and routing now prioritizes typed issues over keyword heuristics.
 
-4. `modify_code` and section patching are present but need stronger end-to-end proof in live runs.
+4. ~~`modify_code` and section patching are present but need stronger end-to-end proof in live runs.~~ **RESOLVED (2026-03-16).** A live `modify_code` path has been exercised end-to-end, and the hot path now validates scripts before execution.
 
 5. Evaluator calibration and learning provenance are not yet strong enough to justify larger autonomy claims.
+
+6. Scene aesthetic realism is still below target even though the craft/intention layer has improved.
+   The current bottleneck is no longer just "pick the right technique" but "consistently build convincing hero objects, materials, and environments."
+
+7. A specialist section-builder workstream now exists as a planned quality-ceiling extension, but it is still gated and pending final external review before implementation begins.
 
 ## Current Planning Priorities
 
@@ -50,9 +54,9 @@ In order:
 
 1. ~~Make repair-mode selection authoritative.~~ **DONE.** State authority fixed, repair routing receives correct inputs.
 2. ~~Unify iteration manifests and state mutation.~~ **DONE.** `record_iteration()` is the sole path.
-3. Add typed repair semantics at the QA boundary. (Roadmap Phase 2)
-4. Prove `modify_code -> patch section -> execute -> evaluate` on real cases. (Roadmap Phase 3)
-5. Calibrate evaluators and learning evidence before expanding autonomy. (Roadmap Phase 4-5)
+3. Finish evaluator calibration and provenance-safe learning before making bigger autonomy claims. (Roadmap Phase 4-5)
+4. Continue the scene aesthetic realism workstream so hero objects, materials, and environments stop looking underbuilt. (Roadmap Phase 3.5)
+5. Keep specialist section builders as a planned, gated extension until the first milestone is externally cleared. (Roadmap Phase 6A)
 
 The canonical implementation plan and ordered job list for these priorities now lives in `CURRENT_ROADMAP.md`.
 
@@ -63,6 +67,8 @@ Use these as the main supporting March 2026 review documents:
 - `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS_GPT_54_XHIGH.md`
 - `docs/reviews/2026-03/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
 - `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
+- `docs/reviews/2026-03/20260317_SPECIALIZED_SECTION_BUILDERS_IMPLEMENTATION_PLAN.md` (candidate final plan)
+- `docs/reviews/2026-03/20260317_SECTION_BUILDERS_REVIEW_AND_REFINEMENTS.md`
 
 Use these as supplemental external/opposing views, not canonical truth:
 

@@ -12,6 +12,8 @@ It synthesizes:
 
 - `docs/reviews/2026-03/20260314_DEEP_ANALYSIS_ACTIONABLE_ROADMAP.md`
 - `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS_GPT_54_XHIGH.md`
+- `docs/reviews/2026-03/20260317_SPECIALIZED_SECTION_BUILDERS_IMPLEMENTATION_PLAN.md` (candidate final plan)
+- `docs/reviews/2026-03/20260317_SECTION_BUILDERS_REVIEW_AND_REFINEMENTS.md`
 - the current live code and current-state docs
 
 The source reviews remain valuable, but this file is the canonical roadmap.
@@ -32,9 +34,9 @@ These points are treated as true for planning unless new code evidence disproves
 - `TechniqueContract` is implemented and materially improved technique binding.
 - stale render reuse is no longer the main active blocker
 - `RepairIntent` / `choose_repair_intent()` already exist
-- `QualityIssue` / `structured_issues` already exist, but are not yet authoritative enough
-- section patching exists, but structural repair is not yet proven end to end in live runs
-- the dominant remaining problems are wiring, state authority, and repair-boundary quality
+- `QualityIssue` / `structured_issues` are now an authoritative part of repair routing
+- section patching and `modify_code` have been proven end to end at least once in live runs
+- the dominant remaining problems are evaluator trust, scene-quality ceiling, and evidence-gated expansion of capability/autonomy
 
 ## Roadmap Overview
 
@@ -46,6 +48,7 @@ These points are treated as true for planning unless new code evidence disproves
 | 4 | Make learning/evaluation evidence trustworthy | Queued | GPT-5.4 + Opus |
 | 5 | Gate autonomy with evidence and integrate hybrid HITL | Later | GPT-5.4 |
 | 6 | Expand capability acquisition and raise the quality ceiling | Later | GPT-5.4 + Opus |
+| 6A | Specialized Section Builders for scene quality and asset reuse | Planned, gated, pending final external review | March 17 section-builder plan + review |
 
 ## Phase 1: Fix State Authority and Routing Inputs — COMPLETE (2026-03-15)
 
@@ -267,6 +270,65 @@ Proof obligations:
 - at least one capability is operationalized through the sandbox path rather than a full-scene guess
 - scene assembly work lands after, not before, the evidence plane is reliable
 
+## Phase 6A: Specialized Section Builders — PLANNED, GATED, PENDING FINAL EXTERNAL REVIEW
+
+Goal:
+- raise the scene-quality ceiling and future asset reuse through deterministic section ownership and specialist builders
+
+Purpose:
+- improve hero-object quality, environment quality, and material/look-dev quality without replacing the current state machine
+- make section patching more valuable by giving sections stable owners
+- create a path from one-off scene improvement to reusable asset generation later
+
+Why this sits under Phase 6:
+- it is a quality-ceiling and capability-compounding workstream
+- it should not begin until the current loop is stable enough that bad specialist output does not collapse the iteration
+- it depends on work already underway in Phase 3.5 and should not outrun the evidence/reliability work in Phase 4
+
+Status:
+- the implementation plan exists and is internally coherent
+- the plan has absorbed one external critique round and a follow-up tightening pass
+- before coding begins, it is still expected to receive final second-opinion review
+
+Current source of truth:
+- detailed plan: `docs/reviews/2026-03/20260317_SPECIALIZED_SECTION_BUILDERS_IMPLEMENTATION_PLAN.md`
+- design rationale: `docs/reviews/2026-03/20260317_SPECIALIZED_SECTION_BUILDERS_DESIGN_NOTE.md`
+- external critique and refinements: `docs/reviews/2026-03/20260317_SECTION_BUILDERS_REVIEW_AND_REFINEMENTS.md`
+
+Finalized design constraints:
+- `BuildRegistry` is typed from day one; no loose `ctx` dict
+- `plan_scene_build()` is deterministic for the first rollout
+- specialist-owned sections use stubs, not generate-then-replace waste
+- builder output is validated at the builder boundary with bundled doc grounding and truth-pack validation
+- scaffold generation derives from `CANONICAL_SECTIONS`
+- repair escalation is section-local: specialist -> single-writer section -> full-script fallback
+- parallelism is deferred and later bounded with simple parallel groups, not a general DAG scheduler
+
+Execution gate:
+- section patching must be stable enough that a bad specialist section does not force a whole-script rewrite every time
+- `structured_issues` must continue routing structural/aesthetic failures to `modify_code`
+- the canonical scaffold must be reliable enough to serve as the stable section boundary
+- final external second-opinion review must not reveal a simpler or safer first milestone
+
+First milestone only:
+- add rollout flags and benchmark fixtures
+- add typed `BuildRegistry` and scaffold-first section stubs
+- add deterministic `SceneBuildPlan`
+- add specialist base factory and section-builder guardrails
+- add builder-level truth-pack validation and cross-reference validation
+- add `HeroAssetBuilder` only
+- benchmark hero-only mode against the baseline
+
+Not approved for the first coding slice:
+- environment builder
+- materials builder
+- asset-lab promotion workflow
+- generalized parallel section generation
+
+Working rule:
+- until the first milestone is externally cleared, this workstream is planned but not yet active implementation
+- once approved, update this roadmap phase status and pull the first-milestone job order into the active queue
+
 ## Cross-Cutting Workstreams
 
 These do not replace the phase order above. They are supporting work that should be advanced alongside the relevant phase.
@@ -281,6 +343,7 @@ Add and maintain:
 - cross-physics reliability baseline
 - evaluator calibration corpus and score-band tracking
 - manifest integrity test
+- specialist-vs-baseline benchmark pack once Phase 6A begins
 
 ### C. Pipeline-Level Tracing
 
@@ -330,6 +393,7 @@ Use this as the quick answer for “which document do I trust for what?”
 | autonomy promotion contract | GPT-5.4 |
 | capability incubation / sandbox mode | GPT-5.4 |
 | long-horizon autonomy framing | GPT-5.4 |
+| specialized section builders | March 17 section-builder plan + review |
 
 ## Working Rule
 

@@ -1,7 +1,7 @@
 # Docs Index
 
 Status: authoritative
-Last verified: 2026-03-14
+Last verified: 2026-03-17
 Purpose: first-stop navigation for the Blender VFX Orchestrator docs
 
 ## Start Here
@@ -64,6 +64,8 @@ The most useful current documents in that set are:
 - `docs/reviews/2026-03/20260314_DEEP_AUTONOMY_ANALYSIS_GPT_54_XHIGH.md`
 - `docs/reviews/2026-03/20260314_ARCHITECTURE_REVIEW_MODIFY_CODE_RESPONSE.md`
 - `docs/reviews/2026-03/20260312_WAVE2_STATUS_AND_PATH_FORWARD.md`
+- `docs/reviews/2026-03/20260317_SPECIALIZED_SECTION_BUILDERS_IMPLEMENTATION_PLAN.md`
+- `docs/reviews/2026-03/20260317_SECTION_BUILDERS_REVIEW_AND_REFINEMENTS.md`
 
 Use them as supporting analysis, not as a replacement for `CURRENT_STATE.md` and `CURRENT_ROADMAP.md`.
 
