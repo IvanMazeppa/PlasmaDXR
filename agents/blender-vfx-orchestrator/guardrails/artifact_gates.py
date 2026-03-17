@@ -10,10 +10,31 @@ Key principle: Deterministic first, adaptive second.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
+
+
+def _wsl_alternate_path(path: Path) -> Optional[Path]:
+    """
+    On WSL, Blender (Windows-native) writes files to /mnt/c/... but the
+    pipeline sees /home/... paths. Return the alternate path to check, or
+    None if not applicable.
+
+    Handles two cases:
+    - /home/user/... → /mnt/c/home/user/...  (WSL homedir → Windows mount)
+    - /mnt/c/... → /home/...  (reverse, less common)
+    """
+    s = str(path)
+    # WSL path → Windows mount path
+    if s.startswith("/home/") and not s.startswith("/mnt/"):
+        return Path("/mnt/c" + s)
+    # Windows mount path → WSL path
+    if s.startswith("/mnt/c/home/"):
+        return Path(s[len("/mnt/c"):])
+    return None
 
 
 @dataclass
@@ -127,6 +148,34 @@ def discover_execution_artifacts(
             blends = list(output_path.rglob("*.blend"))
             if blends:
                 blend_path = str(blends[0])
+
+    # WSL path fallback: Blender (Windows-native) writes to /mnt/c/... but
+    # pipeline paths are /home/... — check the alternate path for cache/renders/VDBs.
+    if output_dir:
+        alt = _wsl_alternate_path(Path(output_dir))
+        if alt and alt.exists():
+            if not cache_exists or cache_size_bytes == 0:
+                alt_cache = alt / "cache"
+                exists, size, count = _scan_cache_dir(alt_cache)
+                if exists and size > 0:
+                    cache_exists, cache_size_bytes, cache_file_count = exists, size, count
+                    print(f"[ArtifactGates] Found cache via WSL path: {alt_cache} ({size / 1_000_000:.2f}MB)", file=sys.stderr)
+
+            if not render_paths:
+                for ext in ["*.png", "*.jpg", "*.jpeg", "*.exr", "*.tiff"]:
+                    render_paths.extend(str(p) for p in alt.rglob(ext))
+                if render_paths:
+                    print(f"[ArtifactGates] Found {len(render_paths)} render(s) via WSL path", file=sys.stderr)
+
+            if not vdb_paths:
+                vdb_paths.extend(str(p) for p in alt.rglob("*.vdb"))
+                if vdb_paths:
+                    print(f"[ArtifactGates] Found {len(vdb_paths)} VDB(s) via WSL path", file=sys.stderr)
+
+            if not blend_path:
+                alt_blends = list(alt.rglob("*.blend"))
+                if alt_blends:
+                    blend_path = str(alt_blends[0])
 
     # Search run_dir for logs and fallback artifacts
     if run_dir:
