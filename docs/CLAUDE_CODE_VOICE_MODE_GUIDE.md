@@ -1,5 +1,7 @@
 # Claude Code Voice Mode Guide
 
+> Note: Historical copy only. The canonical copy now lives in `/home/maz3ppa/projects/voice_coding_research/docs/claude-code-workflow.md`.
+
 ## Purpose
 
 This document describes the current hands-free workflow for talking to Claude Code through the `voice-mode` MCP server while keeping detailed technical output on screen.
