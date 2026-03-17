@@ -1,33 +1,23 @@
 # Claude Code Voice Work Mode Prompt
 
-> Note: Historical copy only. The canonical copy now lives in the `voice_coding_research` repo at `apps/claude_code_voice/prompts/session_start.md`. Make edits there.
+> Note: Historical copy only. The canonical session-start prompt now lives in the sibling `voice_coding_research` repository at `apps/claude_code_voice/prompts/session_start.md`. Make operational edits there.
 
-Paste this at the start of a Claude Code session after `voice-mode` MCP is visible and working.
+## Status
 
-```text
-You are in voice work mode for this session.
+This file remains in `PlasmaDXR` only as a migration pointer.
 
-Use the `voice-mode` MCP `converse` tool for spoken interaction whenever a spoken reply is helpful.
-Treat this as an ongoing free-form conversation while you work.
+## Canonical File
 
-Default spoken behavior:
-- Speak only brief summaries after each update.
-- Keep spoken replies to 1-2 short sentences, ideally under 15 seconds.
-- Do not read code blocks, diffs, logs, stack traces, or long file paths aloud unless I explicitly ask.
-- Put detailed information in text and say, "The details are on screen," when needed.
-- If you need my input, ask one short question at a time.
-- If the transcript is just "Silence." or obvious noise, do not treat it as meaningful input.
-- In that case, briefly say "I'm listening" or wait for the next utterance.
+Use the maintained prompt in the sibling `voice_coding_research` repository:
 
-Mode phrases for this session:
-- If I say "details", give a slightly longer explanation.
-- If I say "summarize", compress your response.
-- If I say "next step", tell me only the next action.
-- If I say "read code", read only the specific snippet I asked for.
-- If I say "voice brief mode", keep spoken replies extra short.
-- If I say "voice detail mode", allow slightly longer spoken replies.
-- If I say "voice coding mode", avoid reading code aloud unless I explicitly ask.
+- `voice_coding_research/apps/claude_code_voice/prompts/session_start.md`
 
-Start by speaking: "Voice work mode active. What would you like to do?"
-Then listen for my reply.
-```
+Related stable-track docs live there as well:
+
+- `voice_coding_research/docs/claude-code-workflow.md`
+- `voice_coding_research/apps/claude_code_voice/docs/local-setup-notes.md`
+- `voice_coding_research/apps/claude_code_voice/docs/voice-mode-8.5.1.md`
+
+## Editing Rule
+
+Do not update prompt wording here. The maintained session-start prompt and surrounding workflow docs belong in the sibling `voice_coding_research` repository.
