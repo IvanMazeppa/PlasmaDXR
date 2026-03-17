@@ -35,7 +35,7 @@ Important distinction:
 1. Make sure the phone microphone is connected to Windows and still awake.
 2. Start Claude Code in WSL.
 3. Confirm the `voice-mode` MCP server is visible in Claude Code.
-4. Paste the prompt from `docs/CLAUDE_CODE_VOICE_WORK_MODE_PROMPT.md`.
+4. Paste the prompt from the `voice_coding_research` repo at `apps/claude_code_voice/prompts/session_start.md`.
 5. Let Claude speak the opening line.
 6. Continue as a spoken conversation while Claude works.
 
@@ -225,7 +225,7 @@ The best current pattern is:
 
 1. Start Claude Code manually.
 2. Enable or begin the voice workflow manually.
-3. Paste the session prompt from `docs/CLAUDE_CODE_VOICE_WORK_MODE_PROMPT.md`.
+3. Paste the session prompt from the `voice_coding_research` repo at `apps/claude_code_voice/prompts/session_start.md`.
 4. Use spoken conversation to steer Claude while it works.
 5. Use Windows Voice Access for computer-control tasks.
 6. Use the keyboard only for exceptional recovery or precise editing.
