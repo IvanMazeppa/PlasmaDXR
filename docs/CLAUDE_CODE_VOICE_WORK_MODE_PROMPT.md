@@ -1,6 +1,6 @@
 # Claude Code Voice Work Mode Prompt
 
-> Note: Historical copy only. The canonical copy now lives in `/home/maz3ppa/projects/voice_coding_research/apps/claude_code_voice/prompts/session_start.md`.
+> Note: Historical copy only. The canonical copy now lives in the `voice_coding_research` repo at `apps/claude_code_voice/prompts/session_start.md`. Make edits there.
 
 Paste this at the start of a Claude Code session after `voice-mode` MCP is visible and working.
 

@@ -1,6 +1,6 @@
 # Claude Code Voice Mode Guide
 
-> Note: Historical copy only. The canonical copy now lives in `/home/maz3ppa/projects/voice_coding_research/docs/claude-code-workflow.md`.
+> Note: Historical copy only. The canonical copy now lives in the `voice_coding_research` repo at `docs/claude-code-workflow.md`. Make edits there.
 
 ## Purpose
 
