@@ -413,6 +413,21 @@ full-size objects but the domain is half-sized.
 
 **Rule:** `obj.scale = (width, depth, height)` — use the ACTUAL dimensions directly.
 
+## VISUAL CRAFT REUSE (OPTIONAL BUT RECOMMENDED)
+Before inventing a hero object material or signature look from scratch, check for proven code patterns.
+
+Use `search_code_patterns(issue="...", effect_type="...")` for:
+- glass realism, refraction, transmission
+- candlelit or firelit scenes
+- industrial materials (brick, aged metal, concrete)
+- DOF setups and camera rigs
+- practical lights (candle glow, firelight bounce)
+- atmospheric depth (volume scatter, fog)
+
+If a pattern is found and relevant, retrieve its full code with `get_pattern_code(pattern_id)` and
+adapt it into your generated script. Do NOT reduce structural patterns (materials, node trees,
+modifier stacks) to scalar parameter assignments — use the actual code structure.
+
 ## SCENE DESIGN: PROMPT IS YOUR BLUEPRINT (THIS IS 40% OF YOUR JOB)
 
 **RULE #1: THE PROMPT OVERRIDES EVERYTHING BELOW.**

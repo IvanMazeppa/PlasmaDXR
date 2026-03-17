@@ -75,8 +75,8 @@ from tools.artifact_tools import read_artifact, list_session_artifacts
 from tools.script_generator_tools import patch_script_section
 # Phase 2B-2: Per-agent context trimming ($0, deterministic)
 from utils.context_filter import vfx_context_filter
-# Prompt enhancement: inject look-dev craft hints into scene descriptions
-from utils.prompt_enhancer import enhance_description
+# Prompt enhancement: inject look-dev craft hints and extract StyleSpec
+from utils.prompt_enhancer import enhance_description, extract_style_spec
 from agents.agent_output import AgentOutputSchema
 
 # Enforcement Hooks for loop detection and doc query requirements
@@ -1391,8 +1391,21 @@ YOU MUST USE THIS TECHNIQUE. The Coordinator has analyzed the research and selec
                             effect_type=request.effect_type.value,
                         )
 
+                        # Extract StyleSpec (deterministic, $0)
+                        style_spec_dict = extract_style_spec(
+                            request.description,
+                            effect_type=request.effect_type.value,
+                        )
+                        session.style_spec = style_spec_dict
+                        session.enhanced_prompt = enhanced_description
+                        from models.pipeline_models import StyleSpec
+                        style_spec = StyleSpec(**style_spec_dict)
+                        style_guidance = style_spec.to_script_constraints()
+                        print(f"[Pipeline] StyleSpec: mood={style_spec.mood}, heroes={style_spec.hero_objects}, lighting={style_spec.world_lighting_mode}", file=sys.stderr)
+
                         script_prompt = f"""Generate a Blender Python script for {request.effect_type.value} VFX.
 {technique_guidance}
+{style_guidance}
 
 ## Research Findings
 {research_text[:1500]}
@@ -1605,6 +1618,7 @@ Primary Issue: {quality.primary_issue if quality else 'Unknown'}
 
 ## Effect Type: {request.effect_type.value}
 ## Description: {request.description}
+{f'{chr(10)}{context.structural_pattern_context}' if context.structural_pattern_context else ''}
 
 ## Instructions
 1. Read the current script to understand all sections
@@ -1759,66 +1773,89 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                         # Apply high-confidence pattern if found in Phase 0.95
                         # Only run Layer 1 (param tweaks) when RepairIntent says modify_params or is absent
                         _layer1_allowed = (repair_intent is None or repair_intent.mode == "modify_params")
-                        if _layer1_allowed and pattern_to_apply and previous_script and previous_script.script_path:
+                        if pattern_to_apply and previous_script and previous_script.script_path:
                             print(f"[Pipeline] PHASE 1.0.1: Applying pattern '{pattern_to_apply.name}'", file=sys.stderr)
                             print(f"[Pipeline] Pattern code:\n{pattern_to_apply.code_snippet[:200]}...", file=sys.stderr)
 
-                            # Parse the pattern's code_snippet to extract parameters
-                            # Pattern code_snippet format: "domain.dissolve_speed = 5\ndomain.flame_smoke = 3.0"
-                            pattern_params = {}
-                            try:
-                                for line in pattern_to_apply.code_snippet.strip().split('\n'):
-                                    line = line.strip()
-                                    if '=' in line and not line.startswith('#'):
-                                        # Extract parameter name and value
-                                        # Handle patterns like "domain.param = value" or "obj.param = value"
-                                        match = re.match(r'(?:\w+\.)?(\w+)\s*=\s*(.+)', line)
-                                        if match:
-                                            param_name = match.group(1)
-                                            value_str = match.group(2).strip()
-                                            # Try to parse the value
-                                            try:
-                                                if value_str.lower() == 'true':
-                                                    pattern_params[param_name] = True
-                                                elif value_str.lower() == 'false':
-                                                    pattern_params[param_name] = False
-                                                elif '.' in value_str:
-                                                    pattern_params[param_name] = float(value_str)
-                                                else:
-                                                    pattern_params[param_name] = int(value_str)
-                                            except ValueError:
-                                                pattern_params[param_name] = value_str
+                            # Detect if pattern is structural (materials, node trees, modifiers)
+                            # vs parametric (simple scalar assignments)
+                            _STRUCTURAL_MARKERS = [
+                                "modifiers.new(", "bpy.ops.mesh", "bpy.ops.object",
+                                "ShaderNode", "node_tree", "nodes.new(",
+                                "focus_object", "view_transform", "materials.new(",
+                                "links.new(", "keyframe_insert", ".append(mat)",
+                            ]
+                            _is_structural = any(
+                                marker in pattern_to_apply.code_snippet
+                                for marker in _STRUCTURAL_MARKERS
+                            )
 
-                                if pattern_params:
-                                    print(f"[Pipeline] Pattern parameters extracted: {pattern_params}", file=sys.stderr)
-                                    output_name = f"{request.asset_name}_iter{iteration}_pattern"
+                            if _is_structural:
+                                # STRUCTURAL pattern → route to Script Writer as context
+                                # Do NOT flatten to scalar params — that destroys the pattern
+                                print(f"[Pipeline] Pattern is STRUCTURAL — routing to Script Writer as code context", file=sys.stderr)
+                                context.structural_pattern_context = (
+                                    f"## PROVEN PATTERN: {pattern_to_apply.name}\n"
+                                    f"Apply this proven code pattern when writing the relevant section:\n"
+                                    f"```python\n{pattern_to_apply.code_snippet}\n```\n"
+                                    f"Adapt it to fit your script structure. Do NOT reduce it to parameter tweaks."
+                                )
+                                context.pending_pattern_id = pattern_to_apply.pattern_id
+                                context.pending_pattern_name = pattern_to_apply.name
+                                # Don't set direct_modification_success — let Script Writer handle it
+                            elif _layer1_allowed:
+                                # PARAMETRIC pattern → extract scalars and apply directly
+                                pattern_params = {}
+                                try:
+                                    for line in pattern_to_apply.code_snippet.strip().split('\n'):
+                                        line = line.strip()
+                                        if '=' in line and not line.startswith('#'):
+                                            match = re.match(r'(?:\w+\.)?(\w+)\s*=\s*(.+)', line)
+                                            if match:
+                                                param_name = match.group(1)
+                                                value_str = match.group(2).strip()
+                                                try:
+                                                    if value_str.lower() == 'true':
+                                                        pattern_params[param_name] = True
+                                                    elif value_str.lower() == 'false':
+                                                        pattern_params[param_name] = False
+                                                    elif '.' in value_str:
+                                                        pattern_params[param_name] = float(value_str)
+                                                    else:
+                                                        pattern_params[param_name] = int(value_str)
+                                                except ValueError:
+                                                    pattern_params[param_name] = value_str
 
-                                    modify_result = await self._apply_script_modifications(
-                                        script_path=previous_script.script_path,
-                                        modifications=pattern_params,
-                                        output_name=output_name,
-                                        effect_type=request.effect_type.value,  # Phase 2A-5
-                                        previous_params=previous_script.parameters_set,  # Phase 2A-5
-                                    )
+                                    if pattern_params:
+                                        print(f"[Pipeline] Pattern is PARAMETRIC — applying {len(pattern_params)} scalar changes", file=sys.stderr)
+                                        output_name = f"{request.asset_name}_iter{iteration}_pattern"
 
-                                    if modify_result.get("success") and modify_result.get("modified_path"):
-                                        print(f"[Pipeline] Pattern application SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
-                                        script = ScriptOutput(
-                                            script_path=modify_result["modified_path"],
-                                            technique_used=previous_script.technique_used + f" (pattern:{pattern_to_apply.pattern_id})",
-                                            parameters_set=pattern_params,
-                                            validation_passed=True,
-                                            validation_errors=[],
+                                        modify_result = await self._apply_script_modifications(
+                                            script_path=previous_script.script_path,
+                                            modifications=pattern_params,
+                                            output_name=output_name,
+                                            effect_type=request.effect_type.value,
+                                            previous_params=previous_script.parameters_set,
                                         )
-                                        direct_modification_success = True
+
+                                        if modify_result.get("success") and modify_result.get("modified_path"):
+                                            print(f"[Pipeline] Pattern application SUCCESS: {modify_result['modified_path']}", file=sys.stderr)
+                                            script = ScriptOutput(
+                                                script_path=modify_result["modified_path"],
+                                                technique_used=previous_script.technique_used + f" (pattern:{pattern_to_apply.pattern_id})",
+                                                parameters_set=pattern_params,
+                                                validation_passed=True,
+                                                validation_errors=[],
+                                            )
+                                            direct_modification_success = True
+                                        else:
+                                            print(f"[Pipeline] Pattern application FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
                                         # Mark that we applied this pattern (for outcome tracking)
                                         context.last_applied_pattern_id = pattern_to_apply.pattern_id
                                     else:
-                                        print(f"[Pipeline] Pattern application FAILED: {modify_result.get('error', 'Unknown')}", file=sys.stderr)
-                                else:
-                                    print(f"[Pipeline] WARN: Could not extract parameters from pattern", file=sys.stderr)
-                            except Exception as e:
-                                print(f"[Pipeline] WARN: Pattern parsing failed: {e}", file=sys.stderr)
+                                        print(f"[Pipeline] WARN: Could not extract parameters from pattern", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"[Pipeline] WARN: Pattern parsing failed: {e}", file=sys.stderr)
 
                         # Check for concrete parameter modifications from Learning Agent
                         # If provided, apply directly without going through Script Writer interpretation
@@ -2052,6 +2089,7 @@ Primary Issue: {quality.primary_issue if quality else 'Unknown'}
 
 ## Effect Type: {request.effect_type.value}
 ## Description: {request.description}
+{f'{chr(10)}{context.structural_pattern_context}' if context.structural_pattern_context else ''}
 
 ## Instructions
 1. Read the current script to understand all sections
@@ -2258,6 +2296,7 @@ Previous: {previous_score:.1f} | Target: {request.quality_threshold}
 
 ## CRITICAL: Doc Query Required
 You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to verify APIs before modifying code.
+{f'{chr(10)}{context.structural_pattern_context}' if context.structural_pattern_context else ''}
 
 ## Instructions
 1. FIRST: Call blender_doc_search_bundle("{request.effect_type.value}") to get verified Blender APIs

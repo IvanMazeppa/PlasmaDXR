@@ -1,7 +1,7 @@
 # Current Roadmap
 
 Status: authoritative
-Last verified: 2026-03-16
+Last verified: 2026-03-17
 Purpose: canonical synthesis of the March 2026 architecture reviews and live repo state
 
 ## Scope
@@ -142,6 +142,31 @@ Proof obligations:
 - `modify_code` succeeds or fails honestly on at least one production-style case
 - parameter-first fast paths no longer silently preempt structural repair
 - the regression suite can catch a future relapse back into parameter-tuning ruts
+
+## Phase 3.5: Scene Aesthetic Realism (Cross-Cutting) — IN PROGRESS
+
+Goal:
+- make scene look-dev, hero-object quality, mood, and material realism first-class in the pipeline
+
+Companion plan: `docs/reviews/2026-03/20260316_SCENE_AESTHETIC_REALISM_ACTION_PLAN.md`
+
+Completed (2026-03-16/17):
+- `StyleSpec` model added to `pipeline_models.py` with `to_script_constraints()` method
+- `extract_style_spec()` deterministic keyword extraction in `utils/prompt_enhancer.py`
+- `enhance_description()` zero-LLM-cost craft hint injection (fire, water, smoke, explosion, glass)
+- AgX color management + DOF + world gradient as mandatory look-dev floor in Script Writer instructions
+- `IssueKind` expanded: `materials`, `environment`, `composition` added, routed to `modify_code`
+- Code pattern tools (`search_code_patterns`, `get_pattern_code`) exposed to Script Writer
+- Structural pattern routing: patterns with ShaderNode/node_tree/modifiers go to Script Writer as code context, not flattened to scalar params
+- Visual craft reuse instructions added to Script Writer
+
+Remaining:
+- `hero_object` and `lookdev` IssueKind values
+- Visual pattern tagging system
+- Hero object refinement helper
+- Camera/readability decision enforcement
+- Quality Analyst aesthetic issue classification prompting
+- Aesthetic benchmark pack
 
 ## Phase 4: Make Evaluation and Learning Evidence Trustworthy
 

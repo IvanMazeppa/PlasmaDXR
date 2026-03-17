@@ -161,6 +161,53 @@ class RepairIntent(BaseModel):
 
 
 # =============================================================================
+# STYLE SPEC (Binding creative brief)
+# =============================================================================
+
+
+class StyleSpec(BaseModel):
+    """Structured creative brief carried through the pipeline.
+
+    Produced by prompt enhancement (deterministic or LLM-enriched) and consumed
+    by the Script Writer alongside TechniqueContract. The writer has creative
+    freedom WITHIN the style spec but should not contradict it.
+    """
+    setting: str = Field(default="", description="Physical setting/location (e.g., 'Victorian library at night')")
+    mood: str = Field(default="", description="Emotional/atmospheric quality (e.g., 'intimate, contemplative')")
+    palette: List[str] = Field(default_factory=list, description="Key colors (e.g., ['warm amber', 'deep brown', 'burgundy shadow'])")
+    camera_framing: str = Field(default="", description="Shot size and angle (e.g., 'tight close-up, slightly below eye level')")
+    camera_distance_class: str = Field(default="medium", description="macro | close | medium | wide | extreme_wide")
+    dof_intent: str = Field(default="shallow", description="Depth of field intent (e.g., 'shallow on hero, background soft')")
+    world_lighting_mode: str = Field(default="", description="dark_world_practicals | procedural_sky | env_texture | studio_cards")
+    hero_objects: List[str] = Field(default_factory=list, description="Objects needing full PBR finish (e.g., ['wine glass', 'brass holder'])")
+    hero_material_goals: List[str] = Field(default_factory=list, description="Material qualities for heroes (e.g., ['glass transmission IOR 1.5', 'aged brass roughness'])")
+    support_prop_budget: str = Field(default="minimal", description="How much set dressing: minimal | moderate | rich")
+    realism_target: str = Field(default="cinematic", description="cinematic | stylized | photoreal | previs")
+
+    def to_script_constraints(self) -> str:
+        """Render the style spec as structured constraints for the Script Writer."""
+        lines = [
+            "## STYLE SPEC (BINDING CREATIVE BRIEF — apply to your generated code)",
+        ]
+        if self.setting:
+            lines.append(f"Setting: {self.setting}")
+        if self.mood:
+            lines.append(f"Mood: {self.mood}")
+        if self.palette:
+            lines.append(f"Palette: {', '.join(self.palette)}")
+        if self.camera_framing:
+            lines.append(f"Camera: {self.camera_framing} | distance={self.camera_distance_class} | dof={self.dof_intent}")
+        if self.world_lighting_mode:
+            lines.append(f"World Lighting: {self.world_lighting_mode}")
+        if self.hero_objects:
+            lines.append(f"Hero Objects (need full PBR finish): {', '.join(self.hero_objects)}")
+        if self.hero_material_goals:
+            lines.append(f"Material Goals: {', '.join(self.hero_material_goals)}")
+        lines.append(f"Prop Budget: {self.support_prop_budget} | Realism: {self.realism_target}")
+        return "\n".join(lines)
+
+
+# =============================================================================
 # TECHNIQUE CONTRACT (Binding generation constraint)
 # =============================================================================
 

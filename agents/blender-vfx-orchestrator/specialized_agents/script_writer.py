@@ -51,6 +51,12 @@ from tools.semantic_docs_tools import (
     search_blender_api_by_intent,
 )
 
+# Import code pattern tools for visual craft reuse
+from tools.code_pattern_tools import (
+    search_code_patterns,
+    get_pattern_code,
+)
+
 # Import dynamic instructions for self-learning
 from tools.dynamic_instructions import (
     dynamic_script_writer_instructions,
@@ -135,8 +141,9 @@ class ScriptWriterAgent:
                 # Documentation search (verify API usage, find examples)
                 semantic_search_blender_docs,
                 search_blender_api_by_intent,
-                # NOTE: generate_script, list_techniques, recommend_technique REMOVED
-                # These used hardcoded templates - LLM now generates code directly
+                # Visual craft reuse (retrieve proven code patterns)
+                search_code_patterns,  # Find patterns by issue/effect type
+                get_pattern_code,      # Get full code for a specific pattern
             ],
         )
 

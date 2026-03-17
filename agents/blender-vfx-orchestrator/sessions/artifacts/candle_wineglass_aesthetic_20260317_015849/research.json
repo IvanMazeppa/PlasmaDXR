@@ -1,0 +1,50 @@
+{
+  "recommended_approach": "Mantaflow gas Domain + Flow source setup for fire, using a FLUID modifier on the source (fluid_type='FLOW', flow_type='BOTH') and a volume material on the domain for rendering.",
+  "key_parameters": {
+    "modifier.type": "FLUID",
+    "fluid_type": "FLOW",
+    "flow_settings.flow_type": "BOTH",
+    "FlameSource.radius": 0.25,
+    "FlameSource.location": [
+      0,
+      0,
+      0.3
+    ],
+    "SmokeSource.radius": 0.4,
+    "SmokeSource.location": [
+      0,
+      0,
+      0.8
+    ],
+    "volume_fields": [
+      "density",
+      "heat",
+      "velocity"
+    ]
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh.primitive_uv_sphere_add",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [
+    "Domain is required and defines the simulation volume and global simulation settings.",
+    "At least one Flow object is required per simulation.",
+    "The domain must have a material assigned for rendering.",
+    "Smoke can accumulate and fill the entire domain if not controlled.",
+    "OpenVDB export can fail or produce invalid output."
+  ],
+  "alternative_approaches": [
+    "Shader Nodes + Volume Components based flame lookdev instead of a full Mantaflow bake.",
+    "Principled/Shader Nodes based emissive-volume flame treatment for a close-up shot."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "physics/fluid/introduction.html",
+    "blender_manual_html/render/materials/components/volume.html#volume-components-",
+    "blender_manual_html/render/shader_nodes/shader/principled.html#inputs-",
+    "blender_manual_html/render/shader_nodes/index.html"
+  ],
+  "timestamp": "2026-03-17T02:00:14.458239"
+}

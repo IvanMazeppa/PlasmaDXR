@@ -599,6 +599,16 @@ class AssetRequest(BaseModel):
         description="Override initial parameters"
     )
 
+    # Aesthetic intent (populated by prompt enhancer)
+    style_spec: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="StyleSpec creative brief (serialized)"
+    )
+    enhanced_description: Optional[str] = Field(
+        default=None,
+        description="Description enriched with look-dev craft hints"
+    )
+
 
 # =============================================================================
 # SESSION STATE
@@ -727,6 +737,14 @@ class SessionState(BaseModel):
     technique_contract: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Active TechniqueContract (serialized). Binding constraints for script generation."
+    )
+    style_spec: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Active StyleSpec (serialized). Binding creative brief for script generation."
+    )
+    enhanced_prompt: str = Field(
+        default="",
+        description="Description enriched with look-dev craft hints."
     )
 
     # Phase 1.3: Pattern tracking
@@ -892,6 +910,10 @@ class SharedContext(BaseModel):
     pending_pattern_name: Optional[str] = Field(
         default=None,
         description="Pattern name that will be applied in this iteration"
+    )
+    structural_pattern_context: Optional[str] = Field(
+        default=None,
+        description="Full code snippet from a structural pattern for Script Writer to use as reference"
     )
 
     # Phase 1 Reliability: Truth Pack (deterministic API validation)

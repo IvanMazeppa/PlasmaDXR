@@ -110,11 +110,11 @@ This should not be the final metric system. It is a first pass so you can quickl
 
 This is the highest-leverage phase.
 
-### Task 1.1: Add `StyleSpec` to the schema layer
+### Task 1.1: Add `StyleSpec` to the schema layer — DONE (2026-03-16)
 
 File targets:
-- `models/pipeline_models.py`
-- `models/shared_context.py`
+- ~~`models/pipeline_models.py`~~ — `StyleSpec` class added with `to_script_constraints()` method
+- ~~`models/shared_context.py`~~ — `style_spec`, `enhanced_prompt`, `structural_pattern_context` fields added to `SessionState`; `style_spec`, `enhanced_description` fields added to `AssetRequest`
 
 Add a new artifact next to `TechniqueContract`, not instead of it:
 
@@ -165,11 +165,11 @@ class SharedContext(BaseModel):
     style_spec: Optional[Dict[str, Any]] = Field(default=None)
 ```
 
-### Task 1.2: Add prompt enhancement into the runtime
+### Task 1.2: Add prompt enhancement into the runtime — DONE (2026-03-16)
 
 File targets:
-- create `utils/prompt_enhancer.py`
-- update `orchestrator.py`
+- ~~create `utils/prompt_enhancer.py`~~ — created, deterministic keyword-based craft hints
+- ~~update `orchestrator.py`~~ — `enhance_description()` called before script writer prompt
 
 Do not wait for a full HITL integration to get value. Add a first-pass internal enrichment stage before research.
 
@@ -229,11 +229,11 @@ session.style_spec = enhanced.style_spec.model_dump()
 context.style_spec = enhanced.style_spec.model_dump()
 ```
 
-### Task 1.3: Inject `StyleSpec` into script generation
+### Task 1.3: Inject `StyleSpec` into script generation — DONE (2026-03-16)
 
 File targets:
-- `orchestrator.py`
-- `tools/dynamic_instructions.py`
+- ~~`orchestrator.py`~~ — `extract_style_spec()` called before script writer, `style_guidance` injected into prompt alongside `technique_guidance`
+- ~~`tools/dynamic_instructions.py`~~ — LOOK-DEV FLOOR section added (AgX, DOF, world gradient) + VISUAL CRAFT REUSE section
 
 Where `TechniqueContract` is already inserted, add `StyleSpec`:
 
@@ -264,10 +264,10 @@ Also add dynamic-instruction support so the writer sees this as a binding artifa
 
 This phase moves strong aesthetic knowledge onto the first-draft path.
 
-### Task 2.1: Expose visual pattern retrieval to the Script Writer
+### Task 2.1: Expose visual pattern retrieval to the Script Writer — DONE (2026-03-16)
 
 File target:
-- `specialized_agents/script_writer.py`
+- ~~`specialized_agents/script_writer.py`~~ — `search_code_patterns` and `get_pattern_code` added to agent tools list
 
 Add these tools to the writer:
 
@@ -350,10 +350,10 @@ if requested_tags:
     score += overlap * 15
 ```
 
-### Task 2.3: Stop routing structural code patterns through scalar patch logic
+### Task 2.3: Stop routing structural code patterns through scalar patch logic — DONE (2026-03-16)
 
 File target:
-- `orchestrator.py`
+- ~~`orchestrator.py`~~ — structural/parametric pattern split with `_STRUCTURAL_MARKERS` detection; structural patterns set `context.structural_pattern_context` for Script Writer; parametric patterns still use scalar extraction
 
 Current bad path:
 - search pattern
@@ -428,12 +428,12 @@ This can feed either:
 
 This is the phase that prevents many blockout-like scripts from surviving first draft.
 
-### Task 3.1: Add explicit color-management baseline
+### Task 3.1: Add explicit color-management baseline — DONE (2026-03-16)
 
 File target:
-- create `tools/lookdev_floor.py`
+- ~~create `tools/lookdev_floor.py`~~ — implemented in `SCRIPT_WRITER_BASE_INSTRUCTIONS` instead (simpler, same effect)
 
-Use Blender 5 guidance: prefer `AgX`, fallback safely if unavailable.
+Use Blender 5 guidance: prefer `AgX`, fallback safely if unavailable. **Implementation: AgX + DOF + world gradient added as mandatory look-dev floor in `tools/dynamic_instructions.py`.**
 
 ```python
 COLOR_MANAGEMENT_SNIPPET = '''
@@ -521,12 +521,13 @@ Hook this in right after `write_script` and before execution, similar to the API
 
 This is where you stop treating aesthetic failures as mostly parameter failures.
 
-### Task 4.1: Expand `IssueKind`
+### Task 4.1: Expand `IssueKind` — PARTIALLY DONE (2026-03-16)
 
 File target:
 - `models/pipeline_models.py`
 
-Change:
+**Done:** Added `materials`, `environment`, `composition`. All three route to `modify_code` in repair routing.
+**Remaining:** `hero_object` and `lookdev` not yet added (deferred until StyleSpec exists to provide context).
 
 ```python
 IssueKind = Literal[
@@ -567,12 +568,13 @@ CRITICAL: Use these issue kinds when applicable:
 - lookdev: color management, tone mapping, specular shaping, atmosphere depth
 ```
 
-### Task 4.3: Route these issue kinds to structural repair
+### Task 4.3: Route these issue kinds to structural repair — PARTIALLY DONE (2026-03-16)
 
 File target:
 - `phases/repair_routing.py`
 
-Change the classifier:
+**Done:** `materials`, `environment`, `composition` now route to `modify_code`. Repair routing updated.
+**Remaining:** `hero_object` and `lookdev` will be added when those IssueKind values are added.
 
 ```python
 if kind in ("structural", "camera", "lighting", "materials", "environment", "composition", "hero_object", "lookdev"):
@@ -676,12 +678,12 @@ Use this only for monitoring and regression detection at first.
 
 If you want the shortest path to visible improvement, do these in order:
 
-1. Add runtime prompt enhancement.
+1. ~~Add runtime prompt enhancement.~~ **DONE (2026-03-16)** — `utils/prompt_enhancer.py` created, deterministic keyword-based craft hints injected into script writer prompt. Zero LLM cost.
 2. Add `StyleSpec`.
 3. Expose `search_code_patterns` and `get_pattern_code` to the Script Writer.
 4. Stop flattening structural patterns into scalar parameter edits.
-5. Add explicit color-management baseline with Blender 5 `AgX` preference.
-6. Expand `IssueKind` and route aesthetic issues to `modify_code`.
+5. ~~Add explicit color-management baseline with Blender 5 `AgX` preference.~~ **DONE (2026-03-16)** — AgX + DOF + world lighting added to `SCRIPT_WRITER_BASE_INSTRUCTIONS` as mandatory look-dev floor.
+6. ~~Expand `IssueKind` and route aesthetic issues to `modify_code`.~~ **DONE (2026-03-16)** — Added `materials`, `environment`, `composition` to `IssueKind` Literal. Repair routing classifies all three as structural → `modify_code`. 480 tests pass.
 
 That subset should already improve:
 - mood fidelity
