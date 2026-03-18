@@ -1,0 +1,16 @@
+{
+  "iteration": 2,
+  "phase": "execute",
+  "strategy": "script_recovery_applied",
+  "instructions": [
+    "Regenerate/fix script via Script Writer with truth pack validation.",
+    "Preserve verified API usage; do not introduce new unverified attributes.",
+    "Re-run executor once with recovered script."
+  ],
+  "script_input_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/candle_wineglass_aesthetic_iter2_ripatch_api_fixed.py",
+  "script_output_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/candle_wineglass_aesthetic_iter2_ripatch_api_fixed_errfix.py",
+  "notes": [
+    "recovery_source=/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/candle_wineglass_aesthetic_20260318_032115/fix_iter2_execute.json"
+  ],
+  "timestamp": "2026-03-18T04:07:53.932064"
+}

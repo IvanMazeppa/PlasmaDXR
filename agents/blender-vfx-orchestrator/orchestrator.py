@@ -1762,11 +1762,8 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                         ):
                             print(f"[Pipeline] REPAIR INTENT → REQUEST GUIDANCE (escape level 4+)", file=sys.stderr)
                             # Set escape level to 4 to trigger HITL checkpoint
-                            try:
-                                from models.shared_context import EscapeLevel
-                                session.stuck_state.escape_level = EscapeLevel(4)
-                            except Exception:
-                                pass
+                            # EscapeLevel already imported at module level (line 151)
+                            session.stuck_state.escape_level = EscapeLevel(4)
                             # Fall through to Coordinator which will see escape level 4
 
                         # ====== PHASE 1.0.1: PATTERN APPLICATION (Phase 2 Self-Learning) ======

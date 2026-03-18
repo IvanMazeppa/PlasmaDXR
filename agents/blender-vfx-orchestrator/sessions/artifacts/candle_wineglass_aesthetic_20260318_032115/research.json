@@ -1,0 +1,40 @@
+{
+  "recommended_approach": "Mantaflow gas-domain fire with Principled Volume shading for the flame",
+  "key_parameters": {
+    "physics_system": "mantaflow",
+    "bpy.types.FluidDomainSettings.cache_directory": "/tmp/blender_cache",
+    "ShaderNodeVolumePrincipled.inputs['Density'].default_value": 5.0,
+    "Flow.Surface Emission": "dependent on domain resolution",
+    "bpy.types.ParticleSettings.render_type (alternative)": [
+      "HALO",
+      "OBJECT"
+    ]
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.types.ParticleSettings",
+    "bpy.ops.object.effector_add",
+    "bpy.types.ShaderNodeTexNoise"
+  ],
+  "warnings": [
+    "Use bpy.ops.object.effector_add() not bpy.ops.object.forcefield_add().",
+    "Flow 'Surface Emission' is dependent on domain resolution.",
+    "Applying modifiers with bpy.ops.object.modifier_apply requires the object to be active and in OBJECT mode.",
+    "Some search hits did not expose direct API doc refs for bpy.types.FluidDomainSettings or bpy.types.ParticleSettings, so manual/technique refs are doing most of the grounding.",
+    "Glass/reflection shots may need Cycles render optimization attention (see the Optimizing Renders reference)."
+  ],
+  "alternative_approaches": [
+    "Particle system Emitter using bpy.types.ParticleSettings with render_type='HALO' for billboard-style flame/spark sprites.",
+    "Particle system using render_type='OBJECT' to instance a small flame mesh for a lightweight close-up cheat instead of a full gas sim."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "blender_manual_html/render/shader_nodes/shader/principled.html#inputs-",
+    "blender_manual_html/render/cycles/optimizations/index.html",
+    "techniques/particles/overview",
+    "technique_mantaflow_export.md",
+    "flow.md"
+  ],
+  "timestamp": "2026-03-18T03:23:37.249287"
+}

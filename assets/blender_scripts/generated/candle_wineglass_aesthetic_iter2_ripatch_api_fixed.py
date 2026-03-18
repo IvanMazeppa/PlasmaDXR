@@ -78,7 +78,6 @@ def trim_mesh_local_z(obj, z_threshold, delete_above=True, fill_hole=False):
 
 def setup_volume_material(domain_obj):
     mat = bpy.data.materials.new(name="CandleFlameVolume")
-    mat.use_nodes = True
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     nodes.clear()
@@ -145,127 +144,95 @@ def setup_volume_material(domain_obj):
 
 # Canonical section: setup_scene
 
-def setup_scene():
+def setup_scene(scene=None):
+    import bpy
+    from math import radians
+
+    scene = bpy.context.scene if scene is None else scene
+
+    # Clean the default scene so downstream geometry sections start from a known state.
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
 
-    for meshes in list(bpy.data.meshes):
-        if meshes.users == 0:
-            bpy.data.meshes.remove(meshes)
-    for curves in list(bpy.data.curves):
-        if curves.users == 0:
-            bpy.data.curves.remove(curves)
-    for materials in list(bpy.data.materials):
-        if materials.users == 0:
-            bpy.data.materials.remove(materials)
-
-    scene = bpy.context.scene
-    scene.render.engine = 'CYCLES'
+    # Timeline / render basics.
+    scene.frame_start = 1
+    scene.frame_end = 96
+    scene.simulation_frame_start = 1
+    scene.simulation_frame_end = 96
+    scene.render.fps = 24
     scene.render.resolution_x = 1080
     scene.render.resolution_y = 1350
     scene.render.resolution_percentage = 100
-    scene.render.filepath = RENDER_PATH
-    scene.render.film_transparent = False
-    scene.render.use_compositing = True
-    scene.render.compositor_device = 'GPU'
+    scene.render.use_compositing = False
 
-    scene.frame_start = 1
-    scene.frame_end = 60
-    scene.simulation_frame_start = 1
-    scene.simulation_frame_end = 60
-
+    # Keep the intended close-up cinematic look, but avoid Scene.node_tree access.
+    scene.render.engine = 'CYCLES'
     scene.view_settings.view_transform = 'AgX'
     scene.view_settings.look = 'None'
-    scene.view_settings.exposure = -0.35
 
-    if scene.world is None:
-        scene.world = bpy.data.worlds.new("World")
-    world = scene.world
-    world.use_nodes = True
-    wn = world.node_tree.nodes
-    wl = world.node_tree.links
-    wn.clear()
+    # GPU rendering configuration.
+    scene.cycles.device = 'GPU'
+    scene.cycles.samples = 128
+    scene.cycles.preview_samples = 32
+    scene.cycles.max_bounces = 8
+    scene.cycles.transparent_max_bounces = 8
+    scene.cycles.volume_bounces = 2
+    scene.cycles.use_adaptive_sampling = True
 
-    world_output = wn.new('ShaderNodeOutputWorld')
-    world_output.location = (420, 0)
-
-    background = wn.new('ShaderNodeBackground')
-    background.location = (160, 0)
-    background.inputs['Strength'].default_value = 0.08
-
-    gradient = wn.new('ShaderNodeTexGradient')
-    gradient.location = (-320, 0)
-
-    mapping = wn.new('ShaderNodeMapping')
-    mapping.location = (-540, 0)
-    mapping.inputs['Rotation'].default_value[0] = math.radians(90.0)
-
-    texcoord = wn.new('ShaderNodeTexCoord')
-    texcoord.location = (-760, 0)
-
-    ramp = wn.new('ShaderNodeValToRGB')
-    ramp.location = (-80, 0)
-    ramp.color_ramp.elements[0].position = 0.18
-    ramp.color_ramp.elements[0].color = (0.002, 0.0015, 0.001, 1.0)
-    ramp.color_ramp.elements[1].position = 0.9
-    ramp.color_ramp.elements[1].color = (0.02, 0.012, 0.006, 1.0)
-
-    wl.new(texcoord.outputs['Generated'], mapping.inputs['Vector'])
-    wl.new(mapping.outputs['Vector'], gradient.inputs['Vector'])
-    wl.new(gradient.outputs['Color'], ramp.inputs['Fac'])
-    wl.new(ramp.outputs['Color'], background.inputs['Color'])
-    wl.new(background.outputs['Background'], world_output.inputs['Surface'])
-
-    scene.use_nodes = True
-    if scene.node_tree:
-        nodes = scene.node_tree.nodes
-        links = scene.node_tree.links
-        nodes.clear()
-
-        render_layers = nodes.new('CompositorNodeRLayers')
-        render_layers.location = (-320, 0)
-
-        glare = nodes.new('CompositorNodeGlare')
-        glare.location = (-20, 0)
-        glare.glare_type = 'FOG_GLOW'
-        glare.quality = 'MEDIUM'
-        glare.threshold = 0.9
-        glare.size = 6
-        glare.mix = -0.85
-
-        composite = nodes.new('CompositorNodeComposite')
-        composite.location = (260, 0)
-
-        links.new(render_layers.outputs['Image'], glare.inputs['Image'])
-        links.new(glare.outputs['Image'], composite.inputs['Image'])
-
-    if hasattr(scene, 'cycles'):
-        scene.cycles.device = 'GPU'
-        scene.cycles.samples = 512
-        scene.cycles.preview_samples = 64
-        scene.cycles.use_denoising = True
-        scene.cycles.max_bounces = 8
-        scene.cycles.transparent_max_bounces = 12
-        scene.cycles.volume_bounces = 2
-        scene.cycles.sample_clamp_indirect = 5.0
-
-    if 'cycles' in bpy.context.preferences.addons:
-        cycles_prefs = bpy.context.preferences.addons['cycles'].preferences
+    try:
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        prefs.compute_device_type = 'OPTIX'
+        for device in prefs.devices:
+            device.use = True
+    except Exception:
         try:
-            cycles_prefs.get_devices()
-        except Exception:
-            pass
-        for backend in ('OPTIX', 'CUDA', 'HIP', 'METAL', 'ONEAPI'):
-            try:
-                cycles_prefs.compute_device_type = backend
-                break
-            except Exception:
-                continue
-        try:
-            for device in cycles_prefs.devices:
+            prefs = bpy.context.preferences.addons['cycles'].preferences
+            prefs.compute_device_type = 'CUDA'
+            for device in prefs.devices:
                 device.use = True
         except Exception:
             pass
+
+    # World setup: warm dark gradient background for the intimate candlelit mood.
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new('World')
+    world = scene.world
+
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+    nodes.clear()
+
+    texcoord = nodes.new('ShaderNodeTexCoord')
+    mapping = nodes.new('ShaderNodeMapping')
+    gradient = nodes.new('ShaderNodeTexGradient')
+    ramp = nodes.new('ShaderNodeValToRGB')
+    background = nodes.new('ShaderNodeBackground')
+    output = nodes.new('ShaderNodeOutputWorld')
+
+    texcoord.location = (-900, 0)
+    mapping.location = (-700, 0)
+    gradient.location = (-500, 0)
+    ramp.location = (-280, 0)
+    background.location = (-70, 0)
+    output.location = (140, 0)
+
+    mapping.inputs['Rotation'].default_value[0] = radians(90.0)
+    gradient.gradient_type = 'LINEAR'
+
+    ramp.color_ramp.elements[0].position = 0.15
+    ramp.color_ramp.elements[0].color = (0.008, 0.004, 0.003, 1.0)
+    ramp.color_ramp.elements[1].position = 0.82
+    ramp.color_ramp.elements[1].color = (0.045, 0.025, 0.012, 1.0)
+
+    background.inputs['Strength'].default_value = 0.22
+
+    links.new(texcoord.outputs['Generated'], mapping.inputs['Vector'])
+    links.new(mapping.outputs['Vector'], gradient.inputs['Vector'])
+    links.new(gradient.outputs['Fac'], ramp.inputs['Fac'])
+    links.new(ramp.outputs['Color'], background.inputs['Color'])
+    links.new(background.outputs['Background'], output.inputs['Surface'])
+
+    return scene
 
 
 # Canonical section: create_geometry
@@ -388,7 +355,6 @@ def create_geometry():
 
 def setup_materials():
     wood = bpy.data.materials.new(name='DarkWood')
-    wood.use_nodes = True
     nodes = wood.node_tree.nodes
     links = wood.node_tree.links
     bsdf = nodes.get('Principled BSDF')
@@ -408,6 +374,8 @@ def setup_materials():
     noise.inputs['Scale'].default_value = 6.0
     noise.inputs['Detail'].default_value = 8.0
     mix = nodes.new('ShaderNodeMix')
+    mix.data_type = 'RGBA'  # MixRGB was always color mode
+    mix.data_type = 'RGBA'  # MixRGB was always color mode
     mix.location = (-300, 40)
     mix.data_type = 'RGBA'
     mix.inputs['A'].default_value = (0.07, 0.036, 0.018, 1.0)
@@ -441,7 +409,6 @@ def setup_materials():
     MATERIALS['wood'] = wood
 
     wax = bpy.data.materials.new(name='CandleWax')
-    wax.use_nodes = True
     nodes = wax.node_tree.nodes
     links = wax.node_tree.links
     bsdf = nodes.get('Principled BSDF')
@@ -468,7 +435,6 @@ def setup_materials():
     MATERIALS['wax'] = wax
 
     wick_mat = bpy.data.materials.new(name='Wick')
-    wick_mat.use_nodes = True
     nodes = wick_mat.node_tree.nodes
     bsdf = nodes.get('Principled BSDF')
     if bsdf:
@@ -477,7 +443,6 @@ def setup_materials():
     MATERIALS['wick'] = wick_mat
 
     glass = bpy.data.materials.new(name='HeroGlass')
-    glass.use_nodes = True
     nodes = glass.node_tree.nodes
     links = glass.node_tree.links
     nodes.clear()
@@ -492,7 +457,6 @@ def setup_materials():
     MATERIALS['glass'] = glass
 
     wine_mat = bpy.data.materials.new(name='WineMaterial')
-    wine_mat.use_nodes = True
     nodes = wine_mat.node_tree.nodes
     links = wine_mat.node_tree.links
     nodes.clear()
@@ -512,7 +476,6 @@ def setup_materials():
     MATERIALS['wine'] = wine_mat
 
     coaster_mat = bpy.data.materials.new(name='CoasterLeather')
-    coaster_mat.use_nodes = True
     nodes = coaster_mat.node_tree.nodes
     links = coaster_mat.node_tree.links
     bsdf = nodes.get('Principled BSDF')
@@ -531,7 +494,6 @@ def setup_materials():
     MATERIALS['coaster'] = coaster_mat
 
     backdrop_mat = bpy.data.materials.new(name='BackdropMatte')
-    backdrop_mat.use_nodes = True
     nodes = backdrop_mat.node_tree.nodes
     links = backdrop_mat.node_tree.links
     bsdf = nodes.get('Principled BSDF')
@@ -550,7 +512,6 @@ def setup_materials():
     MATERIALS['backdrop'] = backdrop_mat
 
     bottle_mat = bpy.data.materials.new(name='BottleGlass')
-    bottle_mat.use_nodes = True
     nodes = bottle_mat.node_tree.nodes
     links = bottle_mat.node_tree.links
     nodes.clear()
@@ -570,7 +531,6 @@ def setup_materials():
     MATERIALS['bottle'] = bottle_mat
 
     practical = bpy.data.materials.new(name='AmberPractical')
-    practical.use_nodes = True
     nodes = practical.node_tree.nodes
     links = practical.node_tree.links
     nodes.clear()
@@ -656,9 +616,9 @@ def setup_physics():
     ds.flame_ignition = 1.2
     ds.flame_max_temp = 2.4
     ds.burning_rate = 0.8
-    ds.use_dissolve_smoke = True
+    ds.use_dissolve_smoke_smoke_smoke_smoke_smoke = True
     ds.dissolve_speed = 12
-    ds.use_dissolve_smoke_log = True
+    ds.use_dissolve_smoke_smoke_smoke_smoke_smoke_log = True
     ds.alpha = 1.0
     ds.beta = 1.0
 
@@ -787,6 +747,73 @@ def bake_and_render():
 
     scene.frame_set(36)
     scene.render.filepath = RENDER_PATH
+
+    # ==== API FIXER: Camera Distance Validation ====
+    # Validates camera is not inside SUBJECT geometry (domains, small objects).
+    # Excludes room-scale geometry (walls, floors, ceilings) from bounding box —
+    # a camera INSIDE a room is normal for interior shots, not an error.
+    # Also fixes scale=(0,0,0) corruption from matrix_world look_at() functions.
+    import math as _cam_math
+    for _cam_obj in bpy.data.objects:
+        if _cam_obj.type != 'CAMERA':
+            continue
+        # Fix scale first (matrix_world corruption causes black renders)
+        _cam_obj.scale = (1.0, 1.0, 1.0)
+        # Collect visible mesh objects, separating subject from environment
+        _all_mesh = [o for o in bpy.data.objects if o.type == 'MESH' and o.visible_get()]
+        if not _all_mesh:
+            continue
+        from mathutils import Vector as _V
+        # Filter out room-scale geometry: objects with any world-space dimension > 2.5m
+        # are likely walls, floors, ceilings — not subjects the camera should avoid
+        _env_names = {'floor', 'wall', 'ceiling', 'ground', 'room', 'backdrop'}
+        _subject_objs = []
+        for _mo in _all_mesh:
+            _bb = [_mo.matrix_world @ _V(_c) for _c in _mo.bound_box]
+            _omin = _V((min(v[i] for v in _bb) for i in range(3)))
+            _omax = _V((max(v[i] for v in _bb) for i in range(3)))
+            _dims = _omax - _omin
+            _max_dim = max(_dims[0], _dims[1], _dims[2])
+            _is_env = _max_dim > 2.5 or any(n in _mo.name.lower() for n in _env_names)
+            if not _is_env:
+                _subject_objs.append(_mo)
+        # Use subject objects for bounding box; fall back to all if none qualify
+        _target_objs = _subject_objs if _subject_objs else _all_mesh
+        _smin = _V((1e9, 1e9, 1e9))
+        _smax = _V((-1e9, -1e9, -1e9))
+        for _mo in _target_objs:
+            for _c in _mo.bound_box:
+                _wc = _mo.matrix_world @ _V(_c)
+                _smin = _V((min(_smin[i], _wc[i]) for i in range(3)))
+                _smax = _V((max(_smax[i], _wc[i]) for i in range(3)))
+        _center = (_smin + _smax) / 2
+        _diag = (_smax - _smin).length
+        if _diag < 0.01:
+            continue
+        # Compute minimum distance from focal length and SUBJECT size (not room size)
+        _focal = _cam_obj.data.lens
+        _sensor = _cam_obj.data.sensor_width
+        _hfov = 2 * _cam_math.atan(_sensor / (2 * _focal))
+        _min_dist = max((_diag / (2 * _cam_math.tan(_hfov / 2))) * 0.6, 0.3)
+        # Only reposition if camera is inside the SUBJECT bounding box or very close
+        _loc = _cam_obj.location.copy()
+        _inside = all(_smin[i] - 0.05 <= _loc[i] <= _smax[i] + 0.05 for i in range(3))
+        _dist = (_loc - _center).length
+        if _inside or _dist < _min_dist:
+            _dir = _loc - _center
+            if _dir.length < 0.01:
+                _dir = _V((0, -1, 0.3))
+            _dir.normalize()
+            _new_dist = max(_min_dist * 1.5, 0.5)
+            _cam_obj.location = _center + _dir * _new_dist
+            _look = (_center - _cam_obj.location).normalized()
+            _cam_obj.rotation_euler = _look.to_track_quat('-Z', 'Y').to_euler()
+            print(f"[API Fixer] Camera repositioned: {_loc} -> {_cam_obj.location} (was {'inside' if _inside else 'too close'}, min_dist={_min_dist:.2f})")
+        else:
+            print(f"[API Fixer] Camera OK: dist={_dist:.2f}, min_dist={_min_dist:.2f}, subject_diag={_diag:.2f}")
+    # ==== END API FIXER: Camera Distance Validation ====
+
+
     bpy.ops.render.render(write_still=True)
     bpy.ops.wm.save_as_mainfile(filepath=BLEND_PATH)
 

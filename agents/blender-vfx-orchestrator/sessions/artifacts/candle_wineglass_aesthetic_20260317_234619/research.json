@@ -1,0 +1,53 @@
+{
+  "recommended_approach": "Basic single-emitter Mantaflow GAS fire/smoke setup: one Flow object for the candle flame inside a Gas Domain, rendered as a volume using the domain\u2019s fire fields.",
+  "key_parameters": {
+    "physics_system": "mantaflow",
+    "domain_type": "GAS",
+    "domain_fields": {
+      "density": "use for rendering/shading the gas concentration field",
+      "heat": "use for temperature/energy-driven fire appearance",
+      "velocity": "use for fluid motion/advection"
+    },
+    "particle_alternative_parameters": {
+      "settings.type": "EMITTER",
+      "settings.count": 500,
+      "settings.frame_start": 1,
+      "settings.frame_end": 50,
+      "settings.lifetime": 30
+    },
+    "setup_requirements": {
+      "Domain": "required simulation volume",
+      "Flow": "at least one required emitter",
+      "Effector": "optional influencer object",
+      "domain_material": "domain must have a material assigned for rendering"
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.data.objects",
+    "bpy.types.Mesh"
+  ],
+  "warnings": [
+    "Flow objects must be contained within the Domain bounding box to affect the simulation.",
+    "The Domain must have a material assigned for rendering.",
+    "The Domain auto-creates some smoke when fire emission is used.",
+    "Smoke can accumulate and fill the whole domain; the available fire pattern library suggests a multi-flow setup with dissolve as a fix path."
+  ],
+  "alternative_approaches": [
+    "Emitter Particle System for a lighter-weight or stylized candle flame pass (`settings.type = 'EMITTER'`, `count = 500`, `frame_start = 1`, `frame_end = 50`, `lifetime = 30`).",
+    "Multi-Flow Domain (GAS) for separate control of flame and smoke behavior, especially if smoke handling becomes the main issue.",
+    "Volume-shader-driven rendering workflow using Volume Components and Principled shader inputs instead of relying only on the default fluid look."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "physics/fluid/type/flow.html",
+    "blender_manual_html/physics/fluid/type/flow.html#settings-",
+    "blender_manual_html/render/materials/components/volume.html#volume-components-",
+    "blender_manual_html/render/shader_nodes/shader/principled.html#inputs-",
+    "techniques/mantaflow/advanced_overview",
+    "techniques/particles/emitter_effects"
+  ],
+  "timestamp": "2026-03-17T23:47:40.708881"
+}

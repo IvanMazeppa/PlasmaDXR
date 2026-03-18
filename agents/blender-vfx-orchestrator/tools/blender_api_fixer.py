@@ -188,8 +188,9 @@ while len(\1) > 1:
     ),
 
     # FluidDomainSettings.use_dissolve does NOT EXIST - correct is use_dissolve_smoke
+    # Negative lookahead prevents matching use_dissolve_smoke (already correct)
     (
-        r"\.use_dissolve\s*=",
+        r"\.use_dissolve(?!_smoke)\s*=",
         r".use_dissolve_smoke =",
         "use_dissolve → use_dissolve_smoke (typo fix)"
     ),

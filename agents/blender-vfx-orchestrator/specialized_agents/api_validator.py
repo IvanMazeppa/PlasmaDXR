@@ -564,6 +564,9 @@ def validate_api_call_against_docs(api_call: str) -> str:
     # First check known issues (high confidence)
     for pattern, fix in KNOWN_API_CHANGES.items():
         if pattern in api_call:
+            # Skip if correction already present (prevents cascading replacements)
+            if fix["correction"] in api_call:
+                continue
             return json.dumps({
                 "api_call": api_call,
                 "is_valid": False,
@@ -794,6 +797,10 @@ async def validate_code_api(code: str) -> CodeValidationResult:
         # Check known issues
         for pattern, fix in KNOWN_API_CHANGES.items():
             if pattern in call:
+                # Skip if correction already present (prevents cascading e.g.
+                # use_dissolve matching inside use_dissolve_smoke)
+                if fix["correction"] in call:
+                    continue
                 corrected = call.replace(pattern, fix["correction"])
                 validation = APICallValidation(
                     api_call=call,

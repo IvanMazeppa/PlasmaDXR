@@ -1,0 +1,24 @@
+{
+  "session_id": "candle_wineglass_aesthetic_20260317_234619",
+  "iteration": 1,
+  "overall_score": 24.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Fix camera focus first: reduce DOF blur, stop down the aperture, and place focus on the flame or the near rim of the glass so at least one key subject is crisp.",
+    "Increase render quality with higher samples and careful denoising; the current noise level reads as under-sampled rather than atmospheric.",
+    "Build a clearly readable candle setup: visible wax body, wick, and a teardrop flame with a bright core and softer orange outer glow instead of a clipped white blob.",
+    "Control highlight clipping by lowering flame emission / bloom / glare so the flame keeps shape and does not wash out nearby detail.",
+    "Make the wine glass easier to read by tweaking the glass shader: line 515 Roughness 0.005 -> about 0.015-0.03 for broader readable highlights; line 518 Absorption Density 0.04 -> about 0.01-0.02; line 517 absorption color closer to neutral to avoid the slight green cast.",
+    "Reduce ambient fill so the candle becomes the clear motivator: line 202 background Strength 0.16 -> about 0.05-0.08, then add or preserve subtle warm bounce on the table and glass.",
+    "If the tabletop shader is present, enlarge and simplify the close-up wood pattern so it reads on camera: line 388 Scale 6.0 -> 3.0-4.0, line 391 Scale 85.0 -> 40.0-60.0, and line 442 Mapping Scale (5,5,14) -> roughly (3,3,8-10).",
+    "Reframe or reposition objects so the candle body, flame, and at least the bowl/rim of the wine glass are simultaneously legible in the close-up."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 2313.955079363999,
+  "utility_score": 0.37,
+  "timestamp": "2026-03-18T00:24:52.866396"
+}

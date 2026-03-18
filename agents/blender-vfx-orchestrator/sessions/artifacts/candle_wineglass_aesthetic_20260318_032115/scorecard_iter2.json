@@ -1,0 +1,24 @@
+{
+  "session_id": "candle_wineglass_aesthetic_20260318_032115",
+  "iteration": 2,
+  "overall_score": 24.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Increase render samples dramatically and use stronger detail-preserving denoising; this is the first fix before judging materials or lighting.",
+    "Reduce flame brightness/exposure by roughly 1-2 stops so the flame keeps a defined core and warm falloff instead of clipping.",
+    "Rework scene setup so the candle body/wick, wine glass silhouette, and tabletop are all readable in the frame.",
+    "Tighten camera framing and depth of field so at least the candle or wine glass is clearly in focus for the intended intimate close-up.",
+    "Add controlled specular/refraction cues on the wine glass so it unmistakably reads as glass under candlelight.",
+    "Preserve highlight detail with tone-mapping/exposure control; review AgX/look behavior around lines 170-171 rather than letting the hotspot blow out.",
+    "If the table shader is driven by lines 365-383, simplify the procedural breakup and tune scale/distortion so wood grain reads naturally under low light.",
+    "If the candle wax shader is driven by lines 417-421, increase surface readability only after noise is fixed; wax detail is currently lost in the grain."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 2170.6548631630003,
+  "utility_score": 0.37,
+  "timestamp": "2026-03-18T04:10:39.188393"
+}

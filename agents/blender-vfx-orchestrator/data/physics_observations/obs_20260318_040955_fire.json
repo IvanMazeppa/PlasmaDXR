@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-03-18T04:09:55.670581",
+  "effect_type": "fire",
+  "observation": "The candle flame does not resolve as a coherent small flame; it appears as an overexposed diffuse hotspot with weak physical readability.",
+  "expected_behavior": "A candle render should show a compact flame with identifiable shape, warm falloff, and believable illumination on nearby objects like the wine glass and table.",
+  "actual_behavior": "The brightest region is clipped and blob-like, while surrounding scene elements remain too noisy and indistinct to read as physically lit by a candle.",
+  "suspected_parameters": {
+    "flame_emission_strength": "unknown/high",
+    "render_samples": "unknown/too_low",
+    "denoising": "unknown/insufficient",
+    "tone_mapping": "view_transform AgX line 170 may need highlight control"
+  },
+  "severity": "high",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/candle_wineglass_aesthetic/candle_wineglass_aesthetic.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/candle_wineglass_aesthetic_iter2_ripatch_api_fixed.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

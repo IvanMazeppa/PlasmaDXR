@@ -1,0 +1,15 @@
+Whisper Service Configuration
+========================================
+
+Current Settings:
+  Model: base
+  Port: 2022
+  Language: auto
+  Model Path: /home/maz3ppa/.voicemode/services/whisper/models
+  Endpoint: http://127.0.0.1:2022/v1
+
+Environment Variables:
+  VOICEMODE_WHISPER_MODEL: [not set]
+  VOICEMODE_WHISPER_PORT: [not set]
+  VOICEMODE_WHISPER_LANGUAGE: [not set]
+  VOICEMODE_WHISPER_MODEL_PATH: [not set]
