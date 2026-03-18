@@ -660,17 +660,29 @@ Return QualityOutput with:
 - vision_assessment: Detailed visual description
 - structured_issues: **MANDATORY when passed=False.** For EACH issue, emit a QualityIssue:
   - summary: concise description of the problem
-  - kind: "parameter" | "structural" | "technique" | "camera" | "lighting"
+  - kind: one of the following categories:
     - parameter: tunable values (density, intensity, color temperature, etc.)
     - structural: wrong geometry, missing objects, wrong arrangement, scene setup errors
     - technique: fundamental approach is wrong for the desired effect
     - camera: framing, angle, FOV issues
     - lighting: light placement, type, or count issues
+    - materials: shader graph errors, wrong roughness/IOR, missing PBR channels
+    - environment: world/background setup, atmosphere, mood context
+    - composition: scene layout, prop placement, visual balance
+    - hero_object: hero geometry is too primitive, lacks refinement, faceted/blocky/low-detail
+    - lookdev: flat/sterile look, tone-mapping failure, missing color management, no visual warmth
   - repair_mode_hint: "modify_params" | "modify_code" | "switch_technique"
     - modify_params: issue can be fixed by changing parameter values only
     - modify_code: issue requires changing script structure, geometry, materials, or scene setup
     - switch_technique: the fundamental physics approach is wrong
-  - target: section or parameter name if known (e.g. "setup_domain", "flame_smoke", "camera.location")
+  - target: canonical section name to repair. Use these section names:
+    - "create_geometry" for hero_object issues (blocky, primitive, missing refinement)
+    - "setup_materials" for materials and lookdev issues (flat shaders, wrong PBR)
+    - "setup_scene" for environment issues (empty world, no atmosphere)
+    - "setup_lighting" for lighting issues (no key light, wrong mood)
+    - "setup_camera" for camera and composition issues (wrong framing, flat angle)
+    - "setup_physics" for physics parameter issues
+    - "bake_and_render" for render settings issues
   - confidence: 0.0-1.0
 
 **CRITICAL:** If passed=False, structured_issues MUST contain at least one entry.

@@ -446,5 +446,180 @@ async def get_effective_modification_for_issue(
     }, indent=2)
 
 
+# =============================================================================
+# LOOK-DEV COVERAGE METRICS (Task 2: deterministic script-level richness)
+# =============================================================================
+
+
+@dataclass
+class LookDevCoverage:
+    """Deterministic look-dev coverage metrics for a Blender script.
+
+    Measures scene richness at the script level without LLM cost.
+    """
+    # Color management
+    has_color_management: bool = False  # AgX, Filmic, or explicit view_transform
+    color_management_type: str = ""
+
+    # Depth of field
+    has_dof: bool = False
+
+    # World/background strategy
+    has_world_setup: bool = False  # Any world node tree or background color
+    world_strategy: str = ""  # "procedural_sky" | "env_texture" | "dark_world" | "gradient" | ""
+
+    # Materials
+    material_count: int = 0
+    principled_bsdf_count: int = 0
+    has_transmission: bool = False  # Glass/liquid/SSS
+    has_roughness_variation: bool = False  # Multiple roughness values
+
+    # Hero object refinement
+    modifier_count: int = 0  # Subdivision, bevel, solidify, etc.
+    has_subdivision: bool = False
+    has_bevel: bool = False
+    has_solidify: bool = False
+
+    # Atmosphere / volume
+    has_atmosphere: bool = False  # Volume scatter in world or standalone volume
+
+    # Lighting
+    light_count: int = 0
+    light_types: List[str] = field(default_factory=list)  # POINT, SUN, AREA, SPOT
+
+    # Summary score (0-100, rough proxy for script richness)
+    coverage_score: float = 0.0
+
+
+def compute_lookdev_coverage(script_path: str) -> LookDevCoverage:
+    """Compute deterministic look-dev coverage metrics from a script file.
+
+    No LLM cost — pure regex/string analysis of the Python source.
+    """
+    path = Path(script_path)
+    if not path.exists():
+        return LookDevCoverage()
+
+    content = path.read_text()
+    c = content.lower()
+    cov = LookDevCoverage()
+
+    # -- Color management --
+    for cm_type in ("agx", "filmic", "khronos pbr neutral"):
+        if cm_type in c:
+            cov.has_color_management = True
+            cov.color_management_type = cm_type
+            break
+    if "view_transform" in c:
+        cov.has_color_management = True
+        if not cov.color_management_type:
+            cov.color_management_type = "custom"
+
+    # -- DOF --
+    cov.has_dof = "use_dof" in c and ("true" in c[c.index("use_dof"):c.index("use_dof") + 30] if "use_dof" in c else False)
+    if not cov.has_dof:
+        cov.has_dof = bool(re.search(r"\.use_dof\s*=\s*True", content))
+
+    # -- World setup --
+    if "world" in c and ("node_tree" in c or "background" in c or "use_nodes" in c):
+        cov.has_world_setup = True
+    if "sky_texture" in c or "ShaderNodeTexSky" in content:
+        cov.world_strategy = "procedural_sky"
+    elif "environment_texture" in c or "ShaderNodeTexEnvironment" in content:
+        cov.world_strategy = "env_texture"
+    elif re.search(r"world.*color.*=.*\(\s*0", content):
+        cov.world_strategy = "dark_world"
+    elif "colorramp" in c and "world" in c:
+        cov.world_strategy = "gradient"
+    if cov.world_strategy:
+        cov.has_world_setup = True
+
+    # -- Materials --
+    cov.material_count = len(re.findall(r"bpy\.data\.materials\.new\(", content))
+    cov.principled_bsdf_count = len(re.findall(r"ShaderNodeBsdfPrincipled|Principled BSDF", content))
+    cov.has_transmission = bool(re.search(r"Transmission Weight|transmission|\.ior\s*=|IOR", content, re.IGNORECASE))
+    roughness_values = re.findall(r"roughness.*?=\s*([0-9.]+)", c)
+    if len(set(roughness_values)) > 1:
+        cov.has_roughness_variation = True
+
+    # -- Modifiers (hero object refinement) --
+    modifier_types = re.findall(r"type\s*=\s*['\"](\w+)['\"]", content)
+    refinement_mods = {"SUBSURF", "BEVEL", "SOLIDIFY", "SMOOTH", "EDGE_SPLIT", "WEIGHTED_NORMAL", "REMESH"}
+    for mt in modifier_types:
+        if mt in refinement_mods:
+            cov.modifier_count += 1
+    cov.has_subdivision = "SUBSURF" in content
+    cov.has_bevel = "BEVEL" in content or "bevel" in c
+    cov.has_solidify = "SOLIDIFY" in content
+
+    # -- Atmosphere --
+    cov.has_atmosphere = bool(
+        re.search(r"ShaderNodeVolumeScatter|Volume Scatter|volume_scatter", content)
+        or re.search(r"ShaderNodeVolumePrincipled|Principled Volume", content)
+    )
+
+    # -- Lighting --
+    light_matches = re.findall(r"type\s*=\s*['\"](\w+)['\"]", content)
+    for lt in ("POINT", "SUN", "AREA", "SPOT"):
+        count = light_matches.count(lt)
+        if count > 0:
+            cov.light_count += count
+            cov.light_types.append(lt)
+
+    # -- Coverage score (weighted proxy) --
+    score = 0.0
+    if cov.has_color_management:
+        score += 15
+    if cov.has_dof:
+        score += 10
+    if cov.has_world_setup:
+        score += 10
+    if cov.world_strategy:
+        score += 5
+    if cov.material_count >= 2:
+        score += 10
+    elif cov.material_count >= 1:
+        score += 5
+    if cov.has_transmission:
+        score += 5
+    if cov.has_roughness_variation:
+        score += 5
+    if cov.modifier_count >= 2:
+        score += 15
+    elif cov.modifier_count >= 1:
+        score += 10
+    if cov.has_atmosphere:
+        score += 10
+    if cov.light_count >= 3:
+        score += 15
+    elif cov.light_count >= 2:
+        score += 10
+    elif cov.light_count >= 1:
+        score += 5
+    cov.coverage_score = min(100.0, score)
+
+    return cov
+
+
+@function_tool
+async def compute_lookdev_coverage_tool(script_path: str) -> str:
+    """Compute deterministic look-dev coverage metrics for a Blender script.
+
+    Returns coverage metrics including: color management, DOF, world strategy,
+    material count, hero object refinement (modifiers), atmosphere presence,
+    and lighting. Also returns a coverage_score (0-100) as a richness proxy.
+
+    Zero LLM cost — pure static analysis.
+
+    Args:
+        script_path: Absolute path to the Blender Python script
+
+    Returns:
+        JSON with look-dev coverage metrics
+    """
+    cov = compute_lookdev_coverage(script_path)
+    return json.dumps(asdict(cov), indent=2)
+
+
 # For direct import in orchestrator
 analyze_script_structure_impl = analyze_script_structure

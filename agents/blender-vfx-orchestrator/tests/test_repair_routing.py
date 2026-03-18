@@ -206,3 +206,69 @@ def test_repairintent_model_fields():
     d = intent.model_dump()
     assert d["mode"] == "modify_code"
     assert d["target_sections"] == ["setup_geometry"]
+
+
+# ---- hero_object and lookdev issue kinds ----
+
+def test_hero_object_routes_to_modify_code():
+    """hero_object issues should route to modify_code with create_geometry target."""
+    q = _make_quality(
+        structured_issues=[
+            QualityIssue(
+                summary="Wine glass is a basic cylinder, no refinement",
+                kind="hero_object",
+                repair_mode_hint="modify_code",
+                target="create_geometry",
+                confidence=0.9,
+            ),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "modify_code"
+    assert intent.trigger == "structured_issues_structural_majority"
+
+
+def test_lookdev_routes_to_modify_code():
+    """lookdev issues should route to modify_code with setup_materials target."""
+    q = _make_quality(
+        structured_issues=[
+            QualityIssue(
+                summary="Scene looks sterile, no color management, flat tone mapping",
+                kind="lookdev",
+                repair_mode_hint="modify_code",
+                target="setup_materials",
+                confidence=0.85,
+            ),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "modify_code"
+    assert intent.trigger == "structured_issues_structural_majority"
+
+
+def test_hero_object_and_lookdev_both_count_structural():
+    """Multiple aesthetic issues should accumulate as structural."""
+    q = _make_quality(
+        structured_issues=[
+            QualityIssue(summary="Blocky hero", kind="hero_object", repair_mode_hint="modify_code", confidence=0.9),
+            QualityIssue(summary="Flat look", kind="lookdev", repair_mode_hint="modify_code", confidence=0.8),
+            QualityIssue(summary="Too dark", kind="parameter", repair_mode_hint="modify_params", confidence=0.6),
+        ],
+    )
+    intent = choose_repair_intent(q, "", plateau_count=0, same_issue_count=0, iteration=1)
+    assert intent.mode == "modify_code"
+    assert intent.trigger == "structured_issues_structural_majority"
+
+
+def test_hero_object_issue_kind_validates():
+    """hero_object and lookdev should be valid IssueKind values."""
+    issue_hero = QualityIssue(
+        summary="Primitive geometry", kind="hero_object",
+        repair_mode_hint="modify_code", confidence=0.9,
+    )
+    issue_lookdev = QualityIssue(
+        summary="Sterile look", kind="lookdev",
+        repair_mode_hint="modify_code", confidence=0.8,
+    )
+    assert issue_hero.kind == "hero_object"
+    assert issue_lookdev.kind == "lookdev"

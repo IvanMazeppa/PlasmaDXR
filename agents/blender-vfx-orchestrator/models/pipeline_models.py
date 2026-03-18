@@ -76,6 +76,7 @@ class ExecutionOutput(BaseModel):
 IssueKind = Literal[
     "parameter", "structural", "technique", "camera", "lighting",
     "materials", "environment", "composition",
+    "hero_object", "lookdev",
 ]
 RepairModeHint = Literal["modify_params", "modify_code", "switch_technique"]
 
@@ -85,7 +86,7 @@ class QualityIssue(BaseModel):
     summary: str = Field(description="Concise issue description")
     kind: IssueKind = Field(
         description="Issue category: parameter, structural, technique, camera, lighting, "
-        "materials, environment, composition"
+        "materials, environment, composition, hero_object, lookdev"
     )
     repair_mode_hint: RepairModeHint = Field(description="Suggested repair: modify_params, modify_code, switch_technique")
     target: Optional[str] = Field(default=None, description="Target section or parameter")

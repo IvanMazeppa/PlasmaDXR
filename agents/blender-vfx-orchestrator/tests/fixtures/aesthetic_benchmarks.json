@@ -1,0 +1,127 @@
+{
+  "version": "1.0",
+  "created": "2026-03-18",
+  "purpose": "Fixed prompt pack for measuring visual quality improvements. Run before and after changes to compare scores.",
+  "benchmarks": [
+    {
+      "id": "bench_tabletop_glass",
+      "prompt": "A crystal wine glass on a dark marble table, dramatic side lighting, macro close-up",
+      "effect_type": "none",
+      "category": "tabletop_glass",
+      "expected_hero_objects": ["wine glass"],
+      "expected_materials": ["glass_transmission", "marble"],
+      "expected_lookdev": ["color_management", "dof", "dark_world_practicals"],
+      "camera_distance": "close",
+      "difficulty": "medium",
+      "notes": "Tests hero geometry refinement (glass needs bevels, thickness) and material quality (IOR, roughness variation)"
+    },
+    {
+      "id": "bench_candlelit_macro",
+      "prompt": "A brass candle holder with a lit candle on a wooden shelf, warm amber glow, intimate close-up",
+      "effect_type": "fire",
+      "category": "candlelit_macro",
+      "expected_hero_objects": ["candle holder", "candle"],
+      "expected_materials": ["brass_metal", "wax", "wood"],
+      "expected_lookdev": ["color_management", "dof", "warm_palette"],
+      "camera_distance": "close",
+      "difficulty": "medium",
+      "notes": "Tests fire VFX + hero geometry + warm look-dev. The candle_wineglass test prompt is a superset of this."
+    },
+    {
+      "id": "bench_cloth_drape",
+      "prompt": "A silk scarf draped over a polished wooden chair, soft natural light from a window",
+      "effect_type": "cloth",
+      "category": "cloth",
+      "expected_hero_objects": ["scarf", "chair"],
+      "expected_materials": ["silk_fabric", "polished_wood"],
+      "expected_lookdev": ["color_management", "environment_lighting", "dof"],
+      "camera_distance": "medium",
+      "difficulty": "hard",
+      "notes": "Tests cloth physics + hero refinement for both fabric and furniture"
+    },
+    {
+      "id": "bench_window_glass",
+      "prompt": "Rain running down a frosted window pane, city lights blurred in the background, moody blue tones",
+      "effect_type": "water",
+      "category": "window_glass",
+      "expected_hero_objects": ["window_pane"],
+      "expected_materials": ["frosted_glass", "water_droplets"],
+      "expected_lookdev": ["color_management", "dof", "dark_world", "atmosphere"],
+      "camera_distance": "close",
+      "difficulty": "hard",
+      "notes": "Tests liquid VFX on glass surface + environment mood + atmosphere"
+    },
+    {
+      "id": "bench_atmospheric_interior",
+      "prompt": "Dusty sunbeams streaming through a barn window, hay bales on the floor, rustic atmosphere",
+      "effect_type": "smoke",
+      "category": "atmospheric_interior",
+      "expected_hero_objects": ["barn_window", "hay_bales"],
+      "expected_materials": ["wood", "hay_straw"],
+      "expected_lookdev": ["volumetric_atmosphere", "color_management", "warm_palette"],
+      "camera_distance": "wide",
+      "difficulty": "hard",
+      "notes": "Tests volumetric atmosphere + environment building + multiple props"
+    },
+    {
+      "id": "bench_product_closeup",
+      "prompt": "A ceramic coffee mug on a concrete countertop, studio lighting, clean white background",
+      "effect_type": "none",
+      "category": "product_closeup",
+      "expected_hero_objects": ["coffee_mug"],
+      "expected_materials": ["ceramic_glaze", "concrete"],
+      "expected_lookdev": ["studio_lighting", "color_management", "clean_background"],
+      "camera_distance": "close",
+      "difficulty": "easy",
+      "notes": "Simplest benchmark — pure geometry + material + lighting quality. No physics."
+    },
+    {
+      "id": "bench_explosion_midrange",
+      "prompt": "A small explosion on a rocky desert floor, dust and debris flying, golden hour light",
+      "effect_type": "explosion",
+      "category": "explosion",
+      "expected_hero_objects": ["explosion_source"],
+      "expected_materials": ["rock", "dust"],
+      "expected_lookdev": ["color_management", "atmosphere", "warm_palette"],
+      "camera_distance": "medium",
+      "difficulty": "medium",
+      "notes": "Core VFX benchmark — Mantaflow gas simulation quality"
+    },
+    {
+      "id": "bench_campfire_night",
+      "prompt": "A campfire with crackling flames surrounded by stones, night sky, warm orange glow on surrounding grass",
+      "effect_type": "fire",
+      "category": "campfire",
+      "expected_hero_objects": ["fire_pit", "stones"],
+      "expected_materials": ["stone", "grass", "ember"],
+      "expected_lookdev": ["dark_world_practicals", "color_management", "warm_palette"],
+      "camera_distance": "medium",
+      "difficulty": "medium",
+      "notes": "Fire VFX + environment building + practical lighting from the fire itself"
+    },
+    {
+      "id": "bench_water_pour",
+      "prompt": "Water being poured from a glass pitcher into a crystal tumbler, bright kitchen, shallow depth of field",
+      "effect_type": "water",
+      "category": "water_pour",
+      "expected_hero_objects": ["pitcher", "tumbler"],
+      "expected_materials": ["glass_transmission", "water"],
+      "expected_lookdev": ["color_management", "dof", "bright_environment"],
+      "camera_distance": "close",
+      "difficulty": "hard",
+      "notes": "Liquid VFX + two glass hero objects + environment lighting"
+    },
+    {
+      "id": "bench_shatter_bottle",
+      "prompt": "A glass bottle shattering on impact against a stone floor, fragments flying, dramatic freeze-frame",
+      "effect_type": "destruction",
+      "category": "shatter",
+      "expected_hero_objects": ["bottle"],
+      "expected_materials": ["glass_transmission", "stone_floor"],
+      "expected_lookdev": ["color_management", "dramatic_lighting"],
+      "camera_distance": "medium",
+      "difficulty": "hard",
+      "notes": "Cell fracture + rigid body + glass material. Tests destruction pipeline."
+    }
+  ]
+}
