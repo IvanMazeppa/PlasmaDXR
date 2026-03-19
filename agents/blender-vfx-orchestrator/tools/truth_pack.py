@@ -366,6 +366,17 @@ KNOWN_HALLUCINATIONS: Dict[str, Tuple[str, str]] = {
         "Note: ColorRamp/ValToRGB still uses 'Fac' — only ShaderNodeMix changed.",
         None  # Context-dependent — auto-fixer handles selectively
     ),
+    # Common LLM hallucination: bpy.mathutils does not exist — mathutils is a top-level module
+    r'\bbpy\.mathutils\b': (
+        "mathutils is a top-level module, NOT bpy.mathutils. Use 'import mathutils' or 'from mathutils import ...'",
+        None  # Handled by HARDCODED_FIXES
+    ),
+    # Render sample cap: LLMs often set absurdly high sample counts (1024-4096+)
+    # that cause 80+ minute renders. Cap at 256 for safety.
+    r'\.samples\s*=\s*(?:(?:[3-9]\d{2})|(?:\d{4,}))(?!\d)': (
+        "Render samples too high (>256 causes very long renders). Capping at 256.",
+        None  # Custom fixer in auto_fix_script
+    ),
 }
 
 # Hardcoded fixes for known hallucinations (simple string replacements)
@@ -389,6 +400,8 @@ HARDCODED_FIXES: Dict[str, str] = {
     # Cell Fracture addon: both legacy names map to Blender 5.0 extension name
     "object_fracture_cell": "bl_ext.blender_org.cell_fracture",
     "object_cell_fracture": "bl_ext.blender_org.cell_fracture",
+    # mathutils is top-level, not under bpy
+    "bpy.mathutils": "mathutils",
 }
 
 
@@ -826,6 +839,18 @@ def auto_fix_script(
                             )
                     new_lines.append(line)
                 fixed = "\n".join(new_lines)
+                continue
+            # Special case: render sample cap — clamp absurdly high sample counts to 256
+            if "samples" in (error.message or "").lower() and "cap" in (error.message or "").lower():
+                def _cap_samples(m):
+                    val = int(m.group(1))
+                    if val > 256:
+                        fixes_applied.append(
+                            f"Capped render samples from {val} to 256 (prevents 80+ min renders)"
+                        )
+                        return f".samples = 256"
+                    return m.group(0)
+                fixed = re.sub(r'\.samples\s*=\s*(\d+)', _cap_samples, fixed)
                 continue
             # Apply hardcoded fixes for known hallucinations
             for wrong, correct in HARDCODED_FIXES.items():

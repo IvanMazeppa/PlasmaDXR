@@ -139,7 +139,7 @@ _HERO_OBJECT_PATTERNS = [
     # Props
     (r"\b(sword|blade|knife|dagger)\b", "metal_weapon"),
     (r"\b(cloth|fabric|curtain|flag|banner|tablecloth)\b", "fabric"),
-    (r"\b(wood|wooden|log|plank|table)\b", "wood"),
+    (r"\b(wooden\s+\w+|wood|log|plank|table)\b", "wood"),
 ]
 
 _HERO_MATERIAL_GOALS: Dict[str, List[str]] = {

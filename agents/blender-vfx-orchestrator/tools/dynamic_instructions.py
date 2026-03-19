@@ -879,19 +879,23 @@ def dynamic_script_writer_instructions(
     # Inject hero object refinement if StyleSpec has heroes
     try:
         if hasattr(ctx, 'context') and ctx.context:
-            style_spec = getattr(ctx.context, 'style_spec', None)
-            if style_spec and hasattr(style_spec, 'hero_objects') and style_spec.hero_objects:
-                from tools.hero_object_refinement import get_refinement_instructions
-                camera_dist = getattr(style_spec, 'camera_distance_class', 'medium')
-                hero_instructions = get_refinement_instructions(
-                    style_spec.hero_objects, camera_dist
-                )
-                if hero_instructions:
-                    base += "\n" + hero_instructions
-                    logger.info(
-                        "Injected hero refinement for %d heroes",
-                        len(style_spec.hero_objects),
+            # style_spec lives on session as a dict, not directly on SharedContext
+            _session = getattr(ctx.context, 'session', None)
+            style_spec_dict = getattr(_session, 'style_spec', None) if _session else None
+            if style_spec_dict and isinstance(style_spec_dict, dict):
+                _heroes = style_spec_dict.get('hero_objects', [])
+                if _heroes:
+                    from tools.hero_object_refinement import get_refinement_instructions
+                    camera_dist = style_spec_dict.get('camera_distance_class', 'medium')
+                    hero_instructions = get_refinement_instructions(
+                        _heroes, camera_dist
                     )
+                    if hero_instructions:
+                        base += "\n" + hero_instructions
+                        logger.info(
+                            "Injected hero refinement for %d heroes",
+                            len(_heroes),
+                        )
     except Exception as e:
         logger.warning("Failed to inject hero refinement: %s", str(e))
 
