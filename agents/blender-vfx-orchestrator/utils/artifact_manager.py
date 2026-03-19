@@ -27,6 +27,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from dataclasses import dataclass, asdict, field
@@ -36,6 +37,30 @@ from typing import Any, Dict, List, Optional, Union
 
 # Base directory for artifacts
 ARTIFACTS_DIR = Path(__file__).parent.parent / "sessions" / "artifacts"
+
+# Canonical change labels for iteration tracking
+CHANGE_LABELS = {
+    "initial_generation",
+    "modify_params",
+    "modify_code",
+    "section_patch",
+    "technique_switch",
+    "full_rewrite",
+}
+
+
+def compute_script_hash(script_path: str) -> str:
+    """Compute SHA-256 hash of a script file's contents.
+
+    Returns the first 12 hex characters (48 bits — collision-safe for
+    human comparison while staying compact in manifests).
+    Returns empty string if the file doesn't exist.
+    """
+    p = Path(script_path)
+    if not p.exists():
+        return ""
+    content = p.read_bytes()
+    return hashlib.sha256(content).hexdigest()[:12]
 
 
 @dataclass
@@ -78,6 +103,9 @@ class IterationArtifact:
     primary_issue: Optional[str]
     parameter_changes: Dict[str, Any]
     escape_level: int
+    script_hash: str = ""
+    issue_kinds: List[str] = field(default_factory=list)
+    change_label: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -267,6 +295,9 @@ class ArtifactManager:
         cache_path: Optional[str] = None,
         parameter_changes: Optional[Dict[str, Any]] = None,
         escape_level: int = 0,
+        script_hash: str = "",
+        issue_kinds: Optional[List[str]] = None,
+        change_label: str = "",
     ) -> str:
         """Write iteration from raw values."""
         artifact = IterationArtifact(
@@ -280,6 +311,9 @@ class ArtifactManager:
             primary_issue=primary_issue,
             parameter_changes=parameter_changes or {},
             escape_level=escape_level,
+            script_hash=script_hash,
+            issue_kinds=issue_kinds or [],
+            change_label=change_label,
         )
         return self.write_iteration(artifact)
 

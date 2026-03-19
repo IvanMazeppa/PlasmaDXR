@@ -1,0 +1,55 @@
+{
+  "recommended_approach": "Mantaflow Liquid Domain (FLIP-style liquid) + continuous Flow Inflow (Use Plane Init) + Effector Collision (glass/table) + Liquid Mesh generation (Cycles render)",
+  "key_parameters": {
+    "scene.frame_start": 1,
+    "scene.frame_end": 60,
+    "render.engine": "CYCLES",
+    "cycles.device": "GPU",
+    "cycles.samples": 128,
+    "domain_object.modifier": "FLUID",
+    "domain.mod.fluid_type": "DOMAIN",
+    "domain.domain_settings.domain_type": "LIQUID",
+    "domain.domain_settings.resolution_max": 96,
+    "domain.domain_settings.cache_type": "ALL",
+    "flow_object.modifier": "FLUID",
+    "flow.mod.fluid_type": "FLOW",
+    "flow.flow_settings.flow_type": "LIQUID",
+    "flow.flow_settings.flow_behavior": "INFLOW",
+    "flow.flow_settings.use_plane_init": true,
+    "flow.flow_settings.use_initial_velocity": true,
+    "flow.flow_settings.velocity_normal": -1.2,
+    "domain.domain_settings.timesteps_max": 6,
+    "domain.domain_settings.use_mesh": true,
+    "effector_object.modifier": "FLUID",
+    "effector.mod.fluid_type": "EFFECTOR",
+    "effector.effector_settings.effector_type": "COLLISION",
+    "effector.effector_settings.surface_distance": 0.005,
+    "bake_note": "Apply object scale before baking (seen in technique using bpy.ops.object.transform_apply(scale=True))."
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.ops.mesh.primitive_cube_add",
+    "bpy.ops.mesh.primitive_uv_sphere_add",
+    "bpy.ops.object.transform_apply"
+  ],
+  "warnings": [
+    "Doc search returned limited direct Blender Python API attribute documentation for Mantaflow (tool warning: \u201cNo API doc_refs found (expected bpy.types.* or bpy.ops.* references).\u201d).",
+    "Ensure the Domain fully contains: inflow stream path, entire glass bowl, and all splash trajectories; otherwise liquid/mesh will clip at domain bounds (Domain concept noted in Fluid Introduction).",
+    "Apply scale on Domain/Flow/Effector objects before baking to avoid mismatched voxel sizing and collision thickness issues (technique example uses bpy.ops.object.transform_apply(scale=True)).",
+    "Thin glass meshes can cause collision leaks; use sufficient thickness (e.g., Solidify) and/or an additional hidden collision \u2018disc\u2019 at the base/stem junction (pattern: glass_bottom_collision_disc).",
+    "Inflow from a non-planar emitter can wobble/break up; the Flow setting \u2018Use Plane Init\u2019 is documented under Flow settings and is commonly used for stable inflows."
+  ],
+  "alternative_approaches": [
+    "Mantaflow Liquid + secondary droplets via a separate particle/instancing system (art-direct escaping rim droplets while keeping the main pour/volume physically simulated).",
+    "Mantaflow Liquid + additional \u2018secondary\u2019 simulation layer (e.g., spray/foam-style detail) to enhance splashes without raising the main domain resolution."
+  ],
+  "doc_refs": [
+    "physics/fluid/introduction.html",
+    "blender_manual_html/physics/fluid/type/flow.html#settings-",
+    "techniques/mantaflow/liquid_simulation",
+    "techniques/mantaflow/advanced_overview",
+    "blender_manual_html/render/index.html",
+    "blender_python_reference_5_0/info_overview.html#class-registration-"
+  ],
+  "timestamp": "2026-03-18T05:16:19.868665"
+}

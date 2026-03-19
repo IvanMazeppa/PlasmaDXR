@@ -528,6 +528,20 @@ class IterationResult(BaseModel):
         description="Score improvement from previous iteration"
     )
 
+    # Iteration manifest fields (Task 8)
+    script_hash: str = Field(
+        default="",
+        description="SHA-256 prefix (12 hex chars) of the script file"
+    )
+    issue_kinds: List[str] = Field(
+        default_factory=list,
+        description="Distinct IssueKind values from structured_issues (e.g. ['hero_object', 'lighting'])"
+    )
+    change_label: str = Field(
+        default="",
+        description="What type of change produced this iteration: initial_generation, modify_params, modify_code, section_patch, technique_switch, full_rewrite"
+    )
+
 
 # =============================================================================
 # ASSET REQUEST

@@ -1223,6 +1223,7 @@ STOP after synthesizing. Return structured output only.""",
                         break  # HITL abort from pending checkpoint
                     iteration += 1
                     session.current_iteration = iteration
+                    _iter_change_label = "initial_generation" if iteration == 1 else "modify_params"
                     print(f"\n[Pipeline] ====== ITERATION {iteration}/{effective_max_iterations} ======", file=sys.stderr)
                     from tracing import pipeline_event
                     pipeline_event("iteration_start", {
@@ -1602,7 +1603,31 @@ Generate a complete, validated script using the selected technique. Return the s
                             )
 
                             if _can_patch:
+                                _iter_change_label = "section_patch"
                                 print(f"[Pipeline] REPAIR INTENT → SECTION PATCH (modify_code)", file=sys.stderr)
+
+                                # Inject hero refinement if repair targets create_geometry
+                                _hero_repair_block = ""
+                                _ri_targets = repair_intent.target_sections if repair_intent else []
+                                _has_hero_target = (
+                                    "create_geometry" in _ri_targets
+                                    or any(
+                                        si.kind in ("hero_object",) and si.target == "create_geometry"
+                                        for si in (quality.structured_issues if quality else [])
+                                    )
+                                )
+                                if _has_hero_target and hasattr(session, 'style_spec') and session.style_spec:
+                                    try:
+                                        from tools.hero_object_refinement import get_repair_refinement_instructions
+                                        _hero_names = session.style_spec.get('hero_objects', [])
+                                        _hero_issues = [
+                                            si.summary for si in (quality.structured_issues if quality else [])
+                                            if si.kind in ("hero_object", "structural")
+                                        ]
+                                        _hero_repair_block = get_repair_refinement_instructions(_hero_names, _hero_issues)
+                                    except Exception as _e:
+                                        print(f"[Pipeline] Hero refinement injection failed: {_e}", file=sys.stderr)
+
                                 _patch_prompt = f"""FIX this script by patching ONLY the section(s) that need changes.
 
 ## Current Script
@@ -1619,6 +1644,7 @@ Primary Issue: {quality.primary_issue if quality else 'Unknown'}
 ## Effect Type: {request.effect_type.value}
 ## Description: {request.description}
 {f'{chr(10)}{context.structural_pattern_context}' if context.structural_pattern_context else ''}
+{_hero_repair_block}
 
 ## Instructions
 1. Read the current script to understand all sections
@@ -1660,6 +1686,7 @@ Output name: {request.asset_name}_iter{iteration}_ripatch"""
 
                             if not direct_modification_success:
                                 # Full rewrite fallback
+                                _iter_change_label = "full_rewrite"
                                 print(f"[Pipeline] REPAIR INTENT → FULL REWRITE (modify_code)", file=sys.stderr)
                                 _rewrite_prompt = f"""REWRITE this Blender script to fix STRUCTURAL issues.
 
@@ -1720,6 +1747,7 @@ You MUST call blender_doc_search_bundle("{request.effect_type.value}") FIRST to 
                             and repair_intent is not None
                             and repair_intent.mode == "switch_technique"
                         ):
+                            _iter_change_label = "technique_switch"
                             print(f"[Pipeline] REPAIR INTENT → SWITCH TECHNIQUE", file=sys.stderr)
                             _untried = [
                                 a for a in session.alternative_approaches
@@ -2042,6 +2070,7 @@ Decide: modify_params, modify_code, OR switch_technique.
                                             sdk_session=iter_session,  # Phase 2B-1
                                         )
                                         direct_modification_success = True
+                                        _iter_change_label = "technique_switch"
                                         session_mgr.reset_for_technique_switch(new_technique)
                                         self._pipeline_monitor.reset()  # Phase 2A-4
                                     except Exception as e:
@@ -2050,6 +2079,7 @@ Decide: modify_params, modify_code, OR switch_technique.
 
                                 # MODIFY CODE: Section patching if possible, full rewrite as fallback
                                 if mod_decision.action == 'modify_code' and mod_decision.code_change_description and previous_script and previous_script.script_path:
+                                    _iter_change_label = "modify_code"
                                     from utils.script_sections import validate_section_structure
 
                                     # Check if script has sections and patch budget allows
@@ -2071,6 +2101,19 @@ Decide: modify_params, modify_code, OR switch_technique.
                                         print(f"[Pipeline] Patch budget: iter={session.patch_count_iteration}/2, session={session.patch_count_session}/4", file=sys.stderr)
                                         print(f"[Pipeline] Available sections: {found}", file=sys.stderr)
 
+                                        # Hero refinement for coordinator path
+                                        _coord_hero_block = ""
+                                        if (
+                                            "create_geometry" in (mod_decision.code_change_description or "")
+                                            and hasattr(session, 'style_spec') and session.style_spec
+                                        ):
+                                            try:
+                                                from tools.hero_object_refinement import get_repair_refinement_instructions
+                                                _ch_names = session.style_spec.get('hero_objects', [])
+                                                _coord_hero_block = get_repair_refinement_instructions(_ch_names)
+                                            except Exception:
+                                                pass
+
                                         patch_prompt = f"""FIX this script by patching ONLY the section(s) that need changes.
 
 ## Current Script
@@ -2087,6 +2130,7 @@ Primary Issue: {quality.primary_issue if quality else 'Unknown'}
 ## Effect Type: {request.effect_type.value}
 ## Description: {request.description}
 {f'{chr(10)}{context.structural_pattern_context}' if context.structural_pattern_context else ''}
+{_coord_hero_block}
 
 ## Instructions
 1. Read the current script to understand all sections
@@ -2118,6 +2162,7 @@ Output name: {request.asset_name}_iter{iteration}_patch"""
                                             patch_output = patch_result.final_output
                                             if patch_output and patch_output.script_path:
                                                 print(f"[Pipeline] Section patch SUCCESS: {patch_output.script_path}", file=sys.stderr)
+                                                _iter_change_label = "section_patch"
                                                 script = patch_output
                                                 direct_modification_success = True
                                                 session.patch_count_iteration += 1
@@ -2780,6 +2825,12 @@ structural problems get trapped in parameter-tuning loops."""
                         primary_issue=quality.primary_issue,
                         suggestions=quality.recommendations if hasattr(quality, 'recommendations') else [],
                     )
+                    # Compute iteration manifest fields (Task 8)
+                    from utils.artifact_manager import compute_script_hash as _compute_hash
+                    _script_hash = _compute_hash(script.script_path) if script and script.script_path else ""
+                    _issue_kinds = sorted(set(
+                        si.kind for si in (quality.structured_issues if quality and quality.structured_issues else [])
+                    ))
                     iter_result = IterationResult(
                         iteration=iteration,
                         script=script_mod,
@@ -2787,6 +2838,9 @@ structural problems get trapped in parameter-tuning loops."""
                         quality=quality_metrics,
                         passed=quality.passed,
                         score=quality.overall_score,
+                        script_hash=_script_hash,
+                        issue_kinds=_issue_kinds,
+                        change_label=_iter_change_label,
                     )
                     # Phase 1 wiring fix: use record_iteration() to activate
                     # StuckDetectionState.update_from_iteration() — computes
@@ -3236,6 +3290,9 @@ Warnings: {'; '.join(switch_research.warnings) if switch_research.warnings else 
                         cache_path=cache_path,
                         parameter_changes=script.parameters_set if script and hasattr(script, 'parameters_set') else {},
                         escape_level=gate_decision.escape_level if gate_decision else 0,
+                        script_hash=_script_hash,
+                        issue_kinds=_issue_kinds,
+                        change_label=_iter_change_label,
                     )
                     print(f"[Pipeline] Iteration artifact: {iteration_artifact_path}", file=sys.stderr)
 

@@ -550,11 +550,43 @@ if bsdf:
     bsdf.inputs['Transmission Weight'].default_value = 1.0  # Fully transparent
 ```
 
-### Camera Composition — Follow the Prompt's Framing
-- **If the prompt specifies camera** (close-up, low angle, wide shot): FOLLOW IT EXACTLY
-- Frame the VFX EFFECT as the focal point
-- Use moderate DOF (f/4.0-f/8.0) unless the prompt explicitly requests shallow DOF
-- Point look_at toward the action (spray impact, flame tips, explosion center)
+### Camera Composition and Readability (CRITICAL FOR IMAGE QUALITY)
+
+**Rule 1: Camera MUST see the subject clearly.**
+If the hero object is not identifiable in the final render, the camera has failed.
+Check: is the hero object centered in frame? Is it at a readable distance? Is it not occluded?
+
+**Rule 2: Match camera distance to the prompt.**
+| Prompt says          | Camera distance   | Lens     | F-stop  |
+|---------------------|-------------------|----------|---------|
+| "macro", "detail"   | 0.1-0.3m          | 50-100mm | f/2.0   |
+| "close-up", "tight" | 0.3-1.0m          | 50-85mm  | f/2.8   |
+| "medium", default   | 1.5-4.0m          | 35-50mm  | f/4.0   |
+| "wide", "scene"     | 5.0m+             | 24-35mm  | f/5.6   |
+
+**Rule 3: DOF focus MUST be on the hero object.**
+```python
+camera.data.dof.use_dof = True
+camera.data.dof.focus_object = hero_obj  # BEST: auto-tracks
+# OR: camera.data.dof.focus_distance = distance_to_hero
+```
+Never leave focus_distance at default (10.0m) — this defocuses everything in a close-up.
+
+**Rule 4: Camera angle conveys importance.**
+- Slightly below eye level → hero feels significant, grounded
+- Eye level → neutral, documentary
+- Above → overview, context
+- Avoid perfectly perpendicular to surfaces (creates flat, sterile look)
+
+**Rule 5: Look-at target MUST be the hero, not scene center.**
+```python
+direction = hero_obj.location - cam_obj.location
+rot = direction.to_track_quat('-Z', 'Y')
+cam_obj.rotation_euler = rot.to_euler()
+```
+
+**ANTI-PATTERN:** Camera at (0, -10, 5) looking at origin with f-stop 2.8 and no focus object
+→ extreme bokeh, subject unreadable. This is the #1 cause of bad renders.
 
 ## BLENDER 5.0 ONLY
 We use Blender 5.0.1. **MANDATORY DOC QUERY** - verify API names before write_script.
@@ -843,6 +875,25 @@ def dynamic_script_writer_instructions(
                 logger.info("Injected truth pack into ScriptWriter instructions")
     except Exception as e:
         logger.warning("Failed to inject truth pack: %s", str(e))
+
+    # Inject hero object refinement if StyleSpec has heroes
+    try:
+        if hasattr(ctx, 'context') and ctx.context:
+            style_spec = getattr(ctx.context, 'style_spec', None)
+            if style_spec and hasattr(style_spec, 'hero_objects') and style_spec.hero_objects:
+                from tools.hero_object_refinement import get_refinement_instructions
+                camera_dist = getattr(style_spec, 'camera_distance_class', 'medium')
+                hero_instructions = get_refinement_instructions(
+                    style_spec.hero_objects, camera_dist
+                )
+                if hero_instructions:
+                    base += "\n" + hero_instructions
+                    logger.info(
+                        "Injected hero refinement for %d heroes",
+                        len(style_spec.hero_objects),
+                    )
+    except Exception as e:
+        logger.warning("Failed to inject hero refinement: %s", str(e))
 
     # Try to get effect type from context
     # QW-2: Log fallbacks so KB failures are visible

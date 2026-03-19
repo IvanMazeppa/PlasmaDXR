@@ -320,6 +320,28 @@ def enhance_description(
             if h not in hints:
                 hints.append(h)
 
+    # Camera/readability hints based on detected distance
+    camera_distance = _detect_camera_distance(description)
+    camera_hints: List[str] = []
+    if camera_distance == "close":
+        camera_hints = [
+            "CLOSE-UP CAMERA: lens 50-85mm, f/2.8-f/4.0, focus on hero surface detail",
+            "Camera distance 0.3-0.8m from hero — every edge and bevel is visible",
+            "DOF: focus_object = hero, f_stop 2.8-4.0 for gentle background separation",
+        ]
+    elif camera_distance == "wide":
+        camera_hints = [
+            "WIDE SHOT CAMERA: lens 24-35mm, f/8.0-f/11.0, deep focus",
+            "Camera distance 3-10m — frame the full scene with context",
+            "DOF: f_stop 8.0+ for deep focus, or disable DOF entirely",
+        ]
+    else:
+        camera_hints = [
+            "MEDIUM SHOT CAMERA: lens 35-50mm, f/4.0-f/5.6, balanced framing",
+            "Camera distance 1-3m from hero — subject fills ~40-60% of frame",
+            "DOF: focus_object = hero, f_stop 4.0-5.6 for natural separation",
+        ]
+
     # Build the brief
     brief_lines = [
         "",
@@ -327,6 +349,11 @@ def enhance_description(
     ]
     for hint in hints:
         brief_lines.append(f"- {hint}")
+    if camera_hints:
+        brief_lines.append("")
+        brief_lines.append("CAMERA READABILITY:")
+        for ch in camera_hints:
+            brief_lines.append(f"- {ch}")
 
     return description + "\n".join(brief_lines)
 
@@ -398,5 +425,27 @@ if __name__ == "__main__":
     spec = extract_style_spec(desc, effect_type="water")
     assert len(spec["palette"]) >= 2
     print(f"[PASS] Palette extraction: {spec['palette']}")
+
+    # Test 10: Camera hints in enhanced description — close-up
+    desc = "Close-up of a wine glass catching firelight"
+    enhanced = enhance_description(desc, effect_type="fire")
+    assert "CAMERA READABILITY" in enhanced
+    assert "CLOSE-UP CAMERA" in enhanced
+    assert "50-85mm" in enhanced
+    print("[PASS] Camera hints: close-up")
+
+    # Test 11: Camera hints — wide shot
+    desc = "Wide establishing shot of a burning village"
+    enhanced = enhance_description(desc, effect_type="fire")
+    assert "WIDE SHOT CAMERA" in enhanced
+    assert "24-35mm" in enhanced
+    print("[PASS] Camera hints: wide shot")
+
+    # Test 12: Camera hints — medium (default)
+    desc = "A candle burns on a table"
+    enhanced = enhance_description(desc, effect_type="fire")
+    assert "MEDIUM SHOT CAMERA" in enhanced
+    assert "35-50mm" in enhanced
+    print("[PASS] Camera hints: medium (default)")
 
     print("\nAll tests passed!")
