@@ -1,0 +1,24 @@
+{
+  "session_id": "bench_wine_pour_v1_20260319_050017",
+  "iteration": 2,
+  "overall_score": 18.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "(Structural) Add/replace geometry with a proper crystal wine glass (thin walls, beveled rim) and stage the pour into the glass. Target: create_geometry.",
+    "(Physics/animation) Ensure an emitter/source above frame produces a continuous stream and that the sim/cache is actually baked and advancing; add secondary droplets/splash and a few table drops. Target: setup_physics.",
+    "(Scene) Replace the striped platform with a dark wood table material (subtle grain, realistic scale, roughness variation). Target: setup_scene.",
+    "(Lighting) Move the candle off-frame left and use it as a warm key (soft amber) with gentle fill from the right; add controlled rim lighting to separate glass/wine from background. Target: setup_lighting.",
+    "(Camera) Reframe to a true close-up on the glass rim, incoming stream, and impact/splash zone; reduce dominance of non-hero geometry. Target: setup_camera.",
+    "(Wine shading params) The wine appears too opaque/black: reduce volume density (Line 276: 18.0 \u2192 ~3\u20138) and tune wine color toward a deeper ruby (Line 275) so thin regions transmit red while thick regions stay dark. Target: setup_materials.",
+    "(Readability) Improve silhouette separation via slightly brighter/specular rim highlights on glass and wine (lighting + material tweaks) so edges read clearly against the background. Target: setup_lighting / setup_materials.",
+    "(Remove distraction) Eliminate or heavily tone down the high-contrast striping; if aliasing persists, increase sampling/AA. Target: setup_scene / bake_and_render."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 1323.2888026110013,
+  "utility_score": 0.33999999999999997,
+  "timestamp": "2026-03-19T05:33:42.449113"
+}

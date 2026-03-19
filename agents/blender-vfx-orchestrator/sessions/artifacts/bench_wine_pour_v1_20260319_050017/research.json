@@ -1,0 +1,47 @@
+{
+  "recommended_approach": "Mantaflow Liquid: FLUID modifier Domain (domain_type='LIQUID') + Flow Inflow (flow_type='LIQUID', flow_behavior='INFLOW') + Effector Collision for glass & table, then generate Liquid Mesh for close-up rendering",
+  "key_parameters": {
+    "domain_object.modifiers['Fluid'].fluid_type": "'DOMAIN'",
+    "domain_settings.domain_type": "'LIQUID'",
+    "domain_settings.resolution_max": "64 (documented as a minimum for decent liquid detail; increase for close-up shots)",
+    "flow_object.modifiers['Fluid'].fluid_type": "'FLOW'",
+    "flow_settings.flow_type": "'LIQUID'",
+    "flow_settings.flow_behavior": "'INFLOW'",
+    "flow_settings.use_initial_velocity": true,
+    "flow_settings.velocity_normal": -2.0,
+    "effector_object.modifiers['Fluid'].fluid_type": "'EFFECTOR'",
+    "effector_settings.effector_type": "'COLLISION'",
+    "effector_settings.surface_distance": 0.005,
+    "domain_settings.cache_directory": "Set explicitly (e.g. env var BLENDER_CACHE_DIR or an absolute path) to ensure reliable bakes/headless operation"
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.mesh.primitive_cube_add",
+    "bpy.ops.mesh.primitive_uv_sphere_add",
+    "bpy.context.view_layer.objects.active",
+    "bpy.ops.object.modifier_apply",
+    "bpy.data.materials.new"
+  ],
+  "warnings": [
+    "Domain must be large enough to contain all liquid motion during the shot (otherwise liquid will be clipped).",
+    "Low liquid resolution leads to visibly chunky/blobby surfaces; resolution_max=64 is noted as a minimum for decent detail (close-up typically needs higher).",
+    "Collision setup is sensitive for thin glass; use collision surface distance (example shown: surface_distance=0.005) and ensure the collider mesh is watertight/thick enough.",
+    "Applying modifiers via bpy.ops.object.modifier_apply is context-sensitive: object must be active and in OBJECT mode.",
+    "For automated/headless bakes, set an explicit domain_settings.cache_directory to avoid writing caches to unexpected locations."
+  ],
+  "alternative_approaches": [
+    "Hybrid cheats for close-ups: animate a pouring stream mesh (curve + thickness) and use a Particle System for secondary droplets/splashes (particle Render settings like Scale Randomness/Material), reserving Mantaflow Liquid only for the glass fill/impact zone or skipping the full liquid sim entirely.",
+    "Force-field-driven particle droplets: use particle emitters and force fields (e.g., Texture force field) to art-direct splash trajectories without a full liquid solve."
+  ],
+  "doc_refs": [
+    "techniques/mantaflow/liquid_simulation",
+    "physics/fluid/type/domain/liquid/diffusion.html",
+    "physics/particles/emitter/render.html",
+    "physics/forces/force_fields/types/texture.html",
+    "techniques/modifiers/overview",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "blender_python_reference_5_0/gpu.types.html#gpu.types.GPUFrameBuffer.read_depth"
+  ],
+  "timestamp": "2026-03-19T05:01:10.123489"
+}

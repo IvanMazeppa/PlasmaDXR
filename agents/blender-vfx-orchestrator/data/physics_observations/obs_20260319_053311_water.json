@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-03-19T05:33:11.653302",
+  "effect_type": "water",
+  "observation": "No visible pouring motion; liquid appears as a static pooled/draped sheet on a rectangular block rather than a stream entering a glass with splashes.",
+  "expected_behavior": "A continuous wine stream entering a crystal glass, creating a crown/impact splash, secondary droplets, and a few drops landing on the wooden table.",
+  "actual_behavior": "No stream, no glass interaction, and no readable splash/droplets; fluid looks thick and mostly static on a block.",
+  "suspected_parameters": {
+    "emitter_enabled": false,
+    "emission_rate": 0,
+    "start_frame": 1,
+    "cache/bake_missing": true,
+    "viscosity_too_high": true,
+    "sim_resolution_too_low": true
+  },
+  "severity": "critical",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_wine_pour_v1/bench_wine_pour_v1.png",
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_wine_pour_v1_script_iter2_ricodefix.py",
+  "iteration": 2,
+  "status": "pending_analysis",
+  "correlation_found": false,
+  "causal_params": []
+}

@@ -1,0 +1,84 @@
+{
+  "iteration": 2,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_wine_pour_v1_script_iter2_ricodefix_errfix.py",
+  "technique_used": "mantaflow_liquid_wine_pour_tabletop",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_wine_pour_v1/bench_wine_pour_v1.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/bench_wine_pour_v1_20260319_050017/cache",
+  "score": 18.0,
+  "passed": false,
+  "primary_issue": "The render does not match the requested shot: there is no crystal wine glass and no visible pouring action (wine stream/splash into glass).",
+  "parameter_changes": {
+    "asset_name": "bench_wine_pour_v1",
+    "frame_range": {
+      "start": 1,
+      "end": 120,
+      "render_frame": 80
+    },
+    "domain": {
+      "domain_type": "LIQUID",
+      "resolution_max": 96,
+      "simulation_method": "FLIP",
+      "use_adaptive_timesteps": true,
+      "timesteps_min": 1,
+      "timesteps_max": 6,
+      "cache_type": "ALL",
+      "cache_directory": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_wine_pour_v1/cache",
+      "use_mesh": true,
+      "mesh_scale": 2,
+      "mesh_smoothen_pos": 1,
+      "mesh_smoothen_neg": 1,
+      "surface_tension": 0.35
+    },
+    "inflow": {
+      "flow_type": "LIQUID",
+      "flow_behavior": "INFLOW",
+      "use_inflow_animated": {
+        "on_frame_1": true,
+        "off_frame_55": true
+      },
+      "subframes": 2,
+      "use_initial_velocity": true,
+      "velocity_normal": -2.0,
+      "velocity_random": 0.2,
+      "surface_distance": 0.6
+    },
+    "effectors": [
+      {
+        "object": "GlassCollider",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      },
+      {
+        "object": "Table",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      },
+      {
+        "object": "Coaster",
+        "effector_type": "COLLISION",
+        "surface_distance": 0.0
+      }
+    ],
+    "render": {
+      "engine_preference": "CYCLES (falls back safely if unavailable)",
+      "resolution": [
+        1920,
+        1080
+      ],
+      "output": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_wine_pour_v1/bench_wine_pour_v1.png",
+      "blend_save": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_wine_pour_v1/bench_wine_pour_v1.blend"
+    },
+    "structural_fix": "Removed/avoided float-to-vector assignments that trigger `bpy_struct: sequence expected ... not float` (common culprit: setting scene.gravity to a scalar). All vector/color properties are now assigned sequences (tuples)."
+  },
+  "escape_level": 0,
+  "script_hash": "9b502efbd11d",
+  "issue_kinds": [
+    "camera",
+    "lighting",
+    "parameter",
+    "structural",
+    "technique"
+  ],
+  "change_label": "full_rewrite",
+  "timestamp": "2026-03-19T05:35:05.095691"
+}
