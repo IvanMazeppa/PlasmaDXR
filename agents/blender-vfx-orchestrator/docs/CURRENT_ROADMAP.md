@@ -1,7 +1,7 @@
 # Current Roadmap
 
 Status: authoritative
-Last verified: 2026-03-17
+Last verified: 2026-03-19
 Purpose: canonical synthesis of the March 2026 architecture reviews and live repo state
 
 ## Scope
@@ -45,10 +45,11 @@ These points are treated as true for planning unless new code evidence disproves
 | 1 | Fix state authority and repair-routing inputs | Complete | Opus |
 | 2 | Make typed QA-to-repair signals authoritative | Complete | Opus + GPT-5.4 |
 | 3 | Prove structural repair in live runs | Complete | Opus |
-| 4 | Make learning/evaluation evidence trustworthy | Queued | GPT-5.4 + Opus |
+| 3.5 | Scene aesthetic realism (cross-cutting) | In progress — Tasks 1-8 complete, Tasks 9-10 remaining | Next 10 Tasks plan |
+| 4 | Make learning/evaluation evidence trustworthy | In progress — Jobs 1-2 done (manifest), Jobs 3-7 queued | GPT-5.4 + Opus |
 | 5 | Gate autonomy with evidence and integrate hybrid HITL | Later | GPT-5.4 |
 | 6 | Expand capability acquisition and raise the quality ceiling | Later | GPT-5.4 + Opus |
-| 6A | Specialized Section Builders for scene quality and asset reuse | Planned, gated, pending final external review | March 17 section-builder plan + review |
+| 6A | Specialized Section Builders for scene quality and asset reuse | Planned, gated — first milestone is Task 10 | March 17 section-builder plan + review |
 
 ## Phase 1: Fix State Authority and Routing Inputs — COMPLETE (2026-03-15)
 
@@ -151,7 +152,9 @@ Proof obligations:
 Goal:
 - make scene look-dev, hero-object quality, mood, and material realism first-class in the pipeline
 
-Companion plan: `docs/reviews/2026-03/20260316_SCENE_AESTHETIC_REALISM_ACTION_PLAN.md`
+Companion plans:
+- `docs/reviews/2026-03/20260316_SCENE_AESTHETIC_REALISM_ACTION_PLAN.md`
+- `docs/reports/20260318_NEXT_10_SCENE_QUALITY_TASKS.md` (execution task list)
 
 Completed (2026-03-16/17):
 - `StyleSpec` model added to `pipeline_models.py` with `to_script_constraints()` method
@@ -163,13 +166,26 @@ Completed (2026-03-16/17):
 - Structural pattern routing: patterns with ShaderNode/node_tree/modifiers go to Script Writer as code context, not flattened to scalar params
 - Visual craft reuse instructions added to Script Writer
 
-Remaining:
-- `hero_object` and `lookdev` IssueKind values
-- Visual pattern tagging system
-- Hero object refinement helper
-- Camera/readability decision enforcement
-- Quality Analyst aesthetic issue classification prompting
-- Aesthetic benchmark pack
+Completed (2026-03-18/19) — "Next 10 Scene Quality Tasks" 1-8:
+- **Task 1: Aesthetic benchmark pack** — `tests/fixtures/aesthetic_benchmarks.json` with prompts covering tabletop glass, candlelit macro, cloth, window, atmospheric interior, product close-up. `scripts/run_benchmark.py` CLI tool for running benchmarks.
+- **Task 2: Look-dev coverage metrics** — `tools/script_analysis_tools.py` with deterministic coverage metrics for color management, DOF, world strategy, material count, hero-object refinement count, atmosphere presence. `tests/test_lookdev_metrics.py` (217 lines).
+- **Task 3: `hero_object` and `lookdev` IssueKinds** — Added to `IssueKind` Literal type in `models/pipeline_models.py`. Accepted everywhere `QualityIssue.kind` is validated.
+- **Task 4: Quality Analyst aesthetic prompting** — Dynamic instructions updated to guide structured issue emission with `hero_object` and `lookdev` kinds pointing at canonical section targets (`create_geometry`, `setup_materials`, etc.).
+- **Task 5: Aesthetic issue routing** — `hero_object` and `lookdev` routed to `modify_code` in `phases/repair_routing.py`. `tests/test_repair_routing.py` expanded (66 new lines). `tests/test_aesthetic_benchmarks.py` (96 lines).
+- **Task 6: Hero-object refinement helper** — `tools/hero_object_refinement.py` (241 lines) with per-object-type recipes (SOLIDIFY, BEVEL, SUBSURF for glass, bottles, vessels, candles, cloth, masonry). Injected into Script Writer prompt via `tools/dynamic_instructions.py` using `StyleSpec.hero_objects`. `tests/test_hero_object_refinement.py` (137 lines).
+- **Task 7: Camera/readability enforcement** — `utils/prompt_enhancer.py` now injects camera distance-based hints (close-up: 50-85mm f/2.8-f/4.0, wide: 24-35mm f/8-f/11, medium: 35-50mm f/4-f/5.6). `StyleSpec` captures camera fields. `tests/test_prompt_enhancer_camera.py` (10 tests).
+- **Task 8: Iteration manifest** — `IterationResult` and `IterationArtifact` now carry `script_hash` (SHA-256 12-char prefix), `issue_kinds`, and `change_label` (initial_generation/modify_params/modify_code/section_patch/technique_switch/full_rewrite). `utils/artifact_manager.py` updated with `compute_script_hash()`. Orchestrator tracks `_iter_change_label` through all decision points. `tests/test_iteration_manifest.py` (11 tests).
+
+Also completed (2026-03-19) — E2E benchmark findings:
+- **`bpy.mathutils` truth pack pattern** — LLM hallucination `bpy.mathutils` auto-replaced with `mathutils` (KNOWN_HALLUCINATIONS + HARDCODED_FIXES)
+- **Render sample cap** — Samples > 256 auto-capped to prevent 80+ minute renders (regex detection + auto-fixer)
+- **Hero refinement injection bug fix** — `dynamic_instructions.py` was accessing `ctx.context.style_spec` instead of `ctx.context.session.style_spec`, and using `hasattr` on a dict (always False). Fixed.
+- **"wooden table" compound noun regex** — `prompt_enhancer.py` now captures `wooden table` instead of just `wooden`
+- Wine pour E2E benchmark run completed (trace: `wine_pour_20260318_051505.jsonl`). Pipeline infrastructure solid, truth pack caught 12-17 fixes per generation, hero refinement recipes appeared in generated code, iteration manifest fields populated correctly.
+
+Remaining (Tasks 9-10):
+- **Task 9: Focused benchmark pass** — run baseline vs post-quick-win comparison across the benchmark pack, document which changes produced real visual gains
+- **Task 10: Hero-only specialist builder milestone** — typed `BuildRegistry`, scaffold-first generation, deterministic `SceneBuildPlan`, builder-level truth-pack validation, `HeroAssetBuilder` only, hero-only benchmark comparison
 
 ## Phase 4: Make Evaluation and Learning Evidence Trustworthy
 
@@ -188,8 +204,8 @@ Work:
 
 Job order:
 
-1. Define the minimum canonical iteration manifest.
-2. Record that manifest from the live loop and make sure it is persisted alongside scorecards/artifacts.
+1. ~~Define the minimum canonical iteration manifest.~~ **DONE (2026-03-19, Phase 3.5 Task 8).** `IterationResult` and `IterationArtifact` carry `script_hash`, `issue_kinds`, and `change_label`. `compute_script_hash()` in `utils/artifact_manager.py`.
+2. ~~Record that manifest from the live loop and make sure it is persisted alongside scorecards/artifacts.~~ **DONE (2026-03-19).** Orchestrator tracks `_iter_change_label` through all decision points. `write_iteration_from_values()` persists manifest fields. E2E verified on wine pour benchmark.
 3. Fix stale version metadata in artifacts and authority docs so manifests are trustworthy.
 4. Add a manifest integrity test: manifest, session state, trace summary, and scorecard must agree.
 5. Run a cross-physics reliability baseline on the current stack.
@@ -337,12 +353,15 @@ These do not replace the phase order above. They are supporting work that should
 
 Add and maintain:
 
-- state-authority regression tests
-- repair-mode classification benchmark
-- structural-repair regression suite
+- ~~state-authority regression tests~~ ✓ `tests/test_state_authority_wiring.py` (9 tests)
+- ~~repair-mode classification benchmark~~ ✓ `tests/test_repair_routing_benchmark.py` (11 cases)
+- ~~structural-repair regression suite~~ ✓ `tests/test_structural_repair_regression.py` (14 tests)
+- ~~aesthetic benchmark pack~~ ✓ `tests/fixtures/aesthetic_benchmarks.json` + `scripts/run_benchmark.py`
+- ~~look-dev coverage metrics~~ ✓ `tools/script_analysis_tools.py` + `tests/test_lookdev_metrics.py`
+- ~~iteration manifest tests~~ ✓ `tests/test_iteration_manifest.py` (11 tests)
 - cross-physics reliability baseline
 - evaluator calibration corpus and score-band tracking
-- manifest integrity test
+- manifest integrity test (cross-validates manifest, session state, trace, scorecard)
 - specialist-vs-baseline benchmark pack once Phase 6A begins
 
 ### C. Pipeline-Level Tracing

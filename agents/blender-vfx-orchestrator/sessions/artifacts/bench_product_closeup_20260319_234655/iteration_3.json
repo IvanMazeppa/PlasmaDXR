@@ -1,0 +1,128 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_product_closeup_script_iter3_ricodefix.py",
+  "technique_used": "high_key_studio_cyclorama_product_closeup_rewrite",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_product_closeup/bench_product_closeup.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/bench_product_closeup_20260319_234655/cache",
+  "score": 4.0,
+  "passed": false,
+  "primary_issue": "Render is severely underexposed/mostly black, so the mug, countertop, and clean white background are not readable.",
+  "parameter_changes": {
+    "world_background_strength": 1.25,
+    "world_background": "procedural gradient (near-white)",
+    "key_light": {
+      "type": "AREA",
+      "shape": "RECTANGLE",
+      "energy": 65.0,
+      "size": [
+        0.65,
+        0.45
+      ],
+      "color": [
+        1.0,
+        0.98,
+        0.95
+      ],
+      "location": [
+        -0.45,
+        -0.45,
+        0.55
+      ]
+    },
+    "fill_light": {
+      "type": "AREA",
+      "shape": "RECTANGLE",
+      "energy": 18.0,
+      "size": [
+        0.75,
+        0.55
+      ],
+      "color": [
+        0.98,
+        0.99,
+        1.0
+      ],
+      "location": [
+        0.55,
+        -0.4,
+        0.45
+      ]
+    },
+    "rim_light": {
+      "type": "AREA",
+      "shape": "RECTANGLE",
+      "energy": 28.0,
+      "size": [
+        0.4,
+        0.3
+      ],
+      "location": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    },
+    "background_light": {
+      "type": "AREA",
+      "shape": "RECTANGLE",
+      "energy": 35.0,
+      "size": [
+        1.6,
+        1.2
+      ],
+      "location": [
+        0.0,
+        1.05,
+        0.95
+      ]
+    },
+    "camera": {
+      "lens_mm": 85.0,
+      "location": [
+        0.0,
+        -0.72,
+        0.2
+      ],
+      "dof": "best-effort enabled; focus_object=mug; fstop=2.8"
+    },
+    "hero_mug": {
+      "body_radius_m": 0.045,
+      "body_depth_m": 0.1,
+      "solidify_thickness_m": 0.004,
+      "subsurf_levels": 2,
+      "bevel_width_m": 0.0012
+    },
+    "countertop": {
+      "dimensions_scale": [
+        0.7,
+        0.45,
+        0.04
+      ],
+      "bevel_width_m": 0.002
+    },
+    "render": {
+      "resolution": [
+        1920,
+        1080
+      ],
+      "view_transform": "AgX",
+      "look": "None",
+      "output_png": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_product_closeup_script_iter3_ricodefix/bench_product_closeup_script_iter3_ricodefix.png",
+      "output_blend": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_product_closeup_script_iter3_ricodefix/bench_product_closeup_script_iter3_ricodefix.blend"
+    },
+    "structural_fixes": [
+      "Creates and places mug+handle explicitly in front of camera and sets camera to look-at mug",
+      "Creates identifiable concrete countertop slab under mug",
+      "Creates clean white cyclorama (floor+wall+curved corner) and adds dedicated BG wash light to keep background readable"
+    ]
+  },
+  "escape_level": 0,
+  "script_hash": "f77237e46163",
+  "issue_kinds": [
+    "lighting",
+    "parameter",
+    "structural"
+  ],
+  "change_label": "full_rewrite",
+  "timestamp": "2026-03-20T00:19:53.746843"
+}

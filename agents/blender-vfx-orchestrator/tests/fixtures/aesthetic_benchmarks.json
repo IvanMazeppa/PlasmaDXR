@@ -6,7 +6,7 @@
     {
       "id": "bench_tabletop_glass",
       "prompt": "A crystal wine glass on a dark marble table, dramatic side lighting, macro close-up",
-      "effect_type": "none",
+      "effect_type": "environment",
       "category": "tabletop_glass",
       "expected_hero_objects": ["wine glass"],
       "expected_materials": ["glass_transmission", "marble"],
@@ -66,7 +66,7 @@
     {
       "id": "bench_product_closeup",
       "prompt": "A ceramic coffee mug on a concrete countertop, studio lighting, clean white background",
-      "effect_type": "none",
+      "effect_type": "environment",
       "category": "product_closeup",
       "expected_hero_objects": ["coffee_mug"],
       "expected_materials": ["ceramic_glaze", "concrete"],

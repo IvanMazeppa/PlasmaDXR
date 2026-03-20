@@ -1,8 +1,8 @@
 # Current State
 
 Status: authoritative
-Last verified: 2026-03-17
-Purpose: current high-level state of the Blender VFX Orchestrator after Wave 1 and early Wave 2 work
+Last verified: 2026-03-19
+Purpose: current high-level state of the Blender VFX Orchestrator after Phases 1-3 and Phase 3.5 Tasks 1-8
 
 ## Mission Context
 
@@ -43,10 +43,13 @@ These may still regress, but they are not the best explanation for the current p
 
 5. Evaluator calibration and learning provenance are not yet strong enough to justify larger autonomy claims.
 
-6. Scene aesthetic realism is still below target even though the craft/intention layer has improved.
-   The current bottleneck is no longer just "pick the right technique" but "consistently build convincing hero objects, materials, and environments."
+6. Scene aesthetic realism has advanced significantly (Phase 3.5 Tasks 1-8 complete). The pipeline now has:
+   hero-object refinement recipes, camera/readability enforcement, look-dev coverage metrics, aesthetic benchmarks,
+   `hero_object`/`lookdev` issue kinds routed to structural repair, and iteration manifests with script hashes.
+   The remaining question is whether these changes produce measurable visual gains (Task 9 benchmark pass).
 
-7. A specialist section-builder workstream now exists as a planned quality-ceiling extension, but it is still gated and pending final external review before implementation begins.
+7. A specialist section-builder workstream exists as a planned quality-ceiling extension (Task 10), gated on
+   benchmark evidence from Task 9 before implementation begins.
 
 ## Current Planning Priorities
 
@@ -54,9 +57,10 @@ In order:
 
 1. ~~Make repair-mode selection authoritative.~~ **DONE.** State authority fixed, repair routing receives correct inputs.
 2. ~~Unify iteration manifests and state mutation.~~ **DONE.** `record_iteration()` is the sole path.
-3. Finish evaluator calibration and provenance-safe learning before making bigger autonomy claims. (Roadmap Phase 4-5)
-4. Continue the scene aesthetic realism workstream so hero objects, materials, and environments stop looking underbuilt. (Roadmap Phase 3.5)
-5. Keep specialist section builders as a planned, gated extension until the first milestone is externally cleared. (Roadmap Phase 6A)
+3. ~~Scene aesthetic quick wins (Tasks 1-8).~~ **DONE.** Hero refinement, camera hints, look-dev metrics, aesthetic benchmarks, iteration manifests all shipped.
+4. **Run focused benchmark pass (Task 9)** — baseline vs post-quick-win comparison to measure real visual impact. This is the current next step.
+5. Finish evaluator calibration and provenance-safe learning before making bigger autonomy claims. (Roadmap Phase 4 Jobs 3-7)
+6. Start hero-only specialist builder (Task 10) once Task 9 confirms the current approach is working. (Roadmap Phase 6A first milestone)
 
 The canonical implementation plan and ordered job list for these priorities now lives in `CURRENT_ROADMAP.md`.
 

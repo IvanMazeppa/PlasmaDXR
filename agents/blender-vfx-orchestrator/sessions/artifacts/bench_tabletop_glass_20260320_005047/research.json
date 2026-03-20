@@ -1,0 +1,69 @@
+{
+  "recommended_approach": "Geometry Nodes (procedural detail) + Cycles (path-traced rendering) for a macro product-style still: build/augment surface detail procedurally, then light and render in Cycles using its render/optimization guidance (noise/caustics topics)",
+  "key_parameters": {
+    "subdivision_modifier_example": {
+      "modifier_type": "SUBSURF",
+      "mod.levels": 2,
+      "mod.render_levels": 3,
+      "apply_modifier_requires": {
+        "bpy.context.view_layer.objects.active": "obj (must be active)",
+        "mode": "OBJECT"
+      }
+    },
+    "viewport_draw_handler_example": {
+      "area.type": "VIEW_3D",
+      "bpy.types.SpaceView3D.draw_handler_add": {
+        "region_type": "WINDOW",
+        "draw_type": "POST_VIEW"
+      },
+      "bpy.app.timers.register": "used to trigger redraw loop (see gpu examples)"
+    },
+    "light_linking_features": {
+      "light_linking": "per-light/emissive-mesh control via light/shadow linking collections (default/range not specified in snippet)",
+      "shadow_linking": "paired feature for shadow restriction (default/range not specified in snippet)"
+    }
+  },
+  "api_modules": [
+    "bpy.ops.object.modifier_apply",
+    "bpy.context.view_layer.objects.active",
+    "bpy.types.Object.location",
+    "bpy.types.SpaceView3D.draw_handler_add",
+    "bpy.app.timers.register",
+    "bpy.types.GeometryNodeTree",
+    "bpy.types.GeometryNodeTransform",
+    "bpy.types.GeometryNodeSubdivisionSurface",
+    "bpy.types.GeometryNodeTriangulate",
+    "bpy.types.GeometryNodeUVUnwrap",
+    "bpy.types.GeometryNodeSampleGrid",
+    "bpy.types.GeometryNodeRemoveAttribute",
+    "bpy.types.GeometryNodeResampleCurve",
+    "bpy.types.GeometryNodeSetCurveNormal",
+    "bpy.types.GeometryNodeScaleElements",
+    "bpy.types.GeometryNodeViewer.active_index",
+    "bpy.types.GeometryNodeTree.show_modifier_manage_panel"
+  ],
+  "warnings": [
+    "Modifier application via bpy.ops.object.modifier_apply is context-sensitive: object must be active and you must be in OBJECT mode (per snippet).",
+    "Modifier stack order is called out as CRITICAL in the provided modifier overview snippet (changing order can change results).",
+    "Doc searches returned high-level Cycles optimization topics (noise/caustics/etc.) but did not surface specific per-setting API/property names for camera DOF, glass shader, or color management in the retrieved chunks."
+  ],
+  "alternative_approaches": [
+    "Eevee workflow for faster lookdev/iteration, while accounting for documented EEVEE limitations (including camera/lights/Depth of Field/screen-space effects limitations referenced on the limitations page).",
+    "Workbench/Material Preview for rapid lighting/material blocking (3D Viewport shading modes), then switch to final renderer."
+  ],
+  "doc_refs": [
+    "blender_manual_html/render/index.html",
+    "blender_manual_html/render/cycles/index.html",
+    "blender_manual_html/render/cycles/optimizations/index.html",
+    "blender_manual_html/render/eevee/limitations/index.html",
+    "blender_manual_html/render/workbench/options.html",
+    "blender_manual_html/editors/3dview/display/shading.html#-material-preview-",
+    "blender_manual_html/editors/3dview/display/shading.html#lighting-",
+    "blender_manual_html/render/materials/legacy_textures/index.html",
+    "render/lights/light_linking.html",
+    "blender_python_reference_5_0/gpu.html#examples-",
+    "blender_python_reference_5_0/info_overview.html#the-default-environment-",
+    "blender_python_reference_5_0/info_quickstart.html#mathutils-types-"
+  ],
+  "timestamp": "2026-03-20T00:51:41.477362"
+}

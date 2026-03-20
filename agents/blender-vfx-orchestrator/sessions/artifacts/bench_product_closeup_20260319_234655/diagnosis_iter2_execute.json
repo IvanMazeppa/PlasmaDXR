@@ -1,0 +1,15 @@
+{
+  "iteration": 2,
+  "phase": "execute",
+  "issue_type": "execute_failure",
+  "summary": "bpy_struct: item.attr = val: NodeSocketFloat.default_value expected a float type, not tuple; script failed, file: 'build/blender_cli_logs/20260320_000904_bench_product_closeup_script_iter2_ricodefix/_wrapper.py', exiting.",
+  "details": "Execution failed for script /home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_product_closeup_script_iter2_ricodefix.py.\nError: bpy_struct: item.attr = val: NodeSocketFloat.default_value expected a float type, not tuple; script failed, file: 'build/blender_cli_logs/20260320_000904_bench_product_closeup_script_iter2_ricodefix/_wrapper.py', exiting.\nFailure class: execute_failure\nUse spec-first code fix path with verified APIs only.",
+  "recommended_fixes": [
+    "Ensure domain object is active and selected before bake operators.",
+    "Ensure Fluid modifier types are correct for domain/flow/effector objects.",
+    "Verify operator context and depsgraph updates before bpy.ops calls."
+  ],
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_product_closeup_script_iter2_ricodefix.py",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_product_closeup/bench_product_closeup.png",
+  "timestamp": "2026-03-20T00:09:05.221553"
+}

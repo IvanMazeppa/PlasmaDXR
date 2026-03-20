@@ -22,11 +22,12 @@ BENCHMARK_FILE = Path(__file__).parent.parent / "tests" / "fixtures" / "aestheti
 def load_benchmark(benchmark_id: str) -> dict:
     """Load a benchmark by ID from the fixture file."""
     with open(BENCHMARK_FILE) as f:
-        benchmarks = json.load(f)
-    for b in benchmarks:
+        data = json.load(f)
+    bench_list = data.get("benchmarks", data) if isinstance(data, dict) else data
+    for b in bench_list:
         if b["id"] == benchmark_id:
             return b
-    raise ValueError(f"Benchmark '{benchmark_id}' not found. Available: {[b['id'] for b in benchmarks]}")
+    raise ValueError(f"Benchmark '{benchmark_id}' not found. Available: {[b['id'] for b in bench_list]}")
 
 
 async def run_benchmark(

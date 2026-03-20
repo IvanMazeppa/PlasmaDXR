@@ -1,0 +1,59 @@
+{
+  "iteration": 1,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_product_closeup_v1.py",
+  "technique_used": "geometry_nodes_environment",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_product_closeup/bench_product_closeup.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/bench_product_closeup_20260319_234655/cache",
+  "score": 24.0,
+  "passed": false,
+  "primary_issue": "Camera framing/subject scale is wrong: the mug is tiny and distant, so the shot does not read as a studio product closeup on a concrete countertop.",
+  "parameter_changes": {
+    "asset_name": "bench_product_closeup",
+    "geometry_nodes": {
+      "node_group_name": "EnvironmentSetup",
+      "scatter_density": 10.0,
+      "seed": 42,
+      "scale_min": 0.8,
+      "scale_max": 1.2,
+      "countertop_subdivision_levels": 2,
+      "displacement_strength": 0.01,
+      "concrete_noise_scale": 0.5
+    },
+    "render": {
+      "engine": "CYCLES",
+      "device": "GPU (best-effort)",
+      "samples": 1024,
+      "resolution": [
+        3840,
+        2160
+      ],
+      "denoise_final": "Enabled (tries OPTIX then falls back)",
+      "film_transparent": false
+    },
+    "color_management": {
+      "view_transform": "Filmic",
+      "look": "None",
+      "display_device": "sRGB"
+    },
+    "lighting": {
+      "key_area_energy_w": 80.0,
+      "fill_area_energy_w": 18.0,
+      "rim_spot_energy_w": 14.0,
+      "world_lighting": "Environment Texture (generated lat-long image), strength 0.9"
+    },
+    "camera": {
+      "lens_mm": 50.0,
+      "dof_enabled": false
+    }
+  },
+  "escape_level": 0,
+  "script_hash": "1da51deec2de",
+  "issue_kinds": [
+    "camera",
+    "lighting",
+    "parameter",
+    "structural"
+  ],
+  "change_label": "initial_generation",
+  "timestamp": "2026-03-20T00:01:47.463642"
+}

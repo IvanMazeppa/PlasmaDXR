@@ -1,0 +1,23 @@
+{
+  "session_id": "bench_campfire_night_20260320_002242",
+  "iteration": 3,
+  "overall_score": 41.0,
+  "passed": false,
+  "critical_issues": [],
+  "warnings": [
+    "Reduce flame emission/intensity and/or exposure to prevent highlight clipping; aim for a white-hot core with yellow/orange edges instead of a mostly-white mass.",
+    "Improve flame look using layered noise/turbulence breakup + multiple tongues/sheets; add subtle smoke and a glowing ember bed at the log base to sell combustion.",
+    "Add actual grass (geometry scatter or at least a grass texture/normal) and let the fire provide warm bounce light onto it to meet the scene description.",
+    "Replace/increase detail of the stone ring (more subdivision, varied rock shapes, better rock material) so it reads natural at this camera distance.",
+    "Remove or hide the bench/post structures from the shot, or recompose the camera tighter on the fire ring and nearby lit ground so the campfire is the hero.",
+    "Add a subtle night-sky gradient (and optionally faint stars/moonlight fill) so the background reads as deliberate nighttime, not a void.",
+    "Change color management look to preserve fire highlight detail (Script line 110): try an AgX \u201cLow Contrast\u201d/\u201cMedium Low Contrast\u201d look instead of Look=None, and re-check clipping."
+  ],
+  "cache_size_mb": 0.0,
+  "render_count": 0,
+  "vdb_count": 0,
+  "iteration_cost_usd": 0.0,
+  "iteration_time_seconds": 554.4211570439984,
+  "utility_score": 0.45499999999999996,
+  "timestamp": "2026-03-20T00:48:34.940818"
+}

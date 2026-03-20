@@ -1,0 +1,50 @@
+{
+  "recommended_approach": "Mantaflow GAS \u201cMulti-Flow Domain\u201d campfire (separate flow emitters for flame/smoke) + Wind/Turbulence force fields for motion art-direction + Principled Volume shader for fire/smoke rendering",
+  "key_parameters": {
+    "Fluid modifier (flow object)": {
+      "modifier.type": "FLUID",
+      "modifier.fluid_type": "'FLOW'",
+      "flow_settings (fs).flow_type": "'SMOKE' (use an additional fire-capable flow for flames in the same domain if desired)"
+    },
+    "Mantaflow domain (settings)": {
+      "domain_settings (ds).cache_directory": "Set explicitly (e.g. env BLENDER_CACHE_DIR or '/tmp/blender_cache') for reliable bakes/exports"
+    },
+    "Force fields": {
+      "bpy.ops.object.effector_add(type='WIND') -> wind.field.strength": 3.0,
+      "bpy.ops.object.effector_add(type='WIND') -> wind.field.noise": 0.5,
+      "bpy.ops.object.effector_add(type='TURBULENCE') -> turb.field.strength": 2.0
+    },
+    "Shading (volume material)": {
+      "Material.use_nodes": true,
+      "ShaderNodeVolumePrincipled.inputs['Density'].default_value": 5.0
+    }
+  },
+  "api_modules": [
+    "bpy.types.FluidDomainSettings",
+    "bpy.types.FluidFlowSettings",
+    "bpy.ops.object.effector_add",
+    "bpy.ops.object.forcefield_add",
+    "bpy.ops.mesh.primitive_uv_sphere_add",
+    "bpy.context.active_object",
+    "ShaderNodeVolumePrincipled",
+    "ShaderNodeOutputMaterial"
+  ],
+  "warnings": [
+    "Mantaflow cache management: set an explicit domain cache directory (ds.cache_directory) to avoid missing/unstable output paths (especially in headless/automated runs).",
+    "Campfire-specific pitfall indicated by available pattern metadata: smoke can accumulate and fill the whole domain; plan for dissipation/dissolve-style behavior or domain management so the sim doesn\u2019t become a solid fog box.",
+    "Tooling note from doc search output: API reference pages for some Mantaflow properties may not be directly returned; rely on bpy.types.FluidDomainSettings / bpy.types.FluidFlowSettings plus UI inspection when wiring exact property names.",
+    "Force fields must be placed/aimed relative to the domain and flame column; excessive wind/turbulence strengths can destroy the coherent flame shape (start low and iterate)."
+  ],
+  "alternative_approaches": [
+    "Grease Pencil flames + Grease Pencil Visual Effect \u201cGlow\u201d for a stylized campfire look (no fluid sim), optionally used alongside conventional lighting to get the warm orange spill on grass."
+  ],
+  "doc_refs": [
+    "blender_manual_html/physics/fluid/type/domain/settings.html#fire-",
+    "techniques/mantaflow/advanced_overview (mantaflow_advanced_overview.md: \u201cMulti-Flow Domain \u2026 Best For: Campfire (separate flame/smoke)\u201d)",
+    "blender_manual_html/grease_pencil/visual_effects/glow.html#options-",
+    "blender_python_reference_5_0/info_overview.html#class-registration-",
+    "technique_multi_flow_effects.md (Force Fields Affecting Fluid; multi-flow emitter/obstacle examples)",
+    "technique_mantaflow_export.md (cache_directory + Principled Volume setup snippet)"
+  ],
+  "timestamp": "2026-03-20T00:23:42.384951"
+}

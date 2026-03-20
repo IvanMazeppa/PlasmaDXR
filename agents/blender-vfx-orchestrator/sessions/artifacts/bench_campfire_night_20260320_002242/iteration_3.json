@@ -1,0 +1,91 @@
+{
+  "iteration": 3,
+  "script_path": "/home/maz3ppa/projects/PlasmaDXR/assets/blender_scripts/generated/bench_campfire_night_script_iter3_ricodefix_errfix.py",
+  "technique_used": "procedural_emission_flame_with_safe_socket_guarding",
+  "render_path": "/home/maz3ppa/projects/PlasmaDXR/build/vdb_output/bench_campfire_night/bench_campfire_night.png",
+  "cache_path": "/home/maz3ppa/projects/PlasmaDXR/agents/blender-vfx-orchestrator/sessions/artifacts/bench_campfire_night_20260320_002242/cache",
+  "score": 41.0,
+  "passed": false,
+  "primary_issue": "The campfire firelight/fire itself is not convincing (overexposed/clipped, poor flame structure), and the environment does not match the prompt (no visible grass, unfinished night sky).",
+  "parameter_changes": {
+    "asset_name": "bench_campfire_night",
+    "render_engine": "BLENDER_EEVEE",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "view_transform": "AgX (guarded)",
+    "lights": [
+      {
+        "name": "Light_Fire_Key",
+        "type": "POINT",
+        "energy": 65.0,
+        "color": [
+          1.0,
+          0.55,
+          0.22
+        ]
+      },
+      {
+        "name": "Light_Moon_Fill",
+        "type": "SUN",
+        "energy": 0.8,
+        "color": [
+          0.55,
+          0.65,
+          1.0
+        ]
+      },
+      {
+        "name": "Light_Rim",
+        "type": "AREA",
+        "energy": 25.0,
+        "shape": "RECTANGLE",
+        "size": [
+          1.2,
+          0.6
+        ],
+        "color": [
+          0.6,
+          0.75,
+          1.0
+        ]
+      }
+    ],
+    "flame_material": {
+      "type": "billboard_planes",
+      "emission_strength": 60.0,
+      "mix": "Transparent+Emission via (Gradient*Noise) mask",
+      "blend_method": "BLEND (guarded)",
+      "shadow_method": "NONE (guarded)"
+    },
+    "camera": {
+      "lens_mm": 50.0,
+      "dof": {
+        "use_dof": true,
+        "focus_object": "Focus_Fire",
+        "aperture_fstop": 2.8
+      }
+    },
+    "scene_objects_created": [
+      "Ground",
+      "Bench_*",
+      "Stone_* ring",
+      "Log_*",
+      "Coal_Bed",
+      "FlamePlane_*",
+      "Ember_*",
+      "Focus_Fire"
+    ]
+  },
+  "escape_level": 0,
+  "script_hash": "dee6fc4cb42f",
+  "issue_kinds": [
+    "camera",
+    "lighting",
+    "structural",
+    "technique"
+  ],
+  "change_label": "full_rewrite",
+  "timestamp": "2026-03-20T00:49:32.756543"
+}
